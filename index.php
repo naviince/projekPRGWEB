@@ -35,20 +35,20 @@ include 'koneksi.php';
       --text-dark: #2d0a18;
     }
 
-    body { font-family: 'Montserrat', sans-serif; color: #444; }
+    body { font-family: 'Montserrat', sans-serif; color: #444; scroll-behavior: smooth; }
     
     /* Header & Nav */
     .header { background: #fff; border-bottom: 1px solid #eee; }
     .sitename { color: var(--primary-pink); font-weight: 800; font-size: 1.5rem; text-decoration: none; }
     .navmenu ul { list-style: none; display: flex; gap: 30px; margin: 0; padding: 0; align-items: center; }
     .navmenu ul li a { text-decoration: none; color: #555; font-weight: 600; font-size: 0.9rem; }
-    .navmenu ul li a.active { color: var(--primary-pink); }
+    .navmenu ul li a.active, .navmenu ul li a:hover { color: var(--primary-pink); }
 
     /* Hero Section */
     .hero { padding: 80px 0; background: white; }
     .hero h1 { font-weight: 800; font-size: 3.5rem; color: var(--text-dark); }
     
-    /* Pricing Card Baru (Gabungan) */
+    /* Pricing Card */
     .pricing-card {
       background: #fff; border-radius: 15px; overflow: hidden;
       box-shadow: 0 10px 30px rgba(0,0,0,0.05); height: 100%;
@@ -69,14 +69,16 @@ include 'koneksi.php';
       text-align: center; text-decoration: none; display: block;
     }
 
-    /* Why Choose Us */
-    .why-section { padding: 80px 0; }
+    /* Why Choose Us & About */
+    .why-section, .about-section { padding: 80px 0; }
     .why-icon {
       width: 50px; height: 50px; background: var(--light-pink);
       border-radius: 10px; display: flex; align-items: center;
       justify-content: center; color: var(--primary-pink); font-size: 1.5rem;
     }
     .img-side { border-radius: 20px; width: 100%; box-shadow: 20px 20px 0 var(--light-pink); }
+    
+    .about-text p { line-height: 1.8; color: #666; }
   </style>
 </head>
 
@@ -87,7 +89,7 @@ include 'koneksi.php';
       <a href="index.php" class="sitename">SpotLight</a>
       <nav id="navmenu" class="navmenu">
         <ul>
-          <li><a href="#hero" class="active">Home</a></li>
+          <li><a href="#hero">Home</a></li>
           <li><a href="#portfolio">Portfolio</a></li>
           <li><a href="#pricing">Paket</a></li>
           <li><a href="#about">Tentang</a></li>
@@ -126,13 +128,30 @@ include 'koneksi.php';
       </div>
     </section>
 
+    <!-- Section Tentang (BARU) -->
+    <section id="about" class="about-section container">
+      <div class="row align-items-center">
+        <div class="col-lg-6 about-text" data-aos="fade-right">
+          <h2 style="font-weight: 800; color: var(--text-dark);">Tentang SpotLight</h2>
+          <p class="mt-4">
+            SpotLight Studio adalah destinasi utama bagi Anda yang ingin mengabadikan setiap momen berharga dengan kualitas kelas dunia. Berawal dari kecintaan kami terhadap dunia seni fotografi, kami hadir untuk memberikan layanan profesional yang menggabungkan teknik pencahayaan modern dengan rasa artistik yang tinggi.
+          </p>
+          <p>
+            Terletak di jantung Cikarang Selatan, studio kami dilengkapi dengan fasilitas terkini dan tim fotografer berpengalaman yang siap mengarahkan gaya Anda agar terlihat natural namun tetap memukau. Kepuasan Anda adalah prioritas kami dalam setiap jepretan.
+          </p>
+        </div>
+        <div class="col-lg-6" data-aos="fade-left">
+           <img src="assets/img/portfolio/studio.jpg" class="img-side" alt="Tentang Kami">
+        </div>
+      </div>
+    </section>
+
     <!-- Section Portfolio (Tetap Asli) -->
     <section id="portfolio" class="container py-5">
       <div class="text-center mb-5">
         <h2 style="font-weight: 800;">Portfolio Kami</h2>
       </div>
       <div class="row g-4">
-        <!-- Pakai Gambar Aslimu di Sini -->
         <div class="col-lg-4"><img src="assets/img/portfolio/portfolio-3.webp" class="img-fluid rounded-4" alt=""></div>
         <div class="col-lg-4"><img src="assets/img/portfolio/portfolio-7.webp" class="img-fluid rounded-4" alt=""></div>
         <div class="col-lg-4"><img src="assets/img/portfolio/portfolio-8.webp" class="img-fluid rounded-4" alt=""></div>
@@ -151,7 +170,6 @@ include 'koneksi.php';
         $sql = "SELECT * FROM Paket_Foto WHERE Status = 'Aktif'";
         $query = sqlsrv_query($conn, $sql);
         while($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
-          // Tentukan gambar berdasarkan nama paket (opsional)
           $img = "assets/img/basic.jpg"; 
           if(strpos($row['Nama_Paket'], 'Couple') !== false) $img = "assets/img/couple.jpg";
           if(strpos($row['Nama_Paket'], 'Family') !== false) $img = "assets/img/family.jpg";
