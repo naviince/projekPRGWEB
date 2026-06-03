@@ -1,6 +1,6 @@
 <?php
 
-$serverName = "LAPTOP-FB8R0UH0";
+$serverName = "ELVINA-PARAMITA";
 
 $connectionOptions = array(
     "Database" => "SpotLight",
