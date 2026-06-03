@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Detail Paket - SpotLight</title>
+
+  <!-- Favicons -->
+  <link href="assets/img/favicon.png" rel="icon">
+  <link href="assets/img/apple-touch-icon.png" rel="apple-touch-icon">
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com" rel="preconnect">
+  <link href="https://fonts.gstatic.com" rel="preconnect" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Vendor CSS Files -->
+  <link href="assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  <link href="assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+  <link href="assets/vendor/aos/aos.css" rel="stylesheet">
+
+  <style>
+    :root {
+      --primary-pink: #ff66a1;
+      --light-pink: #fff2f6;
+      --text-dark: #2d0a18;
+    }
+
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background-color: #fff;
+      color: #333;
+    }
+
+    /* Header */
+    .header { padding: 15px 0; background: #fff; border-bottom: 1px solid #f1f1f1; }
+    .sitename { color: var(--primary-pink); font-weight: 800; font-size: 1.5rem; text-decoration: none; }
+    .navmenu ul { list-style: none; display: flex; gap: 30px; margin: 0; padding: 0; align-items: center; }
+    .navmenu ul li a { text-decoration: none; color: #555; font-weight: 500; font-size: 0.9rem; }
+
+    /* Breadcrumb / Kembali */
+    .back-link { font-size: 0.8rem; color: #888; text-decoration: none; display: inline-flex; align-items: center; margin: 20px 0; }
+    .back-link:hover { color: var(--primary-pink); }
+
+    /* Layout Galeri */
+    .gallery-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr; grid-template-rows: 180px 180px; gap: 15px; }
+    .img-main { grid-row: span 2; width: 100%; height: 100%; object-fit: cover; border-radius: 20px; }
+    .img-sub { width: 100%; height: 100%; object-fit: cover; border-radius: 20px; }
+    .img-landscape { grid-column: span 2; height: 180px; width: 100%; object-fit: cover; border-radius: 20px; }
+    .gallery-more { position: relative; }
+    .gallery-more-overlay { 
+      position: absolute; top:0; left:0; width:100%; height:100%; 
+      background: rgba(0,0,0,0.3); border-radius: 20px; 
+      display: flex; align-items: center; justify-content: center; color: white; font-weight: 700;
+    }
+
+    /* Informasi Studio Box */
+    .info-studio-box {
+      background-color: var(--light-pink);
+      border-radius: 20px;
+      padding: 25px;
+      margin-top: 30px;
+    }
+    .info-studio-box h4 { font-weight: 700; font-size: 1.1rem; color: var(--primary-pink); margin-bottom: 20px; }
+    .info-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .info-item { font-size: 0.85rem; }
+    .info-item i { color: var(--primary-pink); font-size: 1.1rem; margin-bottom: 5px; display: block; }
+    .info-item span { display: block; color: #888; font-size: 0.75rem; }
+    .info-item strong { display: block; font-weight: 700; color: var(--text-dark); }
+
+    /* Content Section */
+    .content-title { font-weight: 800; font-size: 1.5rem; margin-top: 40px; margin-bottom: 20px; }
+    .content-text { font-size: 0.9rem; line-height: 1.7; color: #666; }
+
+    /* Sidebar Harga */
+    .sidebar-sticky { position: sticky; top: 100px; }
+    .price-card {
+      border: 1px solid #f1f1f1;
+      border-radius: 25px;
+      padding: 35px;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.05);
+      background: #fff;
+    }
+    .badge-populer { background: #e8f5e9; color: #28a745; font-size: 0.7rem; font-weight: 700; padding: 4px 12px; border-radius: 10px; }
+    .package-name { font-weight: 800; font-size: 1.8rem; margin: 10px 0; }
+    .package-price { font-size: 1.5rem; font-weight: 700; color: var(--primary-pink); }
+    .package-price span { font-size: 0.8rem; color: #999; }
+    
+    .fitur-list { list-style: none; padding: 0; margin: 30px 0; }
+    .fitur-list li { display: flex; gap: 15px; margin-bottom: 20px; font-size: 0.85rem; }
+    .fitur-list li i { color: #28a745; font-size: 1.2rem; }
+    .fitur-list li strong { display: block; color: var(--text-dark); }
+    .fitur-list li span { color: #888; }
+
+    .btn-lanjut {
+      background: var(--primary-pink);
+      color: white;
+      width: 100%;
+      padding: 15px;
+      border-radius: 15px;
+      border: none;
+      font-weight: 700;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      transition: 0.3s;
+    }
+    .btn-lanjut:hover { background: #e6558e; transform: scale(1.02); color: #fff; }
+    
+    .promo-small { font-size: 0.7rem; color: #999; text-align: center; margin-top: 15px; }
+
+    .trust-badges {
+      background: var(--light-pink);
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      padding: 10px;
+      border-radius: 10px;
+      margin-top: 20px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: #b33063;
+    }
+
+    footer { padding: 30px 0; border-top: 1px solid #f1f1f1; margin-top: 80px; font-size: 0.8rem; color: #999; }
+  </style>
+</head>
+
+<body>
+
+  <header class="header sticky-top">
+    <div class="container d-flex justify-content-between align-items-center">
+      <a href="index.html" class="sitename">SpotLight</a>
+      <nav class="navmenu">
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="paket.html">Paket</a></li>
+          <li><a href="#">Galeri</a></li>
+          <li><a href="#">Tentang Kami</a></li>
+        </ul>
+      </nav>
+      <div class="d-flex gap-3 align-items-center">
+        <i class="bi bi-cart3"></i>
+        <i class="bi bi-person-circle fs-4"></i>
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+    <a href="paket.html" class="back-link">
+      <i class="bi bi-chevron-left me-2"></i> KEMBALI KE DAFTAR PAKET
+    </a>
+
+    <div class="row g-5">
+      <!-- Sisi Kiri -->
+      <div class="col-lg-7">
+        <!-- Galeri Mosaik -->
+        <div class="gallery-grid">
+          <img src="assets/img/hero-img.jpg" class="img-main" alt="Studio 1">
+          <img src="assets/img/about.jpg" class="img-landscape" alt="Studio 2">
+          <img src="assets/img/team/team-1.jpg" class="img-sub" alt="Studio 3">
+          <div class="gallery-more">
+            <img src="assets/img/team/team-2.jpg" class="img-sub" alt="Studio 4">
+            <div class="gallery-more-overlay">+12 Galeri</div>
+          </div>
+        </div>
+
+        <!-- Box Informasi Studio -->
+        <div class="info-studio-box">
+          <h4>Informasi Studio</h4>
+          <div class="info-grid text-center">
+            <div class="info-item">
+              <i class="bi bi-geo-alt-fill"></i>
+              <span>Studio</span>
+              <strong>Studio Aurora</strong>
+            </div>
+            <div class="info-item">
+              <i class="bi bi-people-fill"></i>
+              <span>Kapasitas</span>
+              <strong>Hingga 30 Orang</strong>
+            </div>
+            <div class="info-item">
+              <i class="bi bi-clock-fill"></i>
+              <span>Durasi Sesi</span>
+              <strong>90 Menit</strong>
+            </div>
+            <div class="info-item">
+              <i class="bi bi-bag-check-fill"></i>
+              <span>Properti</span>
+              <strong>Tersedia</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tentang Paket -->
+        <h3 class="content-title">Tentang Paket Ini</h3>
+        <p class="content-text">
+          Nikmati pengalaman sesi foto profesional dengan pencahayaan terbaik di Studio Aurora. 
+          Paket ini dirancang untuk Anda yang menginginkan hasil foto portrait berkualitas tinggi untuk 
+          kebutuhan profesional maupun pribadi. Dengan durasi 90 menit, Anda memiliki waktu yang 
+          cukup untuk bereksperimen dengan berbagai gaya dan pose.
+        </p>
+      </div>
+
+      <!-- Sisi Kanan (Sticky Sidebar) -->
+      <div class="col-lg-5">
+        <div class="sidebar-sticky">
+          <div class="price-card">
+            <span class="badge-populer">Paling Populer</span>
+            <h1 class="package-name">Paket Family</h1>
+            <div class="package-price">Rp 750.000,00<span>/ sesi</span></div>
+
+            <h5 class="mt-4 fw-bold" style="font-size: 0.9rem;">FITUR & LAYANAN</h5>
+            <ul class="fitur-list">
+              <li>
+                <i class="bi bi-check-circle-fill"></i>
+                <div>
+                  <strong>15 Foto Edit Premium</strong>
+                  <span>Sentuhan retouching profesional untuk hasil sempurna.</span>
+                </div>
+              </li>
+              <li>
+                <i class="bi bi-check-circle-fill"></i>
+                <div>
+                  <strong>Semua File Master (Digital)</strong>
+                  <span>Akses penuh ke semua hasil foto mentah via cloud storage.</span>
+                </div>
+              </li>
+              <li>
+                <i class="bi bi-check-circle-fill"></i>
+                <div>
+                  <strong>2 Pilihan Background</strong>
+                  <span>Ganti suasana foto dengan 2 pilihan latar belakang studio.</span>
+                </div>
+              </li>
+              <li>
+                <i class="bi bi-check-circle-fill"></i>
+                <div>
+                  <strong>Print 10R + Bingkai</strong>
+                  <span>Cetak fisik kualitas museum untuk dipajang di rumah.</span>
+                </div>
+              </li>
+            </ul>
+
+            <a href="booking.html" class="btn-lanjut text-decoration-none">
+              Lanjut Pilih Tema <i class="bi bi-arrow-right"></i>
+            </a>
+            <p class="promo-small">Konfirmasi jadwal dilakukan setelah pemilihan tema</p>
+
+            <div class="trust-badges">
+              <span><i class="bi bi-shield-check me-1"></i> Verified Studio</span>
+              <span>|</span>
+              <span><i class="bi bi-credit-card me-1"></i> Safe Payment</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="container d-flex justify-content-between">
+    <p>© 2025 SpotLight Photo Studio. All rights reserved.</p>
+    <div class="d-flex gap-3">
+      <a href="#" class="text-secondary text-decoration-none">Privacy Policy</a>
+      <a href="#" class="text-secondary text-decoration-none">Terms of Service</a>
+      <a href="#" class="text-secondary text-decoration-none">Contact Us</a>
+    </div>
+  </footer>
+
+  <!-- Vendor JS Files -->
+  <script src="assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/vendor/aos/aos.js"></script>
+  <script>
+    AOS.init({ duration: 1000, once: true });
+  </script>
+
+</body>
+
+</html>

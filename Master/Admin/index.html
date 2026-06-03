@@ -643,10 +643,30 @@
 
         /* ── Confirm Modal ── */
         .confirm-modal {
-            width: 380px;
-            text-align: center;
-            padding: 32px;
-        }
+    width: 100%; /* Ubah dari 380px ke 100% agar mengikuti lebar parent */
+    text-align: center;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Memastikan semua item di dalamnya (icon, h3, p) di tengah */
+}
+
+.confirm-modal h3 {
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    width: 100%; /* Tambahkan ini */
+}
+
+.confirm-modal p {
+    font-size: 13px;
+    color: var(--gray-500);
+    margin-bottom: 24px;
+    line-height: 1.6;
+    max-width: 280px; /* Membatasi lebar teks agar tidak terlalu panjang ke samping */
+    margin-left: auto;
+    margin-right: auto;
+}
 
         .confirm-modal .confirm-icon {
             width: 56px;
