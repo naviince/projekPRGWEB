@@ -68,30 +68,30 @@
         </a>
 
         <nav id="navmenu" class="navmenu">
-          <ul>
-            <li><a href="#hero" class="active">Home</a></li>
-            <li><a href="#about">Tentang</a></li>
-            <li><a href="#services">Services</a></li>
-            <li><a href="#portfolio">Portfolio</a></li>
-            <li><a href="#team">Team</a></li>
-            <li class="dropdown"><a href="#"><span>Layanan</span> <i class="bi bi-chevron-down toggle-dropdown"></i></a>
-              <ul>
-                <li><a href="#">Foto Studio</a></li>
-                <li><a href="#">Pas Foto</a></li>
-                <li><a href="#">Photobox</a></li>
-                <li><a href="#">Cetak</a></li>
-                <li><a href="#">Frame</a></li>
-              </ul>
-            </li>
-            <li><a href="#contact">Kontak</a></li>
+  <ul>
+    <li><a href="#hero" class="active">Home</a></li>
+    <li><a href="#about">Tentang</a></li>
+    <li><a href="#pricing">Paket</a></li> <!-- Tambahkan ini -->
+    <li><a href="#services">Services</a></li>
+    <li><a href="#portfolio">Portfolio</a></li>
+    <li><a href="#team">Team</a></li>
+    <li class="dropdown"><a href="#"><span>Layanan</span> <i class="bi bi-chevron-down toggle-dropdown"></i></a>
+      <ul>
+        <li><a href="#">Foto Studio</a></li>
+        <li><a href="#">Pas Foto</a></li>
+        <li><a href="#">Photobox</a></li>
+        <li><a href="#">Cetak</a></li>
+        <li><a href="#">Frame</a></li>
+      </ul>
+    </li>
+    <li><a href="#contact">Kontak</a></li>
 
-            <!-- Tambahkan Fitur Baru di Sini -->
-            <li class="nav-login"><a href="login.html">Masuk</a></li>
-            <li><a href="register.html" class="btn-nav-register">Daftar</a></li>
-          </ul>
-          <i class="mobile-nav-toggle d-xl-none bi bi-list"></i>
-        </nav>
-
+    <!-- Tombol Masuk & Daftar -->
+    <li class="nav-login"><a href="login.html" id="btnMasukNav">Masuk</a></li>
+    <li><a href="register.html" class="btn-nav-register">Daftar</a></li>
+  </ul>
+  <i class="mobile-nav-toggle d-xl-none bi bi-list"></i>
+</nav>
       </div>
 
     </div>
@@ -117,9 +117,11 @@
               <p class="mt-4" style="color: #666; font-size: 1.1rem;">Ciptakan kenangan abadi dengan kualitas
                 profesional. Dari sesi portrait individu hingga momen hangat bersama keluarga tercinta.</p>
               <div class="cta-group mt-5 d-flex gap-3">
-                <a href="#contact" class="btn"
-                  style="background: var(--accent-color); color: white; padding: 12px 30px; border-radius: 10px; font-weight: 600;">Booking
-                  Sekarang</a>
+               <!-- Ubah dari href="#contact" menjadi href="booking.html" -->
+<a href="booking.html" class="btn"
+   style="background: var(--accent-color); color: white; padding: 12px 30px; border-radius: 10px; font-weight: 600;">
+   Booking Sekarang
+</a>
                 <a href="#gallery" class="btn border"
                   style="padding: 12px 30px; border-radius: 10px; font-weight: 600; color: #5cacee;"><i
                     class="bi bi-play-circle me-2"></i> Lihat Studio</a>
@@ -276,7 +278,8 @@
             Jangan lewatkan kesempatan untuk memiliki foto berkualitas tinggi. Booking<br class="d-none d-md-block">
             jadwalmu sekarang dan dapatkan diskon 15% untuk sesi pertama.
           </p>
-          <a href="#contact" class="btn-cta-pill">Amankan Slot Sekarang</a>
+         <!-- Ubah dari href="#contact" menjadi href="booking.html" -->
+<a href="booking.html" class="btn-cta-pill">Amankan Slot Sekarang</a>
         </div>
       </div>
     </section>

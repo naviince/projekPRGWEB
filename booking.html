@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Booking Studio - SpotLight</title>
+
+  <!-- Favicons -->
+  <link href="assets/img/favicon.png" rel="icon">
+  <link href="assets/img/apple-touch-icon.png" rel="apple-touch-icon">
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com" rel="preconnect">
+  <link href="https://fonts.gstatic.com" rel="preconnect" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Vendor CSS Files -->
+  <link href="assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  <link href="assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+  <link href="assets/vendor/aos/aos.css" rel="stylesheet">
+
+  <style>
+    :root {
+      --primary-pink: #d82b6b;
+      --vivid-pink: #ff2e7e;
+      --soft-blue: #5cacee;
+      --glass-bg: rgba(255, 255, 255, 0.85);
+    }
+
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: #fdf2f8;
+      min-height: 100vh;
+      margin: 0;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Animasi Bulatan Latar Belakang */
+    .bg-blobs {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      overflow: hidden;
+    }
+
+    .blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(60px);
+      animation: move 20s infinite alternate;
+    }
+
+    .blob-1 { width: 400px; height: 400px; background: rgba(216, 43, 107, 0.2); top: -100px; left: -100px; }
+    .blob-2 { width: 350px; height: 350px; background: rgba(92, 172, 238, 0.2); bottom: -50px; right: -50px; animation-delay: -5s; }
+    .blob-3 { width: 300px; height: 300px; background: rgba(255, 193, 7, 0.15); top: 40%; left: 50%; animation-delay: -10s; }
+
+    @keyframes move {
+      from { transform: translate(0, 0) scale(1); }
+      to { transform: translate(50px, 100px) scale(1.2); }
+    }
+
+    /* Header */
+    .header {
+      background: rgba(255, 255, 255, 0.9) !important;
+      backdrop-filter: blur(10px);
+      border-bottom: 3px solid var(--primary-pink);
+    }
+
+    .booking-container {
+      padding: 100px 20px 60px 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* Card Styling */
+    .booking-card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(15px);
+      border-radius: 30px;
+      padding: 40px;
+      box-shadow: 0 20px 50px rgba(216, 43, 107, 0.15);
+      width: 100%;
+      max-width: 800px;
+      border: 2px solid rgba(255, 255, 255, 0.8);
+    }
+
+    .section-title {
+      font-weight: 800;
+      background: linear-gradient(to right, var(--primary-pink), var(--soft-blue));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-size: 2.2rem;
+    }
+
+    .form-label { font-weight: 700; color: #444; font-size: 0.85rem; text-transform: uppercase; }
+
+    .input-group-text {
+      background-color: white;
+      border-right: none;
+      border-radius: 15px 0 0 15px !important;
+      color: var(--primary-pink);
+    }
+
+    .form-control, .form-select {
+      border-left: none;
+      border-radius: 0 15px 15px 0 !important;
+      padding: 12px;
+      border-color: #eee;
+    }
+
+    .form-control:focus, .form-select:focus {
+      box-shadow: none;
+      border-color: var(--primary-pink);
+    }
+
+    /* Khusus input date/time */
+    .input-date-time {
+        border-left: 1px solid #eee !important;
+        border-radius: 15px !important;
+    }
+
+    .btn-submit-booking {
+      background: linear-gradient(45deg, var(--primary-pink), var(--vivid-pink));
+      color: white;
+      border: none;
+      padding: 18px;
+      border-radius: 18px;
+      font-weight: 800;
+      width: 100%;
+      margin-top: 20px;
+      transition: 0.4s;
+      box-shadow: 0 10px 25px rgba(216, 43, 107, 0.3);
+    }
+
+    .btn-submit-booking:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 35px rgba(216, 43, 107, 0.4);
+    }
+
+    /* Modal Style */
+    .modal-content { border-radius: 25px; border: none; overflow: hidden; }
+    .modal-header-custom {
+        background: linear-gradient(45deg, var(--primary-pink), var(--soft-blue));
+        padding: 30px;
+        color: white;
+        text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Dekorasi Bulat Bergerak -->
+  <div class="bg-blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+
+  <!-- Header -->
+  <header id="header" class="header sticky-top">
+    <div class="container d-flex align-items-center justify-content-between">
+      <a href="index.html" class="logo d-flex align-items-center" style="text-decoration: none;">
+        <img src="assets/img/spotlight.png" alt="Logo" style="max-height: 40px;">
+        <h1 class="sitename" style="color: var(--primary-pink); font-weight: 800; margin-left: 10px; font-size: 1.5rem;">SpotLight</h1>
+      </a>
+      <nav class="navmenu">
+        <ul class="d-flex list-unstyled m-0 gap-3">
+          <li><a href="index.html" style="text-decoration: none; color: #444; font-weight: 600;">Home</a></li>
+          <li><a href="login.html" style="text-decoration: none; color: var(--primary-pink); font-weight: 700;">Masuk</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Konten Utama -->
+  <main class="booking-container">
+    <div class="booking-card" data-aos="zoom-in">
+      <h2 class="section-title text-center mb-4">Booking Studio 📸</h2>
+      
+      <form id="bookingForm">
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Nama Lengkap</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-person"></i></span>
+              <input type="text" class="form-control" placeholder="Nama Anda" required>
+            </div>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Nomor Telepon</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-whatsapp"></i></span>
+              <input type="tel" class="form-control" placeholder="08xxx" required>
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Pilih Paket Foto</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-camera"></i></span>
+            <select class="form-select" required>
+              <option value="">-- Pilih Paket --</option>
+              <option value="basic">Paket Basic (Rp 250k)</option>
+              <option value="couple">Paket Couple (Rp 450k)</option>
+              <option value="family">Paket Family (Rp 750k)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Tanggal</label>
+            <input type="date" class="form-control input-date-time" required>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Jam</label>
+            <input type="time" class="form-control input-date-time" required>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Catatan</label>
+          <textarea class="form-control input-date-time" rows="3" placeholder="Contoh: Tema baju putih"></textarea>
+        </div>
+
+        <button type="submit" class="btn-submit-booking">KONFIRMASI RESERVASI</button>
+      </form>
+    </div>
+  </main>
+
+  <!-- MODAL: Popup Jika Belum Login -->
+  <div class="modal fade" id="loginCheckModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header-custom">
+          <h5 class="fw-800 m-0"><i class="bi bi-person-exclamation me-2"></i> Ups, Kamu Belum Masuk!</h5>
+        </div>
+        <div class="modal-body text-center p-5">
+          <i class="bi bi-emoji-smile-upside-down mb-3" style="font-size: 4rem; color: var(--primary-pink); display: block;"></i>
+          <p style="color: #666; font-size: 1.1rem;">Untuk melanjutkan booking studio, silakan login atau buat akun terlebih dahulu ya!</p>
+        </div>
+        <div class="modal-footer d-flex justify-content-center gap-3 border-0 pb-5">
+          <a href="login.html" class="btn btn-outline-secondary fw-bold px-4 py-2" style="border-radius: 12px; border: 2px solid var(--primary-pink); color: var(--primary-pink);">Masuk</a>
+          <a href="register.html" class="btn text-white fw-bold px-4 py-2" style="background: var(--primary-pink); border-radius: 12px; box-shadow: 0 5px 15px rgba(216, 43, 107, 0.3);">Daftar Akun</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS Files -->
+  <script src="assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/vendor/aos/aos.js"></script>
+  <script>
+    AOS.init({ duration: 1000 });
+
+    // --- LOGIKA VALIDASI LOGIN ---
+    // Ubah 'false' menjadi 'true' jika ingin pura-pura sudah login
+    let userIsLoggedIn = false; 
+
+    document.getElementById('bookingForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      if (!userIsLoggedIn) {
+        // Jika belum login, tampilkan MODAL
+        var loginModal = new bootstrap.Modal(document.getElementById('loginCheckModal'));
+        loginModal.show();
+      } else {
+        // Jika sudah login, tampilkan pesan sukses
+        alert('✨ Booking berhasil dikirim! Tim kami akan menghubungi WhatsApp Anda.');
+        window.location.href = 'index.html';
+      }
+    });
+  </script>
+
+</body>
+</html>
