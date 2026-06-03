@@ -91,13 +91,12 @@
     }
 
     .section-title {
-      font-weight: 800;
-      background: linear-gradient(to right, var(--primary-pink), var(--soft-blue));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      font-size: 2.2rem;
-    }
-
+  font-weight: 800;
+  color: var(--primary-pink); /* Mengubah menjadi warna pink solid */
+  font-size: 2.2rem;
+  margin-bottom: 1.5rem;
+  display: block;
+}
     .form-label { font-weight: 700; color: #444; font-size: 0.85rem; text-transform: uppercase; }
 
     .input-group-text {
@@ -145,12 +144,13 @@
 
     /* Modal Style */
     .modal-content { border-radius: 25px; border: none; overflow: hidden; }
-    .modal-header-custom {
-        background: linear-gradient(45deg, var(--primary-pink), var(--soft-blue));
-        padding: 30px;
-        color: white;
-        text-align: center;
-    }
+   .modal-header-custom {
+    /* Gradasi dari pink tua ke pink muda */
+    background: linear-gradient(45deg, var(--primary-pink), var(--vivid-pink)); 
+    padding: 30px;
+    color: white;
+    text-align: center;
+}
   </style>
 </head>
 
@@ -182,7 +182,7 @@
   <!-- Konten Utama -->
   <main class="booking-container">
     <div class="booking-card" data-aos="zoom-in">
-      <h2 class="section-title text-center mb-4">Booking Studio 📸</h2>
+      <h2 class="section-title text-center mb-4">Booking Studio</h2>
       
       <form id="bookingForm">
         <div class="row">
