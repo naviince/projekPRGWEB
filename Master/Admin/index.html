@@ -56,11 +56,13 @@
         /* ── Sidebar ── */
         .sidebar {
             width: var(--sidebar-w);
-            min-height: 100vh;
+            height: 100vh;
+            /* Tinggi penuh layar */
             background: var(--white);
             border-right: 1px solid var(--pink-100);
             display: flex;
             flex-direction: column;
+            /* Menyusun atas ke bawah */
             position: fixed;
             top: 0;
             left: 0;
@@ -68,8 +70,10 @@
         }
 
         .sidebar-brand {
-            padding: 24px 20px 20px;
+            padding: 24px 20px;
             border-bottom: 1px solid var(--pink-100);
+            flex-shrink: 0;
+            /* Jangan biarkan bagian ini mengecil */
         }
 
         .sidebar-brand h2 {
@@ -86,7 +90,84 @@
 
         .sidebar-nav {
             flex: 1;
+            overflow-y: auto;
             padding: 12px 0;
+        }
+
+        .nav-label {
+            padding: 18px 20px 8px;
+            font-size: 10px;
+            font-weight: 800;
+            color: var(--gray-400);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .sidebar-profile {
+            padding: 16px 20px;
+            border-top: 1px solid var(--pink-100);
+            background: #fff;
+            flex-shrink: 0;
+            /* Tetap di bawah, tidak ikut ter-scroll */
+        }
+
+        .profile-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .profile-img {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            /* Kotak membulat seperti di gambar */
+            background: var(--pink-200);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .profile-img img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .profile-info h4 {
+            font-size: 13.5px;
+            font-weight: 700;
+            color: var(--gray-900);
+            margin: 0;
+        }
+
+        .profile-info p {
+            font-size: 11px;
+            color: var(--gray-500);
+            margin: 0;
+        }
+
+        .btn-logout {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: none;
+            background: transparent;
+            color: var(--gray-700);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-logout:hover {
+            background: var(--red-100);
+            color: var(--red-600);
         }
 
         .nav-item {
@@ -819,7 +900,7 @@
             display: flex;
             align-items: flex-end;
             gap: 10px;
-            height: 250px;
+            height: 350px;
             margin-top: 20px;
         }
 
@@ -962,82 +1043,121 @@
 
     <!-- SIDEBAR -->
     <aside class="sidebar">
+        <!-- Brand -->
         <div class="sidebar-brand">
             <h2>SpotLight Admin</h2>
             <p>Studio Management</p>
         </div>
+
+        <!-- Navigasi -->
         <nav class="sidebar-nav">
             <div class="nav-item active" onclick="showPage('dashboard', this)">
-                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="3" width="7" height="7" rx="1" />
-                    <rect x="14" y="3" width="7" height="7" rx="1" />
-                    <rect x="3" y="14" width="7" height="7" rx="1" />
-                    <rect x="14" y="14" width="7" height="7" rx="1" />
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                 </svg>
                 Dashboard
             </div>
-            <div class="nav-item" onclick="showPage('booking', this)">
-                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="4" width="18" height="18" rx="2" />
-                    <path d="M16 2v4M8 2v4M3 10h18" />
+
+            <!-- MASTER DATA -->
+            <p class="nav-label">Master Data</p>
+            <div class="nav-item" onclick="showPage('customers', this)">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
-                Booking
+                Pelanggan
+            </div>
+            <div class="nav-item" onclick="showPage('paket', this)">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2zM16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16" />
+                </svg>
+                Paket Foto
+            </div>
+            <div class="nav-item" onclick="showPage('ruangan', this)">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                Ruangan
+            </div>
+            <div class="nav-item" onclick="showPage('tema', this)">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Tema Foto
+            </div>
+            <div class="nav-item" onclick="showPage('properti', this)">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2 1m0 0L10 4m2 1v2.5M3 7l2-1m-2 1l2 1m-2 1V7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                </svg>
+                Properti
+            </div>
+            <div class="nav-item" onclick="showPage('barang', this)">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                </svg>
+                Barang & Cetak
+            </div>
+
+            <!-- TRANSAKSI -->
+            <p class="nav-label">Transaksi</p>
+            <div class="nav-item" onclick="showPage('booking', this)">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2v12a2 2 0 002 2z" />
+                </svg>
+                Order/Booking
             </div>
             <div class="nav-item" onclick="showPage('pembayaran', this)">
-                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <rect x="2" y="5" width="20" height="14" rx="2" />
-                    <path d="M2 10h20" />
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                 </svg>
                 Pembayaran
             </div>
             <div class="nav-item" onclick="showPage('sesiFoto', this)">
-                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="3" />
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path
-                        d="M20.188 10.934a1.5 1.5 0 01-.367 1.683l-5.52 4.96a1.5 1.5 0 01-2.3-.41l-1.714-3.428A1.5 1.5 0 019 13H5a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v3.934z" />
+                        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
                 Sesi Foto
             </div>
             <div class="nav-item" onclick="showPage('hasilFoto', this)">
-                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <circle cx="8.5" cy="8.5" r="1.5" />
-                    <path d="M21 15l-5-5L5 21" />
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
                 Hasil Foto
             </div>
-            <div class="nav-item" onclick="showPage('customers', this)">
-                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-                    <circle cx="9" cy="7" r="4" />
-                    <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+            <!-- MENU BARU: Penjualan Barang -->
+            <div class="nav-item" onclick="showPage('penjualan', this)">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                 </svg>
-                Customers
-            </div>
-            <div class="nav-item" onclick="showPage('paket', this)">
-                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z" />
-                    <path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16" />
-                </svg>
-                Paket & Produk
-            </div>
-            <div class="nav-item" onclick="showPage('laporan', this)">
-                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                </svg>
-                Laporan
+                Penjualan Barang
             </div>
         </nav>
-        <div class="sidebar-user">
-            <div class="user-ava">FN</div>
-            <div class="user-info">
-                <p>Fikri Nandika</p>
-                <span>Staff/Admin</span>
+
+        <!-- PROFIL AKUN (BAWAH) -->
+        <div class="sidebar-profile">
+            <div class="profile-card">
+                <div class="profile-img">
+                    <img src="https://ui-avatars.com/api/?name=Fikri+Nandika&background=e8457a&color=fff" alt="Avatar">
+                </div>
+                <div class="profile-info">
+                    <h4>Fikri Nandika</h4>
+                    <p>Staff/Admin Studio</p>
+                </div>
             </div>
-            <button class="logout-btn" title="Logout" onclick="showToast('Berhasil logout!', 'info')">
-                <svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+            <button class="btn-logout" onclick="alert('Berhasil Logout')">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
+                Logout
             </button>
         </div>
     </aside>
