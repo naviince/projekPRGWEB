@@ -35,6 +35,7 @@
       align-items: center;
       justify-content: center;
       padding: 20px;
+      overflow-x: hidden;
     }
 
     .register-card {
@@ -46,20 +47,21 @@
       width: 100%;
       max-width: 500px;
       border: 1px solid rgba(255, 255, 255, 0.5);
-    }
-
-    .logo-wrapper {
-      text-align: center;
-      margin-bottom: 25px;
-    }
-
-    .logo-wrapper img {
-      width: 70px;
       transition: transform 0.3s ease;
     }
 
-    .logo-wrapper img:hover {
-      transform: scale(1.1) rotate(5deg);
+    /* Efek Getar (Shake) */
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-10px); }
+      75% { transform: translateX(10px); }
+    }
+    .shake { animation: shake 0.4s ease-in-out; border: 1px solid red !important; }
+
+    /* Visual Feedback untuk Kolom yang Belum Diisi */
+    .form-control:invalid:focus {
+      border-color: #ff4d4d;
+      box-shadow: 0 0 0 0.25rem rgba(255, 77, 77, 0.25);
     }
 
     .register-header {
@@ -67,35 +69,17 @@
       margin-bottom: 30px;
     }
 
-    .register-header h2 {
-      font-weight: 800;
-      color: #2d0a18;
-      margin-bottom: 10px;
-      font-size: 1.8rem;
-    }
+    .register-header h2 { font-weight: 800; color: #2d0a18; margin-bottom: 10px; font-size: 1.8rem; }
+    .register-header p { color: #666; font-size: 0.9rem; }
 
-    .register-header p {
-      color: #666;
-      font-size: 0.9rem;
-    }
+    .form-label { font-weight: 600; font-size: 0.85rem; color: #444; margin-left: 5px; }
 
-    .form-label {
-      font-weight: 600;
-      font-size: 0.85rem;
-      color: #444;
-      margin-left: 5px;
-    }
-
-    .input-group {
-      margin-bottom: 20px;
-    }
-
+    .input-group { margin-bottom: 20px; }
     .input-group-text {
       background-color: transparent;
       border-right: none;
       color: var(--primary-color);
       border-radius: 12px 0 0 12px;
-      padding-left: 15px;
     }
 
     .form-control {
@@ -103,136 +87,101 @@
       border-radius: 0 12px 12px 0;
       padding: 12px 15px;
       font-size: 0.95rem;
-      border-color: #dee2e6;
-    }
-
-    .form-control:focus {
-      border-color: #dee2e6;
-      box-shadow: none;
-      background-color: #fff9fa;
     }
 
     .btn-register {
-      background: var(--primary-color);
       background: linear-gradient(45deg, #d82b6b, #e91e63);
       border: none;
       border-radius: 12px;
       padding: 12px;
       font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1px;
       color: white;
       width: 100%;
-      margin-top: 10px;
       transition: 0.3s;
       box-shadow: 0 5px 15px rgba(216, 43, 107, 0.3);
     }
 
-    .btn-register:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(216, 43, 107, 0.4);
-      color: white;
-    }
+    .btn-register:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(216, 43, 107, 0.4); }
 
-    .login-footer {
-      text-align: center;
-      margin-top: 25px;
-      font-size: 0.9rem;
-      color: #666;
-    }
+    .login-footer { text-align: center; margin-top: 25px; font-size: 0.9rem; }
+    .login-footer a { color: var(--secondary-color); text-decoration: none; font-weight: 700; }
 
-    .login-footer a {
-      color: var(--secondary-color);
-      text-decoration: none;
-      font-weight: 700;
-    }
-
-    /* Dekorasi Lingkaran Berwarna di Background */
-    .circle-deco {
-      position: absolute;
-      z-index: -1;
-      border-radius: 50%;
-      filter: blur(50px);
-      opacity: 0.4;
-    }
-
-    .circle-1 {
-      width: 300px;
-      height: 300px;
-      background: var(--primary-color);
-      top: -50px;
-      left: -50px;
-    }
-
-    .circle-2 {
-      width: 250px;
-      height: 250px;
-      background: var(--secondary-color);
-      bottom: -50px;
-      right: -50px;
-    }
+    .circle-deco { position: absolute; z-index: -1; border-radius: 50%; filter: blur(50px); opacity: 0.4; }
+    .circle-1 { width: 300px; height: 300px; background: var(--primary-color); top: -50px; left: -50px; }
+    .circle-2 { width: 250px; height: 250px; background: var(--secondary-color); bottom: -50px; right: -50px; }
   </style>
 </head>
 
 <body>
 
-  <!-- Dekorasi Latar Belakang -->
   <div class="circle-deco circle-1"></div>
   <div class="circle-deco circle-2"></div>
 
-  <div class="register-card" data-aos="zoom-in">
-    <div class="logo-wrapper">
-      <a href="index.html">
-        <img src="assets/img/spotlight.png" alt="Logo Spotlight">
-      </a>
-    </div>
-
+  <div class="register-card" id="regCard" data-aos="zoom-in">
     <div class="register-header">
-      <h2>Buat Akun Baru ✨</h2>
-      <p>Bergabunglah dengan ribuan orang yang telah mengabadikan momen indahnya bersama SpotLight.</p>
+      <h2>Buat Akun Baru</h2>
+      <p>Lengkapi data di bawah untuk bergabung.</p>
     </div>
 
-    <form action="index.html"> <!-- Ganti ke proses_daftar.php saat backend siap -->
-      <div class="mb-3">
+    <!-- Gunakan novalidate agar kita bisa menghandle validasi dengan JS kita sendiri yang lebih keren -->
+    <form action="login.html" id="registerForm" novalidate>
+      
+      <div class="mb-2">
         <label class="form-label">Nama Lengkap</label>
         <div class="input-group">
-          <span class="input-group-text"><i class="bi bi-person"></i></span>
-          <input type="text" class="form-control" placeholder="Contoh: Budi Santoso" required>
+          <span class="input-group-text"><i class="bi bi-person-vcard"></i></span>
+          <input type="text" class="form-control" id="name" placeholder="Nama Lengkap" required>
         </div>
       </div>
 
-      <div class="mb-3">
+      <div class="mb-2">
+        <label class="form-label">Username</label>
+        <div class="input-group">
+          <span class="input-group-text"><i class="bi bi-person"></i></span>
+          <input type="text" class="form-control" id="username" placeholder="Username" required>
+        </div>
+      </div>
+
+      <div class="mb-2">
+        <label class="form-label">Nomor Telepon</label>
+        <div class="input-group">
+          <span class="input-group-text"><i class="bi bi-phone"></i></span>
+          <input type="tel" class="form-control" id="phone" placeholder="08xxx" required>
+        </div>
+      </div>
+
+      <div class="mb-2">
         <label class="form-label">Alamat Email</label>
         <div class="input-group">
           <span class="input-group-text"><i class="bi bi-envelope"></i></span>
-          <input type="email" class="form-control" placeholder="name@example.com" required>
+          <input type="email" class="form-control" id="email" placeholder="email@domain.com" required>
         </div>
       </div>
 
-      <div class="mb-3">
+      <div class="mb-2">
         <label class="form-label">Kata Sandi</label>
         <div class="input-group">
           <span class="input-group-text"><i class="bi bi-lock"></i></span>
-          <input type="password" class="form-control" placeholder="Minimal 8 karakter" required>
+          <input type="password" class="form-control" id="password" placeholder="Minimal 8 karakter" required>
         </div>
       </div>
 
-      <div class="mb-3">
+      <div class="mb-2">
         <label class="form-label">Konfirmasi Kata Sandi</label>
         <div class="input-group">
           <span class="input-group-text"><i class="bi bi-shield-check"></i></span>
-          <input type="password" class="form-control" placeholder="Ulangi kata sandi" required>
+          <input type="password" class="form-control" id="confirmPassword" placeholder="Ulangi kata sandi" required>
         </div>
       </div>
 
       <div class="form-check mb-4 text-start">
         <input class="form-check-input" type="checkbox" id="terms" required>
-        <label class="form-check-label small color-666" for="terms">
+        <label class="form-check-label small" for="terms">
           Saya setuju dengan <a href="#" style="color: var(--primary-color);">Syarat & Ketentuan</a>
         </label>
       </div>
 
-      <button type="submit" class="btn btn-register">Daftar Sekarang</button>
+      <button type="submit" class="btn-register">Daftar Sekarang</button>
     </form>
 
     <div class="login-footer">
@@ -240,17 +189,45 @@
     </div>
   </div>
 
-  <!-- Vendor JS Files -->
   <script src="assets/vendor/aos/aos.js"></script>
   <script>
-    AOS.init({
-      duration: 1000,
-      easing: 'ease-in-out',
-      once: true,
-      mirror: false
-    });
+    AOS.init();
+
+    const form = document.getElementById('registerForm');
+    const card = document.getElementById('regCard');
+
+    form.addEventListener('submit', function(e) {
+      // 1. Cek validasi HTML5
+      if (!form.checkValidity()) {
+        e.preventDefault(); // Gagal submit
+        e.stopPropagation();
+        
+        // Tambahkan efek getar karena form tidak valid
+        card.classList.add('shake');
+        setTimeout(() => card.classList.remove('shake'), 400);
+        
+        // Opsional: Tampilkan alert jika ingin
+        // alert("Harap isi semua kolom dan centang syarat ketentuan!");
+      } else {
+        // 2. Cek apakah password cocok
+        const pass = document.getElementById('password').value;
+        const confirmPass = document.getElementById('confirmPassword').value;
+
+        if(pass !== confirmPass) {
+            e.preventDefault();
+            alert("Kata sandi tidak cocok!");
+            card.classList.add('shake');
+            setTimeout(() => card.classList.remove('shake'), 400);
+            return;
+        }
+
+        // Jika valid, proses submit akan berlanjut ke action="login.html"
+        alert("Pendaftaran Berhasil!");
+      }
+
+      form.classList.add('was-validated');
+    }, false);
   </script>
 
 </body>
-
 </html>
