@@ -95,7 +95,7 @@ while($data = sqlsrv_fetch_array($q_grafik, SQLSRV_FETCH_ASSOC)) {
             </a>
 
             <p class="nav-label">Master Data</p>
-            <a href="admin/list.php" class="nav-item">
+            <a href="list.php" class="nav-item">
                 <i class="bi bi-shield-lock"></i> Master Admin
             </a>
             <a href="users/list.php" class="nav-item">
