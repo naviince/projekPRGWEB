@@ -1,21 +1,31 @@
 <?php
 session_start();
-include '../../../koneksi.php';
+include '../../koneksi.php'; // Path diperbaiki
 
-$id = $_GET['id'];
+if (isset($_GET['id'])) {
+    $id = $_GET['id'];
 
-// Cari tahu role-nya dulu untuk hapus detail
-$q = sqlsrv_query($conn, "SELECT Role_User FROM Users WHERE ID_User = ?", array($id));
-$u = sqlsrv_fetch_array($q, SQLSRV_FETCH_ASSOC);
+    // Validasi: Jangan biarkan admin menghapus dirinya sendiri yang sedang login
+    if ($id == $_SESSION['id_user']) {
+        echo "<script>alert('Anda tidak bisa menghapus akun anda sendiri!'); window.location='list.php';</script>";
+        exit();
+    }
 
-if ($u['Role_User'] == 'Customer') {
-    sqlsrv_query($conn, "DELETE FROM Pelanggan WHERE ID_User = ?", array($id));
+    // 1. Hapus data di tabel Karyawan terlebih dahulu (Child Table)
+    $sql_karyawan = "DELETE FROM Karyawan WHERE ID_User = ?";
+    sqlsrv_query($conn, $sql_karyawan, array($id));
+
+    // 2. Hapus data di tabel Users (Parent Table)
+    $sql_user = "DELETE FROM Users WHERE ID_User = ?";
+    $res = sqlsrv_query($conn, $sql_user, array($id));
+
+    if ($res) {
+        header("Location: list.php?msg=deleted");
+    } else {
+        // Jika gagal karena ada transaksi, tampilkan pesan error akurat
+        echo "<script>alert('Gagal menghapus! Admin ini sudah memiliki history transaksi.'); window.location='list.php';</script>";
+    }
 } else {
-    sqlsrv_query($conn, "DELETE FROM Karyawan WHERE ID_User = ?", array($id));
+    header("Location: list.php");
 }
-
-// Terakhir hapus User
-sqlsrv_query($conn, "DELETE FROM Users WHERE ID_User = ?", array($id));
-
-header("Location: list.php");
 ?>
