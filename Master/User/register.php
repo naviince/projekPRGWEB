@@ -76,7 +76,7 @@ if (isset($_POST['register'])) {
             <form method="POST">
                 <div class="mb-3">
                     <label class="form-label small fw-bold">Nama Lengkap</label>
-                    <input type="text" name="nama" class="form-control" placeholder="Contoh: Bintang Basev" required>
+                    <input type="text" name="nama" class="form-control" placeholder="Masukan Nama Lengkap" required>
                 </div>
                 <div class="mb-3">
                     <label class="form-label small fw-bold">Email</label>

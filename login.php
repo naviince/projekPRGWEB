@@ -45,7 +45,7 @@ if (isset($_POST['login'])) {
             if ($user['Role_User'] == 'Admin') {
                 header("Location: Master/Admin/index.php");
             } elseif ($user['Role_User'] == 'Customer') {
-                header("Location: Master/Customer/index.php");
+                header("Location: Customer/index.php");
             } elseif ($user['Role_User'] == 'Owner') {
                 header("Location: Master/Owner/index.php");
             } elseif ($user['Role_User'] == 'Fotografer') {
