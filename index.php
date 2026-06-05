@@ -67,7 +67,10 @@ if (isset($_SESSION['status']) && $_SESSION['status'] == "login") {
       transition: 0.4s; border: 1px solid #f1f5f9;
     }
     .pricing-card:hover { transform: translateY(-12px); box-shadow: 0 20px 50px rgba(179, 48, 99, 0.15); }
-    .card-img-box { height: 220px; overflow: hidden; }
+    .card-img-box { 
+  height: 500px; /* Ubah dari 220px ke 300px atau sesuai selera */
+  overflow: hidden; 
+}
     .card-img-box img { width: 100%; height: 100%; object-fit: cover; transition: 0.5s; }
     .pricing-card:hover .card-img-box img { transform: scale(1.1); }
     
@@ -80,8 +83,60 @@ if (isset($_SESSION['status']) && $_SESSION['status'] == "login") {
     }
     .btn-pilih:hover { transform: scale(1.02); color: white; box-shadow: 0 8px 20px rgba(179, 48, 99, 0.3); }
 
-    .nav-profile { background: var(--light-pink); color: var(--primary-pink) !important; padding: 8px 20px !important; border-radius: 50px; }
-    .dropdown-menu { border-radius: 15px; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+/* CSS Dropdown Profile Fix */
+    .nav-profile { 
+      background: var(--light-pink); 
+      color: var(--primary-pink) !important; 
+      padding: 8px 20px !important; 
+      border-radius: 50px; 
+      display: inline-flex; 
+      align-items: center;
+      font-weight: 700;
+      text-decoration: none;
+      transition: 0.3s;
+    }
+
+    .navmenu li.dropdown { 
+      position: relative; /* Ini KUNCI agar menu tidak melayang jauh */
+    }
+
+    .navmenu .dropdown-menu {
+      position: absolute;
+      right: 0 !important;
+      left: auto !important;
+      top: 100%;
+      margin-top: 10px !important;
+      min-width: 180px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important;
+      border: 1px solid #eee !important;
+      display: none;
+      
+      /* Tambahkan dua baris ini untuk mengatasi masalah klik */
+      z-index: 99999 !important; /* Memastikan menu berada di lapisan paling atas */
+      pointer-events: auto !important; /* Memastikan elemen bisa menerima klik */
+    }
+
+    /* Trik "Jembatan Gaib" agar menu tidak menutup saat kursor lewat */
+    .navmenu li.dropdown::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -15px;
+      height: 15px; /* Menutupi jarak kosong 10px */
+      background: transparent;
+    }
+
+    /* Munculkan saat diklik atau di-hover */
+    .navmenu li.dropdown:hover .dropdown-menu,
+    .navmenu li.dropdown .dropdown-menu.show {
+      display: block;
+    }
+
+    .dropdown-item { padding: 10px 20px; font-weight: 600; color: #555; }
+    .dropdown-item:hover { background: var(--light-pink); color: var(--primary-pink); }
+    .dropdown-item { padding: 10px 20px; font-weight: 600; }
   </style>
 </head>
 
@@ -92,30 +147,31 @@ if (isset($_SESSION['status']) && $_SESSION['status'] == "login") {
       <a href="index.php" class="sitename">SpotLight.</a>
       
       <nav id="navmenu" class="navmenu">
-        <ul>
-          <li><a href="#hero">Home</a></li>
-          <li><a href="#about">Tentang</a></li>
-          <li><a href="#portfolio">Portfolio</a></li>
-          <li><a href="#pricing">Paket</a></li>
-          
-          <?php if(isset($_SESSION['status']) && $_SESSION['status'] == "login"): ?>
-            <li class="dropdown">
-              <a href="#" class="nav-profile">
-                <i class="bi bi-person-circle me-1"></i> 
-                <span><?= explode(' ', $nama_user_nav)[0]; ?></span>
-              </a>
-              <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="<?= ($_SESSION['role']=='Admin') ? 'Master/Admin/index.php' : 'Customer/index.php'; ?>">Dashboard</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item text-danger" href="logout.php">Logout</a></li>
-              </ul>
-            </li>
-          <?php else: ?>
-            <li><a href="login.php">Masuk</a></li>
-            <li><a href="register.php" class="btn-pilih px-4 py-2" style="width: auto; color: white;">DAFTAR</a></li>
-          <?php endif; ?>
+  <ul>
+    <li><a href="#hero">Home</a></li>
+    <li><a href="#about">Tentang</a></li>
+    <li><a href="#portfolio">Portfolio</a></li>
+    <li><a href="#pricing">Paket</a></li>
+    
+    <?php if(isset($_SESSION['status']) && $_SESSION['status'] == "login"): ?>
+      <li class="dropdown">
+        <a href="#" class="nav-profile">
+          <i class="bi bi-person-circle me-2"></i> 
+          <span><?= explode(' ', $nama_user_nav)[0]; ?></span>
+          <i class="bi bi-chevron-down ms-1 small"></i>
+        </a>
+        <ul class="dropdown-menu">
+          <li><a class="dropdown-item" href="<?= ($_SESSION['role']=='Admin') ? 'Master/Admin/index.php' : 'Customer/index.php'; ?>"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item text-danger" href="logout.php"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
         </ul>
-      </nav>
+      </li>
+    <?php else: ?>
+      <li><a href="login.php">Masuk</a></li>
+      <li><a href="register.php" class="btn-pilih px-4 py-2" style="width: auto; color: white;">DAFTAR</a></li>
+    <?php endif; ?>
+  </ul>
+</nav>
     </div>
   </header>
 
@@ -126,7 +182,7 @@ if (isset($_SESSION['status']) && $_SESSION['status'] == "login") {
         <div class="row align-items-center">
           <div class="col-lg-6" data-aos="fade-up">
             <span class="badge px-3 py-2 mb-3" style="background: var(--light-pink); color: var(--primary-pink); border-radius: 10px; font-weight: 800;">STUDIO TERPOPULER DI CIKARANG</span>
-            <h1>Capture Your <br><span>Perfect</span> Story.</h1>
+            <h1>Abadikan <br><span>Kisah</span> Sempurna Anda.</h1>
             <p class="mt-4 text-muted" style="font-size: 1.1rem;">Abadikan setiap momen berhargamu dengan pencahayaan sinematik dan fotografer profesional di SpotLight Studio.</p>
             <div class="d-flex gap-3 mt-4">
                 <a href="#pricing" class="btn btn-pilih px-5 shadow-sm">Pesan Sekarang</a>
@@ -238,7 +294,7 @@ if (isset($_SESSION['status']) && $_SESSION['status'] == "login") {
   <footer class="py-5 mt-5 shadow-sm" style="background: var(--light-pink);">
     <div class="container text-center">
         <h4 class="fw-bold mb-3" style="color: var(--primary-pink);">SpotLight Studio.</h4>
-        <p class="text-muted mb-0 small">SpotLight Photo Studio 2026. Crafted for your memories.</p>
+        <p class="text-muted mb-0 small">SpotLight Photo Studio 2026. Dibuat untuk kenangan Anda.</p>
     </div>
   </footer>
 
