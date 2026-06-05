@@ -2,38 +2,77 @@
 session_start();
 include '../../koneksi.php';
 
-$id = $_GET['id'];
-$error = "";
+// Proteksi Halaman
+if (!isset($_SESSION['status']) || $_SESSION['role'] != 'Admin') {
+    header("Location: ../../login.php");
+    exit();
+}
 
-// 1. AMBIL DATA LAMA
-$sql = "SELECT u.Email_User, u.Password_User, k.Nama_Karyawan, k.No_Hp 
+// Validasi ID
+if (!isset($_GET['id'])) {
+    header("Location: list.php");
+    exit();
+}
+
+$id = $_GET['id'];
+$error_email = "";
+$error_general = "";
+$success = false;
+
+// 1. AMBIL DATA LAMA (JOIN Users & Karyawan)
+$sql = "SELECT u.Email_User, u.Password_User, u.Status_User, k.Nama_Karyawan, k.No_Hp, k.Alamat 
         FROM Users u 
         JOIN Karyawan k ON u.ID_User = k.ID_User 
         WHERE u.ID_User = ?";
 $stmt = sqlsrv_query($conn, $sql, array($id));
 $data = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
 
-if (!$data) { header("Location: list.php"); exit(); }
+if (!$data) {
+    header("Location: list.php");
+    exit();
+}
 
 // 2. PROSES UPDATE
 if (isset($_POST['update'])) {
-    $nama  = $_POST['nama'];
-    $email = $_POST['email'];
-    $pass  = $_POST['password'];
-    $hp    = $_POST['no_hp'];
+    $nama   = trim($_POST['nama']);
+    $email  = trim($_POST['email']);
+    $pass   = $_POST['password'];
+    $hp     = trim($_POST['no_hp']);
+    $alamat = trim($_POST['alamat']);
+    $status = $_POST['status'];
 
-    // Update Tabel Users
-    $sql_u = "UPDATE Users SET Email_User = ?, Password_User = ? WHERE ID_User = ?";
-    sqlsrv_query($conn, $sql_u, array($email, $pass, $id));
-
-    // Update Tabel Karyawan
-    $sql_k = "UPDATE Karyawan SET Nama_Karyawan = ?, No_Hp = ? WHERE ID_User = ?";
-    $res = sqlsrv_query($conn, $sql_k, array($nama, $hp, $id));
-
-    if ($res) {
-        echo "<script>alert('Data Admin Berhasil Diperbarui!'); window.location='list.php';</script>";
+    // VALIDASI AKURAT: Cek jika email sudah dipakai user lain (Kecuali ID ini sendiri)
+    $sql_cek = "SELECT * FROM Users WHERE Email_User = ? AND ID_User != ?";
+    $stmt_cek = sqlsrv_query($conn, $sql_cek, array($email, $id));
+    
+    if (sqlsrv_has_rows($stmt_cek)) {
+        $error_email = "Email ini sudah digunakan oleh karyawan/user lain!";
     } else {
-        $error = "Gagal memperbarui data.";
+        // MENGGUNAKAN TRANSACTION (Logika Bisnis Akurat)
+        sqlsrv_begin_transaction($conn);
+
+        // A. Update Tabel Users (Parent)
+        $sql_u = "UPDATE Users SET Email_User = ?, Password_User = ?, Status_User = ? WHERE ID_User = ?";
+        $params_u = array($email, $pass, $status, $id);
+        $res_u = sqlsrv_query($conn, $sql_u, $params_u);
+
+        // B. Update Tabel Karyawan (Child)
+        $sql_k = "UPDATE Karyawan SET Nama_Karyawan = ?, No_Hp = ?, Alamat = ? WHERE ID_User = ?";
+        $params_k = array($nama, $hp, $alamat, $id);
+        $res_k = sqlsrv_query($conn, $sql_k, $params_k);
+
+        if ($res_u && $res_k) {
+            sqlsrv_commit($conn); // Sukses Semua
+            $success = true;
+            echo "<script>
+                setTimeout(function() {
+                    window.location.href = 'list.php?msg=success_edit';
+                }, 1500);
+            </script>";
+        } else {
+            sqlsrv_rollback($conn); // Gagal Salah Satu, Batalkan Semua
+            $error_general = "Terjadi kesalahan sistem saat memperbarui data karyawan.";
+        }
     }
 }
 ?>
@@ -42,43 +81,144 @@ if (isset($_POST['update'])) {
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Edit Admin - SpotLight</title>
+    <title>Edit Profil Karyawan – SpotLight</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
     <style>
-        body { background-color: #fff0f5; font-family: 'Plus Jakarta Sans', sans-serif; }
-        .card { border-radius: 20px; max-width: 500px; margin: 50px auto; border: none; }
-        .btn-warning-pink { background-color: #f472a0; color: white; border-radius: 10px; }
-        .btn-warning-pink:hover { background-color: #e8457a; color: white; }
+        body { background: #fdf2f7; font-family: 'Plus Jakarta Sans', sans-serif; min-height: 100vh; display: flex; align-items: center; }
+        
+        .main-card { 
+            border: none; border-radius: 30px; overflow: hidden; background: white; 
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.1); max-width: 1000px; margin: auto;
+        }
+
+        /* Sisi Kiri: Visual Modern */
+        .side-visual {
+            background: linear-gradient(135deg, rgba(139, 26, 62, 0.9), rgba(232, 69, 122, 0.8)), 
+                        url('https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=2069&auto=format&fit=crop');
+            background-size: cover; background-position: center; padding: 50px; color: white; display: flex; flex-direction: column; justify-content: space-between;
+        }
+
+        .side-visual h2 { font-weight: 800; font-size: 2.3rem; }
+        .info-pill { background: rgba(255,255,255,0.15); padding: 12px 20px; border-radius: 12px; backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.2); font-size: 13px; }
+
+        /* Sisi Kanan: Form Section */
+        .form-section { padding: 50px; }
+        .form-label { font-weight: 700; font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+        
+        .form-control, .form-select {
+            border-radius: 12px; padding: 12px 18px; border: 2px solid #f1f5f9; background: #f8fafc; transition: 0.3s;
+        }
+
+        .form-control:focus { background: white; border-color: #e8457a; box-shadow: 0 0 0 4px rgba(232, 69, 122, 0.1); }
+        .is-invalid-custom { border-color: #ef4444 !important; background-color: #fef2f2 !important; }
+        
+        .btn-update {
+            background: linear-gradient(to right, #c73165, #e8457a); color: white; border: none; border-radius: 12px; padding: 15px;
+            font-weight: 800; width: 100%; transition: 0.3s; margin-top: 10px;
+        }
+        .btn-update:hover { transform: translateY(-3px); box-shadow: 0 10px 25px rgba(232, 69, 122, 0.3); color: white; }
+        
+        .back-link { color: #94a3b8; font-weight: 700; font-size: 13px; text-decoration: none; transition: 0.3s; }
+        .back-link:hover { color: #e8457a; }
     </style>
 </head>
 <body>
-    <div class="card p-4 shadow">
-        <h4 class="fw-bold mb-3 text-center">Edit Data Admin</h4>
-        <hr>
-        
-        <form method="POST">
-            <div class="mb-3">
-                <label class="form-label">Nama Lengkap</label>
-                <input type="text" name="nama" class="form-control" value="<?= $data['Nama_Karyawan'] ?>" required>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Email Admin</label>
-                <input type="email" name="email" class="form-control" value="<?= $data['Email_User'] ?>" required>
-            </div>
-            <div class="row">
-                <div class="col-md-6 mb-3">
-                    <label class="form-label">No. HP</label>
-                    <input type="text" name="no_hp" class="form-control" value="<?= $data['No_Hp'] ?>" required>
+
+    <div class="container">
+        <div class="main-card row g-0">
+            <!-- Sisi Kiri -->
+            <div class="col-md-5 side-visual d-none d-md-flex">
+                <div>
+                    <h2 class="mb-3 text-white">Update <br>Karyawan Data.</h2>
+                    <p class="opacity-75">Perubahan pada email akan langsung memperbarui kredensial login karyawan yang bersangkutan.</p>
                 </div>
-                <div class="col-md-6 mb-4">
-                    <label class="form-label">Password</label>
-                    <input type="text" name="password" class="form-control" value="<?= $data['Password_User'] ?>" required>
+                
+                <div class="info-box">
+                    <div class="info-pill mb-3"><i class="bi bi-info-circle me-2"></i> ID Karyawan terhubung secara otomatis.</div>
+                    <div class="info-pill"><i class="bi bi-shield-lock me-2"></i> Enkripsi data profil aktif.</div>
                 </div>
             </div>
-            
-            <button type="submit" name="update" class="btn btn-warning-pink w-100 py-2 fw-bold shadow-sm">Simpan Perubahan</button>
-            <a href="list.php" class="btn btn-light w-100 mt-2">Batal</a>
-        </form>
+
+            <!-- Sisi Kanan -->
+            <div class="col-md-7 form-section">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h4 class="fw-bold text-dark mb-0">Edit Profil Karyawan</h4>
+                    <span class="badge bg-light text-dark border p-2 px-3" style="border-radius: 8px;">Karyawan #<?= $id ?></span>
+                </div>
+
+                <form method="POST">
+                    <div class="row">
+                        <!-- Nama Lengkap -->
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Nama Lengkap</label>
+                            <input type="text" name="nama" class="form-control" value="<?= $data['Nama_Karyawan'] ?>" required>
+                        </div>
+
+                        <!-- Email -->
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Email Karyawan</label>
+                            <input type="email" name="email" 
+                                   class="form-control <?= $error_email != "" ? 'is-invalid-custom' : '' ?>" 
+                                   value="<?= $data['Email_User'] ?>" required>
+                            <?php if($error_email != ""): ?>
+                                <div class="text-danger fw-bold mt-1" style="font-size: 11px;"><i class="bi bi-exclamation-triangle-fill me-1"></i><?= $error_email ?></div>
+                            <?php endif; ?>
+                        </div>
+
+                        <!-- Nomor HP & Password -->
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">No. WhatsApp</label>
+                            <input type="text" name="no_hp" class="form-control" value="<?= $data['No_Hp'] ?>" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Password Login</label>
+                            <input type="text" name="password" class="form-control" value="<?= $data['Password_User'] ?>" required>
+                        </div>
+
+                        <!-- Alamat -->
+                        <div class="col-md-8 mb-3">
+                            <label class="form-label">Alamat Lengkap</label>
+                            <input type="text" name="alamat" class="form-control" value="<?= $data['Alamat'] ?>">
+                        </div>
+
+                        <!-- Status -->
+                        <div class="col-md-4 mb-4">
+                            <label class="form-label">Status Akses</label>
+                            <select name="status" class="form-select">
+                                <option value="Active" <?= $data['Status_User'] == 'Active' ? 'selected' : '' ?>>Active</option>
+                                <option value="Inactive" <?= $data['Status_User'] == 'Inactive' ? 'selected' : '' ?>>Inactive</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button type="submit" name="update" class="btn btn-update shadow-sm mb-3">
+                        <i class="bi bi-save-fill me-2"></i>Simpan Perubahan Karyawan
+                    </button>
+                    
+                    <div class="text-center">
+                        <a href="list.php" class="back-link"><i class="bi bi-arrow-left me-1"></i> Batalkan & Kembali ke Daftar</a>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
+
+    <!-- SweetAlert2 Sukses -->
+    <?php if($success): ?>
+    <script>
+        Swal.fire({
+            icon: 'success',
+            title: 'Berhasil Diperbarui!',
+            text: 'Data login dan profil karyawan telah disinkronkan.',
+            showConfirmButton: false,
+            timer: 1500
+        });
+    </script>
+    <?php endif; ?>
+
 </body>
 </html>
