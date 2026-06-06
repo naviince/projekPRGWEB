@@ -133,6 +133,12 @@ while($data = sqlsrv_fetch_array($q_grafik, SQLSRV_FETCH_ASSOC)) {
             <a href="../Paket Foto/list.php" class="nav-item">
                 <i class="bi bi-camera"></i> Paket Foto
             </a>
+            <a href="../Ruangan/list.php" class="nav-item">
+                <i class="bi bi-door-open"></i> Ruangan
+            </a>
+            <a href="../Tema/list.php" class="nav-item">
+                <i class="bi bi-palette"></i> Tema Foto
+            </a>
 
             <p class="nav-label">Operasional</p>
             <a href="#" class="nav-item"><i class="bi bi-calendar-event"></i> Booking Studio</a>
