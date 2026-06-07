@@ -2,301 +2,106 @@
 session_start();
 include '../../koneksi.php';
 
-// Proteksi Halaman
 if (!isset($_SESSION['status']) || $_SESSION['role'] != 'Admin') {
-    header("Location: ../../login.php");
-    exit();
+    header("Location: ../../login.php"); exit();
 }
 
-// 1. STATISTIK: Ruangan Paling Sering Dipesan
+// Statistik: Ruangan Terpopuler
 $top_ruangan = null;
-$sql_top = "SELECT TOP 1 r.Nama_Ruangan, COUNT(o.ID_Order) as total_booking
-            FROM Ruangan r
-            LEFT JOIN Orders o ON r.ID_Ruangan = o.ID_Ruangan
-            GROUP BY r.Nama_Ruangan
-            ORDER BY total_booking DESC";
-$res_top = sqlsrv_query($conn, $sql_top);
-if ($res_top !== false) {
-    $top_ruangan = sqlsrv_fetch_array($res_top, SQLSRV_FETCH_ASSOC);
-}
+$res_top = sqlsrv_query($conn, "SELECT TOP 1 r.Nama_Ruangan, COUNT(o.ID_Order) as total_booking FROM Ruangan r LEFT JOIN [Order] o ON r.ID_Ruangan = o.ID_Ruangan GROUP BY r.Nama_Ruangan ORDER BY total_booking DESC");
+if ($res_top !== false) $top_ruangan = sqlsrv_fetch_array($res_top, SQLSRV_FETCH_ASSOC);
 
-// 2. STATISTIK: Total Ruangan Aktif & Nonaktif
-$sql_count = "SELECT
-                COUNT(*) as total,
-                SUM(CASE WHEN Status='Aktif' THEN 1 ELSE 0 END) as aktif,
-                SUM(CASE WHEN Status='Nonaktif' THEN 1 ELSE 0 END) as nonaktif
-              FROM Ruangan";
-$res_count = sqlsrv_query($conn, $sql_count);
+// Statistik: Jumlah per status
+$res_count  = sqlsrv_query($conn, "SELECT COUNT(*) as total, SUM(CASE WHEN Status_Ruangan='Aktif' THEN 1 ELSE 0 END) as aktif, SUM(CASE WHEN Status_Ruangan='Nonaktif' THEN 1 ELSE 0 END) as nonaktif FROM Ruangan");
 $count_data = ($res_count !== false) ? sqlsrv_fetch_array($res_count, SQLSRV_FETCH_ASSOC) : ['total'=>0,'aktif'=>0,'nonaktif'=>0];
 
-// 3. AMBIL SEMUA RUANGAN
-$sql   = "SELECT * FROM Ruangan ORDER BY ID_Ruangan ASC";
-$query = sqlsrv_query($conn, $sql);
-if ($query === false) {
-    die("<pre>" . print_r(sqlsrv_errors(), true) . "</pre>");
-}
+// Semua Ruangan
+$query = sqlsrv_query($conn, "SELECT * FROM Ruangan ORDER BY ID_Ruangan ASC");
+if ($query === false) die("<pre>".print_r(sqlsrv_errors(),true)."</pre>");
 
-// 4. PESAN NOTIFIKASI
 $msg = $_GET['msg'] ?? '';
 ?>
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Master Ruangan – SpotLight Studio</title>
-
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-
     <style>
-        :root {
-            --pink: #e8457a;
-            --pink-dark: #c73165;
-            --pink-deep: #8b1a3e;
-            --bg: #fdf2f7;
-        }
-
-        body {
-            background: var(--bg);
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            color: #334155;
-        }
-
-        /* ---- Header ---- */
-        .page-header { margin-bottom: 28px; }
-        .back-link {
-            text-decoration: none;
-            color: #64748b;
-            font-weight: 700;
-            font-size: 13px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            margin-bottom: 6px;
-            transition: color 0.2s;
-        }
-        .back-link:hover { color: var(--pink); }
-        .page-header h2 { font-weight: 800; color: #1e293b; margin: 0; }
-        .page-header p { font-size: 13px; color: #94a3b8; margin: 4px 0 0; }
-
-        /* ---- Stat Cards ---- */
-        .stats-row { display: flex; gap: 18px; margin-bottom: 28px; flex-wrap: wrap; }
-        .stat-card {
-            flex: 1;
-            min-width: 180px;
-            border: none;
-            border-radius: 20px;
-            background: white;
-            padding: 22px 24px;
-            box-shadow: 0 6px 20px rgba(0,0,0,0.05);
-            display: flex;
-            align-items: center;
-            gap: 18px;
-        }
-        .stat-card.highlight { border-left: 5px solid var(--pink); }
-        .stat-card.stat-aktif { border-left: 5px solid #10b981; }
-        .stat-card.stat-nonaktif { border-left: 5px solid #f59e0b; }
-
-        .stat-icon {
-            width: 52px; height: 52px;
-            border-radius: 14px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 22px;
-            flex-shrink: 0;
-        }
-        .stat-icon.pink  { background: #ffe0ec; }
-        .stat-icon.green { background: #d1fae5; }
-        .stat-icon.amber { background: #fef3c7; }
-
-        .stat-content .label {
-            font-size: 11px; font-weight: 700;
-            text-transform: uppercase; letter-spacing: 0.5px;
-            color: #94a3b8; margin-bottom: 4px;
-        }
-        .stat-content .value {
-            font-size: 26px; font-weight: 800; color: #1e293b; line-height: 1;
-        }
-        .stat-content .sub {
-            font-size: 11px; color: #94a3b8; margin-top: 4px;
-        }
-
-        /* ---- Main Card / Table ---- */
-        .main-card {
-            border: none;
-            border-radius: 25px;
-            box-shadow: 0 12px 40px rgba(0,0,0,0.06);
-            background: white;
-            overflow: hidden;
-        }
-        .card-toolbar {
-            padding: 22px 28px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #f1f5f9;
-        }
-        .card-toolbar h5 {
-            font-weight: 800;
-            color: #1e293b;
-            margin: 0;
-            font-size: 16px;
-        }
-        .card-toolbar .count-badge {
-            background: #ffe0ec;
-            color: var(--pink-dark);
-            font-size: 11px;
-            font-weight: 800;
-            padding: 4px 12px;
-            border-radius: 20px;
-            margin-left: 10px;
-        }
-
-        .btn-pink {
-            background: linear-gradient(135deg, var(--pink), var(--pink-dark));
-            color: white;
-            border-radius: 12px;
-            font-weight: 700;
-            padding: 10px 22px;
-            border: none;
-            font-size: 14px;
-            transition: transform 0.2s, box-shadow 0.2s;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .btn-pink:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(232, 69, 122, 0.3);
-            color: white;
-        }
-
-        /* ---- Table ---- */
-        .table { margin: 0; }
-        .table thead th {
-            background: #f8fafc;
-            color: #94a3b8;
-            font-size: 11px;
-            text-transform: uppercase;
-            font-weight: 700;
-            padding: 16px 20px;
-            border-bottom: 1px solid #f1f5f9;
-            letter-spacing: 0.5px;
-        }
-        .table tbody td {
-            padding: 18px 20px;
-            vertical-align: middle;
-            border-bottom: 1px solid #f8fafc;
-        }
-        .table tbody tr:last-child td { border-bottom: none; }
-        .table tbody tr:hover td { background: #fdf2f7; }
-
-        .room-img {
-            width: 80px; height: 64px;
-            object-fit: cover;
-            border-radius: 14px;
-            border: 2px solid #ffe0ec;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.07);
-        }
-        .room-name { font-weight: 800; color: #1e293b; font-size: 14px; }
-        .room-desc {
-            font-size: 12px; color: #94a3b8;
-            max-width: 200px;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
-
-        .fasilitas-tags { display: flex; flex-wrap: wrap; gap: 5px; max-width: 240px; }
-        .fasilitas-tag {
-            background: #f1f5f9;
-            color: #64748b;
-            font-size: 10px;
-            font-weight: 700;
-            padding: 3px 10px;
-            border-radius: 20px;
-        }
-
-        .info-luas { font-size: 13px; font-weight: 700; color: #475569; }
-        .info-kap  { font-size: 11px; color: #94a3b8; display: flex; align-items: center; gap: 4px; margin-top: 4px; }
-
-        /* Status Badges */
-        .status-badge {
-            border-radius: 10px;
-            padding: 6px 14px;
-            font-size: 10px;
-            font-weight: 800;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-        }
-        .bg-aktif    { background: #d1fae5; color: #065f46; }
-        .bg-nonaktif { background: #fee2e2; color: #991b1b; }
-
-        /* Action Buttons */
-        .btn-action {
-            border-radius: 10px;
-            border: 1px solid #f1f5f9;
-            background: white;
-            transition: background 0.2s, border-color 0.2s;
-            padding: 8px 12px;
-        }
-        .btn-action:hover { background: #f8fafc; border-color: var(--pink); }
-
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: #94a3b8;
-        }
-        .empty-state .icon { font-size: 56px; margin-bottom: 16px; }
-        .empty-state h5 { font-weight: 800; color: #475569; }
-        .empty-state p  { font-size: 13px; }
-
-        /* Footer */
-        .card-footer-custom {
-            padding: 16px 24px;
-            background: #f8fafc;
-            border-top: 1px solid #f1f5f9;
-            text-align: center;
-        }
-        .card-footer-custom small { font-size: 11px; color: #94a3b8; font-weight: 700; }
+        :root { --pink:#e8457a; --pink-dark:#c73165; --pink-deep:#8b1a3e; --bg:#fdf2f7; }
+        body { background:var(--bg); font-family:'Plus Jakarta Sans',sans-serif; color:#334155; }
+        .back-link { text-decoration:none; color:#64748b; font-weight:700; font-size:13px; display:inline-flex; align-items:center; gap:6px; margin-bottom:6px; transition:color 0.2s; }
+        .back-link:hover { color:var(--pink); }
+        .page-header h2 { font-weight:800; color:#1e293b; margin:0; }
+        .page-header p  { font-size:13px; color:#94a3b8; margin:4px 0 0; }
+        .stats-row { display:flex; gap:18px; margin-bottom:28px; flex-wrap:wrap; }
+        .stat-card { flex:1; min-width:180px; border:none; border-radius:20px; background:white; padding:22px 24px; box-shadow:0 6px 20px rgba(0,0,0,0.05); display:flex; align-items:center; gap:18px; }
+        .stat-card.highlight    { border-left:5px solid var(--pink); }
+        .stat-card.stat-aktif   { border-left:5px solid #10b981; }
+        .stat-card.stat-nonaktif{ border-left:5px solid #f59e0b; }
+        .stat-icon { width:52px; height:52px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; }
+        .stat-icon.pink  { background:#ffe0ec; }
+        .stat-icon.green { background:#d1fae5; }
+        .stat-icon.amber { background:#fef3c7; }
+        .stat-content .label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#94a3b8; margin-bottom:4px; }
+        .stat-content .value { font-size:26px; font-weight:800; color:#1e293b; line-height:1; }
+        .stat-content .sub   { font-size:11px; color:#94a3b8; margin-top:4px; }
+        .main-card { border:none; border-radius:25px; box-shadow:0 12px 40px rgba(0,0,0,0.06); background:white; overflow:hidden; }
+        .card-toolbar { padding:22px 28px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #f1f5f9; }
+        .card-toolbar h5 { font-weight:800; color:#1e293b; margin:0; font-size:16px; }
+        .count-badge { background:#ffe0ec; color:var(--pink-dark); font-size:11px; font-weight:800; padding:4px 12px; border-radius:20px; margin-left:10px; }
+        .btn-pink { background:linear-gradient(135deg,var(--pink),var(--pink-dark)); color:white; border-radius:12px; font-weight:700; padding:10px 22px; border:none; font-size:14px; transition:transform 0.2s,box-shadow 0.2s; text-decoration:none; display:inline-flex; align-items:center; gap:8px; }
+        .btn-pink:hover { transform:translateY(-2px); box-shadow:0 8px 20px rgba(232,69,122,0.3); color:white; }
+        .table { margin:0; }
+        .table thead th { background:#f8fafc; color:#94a3b8; font-size:11px; text-transform:uppercase; font-weight:700; padding:16px 20px; border-bottom:1px solid #f1f5f9; letter-spacing:0.5px; }
+        .table tbody td { padding:16px 20px; vertical-align:middle; border-bottom:1px solid #f8fafc; }
+        .table tbody tr:last-child td { border-bottom:none; }
+        .table tbody tr:hover td { background:#fdf2f7; }
+        .room-img { width:85px; height:65px; object-fit:cover; border-radius:14px; border:2px solid #ffe0ec; box-shadow:0 4px 10px rgba(0,0,0,0.07); }
+        .room-name { font-weight:800; color:#1e293b; font-size:14px; }
+        .room-desc { font-size:12px; color:#94a3b8; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .harga-text { font-weight:800; color:var(--pink); font-size:14px; }
+        .kap-text   { font-size:11px; color:#64748b; margin-top:3px; }
+        .fasilitas-tags { display:flex; flex-wrap:wrap; gap:4px; max-width:220px; }
+        .fasilitas-tag  { background:#f1f5f9; color:#64748b; font-size:10px; font-weight:700; padding:3px 9px; border-radius:20px; }
+        .status-badge { border-radius:10px; padding:6px 14px; font-size:10px; font-weight:800; letter-spacing:0.5px; text-transform:uppercase; }
+        .bg-aktif    { background:#d1fae5; color:#065f46; }
+        .bg-nonaktif { background:#fee2e2; color:#991b1b; }
+        .btn-action { border-radius:10px; border:1px solid #f1f5f9; background:white; transition:background 0.2s,border-color 0.2s; padding:8px 12px; }
+        .btn-action:hover { background:#f8fafc; border-color:var(--pink); }
+        .empty-state { text-align:center; padding:60px 20px; color:#94a3b8; }
+        .empty-state .icon { font-size:56px; margin-bottom:16px; }
+        .empty-state h5 { font-weight:800; color:#475569; }
+        .card-footer-custom { padding:16px 24px; background:#f8fafc; border-top:1px solid #f1f5f9; text-align:center; }
+        .card-footer-custom small { font-size:11px; color:#94a3b8; font-weight:700; }
     </style>
 </head>
 <body>
-
 <div class="container py-5">
-
     <!-- Header -->
-    <div class="page-header d-flex justify-content-between align-items-start flex-wrap gap-3">
+    <div class="page-header d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
         <div>
-            <a href="../Admin/index.php" class="back-link">
-                <i class="bi bi-arrow-left-circle-fill"></i> KEMBALI KE DASHBOARD
-            </a>
+            <a href="../Admin/index.php" class="back-link"><i class="bi bi-arrow-left-circle-fill"></i> KEMBALI KE DASHBOARD</a>
             <h2>Master Ruangan Studio</h2>
-            <p>Kelola daftar ruangan yang tersedia untuk sesi foto pelanggan.</p>
+            <p>Kelola daftar ruangan beserta harga sewa yang tersedia untuk booking pelanggan.</p>
         </div>
-        <a href="add.php" class="btn btn-pink">
-            <i class="bi bi-plus-lg"></i> Tambah Ruangan
-        </a>
+        <a href="add.php" class="btn btn-pink"><i class="bi bi-plus-lg"></i> Tambah Ruangan</a>
     </div>
 
     <!-- Statistik -->
     <div class="stats-row">
-        <!-- Terpopuler -->
         <div class="stat-card highlight">
             <div class="stat-icon pink">🔥</div>
             <div class="stat-content">
                 <div class="label">Ruangan Terpopuler</div>
-                <div class="value" style="font-size:18px; line-height:1.3;">
-                    <?= ($top_ruangan && $top_ruangan['total_booking'] > 0) ? htmlspecialchars($top_ruangan['Nama_Ruangan']) : 'Belum Ada' ?>
-                </div>
+                <div class="value" style="font-size:17px;line-height:1.3;"><?= ($top_ruangan && $top_ruangan['total_booking'] > 0) ? htmlspecialchars($top_ruangan['Nama_Ruangan']) : 'Belum Ada Data' ?></div>
                 <div class="sub"><?= $top_ruangan['total_booking'] ?? 0 ?> total booking</div>
             </div>
         </div>
-
-        <!-- Total Aktif -->
         <div class="stat-card stat-aktif">
             <div class="stat-icon green">✅</div>
             <div class="stat-content">
@@ -305,8 +110,6 @@ $msg = $_GET['msg'] ?? '';
                 <div class="sub">Tersedia untuk booking</div>
             </div>
         </div>
-
-        <!-- Total Nonaktif -->
         <div class="stat-card stat-nonaktif">
             <div class="stat-icon amber">⏸️</div>
             <div class="stat-content">
@@ -317,24 +120,19 @@ $msg = $_GET['msg'] ?? '';
         </div>
     </div>
 
-    <!-- Tabel Ruangan -->
+    <!-- Tabel -->
     <div class="main-card">
         <div class="card-toolbar">
-            <div>
-                <h5 class="d-inline">Daftar Ruangan
-                    <span class="count-badge"><?= (int)($count_data['total'] ?? 0) ?> Ruangan</span>
-                </h5>
-            </div>
+            <h5 class="d-inline">Daftar Ruangan <span class="count-badge"><?= (int)($count_data['total'] ?? 0) ?> Ruangan</span></h5>
         </div>
-
         <div class="table-responsive">
             <table class="table table-hover">
                 <thead>
                     <tr>
                         <th class="ps-4">Foto</th>
                         <th>Nama & Deskripsi</th>
+                        <th>Harga & Kapasitas</th>
                         <th>Fasilitas</th>
-                        <th>Luas & Kapasitas</th>
                         <th>Status</th>
                         <th class="text-end pe-4">Aksi</th>
                     </tr>
@@ -343,146 +141,70 @@ $msg = $_GET['msg'] ?? '';
                 <?php
                 $no_data = true;
                 while ($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
-                    $no_data = false;
+                    $no_data  = false;
                     $path_img = "../../assets/img/ruangan/" . $row['Foto_Ruangan'];
-                    $img_src  = (!empty($row['Foto_Ruangan']) && file_exists($path_img))
-                                    ? $path_img
-                                    : "https://placehold.co/400x300?text=No+Image";
-
-                    // Parse fasilitas jadi tag
-                    $fasilitas_arr = !empty($row['Fasilitas'])
-                                    ? array_slice(array_map('trim', explode(',', $row['Fasilitas'])), 0, 4)
-                                    : [];
+                    $img_src  = (!empty($row['Foto_Ruangan']) && file_exists($path_img)) ? $path_img : "https://placehold.co/400x300?text=No+Image";
+                    $fas_arr  = !empty($row['Fasilitas']) ? array_slice(array_map('trim', explode(',', $row['Fasilitas'])), 0, 4) : [];
                 ?>
                 <tr>
-                    <!-- Foto -->
-                    <td class="ps-4">
-                        <img src="<?= $img_src ?>" class="room-img" alt="<?= htmlspecialchars($row['Nama_Ruangan']) ?>">
-                    </td>
-
-                    <!-- Nama & Deskripsi -->
+                    <td class="ps-4"><img src="<?= $img_src ?>" class="room-img" alt="<?= htmlspecialchars($row['Nama_Ruangan']) ?>"></td>
                     <td>
                         <div class="room-name"><?= htmlspecialchars($row['Nama_Ruangan']) ?></div>
                         <div class="room-desc"><?= htmlspecialchars($row['Deskripsi']) ?></div>
                     </td>
-
-                    <!-- Fasilitas -->
                     <td>
-                        <?php if (!empty($fasilitas_arr)): ?>
+                        <div class="harga-text">Rp <?= number_format($row['Harga_Sewa'], 0, ',', '.') ?></div>
+                        <div class="kap-text"><i class="bi bi-people-fill me-1"></i>Maks <?= (int)$row['Kapasitas_Ruangan'] ?> Orang</div>
+                    </td>
+                    <td>
+                        <?php if (!empty($fas_arr)): ?>
                         <div class="fasilitas-tags">
-                            <?php foreach ($fasilitas_arr as $f): ?>
-                                <span class="fasilitas-tag"><?= htmlspecialchars($f) ?></span>
-                            <?php endforeach; ?>
+                            <?php foreach ($fas_arr as $f): ?><span class="fasilitas-tag"><?= htmlspecialchars($f) ?></span><?php endforeach; ?>
                         </div>
-                        <?php else: ?>
-                            <span class="text-muted" style="font-size:12px;">–</span>
-                        <?php endif; ?>
+                        <?php else: ?><span class="text-muted" style="font-size:12px;">–</span><?php endif; ?>
                     </td>
-
-                    <!-- Luas & Kapasitas -->
                     <td>
-                        <div class="info-luas">
-                            <i class="bi bi-aspect-ratio me-1 text-muted"></i><?= htmlspecialchars($row['Luas_Ruangan'] ?: '–') ?>
-                        </div>
-                        <div class="info-kap">
-                            <i class="bi bi-people-fill"></i> Maks <?= (int)$row['Kapasitas'] ?> Orang
-                        </div>
+                        <span class="status-badge <?= $row['Status_Ruangan'] == 'Aktif' ? 'bg-aktif' : 'bg-nonaktif' ?>"><?= $row['Status_Ruangan'] ?></span>
                     </td>
-
-                    <!-- Status -->
-                    <td>
-                        <span class="status-badge <?= $row['Status'] == 'Aktif' ? 'bg-aktif' : 'bg-nonaktif' ?>">
-                            <?= $row['Status'] ?>
-                        </span>
-                    </td>
-
-                    <!-- Aksi -->
                     <td class="text-end pe-4">
                         <div class="btn-group shadow-sm rounded-3 overflow-hidden">
-                            <!-- Edit -->
-                            <a href="edit.php?id=<?= $row['ID_Ruangan'] ?>" class="btn btn-sm btn-action px-3" title="Edit Ruangan">
-                                <i class="bi bi-pencil-square text-primary"></i>
-                            </a>
-                            <!-- Soft Delete (Toggle Status) -->
-                            <button onclick="toggleStatus(<?= $row['ID_Ruangan'] ?>, '<?= $row['Status'] ?>')" class="btn btn-sm btn-action px-3" title="Aktifkan / Nonaktifkan">
-                                <i class="bi <?= $row['Status'] == 'Aktif' ? 'bi-toggle-on text-success' : 'bi-toggle-off text-muted' ?>"></i>
+                            <a href="edit.php?id=<?= $row['ID_Ruangan'] ?>" class="btn btn-sm btn-action px-3" title="Edit"><i class="bi bi-pencil-square text-primary"></i></a>
+                            <button onclick="toggleStatus(<?= $row['ID_Ruangan'] ?>, '<?= $row['Status_Ruangan'] ?>')" class="btn btn-sm btn-action px-3" title="Toggle Status">
+                                <i class="bi <?= $row['Status_Ruangan'] == 'Aktif' ? 'bi-toggle-on text-success' : 'bi-toggle-off text-muted' ?>"></i>
                             </button>
-                            <!-- Hard Delete -->
-                            <button onclick="confirmDelete(<?= $row['ID_Ruangan'] ?>)" class="btn btn-sm btn-action px-3" title="Hapus Permanen">
-                                <i class="bi bi-trash3 text-danger"></i>
-                            </button>
+                            <button onclick="confirmDelete(<?= $row['ID_Ruangan'] ?>)" class="btn btn-sm btn-action px-3" title="Hapus"><i class="bi bi-trash3 text-danger"></i></button>
                         </div>
                     </td>
                 </tr>
                 <?php endwhile; ?>
-
                 <?php if ($no_data): ?>
-                <tr>
-                    <td colspan="6">
-                        <div class="empty-state">
-                            <div class="icon">🏗️</div>
-                            <h5>Belum Ada Ruangan</h5>
-                            <p>Tambahkan ruangan studio pertama Anda untuk mulai menerima booking pelanggan.</p>
-                            <a href="add.php" class="btn btn-pink mt-2">
-                                <i class="bi bi-plus-lg"></i> Tambah Ruangan Pertama
-                            </a>
-                        </div>
-                    </td>
-                </tr>
+                <tr><td colspan="6">
+                    <div class="empty-state">
+                        <div class="icon">🏗️</div>
+                        <h5>Belum Ada Ruangan</h5>
+                        <p>Tambahkan ruangan studio pertama untuk mulai menerima booking.</p>
+                        <a href="add.php" class="btn btn-pink mt-2"><i class="bi bi-plus-lg"></i> Tambah Ruangan Pertama</a>
+                    </div>
+                </td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
         </div>
-
-        <div class="card-footer-custom">
-            <small>SpotLight Studio – Room Management v1.0</small>
-        </div>
+        <div class="card-footer-custom"><small>SpotLight Studio – Room Management v1.1</small></div>
     </div>
-
 </div>
 
-<!-- JavaScript -->
 <script>
-// Notifikasi dari URL msg
-<?php if ($msg == 'status_updated'): ?>
-Swal.fire({ icon:'success', title:'Status Diperbarui!', text:'Status ruangan berhasil diubah.', timer:1800, showConfirmButton:false });
-<?php elseif ($msg == 'deleted'): ?>
-Swal.fire({ icon:'success', title:'Dihapus!', text:'Ruangan berhasil dihapus dari sistem.', timer:1800, showConfirmButton:false });
-<?php endif; ?>
+<?php if ($msg == 'status_updated'): ?>Swal.fire({icon:'success',title:'Status Diperbarui!',text:'Status ruangan berhasil diubah.',timer:1800,showConfirmButton:false});<?php endif; ?>
+<?php if ($msg == 'deleted'): ?>Swal.fire({icon:'success',title:'Dihapus!',text:'Ruangan berhasil dihapus.',timer:1800,showConfirmButton:false});<?php endif; ?>
 
-// Toggle Status (Soft Delete)
 function toggleStatus(id, current) {
-    let action = current === 'Aktif' ? 'Menonaktifkan' : 'Mengaktifkan';
-    Swal.fire({
-        title: action + ' Ruangan?',
-        text: 'Status ruangan akan berubah dan mempengaruhi ketersediaan booking.',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonColor: '#e8457a',
-        cancelButtonText: 'Batal',
-        confirmButtonText: 'Ya, Lakukan!'
-    }).then(result => {
-        if (result.isConfirmed) {
-            window.location.href = 'action_ruangan.php?type=soft&id=' + id + '&status=' + current;
-        }
-    });
+    Swal.fire({title:(current==='Aktif'?'Nonaktifkan':'Aktifkan')+' Ruangan?',text:'Status ruangan akan berubah.',icon:'question',showCancelButton:true,confirmButtonColor:'#e8457a',cancelButtonText:'Batal',confirmButtonText:'Ya, Lakukan!'})
+    .then(r=>{ if(r.isConfirmed) window.location.href='action_ruangan.php?type=soft&id='+id+'&status='+current; });
 }
-
-// Hard Delete
 function confirmDelete(id) {
-    Swal.fire({
-        title: 'Hapus Permanen?',
-        html: 'Data ruangan dan foto akan <b>dihapus selamanya</b>.<br>Pastikan ruangan tidak memiliki riwayat booking.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#dc3545',
-        cancelButtonText: 'Batal',
-        confirmButtonText: 'Ya, Hapus!'
-    }).then(result => {
-        if (result.isConfirmed) {
-            window.location.href = 'action_ruangan.php?type=hard&id=' + id;
-        }
-    });
+    Swal.fire({title:'Hapus Permanen?',html:'Data ruangan akan <b>dihapus selamanya</b>.',icon:'warning',showCancelButton:true,confirmButtonColor:'#dc3545',cancelButtonText:'Batal',confirmButtonText:'Ya, Hapus!'})
+    .then(r=>{ if(r.isConfirmed) window.location.href='action_ruangan.php?type=hard&id='+id; });
 }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

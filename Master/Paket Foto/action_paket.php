@@ -23,7 +23,7 @@ if ($type == 'soft') {
 // 2. LOGIKA HARD DELETE (Hapus Permanen)
 } elseif ($type == 'hard') {
     // Validasi Akurat: Cek apakah paket sudah pernah dipesan pelanggan
-    $sql_cek = "SELECT COUNT(*) as total FROM Orders WHERE ID_Paket = ?";
+    $sql_cek = "SELECT COUNT(*) as total FROM [Order] WHERE ID_Paket = ?";
     $stmt_cek = sqlsrv_query($conn, $sql_cek, array($id));
     $check = sqlsrv_fetch_array($stmt_cek, SQLSRV_FETCH_ASSOC);
 
@@ -34,8 +34,9 @@ if ($type == 'soft') {
         // Ambil nama file foto untuk dihapus dari server (Efisien penyimpanan)
         $q_foto = sqlsrv_query($conn, "SELECT Foto_Paket FROM Paket_Foto WHERE ID_Paket = ?", array($id));
         $f = sqlsrv_fetch_array($q_foto, SQLSRV_FETCH_ASSOC);
-        if($f['Foto_Paket'] != 'default_paket.jpg') {
-            unlink("../../assets/img/paket/" . $f['Foto_Paket']);
+        $file_path = "../../assets/img/paket/" . $f['Foto_Paket'];
+        if (!empty($f['Foto_Paket']) && $f['Foto_Paket'] != 'default_paket.jpg' && file_exists($file_path)) {
+        unlink($file_path);
         }
 
         $sql = "DELETE FROM Paket_Foto WHERE ID_Paket = ?";
