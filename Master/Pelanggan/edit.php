@@ -164,7 +164,7 @@ if (isset($_POST['update'])) {
 
                         <!-- WHATSAPP & PASSWORD -->
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Nomor Telepon</label>
+                            <label class="form-label">Nomor Telepon </label>
                             <input type="text" name="no_hp" id="inputHP" class="form-control <?= $error_hp ? 'is-invalid' : '' ?>" value="<?= htmlspecialchars($data['No_Hp']) ?>" placeholder="08..." required>
                             <?php if($error_hp): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_hp ?></div><?php endif; ?>
                         </div>
