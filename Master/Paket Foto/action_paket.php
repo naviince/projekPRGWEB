@@ -2,13 +2,23 @@
 session_start();
 include '../../koneksi.php';
 
-// Proteksi Admin
-if (!isset($_SESSION['status']) || $_SESSION['role'] != 'Admin') { exit(); }
+// 1. PROTEKSI AKSES (Validasi Matang)
+if (!isset($_SESSION['status']) || $_SESSION['role'] != 'Admin') { 
+    exit("Akses Ditolak"); 
+}
+
+// Cek keberadaan parameter
+if (!isset($_GET['type']) || !isset($_GET['id'])) {
+    header("Location: list.php");
+    exit();
+}
 
 $type = $_GET['type'];
 $id   = $_GET['id'];
 
-// 1. LOGIKA SOFT DELETE (Ganti Status Aktif/Nonaktif)
+// --- EKSEKUSI LOGIKA ---
+
+// LOGIKA 1: SOFT DELETE (Toggle Status Aktif/Nonaktif)
 if ($type == 'soft') {
     $currentStatus = $_GET['status'];
     $newStatus = ($currentStatus == 'Aktif') ? 'Nonaktif' : 'Aktif';
@@ -18,29 +28,53 @@ if ($type == 'soft') {
     
     if ($res) {
         header("Location: list.php?msg=status_updated");
+    } else {
+        die(print_r(sqlsrv_errors(), true));
     }
 
-// 2. LOGIKA HARD DELETE (Hapus Permanen)
+// LOGIKA 2: HARD DELETE (Hapus Permanen)
 } elseif ($type == 'hard') {
-    // Validasi Akurat: Cek apakah paket sudah pernah dipesan pelanggan
-    $sql_cek = "SELECT COUNT(*) as total FROM Orders WHERE ID_Paket = ?";
+    
+    // VALIDASI AKURAT: Cek relasi ke tabel [Order] agar data tidak pincang
+    // Gunakan [Order] dengan kurung siku karena 'Order' adalah kata kunci SQL
+    $sql_cek = "SELECT COUNT(*) as total FROM [Order] WHERE ID_Paket = ?";
     $stmt_cek = sqlsrv_query($conn, $sql_cek, array($id));
-    $check = sqlsrv_fetch_array($stmt_cek, SQLSRV_FETCH_ASSOC);
 
-    if ($check['total'] > 0) {
-        // Jika sudah ada di transaksi, tidak boleh dihapus permanen (Integritas Data)
-        echo "<script>alert('Gagal! Paket ini sudah memiliki riwayat transaksi. Gunakan Soft Delete saja.'); window.location='list.php';</script>";
+    // Validasi jika tabel [Order] belum dibuat atau query gagal
+    if ($stmt_cek === false) {
+        // Jika tabel [Order] belum ada (karena masih tahap Master), langsung izinkan hapus
+        $has_transaction = 0;
     } else {
-        // Ambil nama file foto untuk dihapus dari server (Efisien penyimpanan)
+        $check = sqlsrv_fetch_array($stmt_cek, SQLSRV_FETCH_ASSOC);
+        $has_transaction = $check['total'];
+    }
+
+    if ($has_transaction > 0) {
+        // JIKA ADA TRANSAKSI: Dilarang Hapus (Logika Bisnis Sempurna)
+        echo "<script>
+                alert('Gagal Hapus Permanen! Paket ini sudah pernah dipesan oleh pelanggan. Gunakan fitur NONAKTIFKAN (Soft Delete) agar riwayat transaksi tetap aman.'); 
+                window.location='list.php';
+              </script>";
+    } else {
+        // JIKA BERSIH: Proses Hapus File & Data
+        
+        // A. Ambil nama foto untuk dihapus dari folder (Efisien Penyimpanan)
         $q_foto = sqlsrv_query($conn, "SELECT Foto_Paket FROM Paket_Foto WHERE ID_Paket = ?", array($id));
         $f = sqlsrv_fetch_array($q_foto, SQLSRV_FETCH_ASSOC);
-        if($f['Foto_Paket'] != 'default_paket.jpg') {
-            unlink("../../assets/img/paket/" . $f['Foto_Paket']);
+        
+        if($f && $f['Foto_Paket'] != 'default_paket.jpg') {
+            $path = "../../assets/img/paket/" . $f['Foto_Paket'];
+            if (file_exists($path)) { unlink($path); }
         }
 
+        // B. Hapus baris dari database
         $sql = "DELETE FROM Paket_Foto WHERE ID_Paket = ?";
-        sqlsrv_query($conn, $sql, array($id));
-        header("Location: list.php?msg=deleted");
+        $res = sqlsrv_query($conn, $sql, array($id));
+
+        if ($res) {
+            header("Location: list.php?msg=deleted");
+        } else {
+            die(print_r(sqlsrv_errors(), true));
+        }
     }
 }
-?>

@@ -55,9 +55,9 @@ if (isset($_POST['update'])) {
 
     // Validasi No HP
     if (!ctype_digit($hp)) {
-        $error_hp = "Nomor WhatsApp harus berupa angka!";
+        $error_hp = "Nomor telepon harus berupa angka!";
     } elseif (strlen($hp) < 10 || strlen($hp) > 13) {
-        $error_hp = "Nomor HP harus 10-13 digit!";
+        $error_hp = "Nomor telepon harus 10-13 digit!";
     }
 
     // Validasi Alamat (Sesuai Logika Bisnis: Harus informatif)
