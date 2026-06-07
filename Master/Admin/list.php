@@ -2,7 +2,7 @@
 session_start();
 include '../../koneksi.php';
 
-// Proteksi Halaman
+// 1. PROTEKSI HALAMAN (Akurat & Aman)
 if (!isset($_SESSION['status']) || $_SESSION['role'] != 'Admin') {
     header("Location: ../../login.php");
     exit();
@@ -10,7 +10,7 @@ if (!isset($_SESSION['status']) || $_SESSION['role'] != 'Admin') {
 
 $id_user_login = $_SESSION['id_user'];
 
-// 1. EFISIENSI QUERY: Ambil semua statistik karyawan dalam SATU query (Lebih Cepat)
+// 2. EFISIENSI QUERY: Statistik Karyawan dalam satu tarikan data
 $sql_stats = "SELECT 
                 COUNT(*) as total,
                 SUM(CASE WHEN Status_User = 'Active' THEN 1 ELSE 0 END) as active,
@@ -19,7 +19,7 @@ $sql_stats = "SELECT
 $stmt_stats = sqlsrv_query($conn, $sql_stats);
 $stats = sqlsrv_fetch_array($stmt_stats, SQLSRV_FETCH_ASSOC);
 
-// 2. Query List Karyawan (Join dengan Karyawan) - Validasi Sinkronisasi
+// 3. QUERY DAFTAR KARYAWAN: Join tabel Users & Karyawan
 $sql = "SELECT u.ID_User, u.Email_User, u.Status_User, k.Nama_Karyawan, k.No_Hp, k.Foto_Profil 
         FROM Users u 
         LEFT JOIN Karyawan k ON u.ID_User = k.ID_User 
@@ -32,55 +32,61 @@ $query = sqlsrv_query($conn, $sql);
 <html lang="id">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Master Karyawan – Studio SpotLight</title>
+    
+    <!-- CSS & Fonts -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
     <style>
-        body { background: #fdf2f7; font-family: 'Plus Jakarta Sans', sans-serif; color: #334155; }
+        :root { --p-pink: #e8457a; --d-pink: #c73165; --s-pink: #fdf2f7; }
+        body { background: var(--s-pink); font-family: 'Plus Jakarta Sans', sans-serif; color: #334155; }
         
-        /* Stats Design */
+        /* Stats Card Upgrade */
         .stat-card { 
-            border: none; 
-            border-radius: 20px; 
-            background: #ffffff;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(232, 69, 122, 0.04);
+            border: none; border-radius: 24px; background: white; 
+            box-shadow: 0 10px 30px rgba(232, 69, 122, 0.05); 
+            transition: 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
             border: 1px solid rgba(232, 69, 122, 0.05);
         }
-        .stat-card:hover { transform: translateY(-5px); box-shadow: 0 12px 25px rgba(232, 69, 122, 0.1); }
-        .icon-box {
-            width: 45px; height: 45px; border-radius: 12px;
-            display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
+        .stat-card:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(232, 69, 122, 0.12); }
+        .icon-gradient {
+            width: 50px; height: 50px; border-radius: 14px;
+            display: flex; align-items: center; justify-content: center; font-size: 1.4rem;
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: white;
         }
 
-        /* Main Table Card */
+        /* Main Card Table */
         .main-card { 
-            border: none; 
-            border-radius: 24px; 
-            box-shadow: 0 15px 35px rgba(0,0,0,0.05); 
-            background: white; 
-            overflow: hidden;
+            border: none; border-radius: 30px; 
+            box-shadow: 0 20px 60px rgba(0,0,0,0.06); 
+            background: white; overflow: hidden; 
         }
 
-        .btn-pink { background: #e8457a; color: white; border-radius: 14px; font-weight: 700; padding: 10px 24px; transition: 0.3s; border:none; }
-        .btn-pink:hover { background: #c73165; color: white; transform: translateY(-2px); box-shadow: 0 5px 15px rgba(232, 69, 122, 0.3); }
+        .btn-pink { background: var(--p-pink); color: white; border-radius: 14px; font-weight: 700; padding: 12px 28px; border:none; transition: 0.3s; }
+        .btn-pink:hover { background: var(--d-pink); color: white; box-shadow: 0 10px 20px rgba(232, 69, 122, 0.2); }
 
-        .status-badge { border-radius: 10px; padding: 6px 14px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px; }
-        
         /* Row Highlighting */
-        .is-me-row { background-color: #fff9fb !important; border-left: 4px solid #e8457a; }
-        .no-data-alert { font-size: 11px; color: #e11d48; background: #fff1f2; padding: 2px 8px; border-radius: 6px; }
-
+        .is-me-row { background-color: #fff9fb !important; border-left: 5px solid var(--p-pink); }
+        .status-badge { border-radius: 12px; padding: 6px 16px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px; }
+        
         .table thead th { 
-            background: #f8fafc; 
-            color: #64748b; 
-            font-size: 11px; 
-            text-transform: uppercase; 
-            font-weight: 700;
-            padding: 18px;
+            background: #f8fafc; color: #64748b; font-size: 11px; 
+            text-transform: uppercase; font-weight: 800; padding: 20px; 
             border-bottom: 1px solid #f1f5f9;
+        }
+        
+        .btn-action { 
+            border-radius: 12px; border: 1.5px solid #f1f5f9; 
+            background: white; transition: 0.2s; padding: 8px 12px;
+        }
+        .btn-action:hover { background: var(--s-pink); border-color: var(--p-pink); }
+
+        .avatar-circle {
+            width: 48px; height: 48px; object-fit: cover; border-radius: 15px; border: 2px solid var(--s-pink);
         }
     </style>
 </head>
@@ -88,10 +94,10 @@ $query = sqlsrv_query($conn, $sql);
 
 <div class="container py-5">
     <!-- Header -->
-    <div class="d-flex justify-content-between align-items-end mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-5">
         <div>
             <h2 class="fw-bold text-dark mb-1">Master Karyawan</h2>
-            <p class="text-muted mb-0">Manajemen profil dan otoritas karyawan sistem.</p>
+            <p class="text-muted mb-0 fw-500">Kelola profil dan otoritas staf Studio SpotLight.</p>
         </div>
         <a href="add.php" class="btn btn-pink shadow-sm">
             <i class="bi bi-person-plus-fill me-2"></i>Tambah Karyawan
@@ -102,43 +108,43 @@ $query = sqlsrv_query($conn, $sql);
     <div class="row g-4 mb-5">
         <div class="col-md-4">
             <div class="stat-card p-4 d-flex align-items-center">
-                <div class="icon-box bg-dark text-white me-3"><i class="bi bi-person-gear"></i></div>
+                <div class="icon-gradient me-3 shadow-sm"><i class="bi bi-people-fill"></i></div>
                 <div>
                     <div class="text-muted small fw-bold">TOTAL KARYAWAN</div>
-                    <div class="h3 fw-bold mb-0"><?= $stats['total'] ?></div>
+                    <div class="h3 fw-bold mb-0"><?= $stats['total'] ?? 0 ?></div>
                 </div>
             </div>
         </div>
         <div class="col-md-4">
             <div class="stat-card p-4 d-flex align-items-center">
-                <div class="icon-box bg-success-subtle text-success me-3"><i class="bi bi-check-circle"></i></div>
+                <div class="icon-gradient me-3 shadow-sm" style="background: linear-gradient(135deg, #10b981, #059669);"><i class="bi bi-check-all"></i></div>
                 <div>
                     <div class="text-muted small fw-bold">STATUS AKTIF</div>
-                    <div class="h3 fw-bold mb-0 text-success"><?= $stats['active'] ?></div>
+                    <div class="h3 fw-bold mb-0 text-success"><?= $stats['active'] ?? 0 ?></div>
                 </div>
             </div>
         </div>
         <div class="col-md-4">
-            <div class="stat-card p-4 d-flex align-items-center border-start border-danger border-3">
-                <div class="icon-box bg-danger-subtle text-danger me-3"><i class="bi bi-x-circle"></i></div>
+            <div class="stat-card p-4 d-flex align-items-center">
+                <div class="icon-gradient me-3 shadow-sm" style="background: linear-gradient(135deg, #ef4444, #dc3545);"><i class="bi bi-x-circle"></i></div>
                 <div>
                     <div class="text-muted small fw-bold">NON-AKTIF</div>
-                    <div class="h3 fw-bold mb-0 text-danger"><?= $stats['inactive'] ?></div>
+                    <div class="h3 fw-bold mb-0 text-danger"><?= $stats['inactive'] ?? 0 ?></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Table Section -->
+    <!-- Tabel Content -->
     <div class="main-card">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead>
                     <tr>
-                        <th style="width: 40%;">Profil Karyawan</th>
-                        <th style="width: 25%;">Informasi Kontak</th>
-                        <th style="width: 15%;">Status Akun</th>
-                        <th style="width: 20%;" class="text-end">Aksi Manajemen</th>
+                        <th style="width: 35%;">Profil Karyawan</th>
+                        <th style="width: 20%;">WhatsApp</th>
+                        <th style="width: 20%;">Status</th>
+                        <th style="width: 25%;" class="text-end">Aksi Manajemen</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -147,54 +153,42 @@ $query = sqlsrv_query($conn, $sql);
                         $has_profile = !empty($row['Nama_Karyawan']);
                     ?>
                     <tr class="<?= $is_me ? 'is-me-row' : '' ?>">
-                        <td>
-                            <div class="d-flex align-items-center px-2">
-                                <div class="position-relative">
-                                    <img src="../../assets/img/<?= $row['Foto_Profil'] ?? 'default.jpg' ?>" 
-                                         class="rounded-circle border" style="width:45px; height:45px; object-fit:cover;"
-                                         onerror="this.src='https://ui-avatars.com/api/?name=<?= urlencode($row['Email_User']) ?>&background=ffe0ec&color=e8457a'">
-                                    <?php if($is_me): ?>
-                                        <span class="position-absolute bottom-0 end-0 bg-success border border-white rounded-circle" style="width:12px; height:12px;"></span>
-                                    <?php endif; ?>
-                                </div>
-                                <div class="ms-3">
+                        <td class="ps-4">
+                            <div class="d-flex align-items-center py-2">
+                                <img src="../../assets/img/<?= $row['Foto_Profil'] ?? 'default.jpg' ?>" 
+                                     class="avatar-circle shadow-sm me-3"
+                                     onerror="this.src='https://ui-avatars.com/api/?name=<?= urlencode($row['Email_User']) ?>&background=ffe0ec&color=e8457a&bold=true'">
+                                <div>
                                     <div class="fw-bold text-dark">
-                                        <?= $has_profile ? $row['Nama_Karyawan'] : '<span class="text-muted fst-italic">Biodata belum diatur</span>' ?>
-                                        <?php if($is_me): ?> <span class="badge bg-dark ms-1" style="font-size:8px;">SAYA</span> <?php endif; ?>
+                                        <?= $has_profile ? $row['Nama_Karyawan'] : '<span class="text-muted fst-italic">Profil belum lengkap</span>' ?>
+                                        <?php if($is_me): ?> <span class="badge bg-dark ms-1" style="font-size:8px;">YOU</span> <?php endif; ?>
                                     </div>
                                     <div class="text-muted small"><?= $row['Email_User'] ?></div>
-                                    <?php if(!$has_profile): ?> <div class="no-data-alert mt-1 d-inline-block">Lengkapi biodata!</div> <?php endif; ?>
                                 </div>
                             </div>
                         </td>
+                        <td><span class="small fw-bold text-dark"><?= $row['No_Hp'] ?? '-' ?></span></td>
                         <td>
-                            <div class="d-flex flex-column">
-                                <span class="small fw-600"><i class="bi bi-whatsapp me-1 text-success"></i> <?= $row['No_Hp'] ?? '-' ?></span>
-                            </div>
+                            <span class="status-badge <?= $row['Status_User'] == 'Active' ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger' ?>">
+                                <?= strtoupper($row['Status_User']) ?>
+                            </span>
                         </td>
-                        <td>
-                            <?php if($row['Status_User'] == 'Active'): ?>
-                                <span class="status-badge bg-success-subtle text-success border border-success-subtle">ACTIVE</span>
-                            <?php else: ?>
-                                <span class="status-badge bg-danger-subtle text-danger border border-danger-subtle">INACTIVE</span>
-                            <?php endif; ?>
-                        </td>
-                        <td class="text-end px-4">
+                        <td class="text-end pe-4">
                             <?php if(!$is_me): ?>
-                                <div class="btn-group shadow-sm rounded-3">
-                                    <a href="edit.php?id=<?= $row['ID_User'] ?>" class="btn btn-sm btn-white border px-3" title="Edit Biodata">
+                                <div class="btn-group shadow-sm rounded-3 overflow-hidden">
+                                    <a href="edit.php?id=<?= $row['ID_User'] ?>" class="btn btn-action btn-sm" title="Edit Profil">
                                         <i class="bi bi-pencil-square text-primary"></i>
                                     </a>
-                                    <button onclick="toggleStatus(<?= $row['ID_User'] ?>, '<?= $row['Status_User'] ?>')" class="btn btn-sm btn-white border px-3" title="Status Toggle">
+                                    <button onclick="toggleStatus(<?= $row['ID_User'] ?>, '<?= $row['Status_User'] ?>')" class="btn btn-action btn-sm" title="Ubah Status">
                                         <i class="bi <?= $row['Status_User'] == 'Active' ? 'bi-toggle-on text-success' : 'bi-toggle-off text-muted' ?>"></i>
                                     </button>
-                                    <button onclick="confirmDelete(<?= $row['ID_User'] ?>)" class="btn btn-sm btn-white border px-3" title="Hapus Permanen">
+                                    <button onclick="confirmDelete(<?= $row['ID_User'] ?>)" class="btn btn-action btn-sm" title="Hapus Permanen">
                                         <i class="bi bi-trash3 text-danger"></i>
                                     </button>
                                 </div>
                             <?php else: ?>
-                                <a href="edit.php?id=<?= $row['ID_User'] ?>" class="btn btn-sm btn-light border rounded-pill px-3 fw-bold text-muted" style="font-size:11px">
-                                    <i class="bi bi-person-gear me-1"></i>Kelola Profil
+                                <a href="edit.php?id=<?= $row['ID_User'] ?>" class="btn btn-sm btn-light border rounded-pill px-3 fw-bold text-muted" style="font-size:10px">
+                                    <i class="bi bi-person-gear me-1"></i>KELOLA PROFIL SAYA
                                 </a>
                             <?php endif; ?>
                         </td>
@@ -203,39 +197,38 @@ $query = sqlsrv_query($conn, $sql);
                 </tbody>
             </table>
         </div>
-        <div class="p-4 bg-light-subtle border-top d-flex justify-content-between align-items-center">
-            <a href="index.php" class="text-decoration-none text-muted small fw-600">
-                <i class="bi bi-arrow-left me-1"></i> Dashboard Utama
-            </a>
-            <span class="text-muted small" style="font-size: 10px;">SpotLight Security Protocol: Active</span>
+        <div class="p-4 bg-light bg-opacity-50 border-top d-flex justify-content-between align-items-center">
+            <a href="index.php" class="text-decoration-none text-muted small fw-bold"><i class="bi bi-arrow-left me-1"></i> DASHBOARD UTAMA</a>
+            <span class="text-muted small fw-bold" style="font-size: 10px;">SpotLight Security Protocol: Active</span>
         </div>
     </div>
 </div>
 
 <script>
-// UPDATE: Link target diganti ke action_karyawan.php agar alur tidak rusak
+// VALIDASI & AKSI
 function toggleStatus(id, current) {
-    let action = current === 'Active' ? 'Nonaktifkan' : 'Aktifkan';
+    let action = current === 'Active' ? 'Menonaktifkan' : 'Aktifkan';
     Swal.fire({
-        title: action + ' Akun Karyawan?',
-        text: "Karyawan ini tidak akan bisa mengakses sistem untuk sementara.",
+        title: action + ' Karyawan?',
+        text: "Karyawan ini tidak akan bisa login untuk sementara.",
         icon: 'question',
         showCancelButton: true,
         confirmButtonColor: '#e8457a',
-        confirmButtonText: 'Ya, Ubah Status'
+        confirmButtonText: 'Ya, Lakukan'
     }).then((result) => { if (result.isConfirmed) { window.location.href = 'action_karyawan.php?type=soft&id=' + id + '&status=' + current; } })
 }
 
 function confirmDelete(id) {
     Swal.fire({
         title: 'Hapus Karyawan Permanen?',
-        text: "Tindakan ini tidak bisa dibatalkan dan akan menghapus semua biodata!",
+        text: "Data akun dan profil akan dihapus selamanya dari sistem!",
         icon: 'error',
         showCancelButton: true,
         confirmButtonColor: '#dc3545',
-        confirmButtonText: 'Hapus Selamanya'
+        confirmButtonText: 'Ya, Hapus'
     }).then((result) => { if (result.isConfirmed) { window.location.href = 'action_karyawan.php?type=hard&id=' + id; } })
 }
 </script>
+
 </body>
 </html>

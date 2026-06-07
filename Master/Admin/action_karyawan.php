@@ -3,7 +3,7 @@ session_start();
 include '../../koneksi.php';
 
 // Proteksi: Hanya Admin yang bisa akses
-if (!isset($_SESSION['status']) || $_SESSION['role'] != 'Admin') { exit(); }
+if (!isset($_SESSION['status']) || $_SESSION['role'] != 'Admin') { exit("Akses Ditolak"); }
 
 $type = $_GET['type'];
 $id   = $_GET['id'];
@@ -20,17 +20,32 @@ if ($type == 'soft') {
     $newStatus = ($currentStatus == 'Active') ? 'Inactive' : 'Active';
     
     $sql = "UPDATE Users SET Status_User = ? WHERE ID_User = ?";
-    sqlsrv_query($conn, $sql, array($newStatus, $id));
-    header("Location: list.php?msg=status_updated");
+    $res = sqlsrv_query($conn, $sql, array($newStatus, $id));
+    
+    if ($res) {
+        header("Location: list.php?msg=status_updated");
+    }
 
 } elseif ($type == 'hard') {
-    // Logika Hard Delete (Efisien & Menjaga Integritas Data)
-    // 1. Hapus Profil di tabel Karyawan (Child) terlebih dahulu
-    sqlsrv_query($conn, "DELETE FROM Karyawan WHERE ID_User = ?", array($id));
-    
+    // LOGIKA HARD DELETE DENGAN TRANSACTION (Sangat Aman & Akurat)
+    sqlsrv_begin_transaction($conn);
+
+    // 1. Hapus Profil di tabel Karyawan (Child)
+    $sql1 = "DELETE FROM Karyawan WHERE ID_User = ?";
+    $stmt1 = sqlsrv_query($conn, $sql1, array($id));
+
     // 2. Hapus Akun di tabel Users (Parent)
-    $sql = "DELETE FROM Users WHERE ID_User = ?";
-    sqlsrv_query($conn, $sql, array($id));
-    header("Location: list.php?msg=deleted");
+    $sql2 = "DELETE FROM Users WHERE ID_User = ?";
+    $stmt2 = sqlsrv_query($conn, $sql2, array($id));
+
+    // Validasi: Jika dua-duanya berhasil, baru simpan ke database
+    if ($stmt1 && $stmt2) {
+        sqlsrv_commit($conn);
+        header("Location: list.php?msg=deleted");
+    } else {
+        // Jika gagal (biasanya karena ada relasi transaksi sesi foto), batalkan semua
+        sqlsrv_rollback($conn);
+        echo "<script>alert('Gagal Hapus Permanen! Karyawan ini kemungkinan besar memiliki riwayat transaksi/tugas di tabel lain. Gunakan Soft Delete saja.'); window.location='list.php';</script>";
+    }
 }
 ?>
