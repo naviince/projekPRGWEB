@@ -60,6 +60,33 @@ while($data = sqlsrv_fetch_array($q_grafik, SQLSRV_FETCH_ASSOC)) {
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <style>
+        /* Tambahkan ini di dalam tag <style> */
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.btn-back-home {
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--pink-600);
+    background: var(--pink-50);
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--pink-200);
+    transition: 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-back-home:hover {
+    background: var(--pink-600);
+    color: white;
+    box-shadow: 0 4px 12px rgba(232, 69, 122, 0.15);
+}
         :root {
             --pink-50: #fff0f5; --pink-100: #ffe0ec; --pink-200: #ffb3cc;
             --pink-400: #f472a0; --pink-500: #e8457a; --pink-600: #c73165;
@@ -115,6 +142,12 @@ while($data = sqlsrv_fetch_array($q_grafik, SQLSRV_FETCH_ASSOC)) {
         </div>
 
         <nav class="sidebar-nav">
+
+        <a href="../../index.php" class="nav-item" style="color: var(--pink-600); background: var(--pink-50); margin-bottom: 10px;">
+        <i class="bi bi-house-door-fill"></i> Kembali ke Landing Page
+    </a>
+    
+    
             <a href="index.php" class="nav-item active"><i class="bi bi-speedometer2"></i> Dashboard</a>
             
             <p class="nav-label">Autentikasi & Akun</p>

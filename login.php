@@ -63,6 +63,23 @@ if (isset($_POST['login'])) {
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     
     <style>
+        .password-container {
+    position: relative;
+}
+.toggle-password {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    color: #94a3b8;
+    font-size: 18px;
+    transition: 0.3s;
+    z-index: 10;
+}
+.toggle-password:hover {
+    color: var(--p-pink);
+}
         :root { --p-pink: #e8457a; --d-pink: #c73165; --s-pink: #fdf2f7; --glass: rgba(255, 255, 255, 0.22); }
         body { background: var(--s-pink); font-family: 'Plus Jakarta Sans', sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
         
@@ -119,12 +136,16 @@ if (isset($_POST['login'])) {
                         <?php if($error_email): ?><div class="error-text"><i class="bi bi-exclamation-triangle-fill"></i> <?= $error_email ?></div><?php endif; ?>
                     </div>
 
+                    
                     <!-- PASSWORD -->
-                    <div class="mb-4">
-                        <label class="form-label">Kata Sandi</label>
-                        <input type="password" name="password" class="form-control <?= ($error_pass != '') ? 'is-invalid' : '' ?>" placeholder="••••••" required>
-                        <?php if($error_pass): ?><div class="error-text"><i class="bi bi-shield-lock-fill"></i> <?= $error_pass ?></div><?php endif; ?>
-                    </div>
+<div class="mb-4">
+    <label class="form-label">Kata Sandi</label>
+    <div class="password-container">
+        <input type="password" name="password" id="password" class="form-control <?= ($error_pass != '') ? 'is-invalid' : '' ?>" placeholder="••••••" required>
+        <i class="bi bi-eye-slash toggle-password" id="togglePassword"></i>
+    </div>
+    <?php if($error_pass): ?><div class="error-text"><i class="bi bi-shield-lock-fill"></i> <?= $error_pass ?></div><?php endif; ?>
+</div>
 
                     <div class="d-flex justify-content-end mb-4">
                         <a href="lupa_password.php" class="link-pink small">Kesulitan masuk / Lupa Sandi?</a>
@@ -141,6 +162,21 @@ if (isset($_POST['login'])) {
             </div>
         </div>
     </div>
+
+    <script>
+    const togglePassword = document.querySelector('#togglePassword');
+    const password = document.querySelector('#password');
+
+    togglePassword.addEventListener('click', function (e) {
+        // Toggle tipe input antara 'password' dan 'text'
+        const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+        password.setAttribute('type', type);
+        
+        // Ganti ikon mata (eye vs eye-slash)
+        this.classList.toggle('bi-eye');
+        this.classList.toggle('bi-eye-slash');
+    });
+</script>
 
 </body>
 </html>

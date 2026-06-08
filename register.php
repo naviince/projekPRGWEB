@@ -82,6 +82,24 @@ if (isset($_POST['register'])) {
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     
     <style>
+        /* CSS untuk posisi mata di dalam input */
+.password-group {
+    position: relative;
+}
+.toggle-password {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    color: #94a3b8;
+    font-size: 18px;
+    z-index: 10;
+    transition: 0.3s;
+}
+.toggle-password:hover {
+    color: var(--p-pink);
+}
         :root { --p-pink: #e8457a; --d-pink: #c73165; --s-pink: #fdf2f7; --glass: rgba(255, 255, 255, 0.18); }
         body { background: var(--s-pink); font-family: 'Plus Jakarta Sans', sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
         .reg-card { border-radius: 40px; overflow: hidden; background: white; box-shadow: 0 30px 100px rgba(232, 69, 122, 0.15); max-width: 1050px; width: 100%; border: none; position: relative; animation: fadeIn 0.8s ease-out; }
@@ -142,17 +160,24 @@ if (isset($_POST['register'])) {
                         </div>
 
                         <!-- PASSWORD ROW -->
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Kata Sandi</label>
-                            <input type="password" name="password" class="form-control <?= ($error_pass != '') ? 'is-invalid' : '' ?>" required placeholder="Huruf, Angka, & Simbol">
-                            <?php if($error_pass): ?><div class="error-text"><i class="bi bi-shield-lock-fill"></i> <?= $error_pass ?></div><?php endif; ?>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Verifikasi Sandi</label>
-                            <input type="password" name="confirm_password" class="form-control <?= ($error_confirm_pass != '') ? 'is-invalid' : '' ?>" required placeholder="Ulangi sandi anda">
-                            <?php if($error_confirm_pass): ?><div class="error-text"><i class="bi bi-check-circle-fill"></i> <?= $error_confirm_pass ?></div><?php endif; ?>
-                        </div>
+                       <!-- PASSWORD ROW -->
+<div class="col-md-6 mb-3">
+    <label class="form-label">Kata Sandi</label>
+    <div class="password-group">
+        <input type="password" name="password" id="password" class="form-control <?= ($error_pass != '') ? 'is-invalid' : '' ?>" required placeholder="Huruf, Angka, & Simbol">
+        <i class="bi bi-eye-slash toggle-password" id="btnPass"></i>
+    </div>
+    <?php if($error_pass): ?><div class="error-text"><i class="bi bi-shield-lock-fill"></i> <?= $error_pass ?></div><?php endif; ?>
+</div>
 
+<div class="col-md-6 mb-3">
+    <label class="form-label">Verifikasi Sandi</label>
+    <div class="password-group">
+        <input type="password" name="confirm_password" id="confirm_password" class="form-control <?= ($error_confirm_pass != '') ? 'is-invalid' : '' ?>" required placeholder="Ulangi sandi anda">
+        <i class="bi bi-eye-slash toggle-password" id="btnConfirmPass"></i>
+    </div>
+    <?php if($error_confirm_pass): ?><div class="error-text"><i class="bi bi-check-circle-fill"></i> <?= $error_confirm_pass ?></div><?php endif; ?>
+</div>
                         <div class="col-md-12 mb-4">
                             <label class="form-label">Alamat Lengkap</label>
                             <textarea name="alamat" class="form-control <?= ($error_alamat != '') ? 'is-invalid' : '' ?>" rows="2" placeholder="Masukkan alamat untuk keperluan data pelanggan" required><?= @$_POST['alamat'] ?></textarea>
@@ -189,5 +214,26 @@ if (isset($_POST['register'])) {
         }).then(() => { window.location = 'login.php'; });
     </script>
     <?php endif; ?>
+    <script>
+    // Fungsi reusable untuk toggle password
+    function setupPasswordToggle(buttonId, inputId) {
+        const btn = document.getElementById(buttonId);
+        const input = document.getElementById(inputId);
+
+        btn.addEventListener('click', function () {
+            // Toggle tipe input
+            const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
+            input.setAttribute('type', type);
+            
+            // Toggle ikon
+            this.classList.toggle('bi-eye');
+            this.classList.toggle('bi-eye-slash');
+        });
+    }
+
+    // Jalankan untuk password utama dan verifikasi
+    setupPasswordToggle('btnPass', 'password');
+    setupPasswordToggle('btnConfirmPass', 'confirm_password');
+</script>
 </body>
 </html>

@@ -34,6 +34,46 @@ if (isset($_SESSION['status']) && $_SESSION['status'] == "login") {
   <link href="assets/vendor/glightbox/css/glightbox.min.css" rel="stylesheet">
 
   <style>
+
+    /* CSS untuk Horizontal Slider */
+.package-slider-container {
+  display: flex;
+  overflow-x: auto;
+  gap: 25px;
+  padding: 20px 10px 40px 10px;
+  scroll-snap-type: x mandatory; /* Biar bergesernya 'klik' pas di tengah */
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Sembunyikan scrollbar di Firefox */
+}
+
+.package-slider-container::-webkit-scrollbar {
+  display: none; /* Sembunyikan scrollbar di Chrome/Safari */
+}
+
+.package-item {
+  flex: 0 0 350px; /* Lebar tiap kartu paket (bisa diatur sesuai selera) */
+  scroll-snap-align: start;
+}
+
+@media (max-width: 576px) {
+  .package-item {
+    flex: 0 0 85%; /* Di HP, tampilkan 85% lebar layar agar terlihat ada kartu selanjutnya */
+  }
+}
+
+/* Tambahan styling agar kartu seragam tingginya */
+.pricing-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.card-body-custom {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
     :root {
       --primary-pink: #b33063;
       --light-pink: #fff0f5;
@@ -243,51 +283,52 @@ if (isset($_SESSION['status']) && $_SESSION['status'] == "login") {
 
     <!-- Section Paket (SINKRON & BERBEDA GAMBAR) -->
     <section id="pricing" class="container py-5">
-      <div class="text-center mb-5" data-aos="fade-up">
-        <h2 class="fw-bold" style="font-size: 2.5rem;">Pilih Paket Foto Spesialmu</h2>
-        <p class="text-muted">Data otomatis tersinkron dengan Master Paket Admin.</p>
-      </div>
+  <div class="text-center mb-5" data-aos="fade-up">
+    <h2 class="fw-bold" style="font-size: 2.5rem;">Pilih Paket Foto Spesialmu</h2>
+    
+  </div>
 
-      <div class="row g-4">
-        <?php
-        $sql = "SELECT * FROM Paket_Foto WHERE Status = 'Aktif'";
-        $query = sqlsrv_query($conn, $sql);
-        
-        while($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
-            $nama_p = $row['Nama_Paket'];
-            $foto_db = $row['Foto_Paket'];
-            $path_custom = "assets/img/paket/" . $foto_db;
+     <div class="package-slider-container" data-aos="fade-up">
+    <?php
+    $sql = "SELECT * FROM Paket_Foto WHERE Status = 'Aktif'";
+    $query = sqlsrv_query($conn, $sql);
+    
+    while($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
+        $nama_p = $row['Nama_Paket'];
+        $foto_db = $row['Foto_Paket'];
+        $path_custom = "assets/img/paket/" . $foto_db;
 
-            // Logika Fallback Gambar agar Berbeda-beda
-            if(!empty($foto_db) && file_exists($path_custom)) {
-                $img_display = $path_custom;
-            } else {
-                if (stripos($nama_p, 'Basic') !== false) $img_display = "assets/img/basic.jpg";
-                elseif (stripos($nama_p, 'Couple') !== false) $img_display = "assets/img/couple.jpg";
-                elseif (stripos($nama_p, 'Family') !== false) $img_display = "assets/img/family.jpg";
-                else $img_display = "assets/img/portfolio/studio.jpg";
-            }
-        ?>
-        <div class="col-lg-4" data-aos="fade-up">
-          <div class="pricing-card">
-            <div class="card-img-box">
-                <img src="<?= $img_display ?>" alt="<?= $nama_p ?>">
-            </div>
-            <div class="card-body-custom">
-              <h3 class="fw-bold"><?= $nama_p; ?></h3>
-              <span class="price-label">Rp <?= number_format($row['Harga_Paket'], 0, ',', '.'); ?></span>
-              <ul class="list-unstyled mb-4 small fw-bold text-muted">
-                <li class="mb-2"><i class="bi bi-alarm text-primary me-2"></i><?= $row['Durasi_Waktu']; ?> Menit</li>
-                <li class="mb-2"><i class="bi bi-people-fill text-primary me-2"></i>Max <?= $row['Kapasitas_Orang']; ?> Orang</li>
-                <li class="fst-italic fw-normal"><?= $row['Deskripsi']; ?></li>
-              </ul>
-              <a href="<?= isset($_SESSION['status']) ? 'Transaksi/booking.php' : 'login.php'; ?>" class="btn-pilih">Booking Sekarang</a>
-            </div>
-          </div>
+        if(!empty($foto_db) && file_exists($path_custom)) {
+            $img_display = $path_custom;
+        } else {
+            if (stripos($nama_p, 'Basic') !== false) $img_display = "assets/img/basic.jpg";
+            elseif (stripos($nama_p, 'Couple') !== false) $img_display = "assets/img/couple.jpg";
+            elseif (stripos($nama_p, 'Family') !== false) $img_display = "assets/img/family.jpg";
+            else $img_display = "assets/img/portfolio/studio.jpg";
+        }
+    ?>
+        <div class="package-item">
+      <div class="pricing-card">
+        <div class="card-img-box">
+            <img src="<?= $img_display ?>" alt="<?= $nama_p ?>">
         </div>
-        <?php endwhile; ?>
+        <div class="card-body-custom">
+          <div>
+            <h3 class="fw-bold"><?= $nama_p; ?></h3>
+            <span class="price-label">Rp <?= number_format($row['Harga_Paket'], 0, ',', '.'); ?></span>
+            <ul class="list-unstyled mb-4 small fw-bold text-muted">
+              <li class="mb-2"><i class="bi bi-alarm text-primary me-2"></i><?= $row['Durasi_Waktu']; ?> Menit</li>
+              <li class="mb-2"><i class="bi bi-people-fill text-primary me-2"></i>Max <?= $row['Kapasitas_Orang']; ?> Orang</li>
+              <li class="fst-italic fw-normal"><?= $row['Deskripsi']; ?></li>
+            </ul>
+          </div>
+          <a href="<?= isset($_SESSION['status']) ? 'Transaksi/booking.php' : 'login.php'; ?>" class="btn-pilih">Booking Sekarang</a>
+        </div>
       </div>
-    </section>
+    </div>
+    <?php endwhile; ?>
+  </div>
+</section>
 
   </main>
 
