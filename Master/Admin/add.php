@@ -148,19 +148,27 @@ if (isset($_POST['simpan'])) {
                         </div>
 
                         <!-- NO HP & ROLE -->
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Nomor Telepon</label>
-                            <input type="text" name="no_hp" id="inputHP" class="form-control <?= ($error_hp != '') ? 'is-invalid' : '' ?>" placeholder="08..." value="<?= @$_POST['no_hp'] ?>" required>
-                            <?php if($error_hp): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_hp ?></div><?php endif; ?>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Role Pekerjaan</label>
-                            <select name="role_user" class="form-select" required>
-                                <option value="Admin">Admin</option>
-                                <option value="Fotografer">Fotografer</option>
-                                <option value="Owner">Owner</option>
-                            </select>
-                        </div>
+                       <!-- KOLOM NOMOR TELEPON & ROLE (BERDAMPINGAN) -->
+<div class="col-md-6 mb-3">
+    <label class="form-label">Nomor Telepon</label>
+    <input type="text" name="no_hp" id="inputHP" class="form-control <?= ($error_hp != '') ? 'is-invalid' : '' ?>" placeholder="08..." value="<?= @$_POST['no_hp'] ?>" required>
+    <?php if($error_hp): ?><div class="error-text"><?= $error_hp ?></div><?php endif; ?>
+</div>
+
+<!-- DROPDOWN ROLE DENGAN SIMBOL -->
+<div class="col-md-6 mb-3">
+    <label class="form-label">Role Pekerjaan</label>
+    <div class="position-relative">
+        <select name="role_user" class="form-select pe-5" required style="appearance: none; -webkit-appearance: none;">
+            <option value="" disabled selected>Pilih Role...</option>
+            <option value="Admin" <?= (@$_POST['role_user'] == 'Admin') ? 'selected' : '' ?>>Admin</option>
+            <option value="Fotografer" <?= (@$_POST['role_user'] == 'Fotografer') ? 'selected' : '' ?>>Fotografer</option>
+            <option value="Owner" <?= (@$_POST['role_user'] == 'Owner') ? 'selected' : '' ?>>Owner</option>
+        </select>
+        <!-- Icon Panah di Pojok Kanan -->
+        <i class="bi bi-chevron-down position-absolute top-50 end-0 translate-middle-y me-3 text-muted" style="pointer-events: none;"></i>
+    </div>
+</div>
 
                         <!-- ALAMAT (DENGAN VALIDASI AKURAT) -->
                         <div class="col-md-12 mb-3">
