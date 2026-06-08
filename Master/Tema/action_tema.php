@@ -22,8 +22,8 @@ if ($type == 'soft') {
 
 // 2. LOGIKA HARD DELETE (Hapus Permanen)
 } elseif ($type == 'hard') {
-    // Validasi: cek apakah tema sudah pernah digunakan dalam booking
-    $sql_cek  = "SELECT COUNT(*) as total FROM Orders WHERE ID_Tema = ?";
+    // Validasi: cek apakah tema sudah pernah digunakan dalam booking (Diselaraskan ke [Order])
+    $sql_cek  = "SELECT COUNT(*) as total FROM [Order] WHERE ID_Tema = ?";
     $stmt_cek = sqlsrv_query($conn, $sql_cek, array($id));
     $check    = sqlsrv_fetch_array($stmt_cek, SQLSRV_FETCH_ASSOC);
 

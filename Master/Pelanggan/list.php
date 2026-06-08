@@ -81,28 +81,29 @@ $query = sqlsrv_query($conn, $sql);
             font-size: 14px;
         }
 
-        /* Sidebar (Scrollable Nav) */
+        /* ============================================================
+           KONSISTENSI SIDEBAR CSS (Sama di semua halaman)
+           ============================================================ */
         .sidebar { width: var(--sidebar-w); height: 100vh; background: var(--white); border-right: 1px solid var(--pink-100); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; z-index: 100; box-shadow: 4px 0 15px rgba(0,0,0,0.02); }
         .sidebar-brand { padding: 24px 20px; border-bottom: 1px solid var(--pink-100); }
-        .sidebar-brand h2 { font-size: 18px; font-weight: 800; color: var(--pink-600); letter-spacing: -0.5px; margin: 0 0 2px; }
-        .sidebar-brand p { font-size: 11px; color: var(--gray-400); margin: 0; }
+        .sidebar-brand h2 { font-size: 18px; font-weight: 800; color: var(--pink-600); letter-spacing: -0.5px; margin: 0 0 2px 0 !important; line-height: 1.2; }
+        .sidebar-brand p { font-size: 11px; color: var(--gray-400); margin: 0 !important; line-height: 1.2; }
         
-        /* Navigasi Scrollable */
-        .sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; }
+        .sidebar-nav { flex: 1; padding: 8px 0; overflow-y: auto; }
         .sidebar-nav::-webkit-scrollbar { width: 4px; }
         .sidebar-nav::-webkit-scrollbar-track { background: transparent; }
         .sidebar-nav::-webkit-scrollbar-thumb { background: var(--pink-100); border-radius: 4px; }
         .sidebar-nav::-webkit-scrollbar-thumb:hover { background: var(--pink-200); }
 
-        .nav-label { padding: 18px 20px 8px; font-size: 10px; font-weight: 800; color: var(--gray-400); text-transform: uppercase; letter-spacing: 1px; display: block; }
-        .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; cursor: pointer; color: var(--gray-500); text-decoration: none; font-weight: 500; transition: all 0.3s ease; }
+        .nav-label { padding: 14px 20px 4px !important; font-size: 10px; font-weight: 800; color: var(--gray-400); text-transform: uppercase; letter-spacing: 1px; display: block; margin: 0 !important; }
+        .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 20px !important; cursor: pointer; color: var(--gray-500); text-decoration: none; font-weight: 500; transition: all 0.3s ease; margin: 0 !important; }
         .nav-item:hover { color: var(--pink-600); background: var(--pink-50); padding-left: 25px; }
         .nav-item.active { color: var(--pink-600); background: var(--pink-50); border-left: 4px solid var(--pink-600); font-weight: 700; }
         
         .sidebar-profile { padding: 16px 20px; border-top: 1px solid var(--pink-100); background: #fafafa; }
-        .user-info h4 { font-size: 13px; font-weight: 700; color: var(--gray-900); margin: 0 0 2px; }
-        .user-info p { font-size: 11px; color: var(--gray-500); margin: 0 0 8px; }
-        .btn-logout { width: 100%; padding: 10px; border-radius: 10px; border: none; background: var(--pink-600); color: white; font-weight: 700; cursor: pointer; transition: 0.3s; }
+        .user-info h4 { font-size: 13px; font-weight: 700; color: var(--gray-900); margin: 0 0 2px 0 !important; line-height: 1.2; }
+        .user-info p { font-size: 11px; color: var(--gray-500); margin: 0 0 8px 0 !important; line-height: 1.2; }
+        .btn-logout { width: 100%; padding: 8px !important; border-radius: 10px; border: none; background: var(--pink-600); color: white; font-weight: 700; cursor: pointer; transition: 0.3s; }
         .btn-logout:hover { background: var(--rose-dark); box-shadow: 0 4px 12px rgba(139, 26, 62, 0.2); }
 
         /* Main Content area */
@@ -166,7 +167,7 @@ $query = sqlsrv_query($conn, $sql);
     <aside class="sidebar">
         <div class="sidebar-brand">
             <h2>SpotLight Admin</h2>
-            <p style="font-size: 11px; color: var(--gray-400);">Studio Management System</p>
+            <p>Studio Management System</p>
         </div>
 
         <nav class="sidebar-nav">
@@ -286,6 +287,7 @@ $query = sqlsrv_query($conn, $sql);
                                 <td>
                                     <div class="small fw-600 text-dark"><?= htmlspecialchars($row['Email_User']) ?></div>
                                     <div class="text-success small fw-bold"><i class="bi bi-whatsapp me-1"></i><?= htmlspecialchars($row['No_Hp']) ?></div>
+                                end text-muted small py-1 shadow-sm
                                 </td>
                                 <td>
                                     <span class="status-badge <?= $row['Status_User'] == 'Active' ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle' ?>">
