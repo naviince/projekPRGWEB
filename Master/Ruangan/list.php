@@ -8,6 +8,17 @@ if (!isset($_SESSION['status']) || $_SESSION['role'] != 'Admin') {
     exit();
 }
 
+// AMBIL DATA SESSION UNTUK SIDEBAR
+$session_id_user = $_SESSION['id_user'];
+$session_email   = $_SESSION['email'];
+
+// AMBIL NAMA LENGKAP DARI TABEL KARYAWAN
+$sql_profile = "SELECT Nama_Karyawan FROM Karyawan WHERE ID_User = ?";
+$stmt_profile = sqlsrv_query($conn, $sql_profile, array($session_id_user));
+$row_p = sqlsrv_fetch_array($stmt_profile, SQLSRV_FETCH_ASSOC);
+
+$nama_display = ($row_p) ? $row_p['Nama_Karyawan'] : "Administrator";
+
 // 1. STATISTIK: Ruangan Paling Sering Dipesan
 $top_ruangan = null;
 $sql_top = "SELECT TOP 1 r.Nama_Ruangan, COUNT(o.ID_Order) as total_booking
@@ -50,38 +61,75 @@ $msg = $_GET['msg'] ?? '';
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
     <style>
         :root {
-            --pink: #e8457a;
-            --pink-dark: #c73165;
-            --pink-deep: #8b1a3e;
-            --bg: #fdf2f7;
+            --pink-50:   #fff0f5;
+            --pink-100:  #ffe0ec;
+            --pink-200:  #ffb3cc;
+            --pink-400:  #f472a0;
+            --pink-500:  #e8457a;
+            --pink-600:  #c73165;
+            --pink-700:  #a01f4e;
+            --rose-dark: #8b1a3e;
+            --white:     #ffffff;
+            --gray-400:  #9ca3af;
+            --gray-500:  #6b7280;
+            --gray-700:  #374151;
+            --gray-900:  #111827;
+            --sidebar-w: 240px;
+            --radius: 12px;
+            --shadow-sm: 0 2px 8px rgba(0,0,0,.04);
+            --shadow-md: 0 10px 25px -5px rgba(232, 69, 122, 0.1), 0 8px 10px -6px rgba(232, 69, 122, 0.1);
         }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            background: var(--bg);
             font-family: 'Plus Jakarta Sans', sans-serif;
-            color: #334155;
+            background: var(--pink-50);
+            color: var(--gray-900);
+            display: flex;
+            min-height: 100vh;
+            font-size: 14px;
         }
 
-        /* ---- Header ---- */
-        .page-header { margin-bottom: 28px; }
-        .back-link {
-            text-decoration: none;
-            color: #64748b;
-            font-weight: 700;
-            font-size: 13px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            margin-bottom: 6px;
-            transition: color 0.2s;
+        /* ============================================================
+           KONSISTENSI SIDEBAR CSS (Sama di semua halaman)
+           ============================================================ */
+        .sidebar { width: var(--sidebar-w); height: 100vh; background: var(--white); border-right: 1px solid var(--pink-100); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; z-index: 100; box-shadow: 4px 0 15px rgba(0,0,0,0.02); }
+        .sidebar-brand { padding: 24px 20px; border-bottom: 1px solid var(--pink-100); }
+        .sidebar-brand h2 { font-size: 18px; font-weight: 800; color: var(--pink-600); letter-spacing: -0.5px; margin: 0 0 2px 0 !important; line-height: 1.2; }
+        .sidebar-brand p { font-size: 11px; color: var(--gray-400); margin: 0 !important; line-height: 1.2; }
+        
+        .sidebar-nav { flex: 1; padding: 8px 0; overflow-y: auto; }
+        .sidebar-nav::-webkit-scrollbar { width: 4px; }
+        .sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+        .sidebar-nav::-webkit-scrollbar-thumb { background: var(--pink-100); border-radius: 4px; }
+        .sidebar-nav::-webkit-scrollbar-thumb:hover { background: var(--pink-200); }
+
+        .nav-label { padding: 14px 20px 4px !important; font-size: 10px; font-weight: 800; color: var(--gray-400); text-transform: uppercase; letter-spacing: 1px; display: block; margin: 0 !important; }
+        .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 20px !important; cursor: pointer; color: var(--gray-500); text-decoration: none; font-weight: 500; transition: all 0.3s ease; margin: 0 !important; }
+        .nav-item:hover { color: var(--pink-600); background: var(--pink-50); padding-left: 25px; }
+        .nav-item.active { color: var(--pink-600); background: var(--pink-50); border-left: 4px solid var(--pink-600); font-weight: 700; }
+        
+        .sidebar-profile { padding: 16px 20px; border-top: 1px solid var(--pink-100); background: #fafafa; }
+        .user-info h4 { font-size: 13px; font-weight: 700; color: var(--gray-900); margin: 0 0 2px 0 !important; line-height: 1.2; }
+        .user-info p { font-size: 11px; color: var(--gray-500); margin: 0 0 8px 0 !important; line-height: 1.2; }
+        .btn-logout { width: 100%; padding: 8px !important; border-radius: 10px; border: none; background: var(--pink-600); color: white; font-weight: 700; cursor: pointer; transition: 0.3s; }
+        .btn-logout:hover { background: var(--rose-dark); box-shadow: 0 4px 12px rgba(139, 26, 62, 0.2); }
+
+        /* Main Content */
+        .main { margin-left: var(--sidebar-w); flex: 1; display: flex; flex-direction: column; }
+        .topbar {
+            background: var(--white); border-bottom: 1px solid var(--pink-100);
+            padding: 20px 32px; display: flex; justify-content: space-between; align-items: center;
         }
-        .back-link:hover { color: var(--pink); }
-        .page-header h2 { font-weight: 800; color: #1e293b; margin: 0; }
-        .page-header p { font-size: 13px; color: #94a3b8; margin: 4px 0 0; }
+        .topbar h1 { font-size: 22px; font-weight: 800; color: var(--gray-900); margin: 0; }
+        .topbar p  { font-size: 13px; color: var(--gray-500); margin: 4px 0 0; }
+
+        .content { padding: 28px 32px; }
 
         /* ---- Stat Cards ---- */
         .stats-row { display: flex; gap: 18px; margin-bottom: 28px; flex-wrap: wrap; }
@@ -97,7 +145,7 @@ $msg = $_GET['msg'] ?? '';
             align-items: center;
             gap: 18px;
         }
-        .stat-card.highlight { border-left: 5px solid var(--pink); }
+        .stat-card.highlight { border-left: 5px solid var(--pink-600); }
         .stat-card.stat-aktif { border-left: 5px solid #10b981; }
         .stat-card.stat-nonaktif { border-left: 5px solid #f59e0b; }
 
@@ -147,7 +195,7 @@ $msg = $_GET['msg'] ?? '';
         }
         .card-toolbar .count-badge {
             background: #ffe0ec;
-            color: var(--pink-dark);
+            color: var(--pink-600);
             font-size: 11px;
             font-weight: 800;
             padding: 4px 12px;
@@ -156,7 +204,7 @@ $msg = $_GET['msg'] ?? '';
         }
 
         .btn-pink {
-            background: linear-gradient(135deg, var(--pink), var(--pink-dark));
+            background: linear-gradient(135deg, var(--pink-500), var(--pink-600));
             color: white;
             border-radius: 12px;
             font-weight: 700;
@@ -242,7 +290,7 @@ $msg = $_GET['msg'] ?? '';
             transition: background 0.2s, border-color 0.2s;
             padding: 8px 12px;
         }
-        .btn-action:hover { background: #f8fafc; border-color: var(--pink); }
+        .btn-action:hover { background: #f8fafc; border-color: var(--pink-500); }
 
         /* Empty State */
         .empty-state {
@@ -266,180 +314,228 @@ $msg = $_GET['msg'] ?? '';
 </head>
 <body>
 
-<div class="container py-5">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <h2>SpotLight Admin</h2>
+            <p>Studio Management System</p>
+        </div>
 
-    <!-- Header -->
-    <div class="page-header d-flex justify-content-between align-items-start flex-wrap gap-3">
-        <div>
-            <a href="../Admin/index.php" class="back-link">
-                <i class="bi bi-arrow-left-circle-fill"></i> KEMBALI KE DASHBOARD
+        <nav class="sidebar-nav">
+            <a href="../Admin/index.php" class="nav-item">
+                <i class="bi bi-speedometer2"></i> Dashboard
             </a>
-            <h2>Master Ruangan Studio</h2>
-            <p>Kelola daftar ruangan yang tersedia untuk sesi foto pelanggan.</p>
-        </div>
-        <a href="add.php" class="btn btn-pink">
-            <i class="bi bi-plus-lg"></i> Tambah Ruangan
-        </a>
-    </div>
 
-    <!-- Statistik -->
-    <div class="stats-row">
-        <!-- Terpopuler -->
-        <div class="stat-card highlight">
-            <div class="stat-icon pink">🔥</div>
-            <div class="stat-content">
-                <div class="label">Ruangan Terpopuler</div>
-                <div class="value" style="font-size:18px; line-height:1.3;">
-                    <?= ($top_ruangan && $top_ruangan['total_booking'] > 0) ? htmlspecialchars($top_ruangan['Nama_Ruangan']) : 'Belum Ada' ?>
-                </div>
-                <div class="sub"><?= $top_ruangan['total_booking'] ?? 0 ?> total booking</div>
+            <span class="nav-label">Autentikasi &amp; Akun</span>
+            <a href="../User/list.php" class="nav-item">
+                <i class="bi bi-person-lock"></i> Master User
+            </a>
+
+            <span class="nav-label">Master Data Profil</span>
+            <a href="../Admin/list.php" class="nav-item">
+                <i class="bi bi-shield-check"></i> Master Karyawan
+            </a>
+            <a href="../Pelanggan/list.php" class="nav-item">
+                <i class="bi bi-people"></i> Pelanggan
+            </a>
+            <a href="../Paket Foto/list.php" class="nav-item">
+                <i class="bi bi-camera"></i> Paket Foto
+            </a>
+            <a href="../Ruangan/list.php" class="nav-item active">
+                <i class="bi bi-door-open"></i> Ruangan
+            </a>
+            <a href="../Tema/list.php" class="nav-item">
+                <i class="bi bi-palette"></i> Tema Foto
+            </a>
+
+            <span class="nav-label">Operasional</span>
+            <a href="#" class="nav-item">
+                <i class="bi bi-calendar-event"></i> Booking Studio
+            </a>
+        </nav>
+
+        <div class="sidebar-profile">
+            <div class="user-info">
+                <h4><?php echo htmlspecialchars($nama_display); ?></h4>
+                <p><?php echo htmlspecialchars($session_email); ?></p>
             </div>
+            <button class="btn-logout" onclick="location.href='../../logout.php'">
+                <i class="bi bi-box-arrow-right me-1"></i> Logout
+            </button>
         </div>
+    </aside>
 
-        <!-- Total Aktif -->
-        <div class="stat-card stat-aktif">
-            <div class="stat-icon green">✅</div>
-            <div class="stat-content">
-                <div class="label">Ruangan Aktif</div>
-                <div class="value"><?= (int)($count_data['aktif'] ?? 0) ?></div>
-                <div class="sub">Tersedia untuk booking</div>
-            </div>
-        </div>
-
-        <!-- Total Nonaktif -->
-        <div class="stat-card stat-nonaktif">
-            <div class="stat-icon amber">⏸️</div>
-            <div class="stat-content">
-                <div class="label">Dinonaktifkan</div>
-                <div class="value"><?= (int)($count_data['nonaktif'] ?? 0) ?></div>
-                <div class="sub">Tidak tampil ke pelanggan</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Tabel Ruangan -->
-    <div class="main-card">
-        <div class="card-toolbar">
+    <!-- MAIN CONTENT AREA -->
+    <main class="main">
+        <div class="topbar">
             <div>
-                <h5 class="d-inline">Daftar Ruangan
-                    <span class="count-badge"><?= (int)($count_data['total'] ?? 0) ?> Ruangan</span>
-                </h5>
+                <h1>Master Ruangan Studio</h1>
+                <p>Kelola daftar ruangan yang tersedia untuk sesi foto pelanggan.</p>
+            </div>
+            <a href="add.php" class="btn-pink shadow-sm">
+                <i class="bi bi-plus-lg"></i> Tambah Ruangan
+            </a>
+        </div>
+
+        <div class="content">
+            <!-- Statistik -->
+            <div class="stats-row">
+                <!-- Terpopuler -->
+                <div class="stat-card highlight">
+                    <div class="stat-icon pink">🔥</div>
+                    <div class="stat-content">
+                        <div class="label">Ruangan Terpopuler</div>
+                        <div class="value" style="font-size:18px; line-height:1.3;">
+                            <?= ($top_ruangan && $top_ruangan['total_booking'] > 0) ? htmlspecialchars($top_ruangan['Nama_Ruangan']) : 'Belum Ada' ?>
+                        </div>
+                        <div class="sub"><?= $top_ruangan['total_booking'] ?? 0 ?> total booking</div>
+                    </div>
+                </div>
+
+                <!-- Total Aktif -->
+                <div class="stat-card stat-aktif">
+                    <div class="stat-icon green">✅</div>
+                    <div class="stat-content">
+                        <div class="label">Ruangan Aktif</div>
+                        <div class="value"><?= (int)($count_data['aktif'] ?? 0) ?></div>
+                        <div class="sub">Tersedia untuk booking</div>
+                    </div>
+                </div>
+
+                <!-- Total Nonaktif -->
+                <div class="stat-card stat-nonaktif">
+                    <div class="stat-icon amber">⏸️</div>
+                    <div class="stat-content">
+                        <div class="label">Dinonaktifkan</div>
+                        <div class="value"><?= (int)($count_data['nonaktif'] ?? 0) ?></div>
+                        <div class="sub">Tidak tampil ke pelanggan</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabel Ruangan -->
+            <div class="main-card">
+                <div class="card-toolbar">
+                    <div>
+                        <h5 class="d-inline">Daftar Ruangan
+                            <span class="count-badge"><?= (int)($count_data['total'] ?? 0) ?> Ruangan</span>
+                        </h5>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th class="ps-4">Foto</th>
+                                <th>Nama &amp; Deskripsi</th>
+                                <th>Fasilitas</th>
+                                <th>Luas &amp; Kapasitas</th>
+                                <th>Status</th>
+                                <th class="text-end pe-4">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php
+                        $no_data = true;
+                        while ($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
+                            $no_data = false;
+                            $path_img = "../../assets/img/ruangan/" . $row['Foto_Ruangan'];
+                            $img_src  = (!empty($row['Foto_Ruangan']) && file_exists($path_img))
+                                            ? $path_img
+                                            : "https://placehold.co/400x300?text=No+Image";
+
+                            // Parse fasilitas jadi tag
+                            $fasilitas_arr = !empty($row['Fasilitas'])
+                                            ? array_slice(array_map('trim', explode(',', $row['Fasilitas'])), 0, 4)
+                                            : [];
+                        ?>
+                        <tr>
+                            <!-- Foto -->
+                            <td class="ps-4">
+                                <img src="<?= $img_src ?>" class="room-img" alt="<?= htmlspecialchars($row['Nama_Ruangan']) ?>">
+                            </td>
+
+                            <!-- Nama & Deskripsi -->
+                            <td>
+                                <div class="room-name"><?= htmlspecialchars($row['Nama_Ruangan']) ?></div>
+                                <div class="room-desc"><?= htmlspecialchars($row['Deskripsi']) ?></div>
+                            </td>
+
+                            <!-- Fasilitas -->
+                            <td>
+                                <?php if (!empty($fasilitas_arr)): ?>
+                                <div class="fasilitas-tags">
+                                    <?php foreach ($fasilitas_arr as $f): ?>
+                                        <span class="fasilitas-tag"><?= htmlspecialchars($f) ?></span>
+                                    <?php endforeach; ?>
+                                </div>
+                                <?php else: ?>
+                                    <span class="text-muted" style="font-size:12px;">–</span>
+                                <?php endif; ?>
+                            </td>
+
+                            <!-- Luas & Kapasitas -->
+                            <td>
+                                <div class="info-luas">
+                                    <i class="bi bi-aspect-ratio me-1 text-muted"></i><?= htmlspecialchars($row['Luas_Ruangan'] ?: '–') ?>
+                                </div>
+                                <div class="info-kap">
+                                    <i class="bi bi-people-fill"></i> Maks <?= (int)$row['Kapasitas'] ?> Orang
+                                </div>
+                            </td>
+
+                            <!-- Status -->
+                            <td>
+                                <span class="status-badge <?= $row['Status'] == 'Aktif' ? 'bg-aktif' : 'bg-nonaktif' ?>">
+                                    <?= $row['Status'] ?>
+                                </span>
+                            </td>
+
+                            <!-- Aksi -->
+                            <td class="text-end pe-4">
+                                <div class="btn-group shadow-sm rounded-3 overflow-hidden">
+                                    <!-- Edit -->
+                                    <a href="edit.php?id=<?= $row['ID_Ruangan'] ?>" class="btn btn-sm btn-action px-3" title="Edit Ruangan">
+                                        <i class="bi bi-pencil-square text-primary"></i>
+                                    </a>
+                                    <!-- Soft Delete (Toggle Status) -->
+                                    <button onclick="toggleStatus(<?= $row['ID_Ruangan'] ?>, '<?= $row['Status'] ?>')" class="btn btn-sm btn-action px-3" title="Aktifkan / Nonaktifkan">
+                                        <i class="bi <?= $row['Status'] == 'Aktif' ? 'bi-toggle-on text-success' : 'bi-toggle-off text-muted' ?>"></i>
+                                    </button>
+                                    <!-- Hard Delete -->
+                                    <button onclick="confirmDelete(<?= $row['ID_Ruangan'] ?>)" class="btn btn-sm btn-action px-3" title="Hapus Permanen">
+                                        <i class="bi bi-trash3 text-danger"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php endwhile; ?>
+
+                        <?php if ($no_data): ?>
+                        <tr>
+                            <td colspan="6">
+                                <div class="empty-state">
+                                    <div class="icon">🏗️</div>
+                                    <h5>Belum Ada Ruangan</h5>
+                                    <p>Tambahkan ruangan studio pertama Anda untuk mulai menerima booking pelanggan.</p>
+                                    <a href="add.php" class="btn btn-pink mt-2">
+                                        <i class="bi bi-plus-lg"></i> Tambah Ruangan Pertama
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card-footer-custom">
+                    <small>SpotLight Studio – Room Management v1.0</small>
+                </div>
             </div>
         </div>
-
-        <div class="table-responsive">
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th class="ps-4">Foto</th>
-                        <th>Nama & Deskripsi</th>
-                        <th>Fasilitas</th>
-                        <th>Luas & Kapasitas</th>
-                        <th>Status</th>
-                        <th class="text-end pe-4">Aksi</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php
-                $no_data = true;
-                while ($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
-                    $no_data = false;
-                    $path_img = "../../assets/img/ruangan/" . $row['Foto_Ruangan'];
-                    $img_src  = (!empty($row['Foto_Ruangan']) && file_exists($path_img))
-                                    ? $path_img
-                                    : "https://placehold.co/400x300?text=No+Image";
-
-                    // Parse fasilitas jadi tag
-                    $fasilitas_arr = !empty($row['Fasilitas'])
-                                    ? array_slice(array_map('trim', explode(',', $row['Fasilitas'])), 0, 4)
-                                    : [];
-                ?>
-                <tr>
-                    <!-- Foto -->
-                    <td class="ps-4">
-                        <img src="<?= $img_src ?>" class="room-img" alt="<?= htmlspecialchars($row['Nama_Ruangan']) ?>">
-                    </td>
-
-                    <!-- Nama & Deskripsi -->
-                    <td>
-                        <div class="room-name"><?= htmlspecialchars($row['Nama_Ruangan']) ?></div>
-                        <div class="room-desc"><?= htmlspecialchars($row['Deskripsi']) ?></div>
-                    </td>
-
-                    <!-- Fasilitas -->
-                    <td>
-                        <?php if (!empty($fasilitas_arr)): ?>
-                        <div class="fasilitas-tags">
-                            <?php foreach ($fasilitas_arr as $f): ?>
-                                <span class="fasilitas-tag"><?= htmlspecialchars($f) ?></span>
-                            <?php endforeach; ?>
-                        </div>
-                        <?php else: ?>
-                            <span class="text-muted" style="font-size:12px;">–</span>
-                        <?php endif; ?>
-                    </td>
-
-                    <!-- Luas & Kapasitas -->
-                    <td>
-                        <div class="info-luas">
-                            <i class="bi bi-aspect-ratio me-1 text-muted"></i><?= htmlspecialchars($row['Luas_Ruangan'] ?: '–') ?>
-                        </div>
-                        <div class="info-kap">
-                            <i class="bi bi-people-fill"></i> Maks <?= (int)$row['Kapasitas'] ?> Orang
-                        </div>
-                    </td>
-
-                    <!-- Status -->
-                    <td>
-                        <span class="status-badge <?= $row['Status'] == 'Aktif' ? 'bg-aktif' : 'bg-nonaktif' ?>">
-                            <?= $row['Status'] ?>
-                        </span>
-                    </td>
-
-                    <!-- Aksi -->
-                    <td class="text-end pe-4">
-                        <div class="btn-group shadow-sm rounded-3 overflow-hidden">
-                            <!-- Edit -->
-                            <a href="edit.php?id=<?= $row['ID_Ruangan'] ?>" class="btn btn-sm btn-action px-3" title="Edit Ruangan">
-                                <i class="bi bi-pencil-square text-primary"></i>
-                            </a>
-                            <!-- Soft Delete (Toggle Status) -->
-                            <button onclick="toggleStatus(<?= $row['ID_Ruangan'] ?>, '<?= $row['Status'] ?>')" class="btn btn-sm btn-action px-3" title="Aktifkan / Nonaktifkan">
-                                <i class="bi <?= $row['Status'] == 'Aktif' ? 'bi-toggle-on text-success' : 'bi-toggle-off text-muted' ?>"></i>
-                            </button>
-                            <!-- Hard Delete -->
-                            <button onclick="confirmDelete(<?= $row['ID_Ruangan'] ?>)" class="btn btn-sm btn-action px-3" title="Hapus Permanen">
-                                <i class="bi bi-trash3 text-danger"></i>
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-                <?php endwhile; ?>
-
-                <?php if ($no_data): ?>
-                <tr>
-                    <td colspan="6">
-                        <div class="empty-state">
-                            <div class="icon">🏗️</div>
-                            <h5>Belum Ada Ruangan</h5>
-                            <p>Tambahkan ruangan studio pertama Anda untuk mulai menerima booking pelanggan.</p>
-                            <a href="add.php" class="btn btn-pink mt-2">
-                                <i class="bi bi-plus-lg"></i> Tambah Ruangan Pertama
-                            </a>
-                        </div>
-                    </td>
-                </tr>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-
-        <div class="card-footer-custom">
-            <small>SpotLight Studio – Room Management v1.0</small>
-        </div>
-    </div>
-
-</div>
+    </main>
 
 <!-- JavaScript -->
 <script>

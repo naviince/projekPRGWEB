@@ -1,5 +1,5 @@
 <?php
-$serverName = "SATYAA\SATYASERVER";
+$serverName = "ELVINA-PARAMITA";
 $connectionOptions = array(
     "Database" => "SpotLight",
     "TrustServerCertificate" => true

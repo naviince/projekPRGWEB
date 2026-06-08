@@ -35,6 +35,11 @@ if (isset($_POST['simpan'])) {
             $new_filename = "tema_" . time() . "." . $ext;
             $upload_path  = "../../assets/img/tema/" . $new_filename;
 
+            // Membuat folder referensi jika belum ada
+            if (!file_exists("../../assets/img/tema/")) {
+                mkdir("../../assets/img/tema/", 0777, true);
+            }
+
             if (move_uploaded_file($foto_tmp, $upload_path)) {
                 $sql = "INSERT INTO Tema_Foto (Nama_Tema, Konsep, Suasana, Properti_Pendukung, Deskripsi, Foto_Tema, Status)
                         VALUES (?, ?, ?, ?, ?, ?, 'Aktif')";
