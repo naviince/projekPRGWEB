@@ -16,7 +16,7 @@ if (isset($_POST['simpan'])) {
     $nama   = trim($_POST['nama']);
     $email  = trim($_POST['email']);
     $pass   = $_POST['password'];
-    $hp     = trim($_POST['no_hp']);
+    $hp     = trim($_POST['no_hp']); // Input dari form, misal: "+62 895..."
     $alamat = trim($_POST['alamat']);
 
     // --- VALIDASI AKURAT & LOGIS (SERVER SIDE) ---
@@ -26,11 +26,17 @@ if (isset($_POST['simpan'])) {
         $error_nama = "Nama hanya boleh berisi huruf!";
     }
 
-    // Validasi Nomor HP: Harus angka dan panjang logis (10-13 digit)
-    if (!ctype_digit($hp)) {
+    // --- MODIFIKASI VALIDASI NOMOR HP (STEP 1) ---
+    // 1. Kita bersihkan dulu karakter '+' dan ' ' (spasi) agar sisa angka saja
+    $hp_clean = str_replace(['+', ' '], '', $hp); 
+
+    // 2. Cek apakah sisanya benar-benar angka
+    if (!ctype_digit($hp_clean)) {
         $error_hp = "Nomor Telepon harus berupa angka!";
-    } elseif (strlen($hp) < 10 || strlen($hp) > 13) {
-        $error_hp = "Nomor Telepon harus 10-13 digit!";
+    } 
+    // 3. Cek panjang logis: 62 (2 digit) + nomor HP (9-12 digit) = 11-14 digit
+    elseif (strlen($hp_clean) < 11 || strlen($hp_clean) > 14) {
+        $error_hp = "Nomor Telepon tidak valid (Harus 11-14 digit termasuk 62)!";
     }
 
     // Validasi Email
@@ -42,6 +48,10 @@ if (isset($_POST['simpan'])) {
     if (strlen($alamat) < 10) {
         $error_alamat = "Mohon isi alamat lengkap (Min. 10 Karakter)!";
     }
+
+    // --- CATATAN PENTING ---
+    // Saat insert ke database nanti, pastikan pakai variabel $hp_clean 
+    // supaya yang tersimpan angkanya saja (contoh: 628951234567)
 
     // 2. Jika validasi lolos, cek duplikasi email di database
     if ($error_nama == "" && $error_hp == "" && $error_email == "" && $error_alamat == "") {
@@ -163,15 +173,22 @@ if (isset($_POST['simpan'])) {
 
                         <!-- WHATSAPP & PASSWORD -->
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Nomor Telepon</label>
-                            <input type="text" name="no_hp" id="inputHP" class="form-control <?= ($error_hp != '') ? 'is-invalid' : '' ?>" placeholder="08..." value="<?= @$_POST['no_hp'] ?>" required>
-                            <?php if($error_hp): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_hp ?></div><?php endif; ?>
-                        </div>
+    <label class="form-label">Nomor Telepon</label>
+    <input type="text" name="no_hp" id="inputHP" 
+           class="form-control <?= ($error_hp != '') ? 'is-invalid' : '' ?>" 
+           value="<?= isset($_POST['no_hp']) ? $_POST['no_hp'] : '+62 ' ?>" required>
+    <?php if($error_hp): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_hp ?></div><?php endif; ?>
+</div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Kata Sandi</label>
-                            <input type="password" name="password" class="form-control" placeholder="••••••••" required>
-                        </div>
-
+    <label class="form-label">Kata Sandi</label>
+    <div class="position-relative">
+        <input type="password" name="password" id="inputPass" class="form-control" placeholder="••••••••" required>
+        <!-- Ikon Mata -->
+        <i class="bi bi-eye-slash position-absolute top-50 end-0 translate-middle-y me-3 text-muted" 
+           id="togglePassword" 
+           style="cursor: pointer; z-index: 10;"></i>
+    </div>
+</div>
                         <!-- ALAMAT (VALIDASI MIN 10 KARAKTER) -->
                         <div class="col-md-12 mb-4">
                             <label class="form-label">Alamat Domisili</label>
@@ -197,13 +214,52 @@ if (isset($_POST['simpan'])) {
     </div>
 
     <!-- SCRIPT VALIDASI REAL-TIME -->
-    <script>
-        document.getElementById('inputNama').oninput = function() { this.value = this.value.replace(/[^a-zA-Z ]/g, ''); };
-        document.getElementById('inputHP').oninput = function() {
-            this.value = this.value.replace(/[^0-9]/g, '');
-            if(this.value.length > 13) this.value = this.value.slice(0, 13);
-        };
-    </script>
+   <script>
+    document.getElementById('inputNama').oninput = function() { 
+        this.value = this.value.replace(/[^a-zA-Z ]/g, ''); 
+    };
+
+    const inputHP = document.getElementById('inputHP');
+    const prefix = '+62 ';
+
+    inputHP.oninput = function() {
+        // Cegah user menghapus prefix "+62 "
+        if (!this.value.startsWith(prefix)) {
+            this.value = prefix;
+        }
+
+        // Hanya izinkan angka setelah prefix
+        let parts = this.value.split(prefix);
+        let digits = parts[1].replace(/[^0-9]/g, '');
+        
+        // Batasi maksimal 13 digit angka setelah prefix (Total 17 karakter termasuk +62 )
+        if (digits.length > 13) {
+            digits = digits.slice(0, 13);
+        }
+
+        this.value = prefix + digits;
+    };
+
+    // Mencegah kursor diletakkan di tengah prefix saat diklik
+    inputHP.onclick = function() {
+        if (this.selectionStart < prefix.length) {
+            this.setSelectionRange(prefix.length, prefix.length);
+        }
+    };
+    // SCRIPT SHOW/HIDE PASSWORD
+const togglePassword = document.querySelector('#togglePassword');
+const password = document.querySelector('#inputPass');
+
+togglePassword.addEventListener('click', function () {
+    // Toggle tipe input (password ke text atau sebaliknya)
+    const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+    password.setAttribute('type', type);
+    
+    // Toggle ikon (bi-eye-slash ke bi-eye)
+    this.classList.toggle('bi-eye');
+    this.classList.toggle('bi-eye-slash');
+});
+</script>
 
     <?php if($success): ?>
     <script>

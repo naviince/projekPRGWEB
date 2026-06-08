@@ -17,7 +17,11 @@ if (isset($_POST['simpan'])) {
     $nama   = trim($_POST['nama']);
     $email  = trim($_POST['email']);
     $pass   = $_POST['password'];
-    $hp     = trim($_POST['no_hp']);
+    $hp     = trim($_POST['no_hp']); // Mengambil data asli (Contoh: +62 878...)
+    
+    // --- TAMBAHKAN BARIS INI: Untuk membersihkan karakter agar bisa divalidasi ---
+    $hp_bersih = str_replace(['+', ' '], '', $hp); // Hasilnya jadi angka saja (Contoh: 62878...)
+
     $alamat = trim($_POST['alamat']);
     $role   = $_POST['role_user'];
 
@@ -28,11 +32,12 @@ if (isset($_POST['simpan'])) {
         $error_nama = "Nama hanya boleh berisi huruf!";
     }
 
-    // Validasi No HP: Harus angka dan 10-13 digit
-    if (!ctype_digit($hp)) {
+    // --- MODIFIKASI VALIDASI HP: Gunakan $hp_bersih agar tanda '+' tidak dianggap error ---
+    if (!ctype_digit($hp_bersih)) {
         $error_hp = "Nomor WhatsApp harus berupa angka!";
-    } elseif (strlen($hp) < 10 || strlen($hp) > 13) {
-        $error_hp = "Nomor HP harus 10-13 digit!";
+    } elseif (strlen($hp_bersih) < 11 || strlen($hp_bersih) > 15) {
+        // Hitungan: 62 + minimal 9 angka = 11 karakter
+        $error_hp = "Nomor HP tidak valid (minimal 10 angka setelah +62)!";
     }
 
     // Validasi Email Format
@@ -112,6 +117,14 @@ if (isset($_POST['simpan'])) {
         .btn-simpan { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: white; border-radius: 18px; padding: 16px; font-weight: 800; border: none; width: 100%; transition: 0.4s; margin-top: 15px; font-size: 16px; box-shadow: 0 10px 30px rgba(232, 69, 122, 0.3); }
         .error-text { color: #ef4444; font-size: 11px; font-weight: 700; margin-top: 6px; display: flex; align-items: center; gap: 5px; }
         .is-invalid { border-color: #ef4444 !important; background-color: #fff1f2 !important; }
+        .toggle-password {
+    cursor: pointer;
+    transition: 0.3s;
+    z-index: 10;
+}
+.toggle-password:hover {
+    color: var(--p-pink) !important;
+}
     </style>
 </head>
 <body>
@@ -142,16 +155,20 @@ if (isset($_POST['simpan'])) {
 
                         <!-- EMAIL -->
                         <div class="col-md-12 mb-3">
-                            <label class="form-label">Email Instansi</label>
+                            <label class="form-label">Email</label>
                             <input type="email" name="email" class="form-control <?= ($error_email != '') ? 'is-invalid' : '' ?>" placeholder="karyawan@spotlight.com" value="<?= @$_POST['email'] ?>" required>
                             <?php if($error_email): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_email ?></div><?php endif; ?>
                         </div>
 
                         <!-- NO HP & ROLE -->
                        <!-- KOLOM NOMOR TELEPON & ROLE (BERDAMPINGAN) -->
+<!-- Cari bagian input no_hp dan ganti menjadi seperti ini -->
 <div class="col-md-6 mb-3">
     <label class="form-label">Nomor Telepon</label>
-    <input type="text" name="no_hp" id="inputHP" class="form-control <?= ($error_hp != '') ? 'is-invalid' : '' ?>" placeholder="08..." value="<?= @$_POST['no_hp'] ?>" required>
+    <input type="text" name="no_hp" id="inputHP" 
+           class="form-control <?= ($error_hp != '') ? 'is-invalid' : '' ?>" 
+           placeholder="+62 ..." 
+           value="<?= isset($_POST['no_hp']) ? @$_POST['no_hp'] : '+62 ' ?>" required>
     <?php if($error_hp): ?><div class="error-text"><?= $error_hp ?></div><?php endif; ?>
 </div>
 
@@ -179,10 +196,13 @@ if (isset($_POST['simpan'])) {
 
                         <!-- PASSWORD -->
                         <div class="col-md-12 mb-4">
-                            <label class="form-label">Password Akses</label>
-                            <input type="password" name="password" class="form-control" placeholder="••••••••" required>
-                        </div>
-                    </div>
+    <label class="form-label">Password Akses</label>
+    <div class="position-relative">
+        <input type="password" name="password" id="inputPass" class="form-control pe-5" placeholder="••••••••" required>
+        <!-- Ikon Mata -->
+        <i class="bi bi-eye-slash position-absolute top-50 end-0 translate-middle-y me-3 text-muted toggle-password" id="btnToggle"></i>
+    </div>
+</div>
 
                     <?php if($error_general): ?>
                         <div class="alert alert-danger py-2 small rounded-3 mb-3 fw-bold"><?= $error_general ?></div>
@@ -200,9 +220,34 @@ if (isset($_POST['simpan'])) {
     <script>
         document.getElementById('inputNama').oninput = function() { this.value = this.value.replace(/[^a-zA-Z ]/g, ''); };
         document.getElementById('inputHP').oninput = function() {
-            this.value = this.value.replace(/[^0-9]/g, '');
-            if(this.value.length > 13) this.value = this.value.slice(0, 13);
-        };
+    let prefix = '+62 ';
+    
+    // Jika user mencoba menghapus awalan, kembalikan ke +62 
+    if (!this.value.startsWith(prefix)) {
+        this.value = prefix;
+    }
+
+    // Ambil karakter setelah '+62 ' dan hapus yang bukan angka
+    let val = this.value.substring(prefix.length);
+    val = val.replace(/[^0-9]/g, ''); 
+    
+    // Gabungkan kembali prefix dengan angka yang sudah dibersihkan
+    this.value = prefix + val;
+
+    // Batasi panjang karakter (misal max 13 angka setelah +62 = 17 karakter)
+    if (this.value.length > 17) {
+        this.value = this.value.slice(0, 17);
+    }
+};
+        const btnToggle = document.querySelector('#btnToggle');
+    const inputPass = document.querySelector('#inputPass');
+
+    btnToggle.addEventListener('click', function() {
+        const type = inputPass.getAttribute('type') === 'password' ? 'text' : 'password';
+        inputPass.setAttribute('type', type);
+        this.classList.toggle('bi-eye');
+        this.classList.toggle('bi-eye-slash');
+    });
     </script>
 
     <?php if($success): ?>

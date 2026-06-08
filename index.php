@@ -332,12 +332,108 @@ if (isset($_SESSION['status']) && $_SESSION['status'] == "login") {
 
   </main>
 
-  <footer class="py-5 mt-5 shadow-sm" style="background: var(--light-pink);">
-    <div class="container text-center">
-        <h4 class="fw-bold mb-3" style="color: var(--primary-pink);">SpotLight Studio.</h4>
-        <p class="text-muted mb-0 small">SpotLight Photo Studio 2026. Dibuat untuk kenangan Anda.</p>
+  <!-- ======= Footer ======= -->
+  <footer id="footer" class="footer mt-5" style="background-color: #fff; border-top: 1px solid #f1f1f1; padding-top: 60px;">
+    <div class="container">
+      <div class="row gy-4">
+        
+        <!-- Kolom 1: Tentang Studio -->
+        <div class="col-lg-4 col-md-12 footer-about">
+          <a href="index.php" class="sitename" style="text-decoration: none; font-size: 1.8rem; color: var(--primary-pink); font-weight: 800;">SpotLight.</a>
+          <p class="mt-3 text-muted" style="line-height: 1.6;">
+            Abadikan setiap momen berhargamu dengan pencahayaan sinematik dan sentuhan fotografer profesional. Kami hadir untuk menceritakan kisah Anda melalui lensa terbaik kami di Cikarang.
+          </p>
+          <div class="social-links d-flex mt-4">
+  <!-- Link Instagram -->
+  <a href="https://www.instagram.com/stynndka?igsh=MTg3a2R1MTczcnJoNQ%3D%3D&utm_source=qr" target="_blank" class="me-3 fs-4" style="color: var(--primary-pink); transition: 0.3s;">
+    <i class="bi bi-instagram"></i>
+  </a>
+
+  <!-- Link TikTok -->
+  <a href="https://www.tiktok.com/@satyaaaxieee?_r=1&_t=ZS-972qOmjC0F2" target="_blank" class="me-3 fs-4" style="color: var(--primary-pink); transition: 0.3s;">
+    <i class="bi bi-tiktok"></i>
+  </a>
+
+  <!-- Link WhatsApp (Sudah Aktif) -->
+  <!-- Ganti 6281234567890 dengan nomor WhatsApp Anda (awali dengan 62, bukan 0) -->
+  <a href="https://wa.me/6287899960176?text=Halo%20SpotLight%20Studio,%20saya%20ingin%20tanya%20mengenai%20paket%20foto." 
+     target="_blank" 
+     class="me-3 fs-4" 
+     style="color: var(--primary-pink); transition: 0.3s;">
+    <i class="bi bi-whatsapp"></i>
+  </a>
+
+  <!-- Link Facebook -->
+  <a href="https://facebook.com/nama_halaman" target="_blank" class="me-3 fs-4" style="color: var(--primary-pink); transition: 0.3s;">
+    <i class="bi bi-facebook"></i>
+  </a>
+</div>
+        </div>
+
+        <!-- Kolom 2: Navigasi Cepat -->
+        <div class="col-lg-2 col-6 footer-links">
+          <h5 class="fw-bold mb-3" style="color: var(--text-dark);">Navigasi</h5>
+          <ul class="list-unstyled">
+            <li class="mb-2"><a href="#hero" class="text-decoration-none text-muted">Beranda</a></li>
+            <li class="mb-2"><a href="#about" class="text-decoration-none text-muted">Tentang Kami</a></li>
+            <li class="mb-2"><a href="#portfolio" class="text-decoration-none text-muted">Galeri</a></li>
+            <li class="mb-2"><a href="#pricing" class="text-decoration-none text-muted">Paket Foto</a></li>
+          </ul>
+        </div>
+
+        <!-- Kolom 3: Layanan Kami -->
+        <div class="col-lg-2 col-6 footer-links">
+          <h5 class="fw-bold mb-3" style="color: var(--text-dark);">Layanan</h5>
+          <ul class="list-unstyled">
+            <li class="mb-2"><a href="#" class="text-decoration-none text-muted">Self Photo</a></li>
+            <li class="mb-2"><a href="#" class="text-decoration-none text-muted">Wisuda</a></li>
+            <li class="mb-2"><a href="#" class="text-decoration-none text-muted">Wedding/Prewed</a></li>
+            <li class="mb-2"><a href="#" class="text-decoration-none text-muted">Keluarga</a></li>
+          </ul>
+        </div>
+
+        <!-- Kolom 4: Kontak -->
+        <div class="col-lg-4 col-md-12 footer-contact">
+          <h5 class="fw-bold mb-3" style="color: var(--text-dark);">Hubungi Kami</h5>
+          <p class="text-muted">
+            Jl. Gilimanuk 3 No. 33, Cikarang Selatan<br>
+            Kab. Bekasi, Jawa Barat 17530<br><br>
+            <strong>WhatsApp:</strong> +62 87899960176<br>
+            <strong>Email:</strong> spotlightstudio@gmail.com<br>
+          </p>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Copyright Area -->
+    <div class="container mt-5 border-top py-4">
+      <div class="row align-items-center">
+        <div class="col-md-6 text-center text-md-start">
+          <p class="mb-0 text-muted small">
+            &copy; 2025 <strong>SpotLight Studio</strong>. All Rights Reserved.
+          </p>
+        </div>
+        <div class="col-md-6 text-center text-md-end mt-2 mt-md-0">
+          <p class="mb-0 text-muted small">
+            Designed with <i class="bi bi-heart-fill text-danger"></i> for your memories.
+          </p>
+        </div>
+      </div>
     </div>
   </footer>
+
+  <!-- Tambahkan CSS ini di dalam tag <style> Anda agar link footer ada efek hover-nya -->
+  <style>
+    .footer-links ul li a:hover {
+        color: var(--primary-pink) !important;
+        padding-left: 5px;
+        transition: 0.3s;
+    }
+    .social-links a:hover {
+        transform: translateY(-5px);
+    }
+  </style>
 
   <script src="assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
   <script src="assets/vendor/aos/aos.js"></script>
