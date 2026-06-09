@@ -133,6 +133,28 @@ if (isset($_POST['simpan'])) {
         .btn-simpan:hover { transform: translateY(-5px); box-shadow: 0 15px 35px rgba(232, 69, 122, 0.4); }
 
         .error-msg { color: #ef4444; font-size: 11px; font-weight: 700; margin-top: 5px; display: block; }
+        .btn-batal {
+    background: #e2e8f0; /* Warna abu-abu muda */
+    color: #475569;      /* Warna teks abu-abu tua */
+    border-radius: 16px; /* Menyamakan dengan border-radius .btn-simpan */
+    padding: 16px;
+    font-weight: 800;
+    border: none;
+    width: 100%;
+    transition: 0.4s;
+    margin-top: 12px;
+    font-size: 16px;
+    text-align: center;
+    display: block;
+    text-decoration: none;
+}
+
+.btn-batal:hover {
+    background: #cbd5e1;
+    color: #1e293b;
+    transform: translateY(-5px); /* Efek melayang yang sama dengan tombol pink */
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+}
     </style>
 </head>
 <body>
@@ -203,11 +225,13 @@ if (isset($_POST['simpan'])) {
                     </div>
 
                     <button type="submit" name="simpan" class="btn btn-simpan">
-                        <i class="bi bi-cloud-upload-fill me-2"></i>Publikasikan Paket
-                    </button>
+    <i class="bi bi-cloud-upload-fill me-2"></i>Publikasikan Paket
+</button>
                     
                     <div class="text-center mt-4">
-                        <a href="list.php" class="text-decoration-none text-muted small fw-bold"><i class="bi bi-arrow-left me-1"></i> Batal & Kembali</a>
+                        <a href="list.php" class="btn-batal shadow-sm">
+    <i class="bi bi-arrow-left me-1"></i> Batal & Kembali
+</a>
                     </div>
                 </form>
             </div>

@@ -125,6 +125,27 @@ if (isset($_POST['simpan'])) {
 .toggle-password:hover {
     color: var(--p-pink) !important;
 }
+/* Cari bagian .btn-simpan dan tambahkan ini di bawahnya */
+.btn-batal {
+    background: #e2e8f0; /* Warna abu-abu muda */
+    color: #475569;      /* Warna teks abu-abu tua */
+    border-radius: 18px;
+    padding: 16px;
+    font-weight: 800;
+    border: none;
+    width: 100%;
+    transition: 0.4s;
+    margin-top: 12px;
+    font-size: 16px;
+    text-align: center;
+    display: block;
+    text-decoration: none;
+}
+
+.btn-batal:hover {
+    background: #cbd5e1;
+    color: #1e293b;
+}
     </style>
 </head>
 <body>
@@ -208,9 +229,9 @@ if (isset($_POST['simpan'])) {
                         <div class="alert alert-danger py-2 small rounded-3 mb-3 fw-bold"><?= $error_general ?></div>
                     <?php endif; ?>
 
-                    <button type="submit" name="simpan" class="btn btn-simpan shadow-sm">Simpan Karyawan ✨</button>
+                    <button type="submit" name="simpan" class="btn btn-simpan shadow-sm">Simpan Karyawan</button>
                     <div class="text-center mt-4">
-                        <a href="list.php" class="text-muted small fw-bold text-decoration-none">Batalkan & Kembali ke Daftar</a>
+                        <a href="list.php" class="btn btn-batal shadow-sm">Batalkan & Kembali ke Daftar</a>
                     </div>
                 </form>
             </div>

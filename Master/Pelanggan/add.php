@@ -131,6 +131,29 @@ if (isset($_POST['simpan'])) {
 
         .error-text { color: #ef4444; font-size: 11px; font-weight: 700; margin-top: 6px; display: flex; align-items: center; gap: 5px; }
         .is-invalid { border-color: #ef4444 !important; background-color: #fff1f2 !important; }
+        /* Tambahkan di bawah style .btn-simpan:hover */
+.btn-batal { 
+    background: #e2e8f0; 
+    color: #475569; 
+    border-radius: 18px; 
+    padding: 16px; 
+    font-weight: 800; 
+    border: none; 
+    width: 100%; 
+    transition: 0.4s; 
+    margin-top: 12px; 
+    font-size: 16px; 
+    text-align: center;
+    display: block;
+    text-decoration: none;
+}
+
+.btn-batal:hover { 
+    background: #cbd5e1; 
+    color: #1e293b; 
+    transform: translateY(-5px); 
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+}
     </style>
 </head>
 <body>
@@ -202,11 +225,13 @@ if (isset($_POST['simpan'])) {
                     <?php endif; ?>
 
                     <button type="submit" name="simpan" class="btn btn-simpan shadow-sm">
-                        Simpan Data Pelanggan ✨
-                    </button>
+    Simpan Data Pelanggan
+</button>
                     
                     <div class="text-center mt-4">
-                        <a href="list.php" class="text-muted small fw-bold text-decoration-none"><i class="bi bi-arrow-left me-1"></i> Kembali ke Daftar</a>
+                        <a href="list.php" class="btn-batal shadow-sm">
+    <i class="bi bi-arrow-left me-1"></i> Kembali ke Daftar
+</a>
                     </div>
                 </form>
             </div>

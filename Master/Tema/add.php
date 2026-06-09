@@ -213,6 +213,28 @@ if (isset($_POST['simpan'])) {
             .side-visual { width: 100%; padding: 36px 30px; }
             .form-side { padding: 36px 24px; }
         }
+        .btn-batal {
+    background: #e2e8f0; /* Warna abu-abu muda */
+    color: #475569;      /* Warna teks abu-abu tua */
+    border-radius: 14px; /* Menyamakan dengan border-radius .btn-simpan */
+    padding: 14px 28px;
+    font-weight: 800;
+    border: none;
+    width: 100%;
+    font-size: 15px;
+    text-align: center;
+    display: block;
+    text-decoration: none;
+    transition: transform 0.25s, box-shadow 0.25s, background 0.25s;
+    margin-top: 12px;
+}
+
+.btn-batal:hover {
+    background: #cbd5e1;
+    color: #1e293b;
+    transform: translateY(-3px); /* Efek melayang yang sama dengan tombol simpan */
+    box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+}
     </style>
 </head>
 <body>
@@ -300,12 +322,14 @@ if (isset($_POST['simpan'])) {
                     <img id="preview-img" src="" alt="Preview Foto Tema">
                 </div>
 
-                <button type="submit" name="simpan" class="btn btn-simpan">
-                    <i class="bi bi-palette-fill me-2"></i>Simpan Tema Foto
-                </button>
+               <button type="submit" name="simpan" class="btn btn-simpan">
+    <i class="bi bi-palette-fill me-2"></i>Simpan Tema Foto
+</button>
 
                 <div class="text-center mt-3">
-                    <a href="list.php" class="text-decoration-none text-muted small fw-bold">Batal & Kembali</a>
+                    <a href="list.php" class="btn-batal shadow-sm">
+    <i class="bi bi-x-circle me-1"></i> Batal & Kembali
+</a>
                 </div>
             </form>
         </div>
