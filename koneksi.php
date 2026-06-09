@@ -1,9 +1,5 @@
 <?php
-<<<<<<< Updated upstream
-$serverName = "LAPTOP-FB8R0UH0";
-=======
-$serverName = "EEPS0DEJ\AL";
->>>>>>> Stashed changes
+$serverName = "SATYAA\SATYASERVER";
 $connectionOptions = array(
     "Database" => "SpotLight",
     "TrustServerCertificate" => true
