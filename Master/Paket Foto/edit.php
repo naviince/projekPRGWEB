@@ -105,6 +105,28 @@ if (isset($_POST['update'])) {
         #preview-container { width: 100%; height: 180px; border-radius: 20px; border: 3px dashed #e2e8f0; overflow: hidden; margin-bottom: 15px; }
         #preview-img { width: 100%; height: 100%; object-fit: cover; }
         .error-msg { color: #ef4444; font-size: 11px; font-weight: 700; margin-top: 5px; display: block; }
+        .btn-gray {
+    background: #e2e8f0; /* Warna abu-abu muda */
+    color: #475569;      /* Warna teks abu-abu tua */
+    border-radius: 18px; /* Menyamakan dengan border-radius .btn-update */
+    padding: 16px;
+    font-weight: 800;
+    border: none;
+    width: 100%;
+    transition: 0.4s;
+    margin-top: 12px;
+    font-size: 16px;
+    text-align: center;
+    display: block;
+    text-decoration: none;
+}
+
+.btn-gray:hover {
+    background: #cbd5e1;
+    color: #1e293b;
+    transform: translateY(-3px); /* Efek melayang yang sama dengan tombol update */
+    box-shadow: 0 10px 25px rgba(0,0,0,0.06);
+}
     </style>
 </head>
 <body>
@@ -168,9 +190,11 @@ if (isset($_POST['update'])) {
                     </div>
 
                     <button type="submit" name="update" class="btn btn-update shadow-sm">
-                        <i class="bi bi-cloud-arrow-up-fill me-2"></i>Simpan Perubahan Paket
-                    </button>
-                    <div class="text-center mt-3"><a href="list.php" class="text-muted small fw-bold text-decoration-none">Batal & Kembali</a></div>
+    <i class="bi bi-cloud-arrow-up-fill me-2"></i>Simpan Perubahan Paket
+</button>
+                    <div class="text-center mt-3"><a href="list.php" class="btn-gray shadow-sm">
+    <i class="bi bi-arrow-left me-1"></i> Batal & Kembali
+</a>
                 </form>
             </div>
         </div>

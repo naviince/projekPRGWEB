@@ -35,46 +35,44 @@ if (isset($_POST['update'])) {
     $nama   = trim($_POST['nama']);
     $email  = trim($_POST['email']);
     $pass   = $_POST['password'];
-    $hp     = trim($_POST['no_hp']);
+    $hp     = trim($_POST['no_hp']); 
+    
+    // --- STEP 1: MEMBERSIHKAN NOMOR HP UNTUK VALIDASI ---
+    $hp_clean = str_replace(['+', ' '], '', $hp); 
+
     $alamat = trim($_POST['alamat']);
     $status = $_POST['status'];
 
     // --- VALIDASI LOGIS & AKURAT (SERVER SIDE) ---
-    
-    // Validasi Nama
     if (!preg_match("/^[a-zA-Z ]*$/", $nama)) {
         $error_nama = "Nama hanya boleh berisi huruf!";
     } elseif (strlen($nama) < 3) {
         $error_nama = "Nama terlalu pendek!";
     }
 
-    // Validasi Email
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error_email = "Format email tidak valid!";
     }
 
-    // Validasi No HP
-    if (!ctype_digit($hp)) {
+    if (!ctype_digit($hp_clean)) {
         $error_hp = "Nomor telepon harus berupa angka!";
-    } elseif (strlen($hp) < 10 || strlen($hp) > 13) {
-        $error_hp = "Nomor telepon harus 10-13 digit!";
+    } elseif (strlen($hp_clean) < 11 || strlen($hp_clean) > 14) {
+        $error_hp = "Nomor telepon tidak valid (Minimal 9 angka setelah +62)!";
     }
 
-    // Validasi Alamat (Sesuai Logika Bisnis: Harus informatif)
     if (strlen($alamat) < 10) {
         $error_alamat = "Mohon isi alamat lengkap (Min. 10 Karakter)!";
     }
 
-    // 4. Jika validasi karakter lolos, cek duplikasi email di DB
+    // --- EKSEKUSI DATABASE ---
     if ($error_nama == "" && $error_email == "" && $error_hp == "" && $error_alamat == "") {
-        // Cek apakah email sudah dipakai orang lain
+        
         $sql_cek = "SELECT * FROM Users WHERE Email_User = ? AND ID_User != ?";
         $stmt_cek = sqlsrv_query($conn, $sql_cek, array($email, $id));
         
         if (sqlsrv_has_rows($stmt_cek)) {
             $error_email = "Email ini sudah digunakan oleh pengguna lain!";
         } else {
-            // MENGGUNAKAN TRANSACTION (Logika Akurat: Sinkronisasi Akun & Profil)
             sqlsrv_begin_transaction($conn);
 
             $sql_u = "UPDATE Users SET Email_User = ?, Password_User = ?, Status_User = ? WHERE ID_User = ?";
@@ -89,11 +87,11 @@ if (isset($_POST['update'])) {
                 echo "<script>setTimeout(function(){ window.location.href='list.php?msg=success_edit'; }, 1500);</script>";
             } else {
                 sqlsrv_rollback($conn);
-                $error_general = "Gagal memperbarui data. Database menolak perintah.";
+                $error_general = "Gagal memperbarui data database.";
             }
         }
     }
-}
+} // Tanda tutup ini sangat penting!
 ?>
 
 <!DOCTYPE html>
@@ -125,6 +123,49 @@ if (isset($_POST['update'])) {
 
         .error-text { color: #ef4444; font-size: 11px; font-weight: 700; margin-top: 6px; display: flex; align-items: center; gap: 5px; }
         .is-invalid { border-color: #ef4444 !important; background-color: #fff1f2 !important; }
+        /* Styling untuk Ikon Mata di Input Password */
+.password-wrapper {
+    position: relative;
+}
+.toggle-password {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    color: #94a3b8;
+    font-size: 18px;
+    z-index: 10;
+    transition: 0.3s;
+}
+.toggle-password:hover {
+    color: var(--p-pink);
+}
+/* Tambahkan padding kanan pada input agar teks tidak tertutup ikon */
+.input-password-custom {
+    padding-right: 45px !important;
+}
+.btn-gray {
+    background: #e2e8f0;
+    color: #475569;
+    border-radius: 18px;
+    padding: 16px;
+    font-weight: 800;
+    border: none;
+    width: 100%;
+    transition: 0.4s;
+    margin-top: 12px;
+    font-size: 16px;
+    text-align: center;
+    display: block;
+    text-decoration: none;
+}
+.btn-gray:hover {
+    background: #cbd5e1;
+    color: #1e293b;
+    transform: translateY(-3px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.06);
+}
     </style>
 </head>
 <body>
@@ -164,14 +205,31 @@ if (isset($_POST['update'])) {
 
                         <!-- WHATSAPP & PASSWORD -->
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Nomor Telepon </label>
-                            <input type="text" name="no_hp" id="inputHP" class="form-control <?= $error_hp ? 'is-invalid' : '' ?>" value="<?= htmlspecialchars($data['No_Hp']) ?>" placeholder="08..." required>
-                            <?php if($error_hp): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_hp ?></div><?php endif; ?>
-                        </div>
+    <label class="form-label">Nomor Telepon</label>
+    <?php 
+        // Konversi otomatis format lama (08...) ke format baru (+62 )
+        $phone_val = htmlspecialchars($data['No_Hp']);
+        if (str_starts_with($phone_val, '0')) {
+            $phone_val = '+62 ' . substr($phone_val, 1);
+        } elseif (!str_starts_with($phone_val, '+62 ')) {
+            $phone_val = '+62 ' . $phone_val;
+        }
+    ?>
+    <input type="text" name="no_hp" id="inputHP" class="form-control <?= $error_hp ? 'is-invalid' : '' ?>" 
+           value="<?= $phone_val ?>" required>
+    <?php if($error_hp): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_hp ?></div><?php endif; ?>
+</div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Kata Sandi Akses</label>
-                            <input type="text" name="password" class="form-control" value="<?= htmlspecialchars($data['Password_User']) ?>" placeholder="Masukkan sandi baru" required>
-                        </div>
+    <label class="form-label">Kata Sandi Akses</label>
+    <div class="password-wrapper">
+        <input type="password" name="password" id="inputPass" 
+               class="form-control input-password-custom" 
+               value="<?= htmlspecialchars($data['Password_User']) ?>" 
+               placeholder="Masukkan sandi baru" required>
+        <!-- Ikon Mata -->
+        <i class="bi bi-eye-slash toggle-password" id="btnToggle"></i>
+    </div>
+</div>
 
                         <!-- ALAMAT (DENGAN VALIDASI AKURAT) -->
                         <div class="col-md-12 mb-3">
@@ -190,11 +248,15 @@ if (isset($_POST['update'])) {
                     </div>
 
                     <button type="submit" name="update" class="btn btn-update shadow-sm">
-                        <i class="bi bi-check-circle-fill me-2"></i>Simpan Perubahan Customer
-                    </button>
+    <i class="bi bi-check-circle-fill me-2"></i>Simpan Perubahan Customer
+</button>
                     
                     <div class="text-center mt-4">
-                        <a href="list.php" class="text-muted small fw-bold text-decoration-none"><i class="bi bi-arrow-left me-1"></i> Kembali ke Daftar</a>
+                        <div class="text-center mt-4">
+    <a href="list.php" class="btn-gray shadow-sm">
+        <i class="bi bi-arrow-left me-1"></i> Kembali ke Daftar
+    </a>
+</div>
                     </div>
                 </form>
             </div>
@@ -202,13 +264,55 @@ if (isset($_POST['update'])) {
     </div>
 
     <!-- SCRIPT VALIDASI REAL-TIME -->
-    <script>
-        document.getElementById('inputNama').oninput = function() { this.value = this.value.replace(/[^a-zA-Z ]/g, ''); };
-        document.getElementById('inputHP').oninput = function() {
-            this.value = this.value.replace(/[^0-9]/g, '');
-            if(this.value.length > 13) this.value = this.value.slice(0, 13);
-        };
-    </script>
+<script>
+    // 1. Validasi Nama (Hanya Huruf)
+    document.getElementById('inputNama').oninput = function() {
+        this.value = this.value.replace(/[^a-zA-Z ]/g, '');
+    };
+
+    // 2. LOGIKA KUNCI PREFIX +62 (PERMANEN)
+    const inputHP = document.getElementById('inputHP');
+    const prefix = '+62 ';
+
+    function moveCursorToEnd() {
+        if (inputHP.selectionStart < prefix.length) {
+            inputHP.setSelectionRange(prefix.length, prefix.length);
+        }
+    }
+
+    inputHP.addEventListener('mousedown', () => setTimeout(moveCursorToEnd, 1));
+    inputHP.addEventListener('focus', moveCursorToEnd);
+    inputHP.addEventListener('keyup', moveCursorToEnd);
+
+    inputHP.addEventListener('keydown', function(e) {
+        if (this.selectionStart <= prefix.length) {
+            if (e.keyCode === 8 || e.keyCode === 46) {
+                e.preventDefault();
+            }
+        }
+    });
+
+    inputHP.addEventListener('input', function() {
+        if (!this.value.startsWith(prefix)) {
+            let remainingDigits = this.value.replace(/[^0-9]/g, '').substring(2); 
+            this.value = prefix + remainingDigits;
+        }
+        let parts = this.value.split(prefix);
+        let digits = parts[1].replace(/[^0-9]/g, '');
+        if (digits.length > 13) digits = digits.slice(0, 13);
+        this.value = prefix + digits;
+    });
+
+    // 3. SHOW/HIDE PASSWORD
+    const btnToggle = document.querySelector('#btnToggle');
+    const inputPass = document.querySelector('#inputPass');
+    btnToggle.addEventListener('click', function() {
+        const type = inputPass.getAttribute('type') === 'password' ? 'text' : 'password';
+        inputPass.setAttribute('type', type);
+        this.classList.toggle('bi-eye');
+        this.classList.toggle('bi-eye-slash');
+    });
+</script>
 
     <?php if($success): ?>
     <script>

@@ -10,36 +10,60 @@ $success = false;
 if (isset($_POST['register'])) {
     $nama   = trim($_POST['nama']);
     $email  = trim($_POST['email']);
-    $hp     = trim($_POST['no_hp']);
+    $hp     = trim($_POST['no_hp']); // Mengambil data asli (Contoh: +62 878...)
+    
+    // --- BARIS PENTING: Membersihkan karakter agar bisa divalidasi ---
+    $hp_bersih = str_replace(['+', ' '], '', $hp); // Hasilnya jadi angka saja (Contoh: 62878...)
+
     $alamat = trim($_POST['alamat']);
     $pass   = $_POST['password'];
     $confirm_pass = $_POST['confirm_password'];
 
     // --- VALIDASI SERVER SIDE (AKURAT & LOGIS) ---
-    if (empty($nama)) { $error_nama = "Nama lengkap wajib diisi!"; } 
-    elseif (!preg_match("/^[a-zA-Z ]*$/", $nama)) { $error_nama = "Nama hanya boleh berisi huruf!"; }
+    
+    // 1. Validasi Nama
+    if (empty($nama)) { 
+        $error_nama = "Nama lengkap wajib diisi!"; 
+    } elseif (!preg_match("/^[a-zA-Z ]*$/", $nama)) { 
+        $error_nama = "Nama hanya boleh berisi huruf!"; 
+    }
 
-    if (empty($hp)) { $error_hp = "Nomor telepon wajib diisi!"; } 
-    elseif (!ctype_digit($hp)) { $error_hp = "Nomor telepon harus berupa angka!"; } 
-    elseif (strlen($hp) < 10 || strlen($hp) > 13) { $error_hp = "Nomor telepon harus 10-13 digit!"; }
+    // 2. Validasi Nomor HP (Menggunakan $hp_bersih)
+    if (empty($hp)) { 
+        $error_hp = "Nomor telepon wajib diisi!"; 
+    } elseif (!ctype_digit($hp_bersih)) { 
+        // Kita cek $hp_bersih karena kalau cek $hp pasti error (ada tanda +)
+        $error_hp = "Nomor telepon harus berupa angka!"; 
+    } elseif (strlen($hp_bersih) < 11 || strlen($hp_bersih) > 14) { 
+        // Hitungan: 62 (2 digit) + minimal 9 angka (9 digit) = 11 karakter
+        $error_hp = "Nomor telepon tidak valid!"; 
+    }
 
-    if (empty($email)) { $error_email = "Email wajib diisi!"; } 
-    elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) { $error_email = "Format email salah!"; }
+    // 3. Validasi Email
+    if (empty($email)) { 
+        $error_email = "Email wajib diisi!"; 
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) { 
+        $error_email = "Format email salah!"; 
+    }
 
-    if (empty($alamat)) { $error_alamat = "Alamat wajib diisi!"; }
+    // 4. Validasi Alamat
+    if (empty($alamat)) { 
+        $error_alamat = "Alamat wajib diisi!"; 
+    }
 
-    // --- VALIDASI PASSWORD KOMPLEKSITAS ---
-    // Minimal 8 Karakter, mengandung Huruf, Angka, dan Simbol
+    // 5. Validasi Password Kompleksitas
     if (strlen($pass) < 8) {
         $error_pass = "Password minimal 8 karakter!";
     } elseif (!preg_match("/[A-Za-z]/", $pass) || !preg_match("/[0-9]/", $pass) || !preg_match("/[^A-Za-z0-9]/", $pass)) {
         $error_pass = "Password harus kombinasi Huruf, Angka, dan Simbol!";
     }
 
-    // --- VALIDASI VERIFIKASI PASSWORD ---
+    // 6. Validasi Konfirmasi Password
     if ($pass !== $confirm_pass) {
         $error_confirm_pass = "Konfirmasi password tidak cocok!";
     }
+
+    // Selanjutnya tinggal proses cek email duplikat dan INSERT...
 
     // 2. Jika validasi lolos, cek duplikasi & simpan
     if ($error_nama == "" && $error_hp == "" && $error_email == "" && $error_alamat == "" && $error_pass == "" && $error_confirm_pass == "") {
@@ -154,11 +178,12 @@ if (isset($_POST['register'])) {
                         </div>
 
                         <div class="col-md-12 mb-3">
-                            <label class="form-label">Nomor Telepon</label>
-                            <input type="text" name="no_hp" id="inputHP" class="form-control <?= ($error_hp != '') ? 'is-invalid' : '' ?>" placeholder="08..." value="<?= @$_POST['no_hp'] ?>" required>
-                            <?php if($error_hp): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_hp ?></div><?php endif; ?>
-                        </div>
-
+    <label class="form-label">Nomor Telepon</label>
+    <input type="text" name="no_hp" id="inputHP" 
+           class="form-control <?= ($error_hp != '') ? 'is-invalid' : '' ?>" 
+           value="<?= isset($_POST['no_hp']) ? @$_POST['no_hp'] : '+62 ' ?>" required>
+    <?php if($error_hp): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_hp ?></div><?php endif; ?>
+</div>
                         <!-- PASSWORD ROW -->
                        <!-- PASSWORD ROW -->
 <div class="col-md-6 mb-3">
@@ -205,6 +230,11 @@ if (isset($_POST['register'])) {
             this.value = this.value.replace(/[^0-9]/g, '');
             if(this.value.length > 13) this.value = this.value.slice(0, 13);
         };
+        <script>
+    document.getElementById('inputNama').oninput = function() {
+        this.value = this.value.replace(/[^a-zA-Z ]/g, '');
+    };
+</script>
     </script>
 
     <?php if($success): ?>
@@ -234,6 +264,57 @@ if (isset($_POST['register'])) {
     // Jalankan untuk password utama dan verifikasi
     setupPasswordToggle('btnPass', 'password');
     setupPasswordToggle('btnConfirmPass', 'confirm_password');
+</script>
+<script>
+    const inputHP = document.getElementById('inputHP');
+    const prefix = '+62 ';
+
+    // 1. Kunci Kursor: Paksa kursor selalu berada SETELAH "+62 "
+    function moveCursorToEnd() {
+        if (inputHP.selectionStart < prefix.length) {
+            inputHP.setSelectionRange(prefix.length, prefix.length);
+        }
+    }
+
+    // Jalankan kunci kursor saat klik, fokus, atau ketik
+    inputHP.addEventListener('mousedown', () => setTimeout(moveCursorToEnd, 1));
+    inputHP.addEventListener('focus', moveCursorToEnd);
+    inputHP.addEventListener('keyup', moveCursorToEnd);
+
+    // 2. Blokir Tombol Hapus: Mencegah Backspace & Delete menghancurkan prefix
+    inputHP.addEventListener('keydown', function(e) {
+        // Jika kursor berada di batas prefix (posisi 4)
+        if (this.selectionStart <= prefix.length) {
+            // Blokir Backspace (8) dan Delete (46)
+            if (e.keyCode === 8 || e.keyCode === 46) {
+                e.preventDefault();
+            }
+        }
+        
+        // Mencegah CTRL+A (Select All) lalu hapus
+        if (e.ctrlKey && e.keyCode === 65) {
+            // Biarkan Select All, tapi moveCursorToEnd akan menjaga kursor tetap aman
+        }
+    });
+
+    // 3. Jaring Pengaman Terakhir: Jika user melakukan 'drag & drop' atau cara aneh lainnya
+    inputHP.addEventListener('input', function() {
+        // Jika karena suatu alasan prefix berubah (misal sisa "+6"), paksa balik ke "+62 "
+        if (!this.value.startsWith(prefix)) {
+            // Ambil hanya angka yang tersisa di belakang jika ada
+            let remainingDigits = this.value.replace(/[^0-9]/g, '').substring(2); 
+            this.value = prefix + remainingDigits;
+        }
+
+        // Hanya izinkan angka setelah spasi
+        let parts = this.value.split(prefix);
+        let digits = parts[1].replace(/[^0-9]/g, '');
+        
+        // Batasi maksimal 13 digit angka saja
+        if (digits.length > 13) digits = digits.slice(0, 13);
+        
+        this.value = prefix + digits;
+    });
 </script>
 </body>
 </html>
