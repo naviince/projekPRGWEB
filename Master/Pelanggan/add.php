@@ -2,40 +2,35 @@
 session_start();
 include '../../koneksi.php';
 
-// Proteksi Halaman: Hanya Admin yang bisa menambah pelanggan dari sini
+// Proteksi Halaman: Hanya Admin yang bisa menambah pelanggan
 if (!isset($_SESSION['status']) || $_SESSION['role'] != 'Admin') {
     header("Location: ../../login.php");
     exit();
 }
 
-// 1. Inisialisasi variabel error agar tidak Undefined
-$error_nama = ""; $error_email = ""; $error_hp = ""; $error_alamat = ""; $error_general = "";
+// 1. Inisialisasi variabel error
+$error_nama = ""; $error_email = ""; $error_hp = ""; $error_alamat = ""; $error_pass = ""; $error_general = "";
 $success = false;
 
 if (isset($_POST['simpan'])) {
     $nama   = trim($_POST['nama']);
     $email  = trim($_POST['email']);
     $pass   = $_POST['password'];
-    $hp     = trim($_POST['no_hp']); // Input dari form, misal: "+62 895..."
+    $hp     = trim($_POST['no_hp']); 
     $alamat = trim($_POST['alamat']);
 
-    // --- VALIDASI AKURAT & LOGIS (SERVER SIDE) ---
+    // --- VALIDASI SERVER SIDE ---
     
-    // Validasi Nama: Hanya boleh huruf dan spasi
+    // Validasi Nama
     if (!preg_match("/^[a-zA-Z ]*$/", $nama)) {
         $error_nama = "Nama hanya boleh berisi huruf!";
     }
 
-    // --- MODIFIKASI VALIDASI NOMOR HP (STEP 1) ---
-    // 1. Kita bersihkan dulu karakter '+' dan ' ' (spasi) agar sisa angka saja
+    // Validasi Nomor HP
     $hp_clean = str_replace(['+', ' '], '', $hp); 
-
-    // 2. Cek apakah sisanya benar-benar angka
     if (!ctype_digit($hp_clean)) {
         $error_hp = "Nomor Telepon harus berupa angka!";
-    } 
-    // 3. Cek panjang logis: 62 (2 digit) + nomor HP (9-12 digit) = 11-14 digit
-    elseif (strlen($hp_clean) < 11 || strlen($hp_clean) > 14) {
+    } elseif (strlen($hp_clean) < 11 || strlen($hp_clean) > 14) {
         $error_hp = "Nomor Telepon tidak valid (Harus 11-14 digit termasuk 62)!";
     }
 
@@ -44,24 +39,30 @@ if (isset($_POST['simpan'])) {
         $error_email = "Format email tidak valid!";
     }
 
-    // Validasi Alamat: Minimal 10 karakter agar akurat sesuai proses bisnis
+    // Validasi Alamat
     if (strlen($alamat) < 10) {
         $error_alamat = "Mohon isi alamat lengkap (Min. 10 Karakter)!";
     }
 
-    // --- CATATAN PENTING ---
-    // Saat insert ke database nanti, pastikan pakai variabel $hp_clean 
-    // supaya yang tersimpan angkanya saja (contoh: 628951234567)
+    // --- VALIDASI KATA SANDI (HURUF, ANGKA, SIMBOL) ---
+    if (strlen($pass) < 8) {
+        $error_pass = "Kata sandi minimal 8 karakter!";
+    } elseif (!preg_match("/[a-zA-Z]/", $pass)) {
+        $error_pass = "Kata sandi wajib mengandung huruf!";
+    } elseif (!preg_match("/[0-9]/", $pass)) {
+        $error_pass = "Kata sandi wajib mengandung angka!";
+    } elseif (!preg_match("/[^a-zA-Z0-9]/", $pass)) {
+        $error_pass = "Kata sandi wajib mengandung simbol (contoh: @,#,$,!,%)!";
+    }
 
-    // 2. Jika validasi lolos, cek duplikasi email di database
-    if ($error_nama == "" && $error_hp == "" && $error_email == "" && $error_alamat == "") {
+    // 2. Jika validasi lolos, cek duplikasi email & simpan
+    if ($error_nama == "" && $error_hp == "" && $error_email == "" && $error_alamat == "" && $error_pass == "") {
         $sql_cek = "SELECT * FROM Users WHERE Email_User = ?";
         $stmt_cek = sqlsrv_query($conn, $sql_cek, array($email));
 
         if (sqlsrv_has_rows($stmt_cek)) {
             $error_email = "Email ini sudah terdaftar di sistem!";
         } else {
-            // 3. VALIDASI TRANSAKSI DATABASE (Akurat & Aman)
             sqlsrv_begin_transaction($conn);
 
             // A. Insert ke tabel Users
@@ -79,25 +80,20 @@ if (isset($_POST['simpan'])) {
                 $stmt2 = sqlsrv_query($conn, $sql2, array($new_id, $nama, $hp, $alamat));
 
                 if ($stmt2) {
-                    sqlsrv_commit($conn); // Simpan permanen jika keduanya sukses
+                    sqlsrv_commit($conn); 
                     $success = true;
-                    echo "<script>
-                        setTimeout(function() {
-                            window.location.href = 'list.php?msg=success_add';
-                        }, 1500);
-                    </script>";
                 } else {
-                    sqlsrv_rollback($conn); // Batalkan jika profil gagal
+                    sqlsrv_rollback($conn);
                     $error_general = "Gagal menyimpan biodata pelanggan.";
                 }
             } else {
-                sqlsrv_rollback($conn); // Batalkan jika akun gagal
+                sqlsrv_rollback($conn);
                 $error_general = "Kesalahan sistem saat membuat akun.";
             }
         }
     }
 }
-?>
+?>  
 
 <!DOCTYPE html>
 <html lang="id">
@@ -154,6 +150,7 @@ if (isset($_POST['simpan'])) {
     transform: translateY(-5px); 
     box-shadow: 0 10px 25px rgba(0,0,0,0.1);
 }
+.error-text { color: #ef4444; font-size: 11px; font-weight: 700; margin-top: 6px; display: flex; align-items: center; gap: 5px; }
     </style>
 </head>
 <body>
@@ -202,15 +199,20 @@ if (isset($_POST['simpan'])) {
            value="<?= isset($_POST['no_hp']) ? $_POST['no_hp'] : '+62 ' ?>" required>
     <?php if($error_hp): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_hp ?></div><?php endif; ?>
 </div>
-                        <div class="col-md-6 mb-3">
+                       <div class="col-md-6 mb-3">
     <label class="form-label">Kata Sandi</label>
     <div class="position-relative">
-        <input type="password" name="password" id="inputPass" class="form-control" placeholder="••••••••" required>
-        <!-- Ikon Mata -->
+        <!-- Tambahkan class PHP is-invalid di bawah ini -->
+        <input type="password" name="password" id="inputPass" 
+               class="form-control <?= ($error_pass != '') ? 'is-invalid' : '' ?>" 
+               placeholder="••••••••" required>
         <i class="bi bi-eye-slash position-absolute top-50 end-0 translate-middle-y me-3 text-muted" 
            id="togglePassword" 
            style="cursor: pointer; z-index: 10;"></i>
     </div>
+     <?php if($error_pass): ?>
+        <div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_pass ?></div>
+    <?php endif; ?>
 </div>
                         <!-- ALAMAT (VALIDASI MIN 10 KARAKTER) -->
                         <div class="col-md-12 mb-4">
