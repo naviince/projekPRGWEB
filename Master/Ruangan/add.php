@@ -2,47 +2,185 @@
 session_start();
 include '../../koneksi.php';
 
-if (!isset($_SESSION['status']) || $_SESSION['role'] != 'Admin') {
+// --- PROTEKSI HALAMAN ---
+if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Admin') {
     header("Location: ../../login.php");
     exit();
 }
 
-$error = ""; $success = false;
+$id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
+
+// =====================================================
+// HELPER FUNCTIONS - Safe SQLSRV (Anti-Crash)
+// =====================================================
+function safe_sqlsrv_fetch($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) {
+        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        return null;
+    }
+    $result = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $result;
+}
+
+function safe_sqlsrv_fetch_all($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) {
+        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        return [];
+    }
+    $results = [];
+    while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+        $results[] = $row;
+    }
+    sqlsrv_free_stmt($stmt);
+    return $results;
+}
+
+// =====================================================
+// AMBIL PROFIL ADMIN
+// =====================================================
+$admin_data = safe_sqlsrv_fetch($conn, 
+    "SELECT Nama_Karyawan, Foto_Profil, Email_Karyawan FROM Karyawan WHERE ID_Karyawan = ? AND Status = 1 AND Is_Deleted = 0", 
+    [$id_admin]
+);
+
+$nama_admin = $admin_data['Nama_Karyawan'] ?? 'Administrator';
+$foto_admin = $admin_data['Foto_Profil'] ?? 'default.jpg';
+
+$default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
+
+$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
+    ? "../../assets/img/karyawan/" . $foto_admin 
+    : $default_svg_avatar;
+
+// =====================================================
+// AMBIL DAFTAR PAKET FOTO (UNTUK CHECKBOX)
+// =====================================================
+$daftar_paket = safe_sqlsrv_fetch_all($conn,
+    "SELECT ID_Paket, Nama_Paket, Harga_Paket, Kapasitas_Orang, Foto_Paket 
+     FROM Paket_Foto 
+     WHERE Status = 1 AND Is_Deleted = 0 
+     ORDER BY Harga_Paket ASC"
+);
+
+// =====================================================
+// PROSES SIMPAN DATA
+// =====================================================
+$error = "";
+$success = false;
 
 if (isset($_POST['simpan'])) {
-    $nama       = trim($_POST['nama_ruangan']);
-    $kapasitas  = (int)$_POST['kapasitas'];
-    $luas        = trim($_POST['luas']);
-    $fasilitas  = trim($_POST['fasilitas']);
-    $desc       = trim($_POST['deskripsi']);
+    $nama       = trim($_POST['nama_ruangan'] ?? '');
+    $kapasitas  = (int)($_POST['kapasitas'] ?? 0);
+    $deskripsi  = trim($_POST['deskripsi'] ?? '');
+    $status     = (int)($_POST['status'] ?? 1);
+    $paket_terpilih = $_POST['paket'] ?? []; // Array ID_Paket
 
-    // VALIDASI LOGIKA
-    if ($kapasitas <= 0) {
+    // --- VALIDASI SERVER-SIDE (KUAT) ---
+    if (empty($nama)) {
+        $error = "Nama ruangan wajib diisi!";
+    } elseif (strlen($nama) > 100) {
+        $error = "Nama ruangan maksimal 100 karakter!";
+    } elseif ($kapasitas <= 0) {
         $error = "Kapasitas ruangan harus lebih dari 0!";
+    } elseif ($kapasitas > 100) {
+        $error = "Kapasitas ruangan maksimal 100 orang!";
+    } elseif (empty($deskripsi)) {
+        $error = "Deskripsi ruangan wajib diisi!";
+    } elseif (strlen($deskripsi) > 255) {
+        $error = "Deskripsi maksimal 255 karakter!";
+    } elseif (empty($paket_terpilih)) {
+        $error = "Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini!";
     } else {
-        // VALIDASI UPLOAD GAMBAR
-        $foto_name = $_FILES['foto']['name'];
-        $foto_tmp  = $_FILES['foto']['tmp_name'];
-        $foto_size = $_FILES['foto']['size'];
-        $ext = strtolower(pathinfo($foto_name, PATHINFO_EXTENSION));
-        $allowed = ['jpg', 'jpeg', 'png'];
-
-        if (!in_array($ext, $allowed)) {
-            $error = "Format gambar harus JPG, JPEG, atau PNG!";
-        } elseif ($foto_size > 2000000) {
-            $error = "Ukuran gambar maksimal 2MB!";
+        // --- CEK DUPLIKAT NAMA ---
+        $cek_dup = safe_sqlsrv_fetch($conn, 
+            "SELECT COUNT(*) as total FROM Ruangan WHERE Nama_Ruangan = ? AND Is_Deleted = 0", 
+            [$nama]
+        );
+        if (($cek_dup['total'] ?? 0) > 0) {
+            $error = "Nama ruangan '{$nama}' sudah ada! Gunakan nama lain.";
         } else {
-            $new_filename = "ruangan_" . time() . "." . $ext;
-            $upload_path  = "../../assets/img/ruangan/" . $new_filename;
+            // --- VALIDASI UPLOAD GAMBAR ---
+            $foto_name = $_FILES['foto']['name'] ?? '';
+            $foto_tmp  = $_FILES['foto']['tmp_name'] ?? '';
+            $foto_size = $_FILES['foto']['size'] ?? 0;
+            $foto_error = $_FILES['foto']['error'] ?? UPLOAD_ERR_NO_FILE;
 
-            if (move_uploaded_file($foto_tmp, $upload_path)) {
-                $sql = "INSERT INTO Ruangan (Nama_Ruangan, Kapasitas, Luas_Ruangan, Fasilitas, Deskripsi, Foto_Ruangan, Status)
-                        VALUES (?, ?, ?, ?, ?, ?, 'Aktif')";
-                $params = array($nama, $kapasitas, $luas, $fasilitas, $desc, $new_filename);
-                $stmt = sqlsrv_query($conn, $sql, $params);
-                if ($stmt) { $success = true; }
+            if ($foto_error == UPLOAD_ERR_NO_FILE) {
+                $error = "Foto ruangan wajib diupload!";
+            } elseif ($foto_error != UPLOAD_ERR_OK) {
+                $error = "Terjadi kesalahan saat upload foto. Coba lagi.";
             } else {
-                $error = "Gagal memindahkan file ke server.";
+                $ext = strtolower(pathinfo($foto_name, PATHINFO_EXTENSION));
+                $allowed = ['jpg', 'jpeg', 'png', 'webp'];
+
+                if (!in_array($ext, $allowed)) {
+                    $error = "Format gambar harus JPG, JPEG, PNG, atau WEBP!";
+                } elseif ($foto_size > 2097152) {
+                    $error = "Ukuran gambar maksimal 2MB!";
+                } else {
+                    $new_filename = "ruangan_" . time() . "_" . bin2hex(random_bytes(4)) . "." . $ext;
+                    $upload_dir   = "../../assets/img/ruangan/";
+
+                    if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
+                    $upload_path = $upload_dir . $new_filename;
+
+                    $check = getimagesize($foto_tmp);
+                    if ($check === false) {
+                        $error = "File yang diupload bukan gambar valid!";
+                    } elseif (move_uploaded_file($foto_tmp, $upload_path)) {
+                        // --- BEGIN TRANSACTION ---
+                        sqlsrv_begin_transaction($conn);
+
+                        try {
+                            // 1. INSERT RUANGAN
+                            $sql_ruangan = "INSERT INTO Ruangan (Nama_Ruangan, Kapasitas_Ruangan, Deskripsi, Foto_Ruangan, Status, Is_Deleted, Created_By, Created_Date) 
+                                            VALUES (?, ?, ?, ?, ?, 0, ?, GETDATE());
+                                            SELECT SCOPE_IDENTITY() AS ID_Ruangan;";
+                            $params_ruangan = [$nama, $kapasitas, $deskripsi, $new_filename, $status, $nama_admin];
+                            $stmt_ruangan = sqlsrv_query($conn, $sql_ruangan, $params_ruangan);
+
+                            if ($stmt_ruangan === false) {
+                                throw new Exception("Gagal insert ruangan: " . print_r(sqlsrv_errors(), true));
+                            }
+
+                            // Ambil ID_Ruangan yang baru
+                            $row_ruangan = sqlsrv_fetch_array($stmt_ruangan, SQLSRV_FETCH_ASSOC);
+                            $id_ruangan_baru = $row_ruangan['ID_Ruangan'] ?? null;
+                            sqlsrv_free_stmt($stmt_ruangan);
+
+                            if (!$id_ruangan_baru) {
+                                throw new Exception("Gagal mendapatkan ID Ruangan baru.");
+                            }
+
+                            // 2. INSERT PAKET_RUANGAN (Junction)
+                            foreach ($paket_terpilih as $id_paket) {
+                                $id_paket = (int)$id_paket;
+                                $sql_junction = "INSERT INTO Paket_Ruangan (ID_Paket, ID_Ruangan) VALUES (?, ?)";
+                                $stmt_junction = sqlsrv_query($conn, $sql_junction, [$id_paket, $id_ruangan_baru]);
+                                if ($stmt_junction === false) {
+                                    throw new Exception("Gagal menghubungkan ke paket ID {$id_paket}.");
+                                }
+                                sqlsrv_free_stmt($stmt_junction);
+                            }
+
+                            // COMMIT
+                            sqlsrv_commit($conn);
+                            $success = true;
+
+                        } catch (Exception $e) {
+                            // ROLLBACK
+                            sqlsrv_rollback($conn);
+                            if (file_exists($upload_path)) unlink($upload_path);
+                            $error = $e->getMessage();
+                        }
+
+                    } else {
+                        $error = "Gagal memindahkan file ke server.";
+                    }
+                }
             }
         }
     }
@@ -55,366 +193,714 @@ if (isset($_POST['simpan'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tambah Ruangan – SpotLight Studio</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+
     <style>
         :root {
-            --pink: #e8457a;
-            --pink-dark: #c73165;
-            --pink-deep: #8b1a3e;
-            --bg: #fdf2f7;
+            --p-pink: #D53D66;
+            --d-pink: #CA3366;
+            --s-pink: #FFF0F3;
+            --light-pink: #FFE4E9;
+            --accent-pink: #E85D84;
+            --text-dark: #1e1e24;
+            --text-muted: #718096;
+            --sidebar-bg: #ffffff;
+            --body-bg: #f8fafc;
+            --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        * { box-sizing: border-box; }
+
         body {
-            background: var(--bg);
             font-family: 'Plus Jakarta Sans', sans-serif;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            padding: 30px 15px;
+            background-color: var(--body-bg);
+            color: var(--text-dark);
+            overflow-x: hidden;
         }
 
-        .wrapper { width: 100%; max-width: 1050px; }
-
-        .back-link {
-            text-decoration: none;
-            color: #64748b;
-            font-weight: 700;
-            font-size: 13px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            margin-bottom: 20px;
-            transition: color 0.2s;
-        }
-        .back-link:hover { color: var(--pink); }
-
-        .main-card {
-            border-radius: 30px;
-            overflow: hidden;
-            background: white;
-            box-shadow: 0 25px 70px rgba(232, 69, 122, 0.12);
-            border: none;
-            display: flex;
-        }
-
-        /* ---- Side Visual ---- */
-        .side-visual {
-            width: 38%;
-            background: linear-gradient(150deg, var(--pink-deep) 0%, var(--pink) 100%);
-            padding: 50px 40px;
-            color: white;
+        /* SIDEBAR - SAMA PERSIS DENGAN LIST */
+        .sidebar {
+            width: 260px;
+            height: 100vh;
+            background: var(--sidebar-bg);
+            position: fixed;
+            top: 0; left: 0;
+            border-right: 1px solid rgba(255, 228, 233, 0.8);
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            position: relative;
+            padding: 30px 20px;
+            z-index: 100;
+        }
+        .sidebar-brand {
+            font-weight: 800; font-size: 1.5rem;
+            color: var(--p-pink); text-decoration: none;
+            letter-spacing: -1px; margin-bottom: 40px; display: block;
+        }
+        .sidebar-brand span { color: var(--text-dark); font-size: 0.85rem; font-weight: 600; }
+        .sidebar-menu-wrapper { flex-grow: 1; overflow-y: auto; margin-bottom: 20px; scrollbar-width: none; }
+        .sidebar-menu-wrapper::-webkit-scrollbar { display: none; }
+        .nav-menu { list-style: none; padding: 0; margin: 0; }
+        .nav-item { margin-bottom: 8px; }
+        .nav-link-custom {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 18px; color: #4a5568; font-weight: 700;
+            text-decoration: none; border-radius: 12px; font-size: 0.9rem;
+            transition: var(--transition-3d);
+        }
+        .nav-link-custom:hover, .nav-link-custom.active {
+            background-color: var(--light-pink); color: var(--p-pink);
+            transform: translateX(4px);
+        }
+        .submenu { list-style: none; padding-left: 20px; margin-top: 5px; display: none; transition: var(--transition-3d); }
+        .submenu.show { display: block !important; }
+        .submenu-link {
+            display: flex; align-items: center; padding: 8px 18px;
+            color: #718096; font-weight: 600; font-size: 0.85rem;
+            text-decoration: none; border-radius: 10px; transition: 0.3s;
+        }
+        .submenu-link:hover, .submenu-link.active {
+            color: var(--p-pink); background-color: rgba(213, 61, 102, 0.03); padding-left: 22px;
+        }
+        .btn-logout {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #ffffff; border: none; width: 100%; padding: 12px;
+            border-radius: 12px; font-weight: 800; font-size: 0.85rem;
+            transition: var(--transition-3d);
+        }
+        .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
+
+        /* MAIN CONTENT */
+        .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
+        .dashboard-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 35px;
+        }
+        .profile-header-btn {
+            width: 44px; height: 44px; border-radius: 50%; overflow: hidden;
+            border: 2px solid #ffffff; cursor: pointer; transition: var(--transition-3d); background: #ffffff;
+        }
+        .profile-header-btn:hover {
+            transform: scale(1.08) translateY(-2px);
+            box-shadow: 0 8px 20px rgba(213, 61, 102, 0.15);
+            border-color: var(--p-pink);
+        }
+        .profile-header-btn img { width: 100%; height: 100%; object-fit: cover; }
+
+        /* BREADCRUMB */
+        .breadcrumb-custom {
+            display: flex; align-items: center; gap: 8px;
+            margin-bottom: 25px; font-size: 0.85rem; font-weight: 600;
+        }
+        .breadcrumb-custom a { color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
+        .breadcrumb-custom a:hover { color: var(--p-pink); }
+        .breadcrumb-custom .active { color: var(--p-pink); }
+        .breadcrumb-custom i { color: #cbd5e1; font-size: 0.7rem; }
+
+        /* FORM CARD */
+        .form-card {
+            background: #ffffff; border-radius: 22px;
+            border: 1px solid rgba(255, 228, 233, 0.8);
+            box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03);
             overflow: hidden;
-            flex-shrink: 0;
         }
-        .side-visual::before {
-            content: '';
-            position: absolute;
-            width: 280px; height: 280px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.07);
-            top: -60px; right: -80px;
+        .form-card-header {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            padding: 30px 40px;
+            color: #ffffff;
         }
-        .side-visual::after {
-            content: '';
-            position: absolute;
-            width: 180px; height: 180px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.05);
-            bottom: 30px; left: -50px;
-        }
-        .side-icon {
-            width: 60px; height: 60px;
-            background: rgba(255,255,255,0.15);
-            border-radius: 18px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 28px;
-            margin-bottom: 24px;
-            backdrop-filter: blur(4px);
-        }
-        .side-visual .tag {
-            font-size: 11px;
-            font-weight: 800;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            opacity: 0.6;
-            margin-bottom: 10px;
-        }
-        .side-visual h2 { font-weight: 800; font-size: 28px; line-height: 1.3; margin-bottom: 14px; }
-        .side-visual p { opacity: 0.7; font-size: 14px; line-height: 1.7; }
-
-        .tips-box {
-            background: rgba(255,255,255,0.1);
-            border-radius: 16px;
-            padding: 16px 18px;
-            backdrop-filter: blur(4px);
-            font-size: 12px;
-            opacity: 0.85;
-            line-height: 1.6;
-        }
-        .tips-box i { margin-right: 6px; }
-
-        /* ---- Form Side ---- */
-        .form-side {
-            flex: 1;
-            padding: 50px 45px;
-            overflow-y: auto;
-        }
-        .form-side h4 {
-            font-weight: 800;
-            color: #1e293b;
-            margin-bottom: 8px;
-        }
-        .form-side .subtitle {
-            font-size: 13px;
-            color: #94a3b8;
-            margin-bottom: 32px;
-        }
+        .form-card-header h4 { font-weight: 800; font-size: 1.4rem; margin-bottom: 4px; }
+        .form-card-header p { opacity: 0.85; font-size: 0.85rem; margin: 0; }
+        .form-card-body { padding: 40px; }
 
         .form-label {
-            font-weight: 700;
-            font-size: 11px;
-            color: #64748b;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 6px;
+            font-weight: 700; font-size: 0.75rem;
+            color: var(--text-dark); text-transform: uppercase;
+            letter-spacing: 0.8px; margin-bottom: 8px;
         }
-        .form-control {
-            background: #f8fafc !important;
-            border: 2px solid transparent !important;
-            border-radius: 12px !important;
-            padding: 12px 15px !important;
-            font-size: 14px !important;
-            transition: border-color 0.25s, box-shadow 0.25s !important;
+        .form-label .required { color: #dc2626; margin-left: 2px; }
+        .form-control-custom {
+            width: 100%; border: 2px solid #e2e8f0; border-radius: 14px;
+            padding: 14px 18px; font-weight: 600; font-size: 0.9rem;
+            color: #1e293b; transition: var(--transition-3d); background: #ffffff;
         }
-        .form-control:focus {
-            border-color: var(--pink) !important;
-            box-shadow: 0 0 0 4px rgba(232,69,122,0.08) !important;
+        .form-control-custom:focus { 
+            outline: none; border-color: var(--p-pink); 
+            box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); 
         }
-        .input-group .form-control { border-radius: 12px !important; }
-        .input-group-text {
-            background: #f1f5f9 !important;
-            border: 2px solid transparent !important;
-            border-radius: 12px 0 0 12px !important;
-            color: #94a3b8;
-            font-size: 13px;
-            font-weight: 700;
+        .form-control-custom::placeholder { color: #a0aec0; font-weight: 500; }
+        textarea.form-control-custom { min-height: 120px; resize: vertical; }
+
+        .input-hint {
+            font-size: 0.75rem; color: var(--text-muted); font-weight: 600;
+            margin-top: 6px; display: flex; align-items: center; gap: 4px;
         }
 
-        .file-input-wrapper {
-            position: relative;
+        /* FILE UPLOAD */
+        .file-upload-zone {
+            border: 2px dashed #e2e8f0; border-radius: 16px;
+            padding: 30px; text-align: center;
+            transition: var(--transition-3d); cursor: pointer;
             background: #f8fafc;
-            border: 2px dashed #e2e8f0;
-            border-radius: 14px;
-            padding: 20px;
-            text-align: center;
-            transition: border-color 0.25s, background 0.25s;
-            cursor: pointer;
         }
-        .file-input-wrapper:hover { border-color: var(--pink); background: #fff0f5; }
-        .file-input-wrapper input[type="file"] {
-            position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+        .file-upload-zone:hover, .file-upload-zone.dragover {
+            border-color: var(--p-pink); background: var(--s-pink);
         }
-        .file-input-wrapper .file-icon { font-size: 32px; color: #cbd5e1; margin-bottom: 8px; }
-        .file-input-wrapper p { font-size: 13px; color: #94a3b8; margin: 0; }
-        .file-input-wrapper small { font-size: 11px; color: #cbd5e1; }
+        .file-upload-zone i { font-size: 2.5rem; color: #cbd5e1; margin-bottom: 12px; display: block; }
+        .file-upload-zone p { font-size: 0.9rem; color: #64748b; font-weight: 600; margin: 0; }
+        .file-upload-zone small { font-size: 0.75rem; color: #94a3b8; }
+        .file-upload-zone input[type="file"] { display: none; }
 
-        #preview-img {
-            display: none;
-            width: 100%; max-height: 180px;
-            object-fit: cover;
-            border-radius: 12px;
-            margin-top: 12px;
-            border: 2px solid #ffe0ec;
+        #preview-container {
+            display: none; margin-top: 16px;
+            position: relative; border-radius: 14px; overflow: hidden;
+            border: 2px solid var(--light-pink);
+        }
+        #preview-container img {
+            width: 100%; max-height: 250px; object-fit: cover; display: block;
+        }
+        #preview-container .remove-preview {
+            position: absolute; top: 10px; right: 10px;
+            background: rgba(220, 38, 38, 0.9); color: #fff;
+            border: none; border-radius: 50%; width: 32px; height: 32px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; font-size: 0.85rem; transition: all 0.2s;
+        }
+        #preview-container .remove-preview:hover { background: #dc2626; transform: scale(1.1); }
+
+        /* PAKET CHECKBOX GRID */
+        .paket-section {
+            background: #f8fafc; border-radius: 16px;
+            padding: 24px; border: 2px solid #e2e8f0;
+        }
+        .paket-section-title {
+            font-weight: 800; font-size: 0.85rem;
+            text-transform: uppercase; letter-spacing: 0.8px;
+            color: var(--text-dark); margin-bottom: 16px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .paket-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+        }
+        .paket-checkbox-item {
+            position: relative;
+            background: #ffffff; border: 2px solid #e2e8f0;
+            border-radius: 14px; padding: 16px;
+            cursor: pointer; transition: var(--transition-3d);
+            display: flex; align-items: center; gap: 12px;
+        }
+        .paket-checkbox-item:hover { border-color: var(--p-pink); }
+        .paket-checkbox-item.selected {
+            border-color: var(--p-pink); background: var(--s-pink);
+            box-shadow: 0 4px 12px rgba(213, 61, 102, 0.1);
+        }
+        .paket-checkbox-item input[type="checkbox"] {
+            width: 20px; height: 20px; accent-color: var(--p-pink);
+            cursor: pointer; flex-shrink: 0;
+        }
+        .paket-checkbox-item .paket-info { flex: 1; min-width: 0; }
+        .paket-checkbox-item .paket-nama {
+            font-weight: 700; font-size: 0.85rem; color: var(--text-dark);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .paket-checkbox-item .paket-harga {
+            font-size: 0.75rem; color: var(--p-pink); font-weight: 700;
+        }
+        .paket-checkbox-item .paket-kapasitas {
+            font-size: 0.7rem; color: var(--text-muted);
+        }
+        .paket-checkbox-item .paket-check-icon {
+            display: none; color: var(--p-pink); font-size: 1.2rem;
+        }
+        .paket-checkbox-item.selected .paket-check-icon { display: block; }
+
+        .paket-empty {
+            text-align: center; padding: 30px;
+            color: var(--text-muted); font-size: 0.85rem;
         }
 
-        .btn-simpan {
-            background: linear-gradient(135deg, var(--pink), var(--pink-dark));
-            color: white;
-            border-radius: 14px;
-            padding: 14px 28px;
-            font-weight: 800;
-            border: none;
-            width: 100%;
-            font-size: 15px;
-            letter-spacing: 0.3px;
-            transition: transform 0.25s, box-shadow 0.25s;
-            margin-top: 8px;
+        /* STATUS TOGGLE */
+        .status-toggle-group {
+            display: flex; gap: 12px; margin-top: 8px;
         }
-        .btn-simpan:hover {
+        .status-option {
+            flex: 1; padding: 14px 16px; border-radius: 14px;
+            border: 2px solid #e2e8f0; cursor: pointer;
+            text-align: center; transition: var(--transition-3d);
+            background: #ffffff;
+        }
+        .status-option:hover { border-color: var(--p-pink); }
+        .status-option.active {
+            border-color: var(--p-pink); background: var(--s-pink);
+        }
+        .status-option input { display: none; }
+        .status-option .status-icon { font-size: 1.3rem; margin-bottom: 4px; }
+        .status-option .status-label { font-weight: 700; font-size: 0.85rem; }
+        .status-option .status-desc { font-size: 0.7rem; color: var(--text-muted); }
+
+        /* BUTTONS */
+        .btn-submit {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #ffffff; border: none; border-radius: 14px;
+            padding: 14px 32px; font-weight: 800; font-size: 0.95rem;
+            transition: var(--transition-3d); display: inline-flex;
+            align-items: center; gap: 8px;
+        }
+        .btn-submit:hover {
             transform: translateY(-3px);
-            box-shadow: 0 12px 28px rgba(232, 69, 122, 0.35);
-            color: white;
-        }
-
-        .alert-custom {
-            background: #fff1f3;
-            border: none;
-            border-left: 4px solid #f87171;
-            border-radius: 12px;
-            color: #991b1b;
-            font-size: 13px;
-            padding: 12px 16px;
-        }
-
-        @media (max-width: 768px) {
-            .main-card { flex-direction: column; }
-            .side-visual { width: 100%; padding: 36px 30px; }
-            .form-side { padding: 36px 24px; }
+            box-shadow: 0 12px 28px rgba(213, 61, 102, 0.35);
+            color: #ffffff;
         }
         .btn-batal {
-    background: #e2e8f0; /* Warna abu-abu muda */
-    color: #475569;      /* Warna teks abu-abu tua */
-    border-radius: 14px; /* Menyamakan dengan border-radius .btn-simpan */
-    padding: 14px 28px;
-    font-weight: 800;
-    border: none;
-    width: 100%;
-    font-size: 15px;
-    text-align: center;
-    display: block;
-    text-decoration: none;
-    transition: transform 0.25s, box-shadow 0.25s, background 0.25s;
-    margin-top: 12px;
-}
+            background: #f1f5f9; color: #475569; border: none;
+            border-radius: 14px; padding: 14px 32px;
+            font-weight: 800; font-size: 0.95rem;
+            transition: var(--transition-3d); display: inline-flex;
+            align-items: center; gap: 8px; text-decoration: none;
+        }
+        .btn-batal:hover {
+            background: #e2e8f0; color: #1e293b;
+            transform: translateY(-3px);
+        }
 
-.btn-batal:hover {
-    background: #cbd5e1;
-    color: #1e293b;
-    transform: translateY(-3px); /* Efek melayang yang sama dengan tombol simpan */
-    box-shadow: 0 8px 20px rgba(0,0,0,0.06);
-}
+        /* ALERT */
+        .alert-custom {
+            background: #fef2f2; border: none;
+            border-left: 4px solid #dc2626; border-radius: 12px;
+            color: #991b1b; font-size: 0.85rem; padding: 14px 18px;
+            margin-bottom: 24px; display: flex; align-items: center; gap: 10px;
+        }
+        .alert-custom i { font-size: 1.1rem; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in-up { animation: fadeIn 0.5s ease-out; }
+
+        @media (max-width: 992px) {
+            .main-content { margin-left: 0; padding: 20px; }
+            .sidebar { transform: translateX(-100%); }
+        }
     </style>
 </head>
 <body>
-<div class="wrapper">
-    <a href="list.php" class="back-link">
-        <i class="bi bi-arrow-left-circle-fill"></i> Kembali ke Daftar Ruangan
-    </a>
 
-    <div class="main-card">
-        <!-- Sisi Kiri Visual -->
-        <div class="side-visual">
-            <div>
-                <div class="side-icon">🏠</div>
-                <div class="tag">Master Data</div>
-                <h2>Ruangan Studio Baru.</h2>
-                <p>Tambahkan ruangan studio yang akan tersedia untuk booking oleh pelanggan SpotLight.</p>
-            </div>
-            <div class="tips-box">
-                <i class="bi bi-lightbulb-fill"></i>
-                <b>Tips:</b> Isi deskripsi dan fasilitas dengan detail agar pelanggan dapat memilih ruangan yang sesuai kebutuhan sesi foto mereka.
-            </div>
+    <!-- SIDEBAR - TETAP ADA SAMA PERSIS DENGAN LIST -->
+    <div class="sidebar">
+        <div class="sidebar-menu-wrapper">
+            <a href="../../index.php" class="sidebar-brand">
+                SpotLight.<br><span>Panel Admin</span>
+            </a>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="../../Role/Admin/index.php" class="nav-link-custom">
+                        <span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuMaster">
+                        <span><i class="bi bi-folder-fill me-2"></i> Data Master</span>
+                        <i class="bi bi-chevron-up small icon-chevron" style="transform: rotate(180deg);"></i>
+                    </a>
+                    <div class="submenu show" id="submenuMaster">
+                        <ul class="list-unstyled">
+                            <li><a href="../Pelanggan/list.php" class="submenu-link"><i class="bi bi-people-fill me-2"></i>Pelanggan</a></li>
+                            <li><a href="../Paket Foto/list.php" class="submenu-link"><i class="bi bi-camera-fill me-2"></i>Paket Foto</a></li>
+                            <li><a href="./list.php" class="submenu-link active"><i class="bi bi-door-open-fill me-2"></i>Ruangan</a></li>
+                            <li><a href="../Properti/list.php" class="submenu-link"><i class="bi bi-box-seam-fill me-2"></i>Properti</a></li>
+                            <li><a href="../Tema Foto/list.php" class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
+                            <li><a href="../Jadwal Studio/list.php" class="submenu-link"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Studio</a></li>
+                            <li><a href="../Barang Cetak/list.php" class="submenu-link"><i class="bi bi-printer-fill me-2"></i>Barang Cetak</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuTransaksi">
+                        <span><i class="bi bi-cart-fill me-2"></i> Transaksi</span>
+                        <i class="bi bi-chevron-down small icon-chevron"></i>
+                    </a>
+                    <div class="submenu" id="submenuTransaksi">
+                        <ul class="list-unstyled">
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-calendar-check-fill me-2"></i>Kelola Booking</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran</a></li>
+                            <li><a href="../../Transaksi/Pembatalan/list.php" class="submenu-link"><i class="bi bi-calendar-x-fill me-2"></i>Pembatalan Booking</a></li>
+                            <li><a href="../../Transaksi/Sesi Foto/list.php" class="submenu-link"><i class="bi bi-camera-reels-fill me-2"></i>Upload Hasil Foto</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    <a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)">
+                        <span><i class="bi bi-house-door-fill me-2"></i> Landing Page</span>
+                    </a>
+                </li>
+            </ul>
         </div>
-
-        <!-- Sisi Kanan Form -->
-        <div class="form-side">
-            <h4>Input Ruangan Studio</h4>
-            <p class="subtitle">Lengkapi seluruh informasi di bawah ini dengan akurat.</p>
-
-            <?php if ($error != ""): ?>
-                <div class="alert-custom mb-4">
-                    <i class="bi bi-exclamation-triangle-fill me-2"></i><?= htmlspecialchars($error) ?>
-                </div>
-            <?php endif; ?>
-
-            <form method="POST" enctype="multipart/form-data">
-                <!-- Nama Ruangan -->
-                <div class="mb-3">
-                    <label class="form-label">Nama Ruangan</label>
-                    <input type="text" name="nama_ruangan" class="form-control" required placeholder="Contoh: Studio A – Classic White">
-                </div>
-
-                <!-- Kapasitas & Luas -->
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Kapasitas Maksimal (Orang)</label>
-                        <input type="number" name="kapasitas" class="form-control" required placeholder="5" min="1">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Luas Ruangan</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="bi bi-aspect-ratio"></i></span>
-                            <input type="text" name="luas" class="form-control" placeholder="Contoh: 4x5 m²">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Fasilitas -->
-                <div class="mb-3">
-                    <label class="form-label">Fasilitas Tersedia</label>
-                    <input type="text" name="fasilitas" class="form-control" placeholder="Contoh: AC, Backdrop, Lighting Kit, Cermin">
-                    <small class="text-muted" style="font-size: 11px; margin-top: 5px; display: block;">Pisahkan fasilitas dengan koma.</small>
-                </div>
-
-                <!-- Deskripsi -->
-                <div class="mb-3">
-                    <label class="form-label">Deskripsi Ruangan</label>
-                    <textarea name="deskripsi" class="form-control" rows="3" required placeholder="Deskripsikan suasana dan keunggulan ruangan ini..."></textarea>
-                </div>
-
-                <!-- Upload Foto -->
-                <div class="mb-4">
-                    <label class="form-label">Foto Ruangan</label>
-                    <div class="file-input-wrapper" id="dropzone">
-                        <input type="file" name="foto" id="foto-input" required accept="image/jpg,image/jpeg,image/png" onchange="previewImage(event)">
-                        <div class="file-icon">📷</div>
-                        <p>Klik atau seret foto ke sini</p>
-                        <small>JPG, JPEG, PNG – Maks 2MB</small>
-                    </div>
-                    <img id="preview-img" src="" alt="Preview Foto Ruangan">
-                </div>
-
-               <button type="submit" name="simpan" class="btn btn-simpan">
-    <i class="bi bi-check2-circle me-2"></i>Simpan Ruangan
-</button>
-
-
-                <div class="text-center mt-3">
-                    <a href="list.php" class="btn-batal shadow-sm">
-    <i class="bi bi-x-circle me-1"></i> Batal & Kembali
-</a>
-                </div>
-            </form>
+        <div>
+            <button onclick="confirmLogout(event)" class="btn btn-logout text-center d-block w-100">
+                <i class="bi bi-box-arrow-right me-2"></i> Keluar Sistem
+            </button>
         </div>
     </div>
-</div>
 
-<?php if ($success): ?>
-<script>
-    Swal.fire({
-        icon: 'success',
-        title: 'Berhasil!',
-        text: 'Ruangan studio baru telah ditambahkan ke sistem.',
-        confirmButtonColor: '#e8457a'
-    }).then(() => window.location = 'list.php');
-</script>
-<?php endif; ?>
+    <!-- MAIN CONTENT -->
+    <div class="main-content">
 
-<script>
-function previewImage(event) {
-    const file  = event.target.files[0];
-    const img   = document.getElementById('preview-img');
-    const dz    = document.getElementById('dropzone');
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = e => {
-            img.src = e.target.result;
-            img.style.display = 'block';
-            dz.querySelector('.file-icon').style.display = 'none';
-            dz.querySelector('p').textContent = file.name;
-        };
-        reader.readAsDataURL(file);
-    }
-}
-</script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+        <!-- HEADER -->
+        <div class="dashboard-header">
+            <div>
+                <h3 class="fw-bold mb-1">Tambah Ruangan</h3>
+                <p class="text-muted small mb-0">Tambah ruangan studio baru dan tentukan paket foto yang bisa menggunakannya.</p>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
+                    <i class="bi bi-clock-history me-1 text-danger"></i> <span id="live-clock">Memuat waktu...</span>
+                </span>
+                <div class="profile-header-btn shadow-sm" onclick="bukaModalBiodata()" title="Klik untuk melihat profil Anda">
+                    <img src="<?= $foto_admin_src ?>" alt="Admin Profil">
+                </div>
+            </div>
+        </div>
+
+        <!-- BREADCRUMB -->
+        <div class="breadcrumb-custom">
+            <a href="../../Role/Admin/index.php"><i class="bi bi-house-door-fill me-1"></i>Dashboard</a>
+            <i class="bi bi-chevron-right"></i>
+            <a href="./list.php">Data Master</a>
+            <i class="bi bi-chevron-right"></i>
+            <a href="./list.php">Ruangan</a>
+            <i class="bi bi-chevron-right"></i>
+            <span class="active">Tambah Ruangan</span>
+        </div>
+
+        <!-- FORM CARD -->
+        <div class="form-card fade-in-up">
+            <div class="form-card-header">
+                <h4><i class="bi bi-door-open-fill me-2"></i>Form Ruangan Baru</h4>
+                <p>Lengkapi informasi ruangan dan pilih paket foto yang bisa menggunakannya.</p>
+            </div>
+            <div class="form-card-body">
+
+                <?php if ($error != ""): ?>
+                    <div class="alert-custom">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        <span><?= htmlspecialchars($error) ?></span>
+                    </div>
+                <?php endif; ?>
+
+                <form method="POST" enctype="multipart/form-data" id="formRuangan">
+                    <div class="row">
+                        <!-- Nama Ruangan -->
+                        <div class="col-md-8 mb-4">
+                            <label class="form-label">Nama Ruangan <span class="required">*</span></label>
+                            <input type="text" name="nama_ruangan" class="form-control-custom" required 
+                                   maxlength="100" placeholder="Contoh: Studio A Minimalis"
+                                   value="<?= htmlspecialchars($_POST['nama_ruangan'] ?? '') ?>">
+                            <div class="input-hint">
+                                <i class="bi bi-info-circle"></i> Maksimal 100 karakter, nama harus unik
+                            </div>
+                        </div>
+
+                        <!-- Kapasitas -->
+                        <div class="col-md-4 mb-4">
+                            <label class="form-label">Kapasitas (Orang) <span class="required">*</span></label>
+                            <input type="number" name="kapasitas" class="form-control-custom" required 
+                                   min="1" max="100" placeholder="4"
+                                   value="<?= htmlspecialchars($_POST['kapasitas'] ?? '') ?>">
+                            <div class="input-hint">
+                                <i class="bi bi-info-circle"></i> Minimal 1, maksimal 100 orang
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Deskripsi -->
+                    <div class="mb-4">
+                        <label class="form-label">Deskripsi Ruangan <span class="required">*</span></label>
+                        <textarea name="deskripsi" class="form-control-custom" required 
+                                  maxlength="255" placeholder="Deskripsikan suasana, konsep, dan keunggulan ruangan ini..."><?= htmlspecialchars($_POST['deskripsi'] ?? '') ?></textarea>
+                        <div class="input-hint">
+                            <i class="bi bi-info-circle"></i> Maksimal 255 karakter, akan ditampilkan ke pelanggan
+                        </div>
+                    </div>
+
+                    <!-- Foto Ruangan -->
+                    <div class="mb-4">
+                        <label class="form-label">Foto Ruangan <span class="required">*</span></label>
+                        <div class="file-upload-zone" id="dropzone" onclick="document.getElementById('foto-input').click()">
+                            <input type="file" name="foto" id="foto-input" required 
+                                   accept="image/jpeg,image/jpg,image/png,image/webp" onchange="handleFileSelect(event)">
+                            <i class="bi bi-camera-fill" id="upload-icon"></i>
+                            <p id="upload-text">Klik atau seret foto ke sini</p>
+                            <small>JPG, JPEG, PNG, WEBP — Maksimal 2MB</small>
+                        </div>
+                        <div id="preview-container">
+                            <img id="preview-img" src="" alt="Preview">
+                            <button type="button" class="remove-preview" onclick="removePreview(event)" title="Hapus foto">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- PILIH PAKET FOTO -->
+                    <div class="mb-4">
+                        <label class="form-label">Pilih Paket Foto <span class="required">*</span></label>
+                        <div class="input-hint mb-3">
+                            <i class="bi bi-info-circle"></i> Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini
+                        </div>
+
+                        <div class="paket-section">
+                            <div class="paket-section-title">
+                                <i class="bi bi-camera-fill text-danger"></i>
+                                Paket Foto Tersedia
+                            </div>
+
+                            <?php if (!empty($daftar_paket)): ?>
+                                <div class="paket-grid">
+                                    <?php foreach ($daftar_paket as $paket): 
+                                        $is_checked = (isset($_POST['paket']) && in_array($paket['ID_Paket'], $_POST['paket'])) ? 'checked' : '';
+                                        $is_selected = $is_checked ? 'selected' : '';
+                                    ?>
+                                        <div class="paket-checkbox-item <?= $is_selected ?>" onclick="togglePaket(this)">
+                                            <input type="checkbox" name="paket[]" value="<?= $paket['ID_Paket'] ?>" 
+                                                   <?= $is_checked ?> onchange="updatePaketCount()">
+                                            <div class="paket-info">
+                                                <div class="paket-nama"><?= htmlspecialchars($paket['Nama_Paket']) ?></div>
+                                                <div class="paket-harga">Rp <?= number_format($paket['Harga_Paket'], 0, ',', '.') ?></div>
+                                                <div class="paket-kapasitas"><?= $paket['Kapasitas_Orang'] ?> orang • 
+                                                    <?php 
+                                                    $path = "../../assets/img/paket/" . ($paket['Foto_Paket'] ?? '');
+                                                    echo (file_exists($path) && !empty($paket['Foto_Paket'])) ? '✓ Ada foto' : '✗ Belum ada foto';
+                                                    ?>
+                                                </div>
+                                            </div>
+                                            <i class="bi bi-check-circle-fill paket-check-icon"></i>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php else: ?>
+                                <div class="paket-empty">
+                                    <i class="bi bi-exclamation-circle fs-1 mb-2 d-block" style="color: #cbd5e1;"></i>
+                                    <p>Belum ada paket foto aktif. <a href="../Paket Foto/add.php" style="color: var(--p-pink);">Tambah paket foto dulu</a>.</p>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="input-hint mt-2" id="paket-count-hint">
+                            <i class="bi bi-check-circle"></i> <span id="paket-count">0</span> paket terpilih
+                        </div>
+                    </div>
+
+                    <!-- Status -->
+                    <div class="mb-4">
+                        <label class="form-label">Status Ruangan</label>
+                        <div class="status-toggle-group">
+                            <label class="status-option active" onclick="selectStatus(this, 1)">
+                                <input type="radio" name="status" value="1" checked>
+                                <div class="status-icon">✅</div>
+                                <div class="status-label">Aktif</div>
+                                <div class="status-desc">Bisa dipesan</div>
+                            </label>
+                            <label class="status-option" onclick="selectStatus(this, 0)">
+                                <input type="radio" name="status" value="0">
+                                <div class="status-icon">⛔</div>
+                                <div class="status-label">Nonaktif</div>
+                                <div class="status-desc">Sementara tutup</div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="d-flex gap-3 mt-4">
+                        <button type="submit" name="simpan" class="btn-submit">
+                            <i class="bi bi-check2-circle"></i> Simpan Ruangan
+                        </button>
+                        <a href="list.php" class="btn-batal">
+                            <i class="bi bi-x-circle"></i> Batal
+                        </a>
+                    </div>
+                </form>
+
+            </div>
+        </div>
+
+    </div>
+
+    <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // Toggle Submenu
+        document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('data-target');
+                const targetEl = document.querySelector(targetId);
+                const chevron = this.querySelector('.icon-chevron');
+                if (targetEl) {
+                    const isShown = targetEl.classList.contains('show');
+                    document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
+                    document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
+                    if (!isShown) {
+                        targetEl.classList.add('show');
+                        if (chevron) chevron.style.transform = 'rotate(180deg)';
+                    }
+                }
+            });
+        });
+
+        // Status Toggle
+        function selectStatus(el, val) {
+            document.querySelectorAll('.status-option').forEach(opt => opt.classList.remove('active'));
+            el.classList.add('active');
+            el.querySelector('input').checked = true;
+        }
+
+        // Paket Checkbox Toggle
+        function togglePaket(el) {
+            const checkbox = el.querySelector('input[type="checkbox"]');
+            checkbox.checked = !checkbox.checked;
+            if (checkbox.checked) {
+                el.classList.add('selected');
+            } else {
+                el.classList.remove('selected');
+            }
+            updatePaketCount();
+        }
+
+        function updatePaketCount() {
+            const checked = document.querySelectorAll('input[name="paket[]"]:checked').length;
+            document.getElementById('paket-count').textContent = checked;
+            const hint = document.getElementById('paket-count-hint');
+            if (checked === 0) {
+                hint.style.color = '#dc2626';
+                hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Pilih minimal 1 paket!';
+            } else {
+                hint.style.color = '#059669';
+                hint.innerHTML = '<i class="bi bi-check-circle-fill"></i> ' + checked + ' paket terpilih';
+            }
+        }
+
+        // File Upload & Preview
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            const previewContainer = document.getElementById('preview-container');
+            const previewImg = document.getElementById('preview-img');
+            const uploadIcon = document.getElementById('upload-icon');
+            const uploadText = document.getElementById('upload-text');
+
+            if (file) {
+                if (file.size > 2097152) {
+                    Swal.fire({
+                        icon: 'error', title: 'Ukuran Terlalu Besar',
+                        text: 'Ukuran gambar maksimal 2MB.', confirmButtonColor: '#D53D66'
+                    });
+                    event.target.value = ''; return;
+                }
+                const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+                if (!allowed.includes(file.type)) {
+                    Swal.fire({
+                        icon: 'error', title: 'Format Tidak Valid',
+                        text: 'Format gambar harus JPG, JPEG, PNG, atau WEBP.', confirmButtonColor: '#D53D66'
+                    });
+                    event.target.value = ''; return;
+                }
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewImg.src = e.target.result;
+                    previewContainer.style.display = 'block';
+                    uploadIcon.style.display = 'none';
+                    uploadText.textContent = file.name;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function removePreview(e) {
+            e.stopPropagation();
+            const input = document.getElementById('foto-input');
+            const previewContainer = document.getElementById('preview-container');
+            const uploadIcon = document.getElementById('upload-icon');
+            const uploadText = document.getElementById('upload-text');
+            input.value = '';
+            previewContainer.style.display = 'none';
+            uploadIcon.style.display = 'block';
+            uploadText.textContent = 'Klik atau seret foto ke sini';
+        }
+
+        // Drag & Drop
+        const dropzone = document.getElementById('dropzone');
+        dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+        dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault(); dropzone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                document.getElementById('foto-input').files = files;
+                handleFileSelect({ target: { files: files } });
+            }
+        });
+
+        // Konfirmasi Logout
+        function confirmLogout(e) {
+            e.preventDefault();
+            Swal.fire({
+                title: 'Keluar Sistem?', text: 'Apakah Anda yakin ingin keluar?',
+                icon: 'warning', showCancelButton: true,
+                confirmButtonColor: '#D53D66', cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Keluar', cancelButtonText: 'Batal'
+            }).then((result) => { if (result.isConfirmed) window.location.href = '../../logout.php'; });
+        }
+
+        function confirmLandingPage(e) {
+            e.preventDefault();
+            Swal.fire({
+                title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama publik.',
+                icon: 'info', showCancelButton: true,
+                confirmButtonColor: '#D53D66', cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal'
+            }).then((result) => { if (result.isConfirmed) window.location.href = '../../index.php'; });
+        }
+
+        // Jam Real-Time
+        function updateLiveClock() {
+            const now = new Date();
+            const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+            const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+            document.getElementById('live-clock').innerText = 
+                `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()} - ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')} WIB`;
+        }
+        setInterval(updateLiveClock, 1000); updateLiveClock();
+
+        // Form validation
+        document.getElementById('formRuangan').addEventListener('submit', function(e) {
+            const paketChecked = document.querySelectorAll('input[name="paket[]"]:checked').length;
+            if (paketChecked === 0) {
+                e.preventDefault();
+                Swal.fire({
+                    icon: 'warning', title: 'Paket Belum Dipilih',
+                    text: 'Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini!',
+                    confirmButtonColor: '#D53D66'
+                });
+                return false;
+            }
+        });
+
+        // Init paket count
+        updatePaketCount();
+    </script>
+
+    <?php if ($success): ?>
+    <script>
+        Swal.fire({
+            icon: 'success', title: 'Berhasil!',
+            text: 'Ruangan studio baru telah ditambahkan dan terhubung ke paket foto.',
+            confirmButtonColor: '#D53D66'
+        }).then(() => window.location = 'list.php?status_sukses=tambah');
+    </script>
+    <?php endif; ?>
 </body>
 </html>

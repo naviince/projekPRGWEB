@@ -2,76 +2,276 @@
 session_start();
 include '../../koneksi.php';
 
-// Proteksi Halaman
-if (!isset($_SESSION['status']) || $_SESSION['role'] != 'Admin') {
+// --- PROTEKSI HALAMAN ---
+if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Admin') {
     header("Location: ../../login.php");
     exit();
 }
 
-$id = $_GET['id'] ?? null;
-if (!$id) { header("Location: list.php"); exit(); }
+$id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 
-$success = false;
+// =====================================================
+// HELPER FUNCTIONS - Safe SQLSRV (Anti-Crash)
+// =====================================================
+function safe_sqlsrv_fetch($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) {
+        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        return null;
+    }
+    $result = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $result;
+}
+
+function safe_sqlsrv_fetch_all($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) {
+        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        return [];
+    }
+    $results = [];
+    while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+        $results[] = $row;
+    }
+    sqlsrv_free_stmt($stmt);
+    return $results;
+}
+
+function safe_sqlsrv_count($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) {
+        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        return 0;
+    }
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $row['total'] ?? 0;
+}
+
+// =====================================================
+// AMBIL ID RUANGAN DARI URL
+// =====================================================
+$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+if ($id <= 0) {
+    header("Location: list.php?status_sukses=error&message=ID ruangan tidak valid");
+    exit();
+}
+
+// =====================================================
+// AMBIL PROFIL ADMIN
+// =====================================================
+$admin_data = safe_sqlsrv_fetch($conn, 
+    "SELECT Nama_Karyawan, Foto_Profil, Email_Karyawan FROM Karyawan WHERE ID_Karyawan = ? AND Status = 1 AND Is_Deleted = 0", 
+    [$id_admin]
+);
+
+$nama_admin = $admin_data['Nama_Karyawan'] ?? 'Administrator';
+$foto_admin = $admin_data['Foto_Profil'] ?? 'default.jpg';
+
+$default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
+
+$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
+    ? "../../assets/img/karyawan/" . $foto_admin 
+    : $default_svg_avatar;
+
+// =====================================================
+// AMBIL DATA RUANGAN
+// =====================================================
+$ruangan = safe_sqlsrv_fetch($conn, 
+    "SELECT * FROM Ruangan WHERE ID_Ruangan = ? AND Is_Deleted = 0", 
+    [$id]
+);
+
+if (!$ruangan) {
+    header("Location: list.php?status_sukses=error&message=Ruangan tidak ditemukan atau sudah dihapus");
+    exit();
+}
+
+// =====================================================
+// AMBIL DAFTAR PAKET FOTO (UNTUK CHECKBOX)
+// =====================================================
+$daftar_paket = safe_sqlsrv_fetch_all($conn,
+    "SELECT ID_Paket, Nama_Paket, Harga_Paket, Kapasitas_Orang, Foto_Paket 
+     FROM Paket_Foto 
+     WHERE Status = 1 AND Is_Deleted = 0 
+     ORDER BY Harga_Paket ASC"
+);
+
+// =====================================================
+// AMBIL PAKET YANG SUDAH TERHUBUNG
+// =====================================================
+$paket_terhubung = safe_sqlsrv_fetch_all($conn,
+    "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?",
+    [$id]
+);
+$paket_terhubung_ids = array_column($paket_terhubung, 'ID_Paket');
+
+// =====================================================
+// PROSES UPDATE DATA
+// =====================================================
 $error = "";
+$success = false;
 
-// 1. AMBIL DATA LAMA
-$sql  = "SELECT * FROM Ruangan WHERE ID_Ruangan = ?";
-$stmt = sqlsrv_query($conn, $sql, array($id));
-$data = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
-
-if (!$data) { header("Location: list.php"); exit(); }
-
-// 2. PROSES UPDATE
 if (isset($_POST['update'])) {
-    $nama      = trim($_POST['nama_ruangan']);
-    $kapasitas = (int)$_POST['kapasitas'];
-    $luas      = trim($_POST['luas']);
-    $fasilitas = trim($_POST['fasilitas']);
-    $desc      = trim($_POST['deskripsi']);
+    $nama       = trim($_POST['nama_ruangan'] ?? '');
+    $kapasitas  = (int)($_POST['kapasitas'] ?? 0);
+    $deskripsi  = trim($_POST['deskripsi'] ?? '');
+    $status     = (int)($_POST['status'] ?? 1);
+    $paket_baru = $_POST['paket'] ?? []; // Array ID_Paket dari form
 
-    if ($kapasitas <= 0) {
+    // --- VALIDASI SERVER-SIDE (KUAT) ---
+    if (empty($nama)) {
+        $error = "Nama ruangan wajib diisi!";
+    } elseif (strlen($nama) > 100) {
+        $error = "Nama ruangan maksimal 100 karakter!";
+    } elseif ($kapasitas <= 0) {
         $error = "Kapasitas ruangan harus lebih dari 0!";
+    } elseif ($kapasitas > 100) {
+        $error = "Kapasitas ruangan maksimal 100 orang!";
+    } elseif (empty($deskripsi)) {
+        $error = "Deskripsi ruangan wajib diisi!";
+    } elseif (strlen($deskripsi) > 255) {
+        $error = "Deskripsi maksimal 255 karakter!";
+    } elseif (empty($paket_baru)) {
+        $error = "Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini!";
     } else {
-        // Cek jika ada upload foto baru
-        if ($_FILES['foto']['name'] != "") {
-            $foto_name = $_FILES['foto']['name'];
-            $foto_size = $_FILES['foto']['size'];
-            $ext = strtolower(pathinfo($foto_name, PATHINFO_EXTENSION));
-            $allowed = ['jpg', 'jpeg', 'png'];
+        // --- CEK DUPLIKAT NAMA (kecuali nama sendiri) ---
+        $cek_dup = safe_sqlsrv_fetch($conn, 
+            "SELECT COUNT(*) as total FROM Ruangan WHERE Nama_Ruangan = ? AND ID_Ruangan <> ? AND Is_Deleted = 0", 
+            [$nama, $id]
+        );
+        if (($cek_dup['total'] ?? 0) > 0) {
+            $error = "Nama ruangan '{$nama}' sudah digunakan oleh ruangan lain!";
+        } else {
+            // --- PROSES FOTO ---
+            $foto_lama = $ruangan['Foto_Ruangan'] ?? '';
+            $foto_baru = $foto_lama;
+            $upload_path = '';
+            $hapus_foto_lama = false;
 
-            if (!in_array($ext, $allowed)) {
-                $error = "Format gambar harus JPG, JPEG, atau PNG!";
-            } elseif ($foto_size > 2000000) {
-                $error = "Ukuran gambar maksimal 2MB!";
-            } else {
-                $new_name = "ruangan_" . time() . "." . $ext;
-                $upload_path = "../../assets/img/ruangan/" . $new_name;
+            if (isset($_FILES['foto']) && $_FILES['foto']['name'] != '') {
+                $foto_name = $_FILES['foto']['name'];
+                $foto_tmp  = $_FILES['foto']['tmp_name'];
+                $foto_size = $_FILES['foto']['size'];
+                $foto_error = $_FILES['foto']['error'];
 
-                if (move_uploaded_file($_FILES['foto']['tmp_name'], $upload_path)) {
-                    // Hapus foto lama jika bukan default
-                    $old_foto = $data['Foto_Ruangan'];
-                    if (!empty($old_foto) && $old_foto != 'default_ruangan.jpg' && file_exists("../../assets/img/ruangan/" . $old_foto)) {
-                        unlink("../../assets/img/ruangan/" . $old_foto);
-                    }
-
-                    $sql_u  = "UPDATE Ruangan SET Nama_Ruangan=?, Kapasitas=?, Luas_Ruangan=?, Fasilitas=?, Deskripsi=?, Foto_Ruangan=? WHERE ID_Ruangan=?";
-                    $params = array($nama, $kapasitas, $luas, $fasilitas, $desc, $new_name, $id);
+                if ($foto_error != UPLOAD_ERR_OK) {
+                    $error = "Terjadi kesalahan saat upload foto.";
                 } else {
-                    $error = "Gagal mengunggah foto baru.";
+                    $ext = strtolower(pathinfo($foto_name, PATHINFO_EXTENSION));
+                    $allowed = ['jpg', 'jpeg', 'png', 'webp'];
+
+                    if (!in_array($ext, $allowed)) {
+                        $error = "Format gambar harus JPG, JPEG, PNG, atau WEBP!";
+                    } elseif ($foto_size > 2097152) {
+                        $error = "Ukuran gambar maksimal 2MB!";
+                    } else {
+                        $check = getimagesize($foto_tmp);
+                        if ($check === false) {
+                            $error = "File yang diupload bukan gambar valid!";
+                        } else {
+                            $new_filename = "ruangan_" . time() . "_" . bin2hex(random_bytes(4)) . "." . $ext;
+                            $upload_dir = "../../assets/img/ruangan/";
+                            if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
+                            $upload_path = $upload_dir . $new_filename;
+
+                            if (move_uploaded_file($foto_tmp, $upload_path)) {
+                                $foto_baru = $new_filename;
+                                $hapus_foto_lama = true;
+                            } else {
+                                $error = "Gagal memindahkan file ke server.";
+                            }
+                        }
+                    }
                 }
             }
-        } else {
-            // Update tanpa ganti foto
-            $sql_u  = "UPDATE Ruangan SET Nama_Ruangan=?, Kapasitas=?, Luas_Ruangan=?, Fasilitas=?, Deskripsi=? WHERE ID_Ruangan=?";
-            $params = array($nama, $kapasitas, $luas, $fasilitas, $desc, $id);
-        }
 
-        if ($error == "") {
-            $res = sqlsrv_query($conn, $sql_u, $params);
-            if ($res) {
-                $success = true;
-            } else {
-                $error = "Gagal memperbarui data ke database!";
+            if ($error == "") {
+                // --- BEGIN TRANSACTION ---
+                sqlsrv_begin_transaction($conn);
+
+                try {
+                    // 1. UPDATE RUANGAN
+                    $sql_update = "UPDATE Ruangan SET 
+                        Nama_Ruangan = ?, Kapasitas_Ruangan = ?, Deskripsi = ?, 
+                        Foto_Ruangan = ?, Status = ?, Modified_By = ?, Modified_Date = GETDATE() 
+                        WHERE ID_Ruangan = ?";
+                    $params_update = [$nama, $kapasitas, $deskripsi, $foto_baru, $status, $nama_admin, $id];
+                    $stmt_update = sqlsrv_query($conn, $sql_update, $params_update);
+
+                    if ($stmt_update === false) {
+                        throw new Exception("Gagal update ruangan: " . print_r(sqlsrv_errors(), true));
+                    }
+                    sqlsrv_free_stmt($stmt_update);
+
+                    // 2. AMBIL PAKET YANG SUDAH TERHUBUNG SEKARANG
+                    $paket_sekarang = [];
+                    $sql_now = "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?";
+                    $stmt_now = sqlsrv_query($conn, $sql_now, [$id]);
+                    while ($row = sqlsrv_fetch_array($stmt_now, SQLSRV_FETCH_ASSOC)) {
+                        $paket_sekarang[] = $row['ID_Paket'];
+                    }
+                    sqlsrv_free_stmt($stmt_now);
+
+                    // 3. INSERT PAKET BARU (yang belum ada)
+                    foreach ($paket_baru as $id_paket) {
+                        $id_paket = (int)$id_paket;
+                        if (!in_array($id_paket, $paket_sekarang)) {
+                            $sql_insert = "INSERT INTO Paket_Ruangan (ID_Paket, ID_Ruangan) VALUES (?, ?)";
+                            $stmt_insert = sqlsrv_query($conn, $sql_insert, [$id_paket, $id]);
+                            if ($stmt_insert === false) {
+                                throw new Exception("Gagal tambah relasi paket ID {$id_paket}: " . print_r(sqlsrv_errors(), true));
+                            }
+                            sqlsrv_free_stmt($stmt_insert);
+                        }
+                    }
+
+                    // 4. HAPUS PAKET YANG TIDAK DIPILIH LAGI (dengan cek order)
+                    foreach ($paket_sekarang as $id_paket_lama) {
+                        if (!in_array($id_paket_lama, $paket_baru)) {
+                            // CEK: Apakah ada order aktif yang pakai kombinasi ini?
+                            $sql_cek_order = "SELECT COUNT(*) as total FROM [Order] WHERE ID_Paket = ? AND ID_Ruangan = ? AND Status = 1 AND Status_Order <> 4";
+                            $stmt_cek = sqlsrv_query($conn, $sql_cek_order, [$id_paket_lama, $id]);
+                            $row_cek = sqlsrv_fetch_array($stmt_cek, SQLSRV_FETCH_ASSOC);
+                            sqlsrv_free_stmt($stmt_cek);
+
+                            if (($row_cek['total'] ?? 0) > 0) {
+                                // Ada order aktif → jangan hapus, skip saja
+                                continue;
+                            }
+
+                            // Tidak ada order → bisa hapus
+                            $sql_delete = "DELETE FROM Paket_Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ?";
+                            $stmt_delete = sqlsrv_query($conn, $sql_delete, [$id_paket_lama, $id]);
+                            if ($stmt_delete === false) {
+                                throw new Exception("Gagal hapus relasi paket ID {$id_paket_lama}: " . print_r(sqlsrv_errors(), true));
+                            }
+                            sqlsrv_free_stmt($stmt_delete);
+                        }
+                    }
+
+                    // COMMIT
+                    sqlsrv_commit($conn);
+
+                    // Hapus foto lama kalau semua sukses
+                    if ($hapus_foto_lama && !empty($foto_lama) && $foto_lama != 'default_ruangan.jpg') {
+                        $old_path = "../../assets/img/ruangan/" . $foto_lama;
+                        if (file_exists($old_path)) unlink($old_path);
+                    }
+
+                    $success = true;
+
+                    // Refresh data
+                    $ruangan = safe_sqlsrv_fetch($conn, "SELECT * FROM Ruangan WHERE ID_Ruangan = ?", [$id]);
+                    $paket_terhubung = safe_sqlsrv_fetch_all($conn, "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?", [$id]);
+                    $paket_terhubung_ids = array_column($paket_terhubung, 'ID_Paket');
+
+                } catch (Exception $e) {
+                    sqlsrv_rollback($conn);
+                    if (!empty($upload_path) && file_exists($upload_path)) unlink($upload_path);
+                    $error = $e->getMessage();
+                }
             }
         }
     }
@@ -84,347 +284,776 @@ if (isset($_POST['update'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Edit Ruangan – SpotLight Studio</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+
     <style>
         :root {
-            --pink: #e8457a;
-            --pink-dark: #c73165;
-            --pink-deep: #8b1a3e;
-            --bg: #fdf2f7;
+            --p-pink: #D53D66;
+            --d-pink: #CA3366;
+            --s-pink: #FFF0F3;
+            --light-pink: #FFE4E9;
+            --accent-pink: #E85D84;
+            --text-dark: #1e1e24;
+            --text-muted: #718096;
+            --sidebar-bg: #ffffff;
+            --body-bg: #f8fafc;
+            --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        * { box-sizing: border-box; }
+
         body {
-            background: var(--bg);
             font-family: 'Plus Jakarta Sans', sans-serif;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            padding: 30px 15px;
+            background-color: var(--body-bg);
+            color: var(--text-dark);
+            overflow-x: hidden;
         }
 
-        .wrapper { width: 100%; max-width: 1050px; }
-
-        .back-link {
-            text-decoration: none;
-            color: #64748b;
-            font-weight: 700;
-            font-size: 13px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            margin-bottom: 20px;
-            transition: color 0.2s;
-        }
-        .back-link:hover { color: var(--pink); }
-
-        .main-card {
-            border-radius: 30px;
-            overflow: hidden;
-            background: white;
-            box-shadow: 0 25px 70px rgba(232, 69, 122, 0.12);
-            border: none;
-            display: flex;
-        }
-
-        /* ---- Side Visual ---- */
-        .side-visual {
-            width: 38%;
-            background: linear-gradient(150deg, var(--pink) 0%, var(--pink-deep) 100%);
-            padding: 50px 40px;
-            color: white;
+        /* SIDEBAR - SAMA PERSIS DENGAN LIST */
+        .sidebar {
+            width: 260px;
+            height: 100vh;
+            background: var(--sidebar-bg);
+            position: fixed;
+            top: 0; left: 0;
+            border-right: 1px solid rgba(255, 228, 233, 0.8);
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            position: relative;
-            overflow: hidden;
-            flex-shrink: 0;
+            padding: 30px 20px;
+            z-index: 100;
         }
-        .side-visual::before {
-            content: '';
-            position: absolute;
-            width: 280px; height: 280px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.07);
-            bottom: -60px; right: -80px;
+        .sidebar-brand {
+            font-weight: 800; font-size: 1.5rem;
+            color: var(--p-pink); text-decoration: none;
+            letter-spacing: -1px; margin-bottom: 40px; display: block;
         }
-        .side-visual::after {
-            content: '';
-            position: absolute;
-            width: 160px; height: 160px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.05);
-            top: 30px; left: -50px;
+        .sidebar-brand span { color: var(--text-dark); font-size: 0.85rem; font-weight: 600; }
+        .sidebar-menu-wrapper { flex-grow: 1; overflow-y: auto; margin-bottom: 20px; scrollbar-width: none; }
+        .sidebar-menu-wrapper::-webkit-scrollbar { display: none; }
+        .nav-menu { list-style: none; padding: 0; margin: 0; }
+        .nav-item { margin-bottom: 8px; }
+        .nav-link-custom {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 18px; color: #4a5568; font-weight: 700;
+            text-decoration: none; border-radius: 12px; font-size: 0.9rem;
+            transition: var(--transition-3d);
         }
-        .side-icon {
-            width: 60px; height: 60px;
-            background: rgba(255,255,255,0.15);
-            border-radius: 18px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 28px;
-            margin-bottom: 24px;
-            backdrop-filter: blur(4px);
+        .nav-link-custom:hover, .nav-link-custom.active {
+            background-color: var(--light-pink); color: var(--p-pink);
+            transform: translateX(4px);
         }
-        .side-visual .tag {
-            font-size: 11px;
-            font-weight: 800;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            opacity: 0.6;
-            margin-bottom: 10px;
+        .submenu { list-style: none; padding-left: 20px; margin-top: 5px; display: none; transition: var(--transition-3d); }
+        .submenu.show { display: block !important; }
+        .submenu-link {
+            display: flex; align-items: center; padding: 8px 18px;
+            color: #718096; font-weight: 600; font-size: 0.85rem;
+            text-decoration: none; border-radius: 10px; transition: 0.3s;
         }
-        .side-visual h2 { font-weight: 800; font-size: 28px; line-height: 1.3; margin-bottom: 14px; }
-        .side-visual p { opacity: 0.7; font-size: 14px; line-height: 1.7; }
+        .submenu-link:hover, .submenu-link.active {
+            color: var(--p-pink); background-color: rgba(213, 61, 102, 0.03); padding-left: 22px;
+        }
+        .btn-logout {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #ffffff; border: none; width: 100%; padding: 12px;
+            border-radius: 12px; font-weight: 800; font-size: 0.85rem;
+            transition: var(--transition-3d);
+        }
+        .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
 
-        .current-foto-box {
-            background: rgba(255,255,255,0.12);
-            border-radius: 16px;
-            overflow: hidden;
-            backdrop-filter: blur(4px);
+        /* MAIN CONTENT */
+        .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
+        .dashboard-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 35px;
         }
-        .current-foto-box img {
-            width: 100%; height: 160px;
-            object-fit: cover;
-            display: block;
+        .profile-header-btn {
+            width: 44px; height: 44px; border-radius: 50%; overflow: hidden;
+            border: 2px solid #ffffff; cursor: pointer; transition: var(--transition-3d); background: #ffffff;
         }
-        .current-foto-box .foto-label {
-            padding: 10px 14px;
-            font-size: 11px;
-            opacity: 0.7;
-            font-weight: 700;
+        .profile-header-btn:hover {
+            transform: scale(1.08) translateY(-2px);
+            box-shadow: 0 8px 20px rgba(213, 61, 102, 0.15);
+            border-color: var(--p-pink);
         }
+        .profile-header-btn img { width: 100%; height: 100%; object-fit: cover; }
 
-        /* ---- Form Side ---- */
-        .form-side {
-            flex: 1;
-            padding: 50px 45px;
-            overflow-y: auto;
+        /* BREADCRUMB */
+        .breadcrumb-custom {
+            display: flex; align-items: center; gap: 8px;
+            margin-bottom: 25px; font-size: 0.85rem; font-weight: 600;
         }
-        .form-side h4 {
-            font-weight: 800;
-            color: #1e293b;
-            margin-bottom: 8px;
+        .breadcrumb-custom a { color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
+        .breadcrumb-custom a:hover { color: var(--p-pink); }
+        .breadcrumb-custom .active { color: var(--p-pink); }
+        .breadcrumb-custom i { color: #cbd5e1; font-size: 0.7rem; }
+
+        /* FORM CARD */
+        .form-card {
+            background: #ffffff; border-radius: 22px;
+            border: 1px solid rgba(255, 228, 233, 0.8);
+            box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03);
+            overflow: hidden;
         }
-        .form-side .subtitle {
-            font-size: 13px;
-            color: #94a3b8;
-            margin-bottom: 32px;
+        .form-card-header {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            padding: 30px 40px;
+            color: #ffffff;
         }
+        .form-card-header h4 { font-weight: 800; font-size: 1.4rem; margin-bottom: 4px; }
+        .form-card-header p { opacity: 0.85; font-size: 0.85rem; margin: 0; }
+        .form-card-body { padding: 40px; }
 
         .form-label {
-            font-weight: 700;
-            font-size: 11px;
-            color: #64748b;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 6px;
+            font-weight: 700; font-size: 0.75rem;
+            color: var(--text-dark); text-transform: uppercase;
+            letter-spacing: 0.8px; margin-bottom: 8px;
         }
-        .form-control {
-            background: #f8fafc !important;
-            border: 2px solid transparent !important;
-            border-radius: 12px !important;
-            padding: 12px 15px !important;
-            font-size: 14px !important;
-            transition: border-color 0.25s, box-shadow 0.25s !important;
+        .form-label .required { color: #dc2626; margin-left: 2px; }
+        .form-control-custom {
+            width: 100%; border: 2px solid #e2e8f0; border-radius: 14px;
+            padding: 14px 18px; font-weight: 600; font-size: 0.9rem;
+            color: #1e293b; transition: var(--transition-3d); background: #ffffff;
         }
-        .form-control:focus {
-            border-color: var(--pink) !important;
-            box-shadow: 0 0 0 4px rgba(232,69,122,0.08) !important;
+        .form-control-custom:focus { 
+            outline: none; border-color: var(--p-pink); 
+            box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); 
         }
-        .input-group .form-control { border-radius: 12px !important; }
-        .input-group-text {
-            background: #f1f5f9 !important;
-            border: 2px solid transparent !important;
-            border-radius: 12px 0 0 12px !important;
-            color: #94a3b8;
-            font-size: 13px;
-            font-weight: 700;
+        .form-control-custom::placeholder { color: #a0aec0; font-weight: 500; }
+        textarea.form-control-custom { min-height: 120px; resize: vertical; }
+
+        .input-hint {
+            font-size: 0.75rem; color: var(--text-muted); font-weight: 600;
+            margin-top: 6px; display: flex; align-items: center; gap: 4px;
         }
 
-        .file-input-wrapper {
+        /* CURRENT FOTO PREVIEW */
+        .current-foto-box {
+            border-radius: 16px; overflow: hidden;
+            border: 2px solid var(--light-pink); margin-bottom: 16px;
             position: relative;
+        }
+        .current-foto-box img {
+            width: 100%; max-height: 200px; object-fit: cover; display: block;
+        }
+        .current-foto-label {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: linear-gradient(transparent, rgba(0,0,0,0.6));
+            color: #fff; padding: 12px 16px; font-size: 0.8rem; font-weight: 700;
+        }
+
+        /* FILE UPLOAD */
+        .file-upload-zone {
+            border: 2px dashed #e2e8f0; border-radius: 16px;
+            padding: 24px; text-align: center;
+            transition: var(--transition-3d); cursor: pointer;
             background: #f8fafc;
-            border: 2px dashed #e2e8f0;
-            border-radius: 14px;
-            padding: 18px;
-            text-align: center;
-            transition: border-color 0.25s, background 0.25s;
-            cursor: pointer;
         }
-        .file-input-wrapper:hover { border-color: var(--pink); background: #fff0f5; }
-        .file-input-wrapper input[type="file"] {
-            position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+        .file-upload-zone:hover, .file-upload-zone.dragover {
+            border-color: var(--p-pink); background: var(--s-pink);
         }
-        .file-input-wrapper p { font-size: 13px; color: #94a3b8; margin: 0; }
-        .file-input-wrapper small { font-size: 11px; color: #cbd5e1; }
+        .file-upload-zone i { font-size: 2rem; color: #cbd5e1; margin-bottom: 8px; display: block; }
+        .file-upload-zone p { font-size: 0.85rem; color: #64748b; font-weight: 600; margin: 0; }
+        .file-upload-zone small { font-size: 0.7rem; color: #94a3b8; }
+        .file-upload-zone input[type="file"] { display: none; }
 
-        #preview-img {
-            display: none;
-            width: 100%; max-height: 160px;
-            object-fit: cover;
-            border-radius: 12px;
-            margin-top: 12px;
-            border: 2px solid #ffe0ec;
+        #preview-container {
+            display: none; margin-top: 16px;
+            position: relative; border-radius: 14px; overflow: hidden;
+            border: 2px solid var(--light-pink);
+        }
+        #preview-container img {
+            width: 100%; max-height: 200px; object-fit: cover; display: block;
+        }
+        #preview-container .remove-preview {
+            position: absolute; top: 10px; right: 10px;
+            background: rgba(220, 38, 38, 0.9); color: #fff;
+            border: none; border-radius: 50%; width: 32px; height: 32px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; font-size: 0.85rem; transition: all 0.2s;
+        }
+        #preview-container .remove-preview:hover { background: #dc2626; transform: scale(1.1); }
+
+        /* PAKET CHECKBOX GRID */
+        .paket-section {
+            background: #f8fafc; border-radius: 16px;
+            padding: 24px; border: 2px solid #e2e8f0;
+        }
+        .paket-section-title {
+            font-weight: 800; font-size: 0.85rem;
+            text-transform: uppercase; letter-spacing: 0.8px;
+            color: var(--text-dark); margin-bottom: 16px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .paket-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+        }
+        .paket-checkbox-item {
+            position: relative;
+            background: #ffffff; border: 2px solid #e2e8f0;
+            border-radius: 14px; padding: 16px;
+            cursor: pointer; transition: var(--transition-3d);
+            display: flex; align-items: center; gap: 12px;
+        }
+        .paket-checkbox-item:hover { border-color: var(--p-pink); }
+        .paket-checkbox-item.selected {
+            border-color: var(--p-pink); background: var(--s-pink);
+            box-shadow: 0 4px 12px rgba(213, 61, 102, 0.1);
+        }
+        .paket-checkbox-item input[type="checkbox"] {
+            width: 20px; height: 20px; accent-color: var(--p-pink);
+            cursor: pointer; flex-shrink: 0;
+        }
+        .paket-checkbox-item .paket-info { flex: 1; min-width: 0; }
+        .paket-checkbox-item .paket-nama {
+            font-weight: 700; font-size: 0.85rem; color: var(--text-dark);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .paket-checkbox-item .paket-harga {
+            font-size: 0.75rem; color: var(--p-pink); font-weight: 700;
+        }
+        .paket-checkbox-item .paket-kapasitas {
+            font-size: 0.7rem; color: var(--text-muted);
+        }
+        .paket-checkbox-item .paket-check-icon {
+            display: none; color: var(--p-pink); font-size: 1.2rem;
+        }
+        .paket-checkbox-item.selected .paket-check-icon { display: block; }
+
+        .paket-checkbox-item.has-order {
+            opacity: 0.7; background: #f8fafc; border-color: #e2e8f0;
+            cursor: not-allowed;
+        }
+        .paket-checkbox-item.has-order:hover { border-color: #e2e8f0; transform: none; }
+        .paket-checkbox-item.has-order.selected {
+            border-color: #059669; background: #ecfdf5;
+        }
+        .order-badge {
+            font-size: 0.65rem; font-weight: 700; padding: 2px 8px;
+            border-radius: 50px; background: #fef3c7; color: #d97706;
+            margin-left: 6px;
+        }
+        .lock-icon {
+            color: #dc2626; font-size: 1rem; margin-left: 8px;
         }
 
-        .btn-update {
-            background: linear-gradient(135deg, var(--pink-deep), var(--pink));
-            color: white;
-            border-radius: 14px;
-            padding: 14px 28px;
-            font-weight: 800;
-            border: none;
-            width: 100%;
-            font-size: 15px;
-            letter-spacing: 0.3px;
-            transition: transform 0.25s, box-shadow 0.25s;
-            margin-top: 8px;
+        .paket-empty {
+            text-align: center; padding: 30px;
+            color: var(--text-muted); font-size: 0.85rem;
         }
-        .btn-update:hover {
+
+        /* STATUS TOGGLE */
+        .status-toggle-group {
+            display: flex; gap: 12px; margin-top: 8px;
+        }
+        .status-option {
+            flex: 1; padding: 14px 16px; border-radius: 14px;
+            border: 2px solid #e2e8f0; cursor: pointer;
+            text-align: center; transition: var(--transition-3d);
+            background: #ffffff;
+        }
+        .status-option:hover { border-color: var(--p-pink); }
+        .status-option.active {
+            border-color: var(--p-pink); background: var(--s-pink);
+        }
+        .status-option input { display: none; }
+        .status-option .status-icon { font-size: 1.3rem; margin-bottom: 4px; }
+        .status-option .status-label { font-weight: 700; font-size: 0.85rem; }
+        .status-option .status-desc { font-size: 0.7rem; color: var(--text-muted); }
+
+        /* BUTTONS */
+        .btn-submit {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #ffffff; border: none; border-radius: 14px;
+            padding: 14px 32px; font-weight: 800; font-size: 0.95rem;
+            transition: var(--transition-3d); display: inline-flex;
+            align-items: center; gap: 8px;
+        }
+        .btn-submit:hover {
             transform: translateY(-3px);
-            box-shadow: 0 12px 28px rgba(232, 69, 122, 0.35);
-            color: white;
+            box-shadow: 0 12px 28px rgba(213, 61, 102, 0.35);
+            color: #ffffff;
+        }
+        .btn-batal {
+            background: #f1f5f9; color: #475569; border: none;
+            border-radius: 14px; padding: 14px 32px;
+            font-weight: 800; font-size: 0.95rem;
+            transition: var(--transition-3d); display: inline-flex;
+            align-items: center; gap: 8px; text-decoration: none;
+        }
+        .btn-batal:hover {
+            background: #e2e8f0; color: #1e293b;
+            transform: translateY(-3px);
         }
 
+        /* ALERT */
         .alert-custom {
-            background: #fff1f3;
-            border: none;
-            border-left: 4px solid #f87171;
-            border-radius: 12px;
-            color: #991b1b;
-            font-size: 13px;
-            padding: 12px 16px;
+            background: #fef2f2; border: none;
+            border-left: 4px solid #dc2626; border-radius: 12px;
+            color: #991b1b; font-size: 0.85rem; padding: 14px 18px;
+            margin-bottom: 24px; display: flex; align-items: center; gap: 10px;
         }
+        .alert-custom i { font-size: 1.1rem; }
 
-        @media (max-width: 768px) {
-            .main-card { flex-direction: column; }
-            .side-visual { width: 100%; padding: 36px 30px; }
-            .form-side { padding: 36px 24px; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in-up { animation: fadeIn 0.5s ease-out; }
+
+        @media (max-width: 992px) {
+            .main-content { margin-left: 0; padding: 20px; }
+            .sidebar { transform: translateX(-100%); }
         }
     </style>
 </head>
 <body>
-<div class="wrapper">
-    <a href="list.php" class="back-link">
-        <i class="bi bi-arrow-left-circle-fill"></i> Kembali ke Daftar Ruangan
-    </a>
 
-    <div class="main-card">
-        <!-- Sisi Kiri Visual -->
-        <div class="side-visual">
-            <div>
-                <div class="side-icon">✏️</div>
-                <div class="tag">Edit Data</div>
-                <h2>Pembaruan Ruangan.</h2>
-                <p>Perbarui informasi ruangan studio agar data selalu akurat dan terkini untuk pelanggan.</p>
-            </div>
-
-            <?php
-                $path_preview = "../../assets/img/ruangan/" . $data['Foto_Ruangan'];
-                $src_preview = (!empty($data['Foto_Ruangan']) && file_exists($path_preview))
-                    ? $path_preview
-                    : "https://placehold.co/400x200?text=No+Image";
-            ?>
-            <div class="current-foto-box">
-                <img src="<?= $src_preview ?>" alt="Foto Saat Ini">
-                <div class="foto-label">📁 Foto saat ini: <?= htmlspecialchars($data['Foto_Ruangan'] ?: 'Belum ada') ?></div>
-            </div>
+    <!-- SIDEBAR - TETAP ADA SAMA PERSIS DENGAN LIST -->
+    <div class="sidebar">
+        <div class="sidebar-menu-wrapper">
+            <a href="../../index.php" class="sidebar-brand">
+                SpotLight.<br><span>Panel Admin</span>
+            </a>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="../../Role/Admin/index.php" class="nav-link-custom">
+                        <span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuMaster">
+                        <span><i class="bi bi-folder-fill me-2"></i> Data Master</span>
+                        <i class="bi bi-chevron-up small icon-chevron" style="transform: rotate(180deg);"></i>
+                    </a>
+                    <div class="submenu show" id="submenuMaster">
+                        <ul class="list-unstyled">
+                            <li><a href="../Pelanggan/list.php" class="submenu-link"><i class="bi bi-people-fill me-2"></i>Pelanggan</a></li>
+                            <li><a href="../Paket Foto/list.php" class="submenu-link"><i class="bi bi-camera-fill me-2"></i>Paket Foto</a></li>
+                            <li><a href="./list.php" class="submenu-link active"><i class="bi bi-door-open-fill me-2"></i>Ruangan</a></li>
+                            <li><a href="../Properti/list.php" class="submenu-link"><i class="bi bi-box-seam-fill me-2"></i>Properti</a></li>
+                            <li><a href="../Tema Foto/list.php" class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
+                            <li><a href="../Jadwal Studio/list.php" class="submenu-link"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Studio</a></li>
+                            <li><a href="../Barang Cetak/list.php" class="submenu-link"><i class="bi bi-printer-fill me-2"></i>Barang Cetak</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuTransaksi">
+                        <span><i class="bi bi-cart-fill me-2"></i> Transaksi</span>
+                        <i class="bi bi-chevron-down small icon-chevron"></i>
+                    </a>
+                    <div class="submenu" id="submenuTransaksi">
+                        <ul class="list-unstyled">
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-calendar-check-fill me-2"></i>Kelola Booking</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran</a></li>
+                            <li><a href="../../Transaksi/Pembatalan/list.php" class="submenu-link"><i class="bi bi-calendar-x-fill me-2"></i>Pembatalan Booking</a></li>
+                            <li><a href="../../Transaksi/Sesi Foto/list.php" class="submenu-link"><i class="bi bi-camera-reels-fill me-2"></i>Upload Hasil Foto</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    <a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)">
+                        <span><i class="bi bi-house-door-fill me-2"></i> Landing Page</span>
+                    </a>
+                </li>
+            </ul>
         </div>
-
-        <!-- Sisi Kanan Form -->
-        <div class="form-side">
-            <h4>Edit Data Ruangan</h4>
-            <p class="subtitle">Ubah field yang ingin diperbarui, lalu simpan perubahan.</p>
-
-            <?php if ($error != ""): ?>
-                <div class="alert-custom mb-4">
-                    <i class="bi bi-exclamation-triangle-fill me-2"></i><?= htmlspecialchars($error) ?>
-                </div>
-            <?php endif; ?>
-
-            <form method="POST" enctype="multipart/form-data">
-                <!-- Nama Ruangan -->
-                <div class="mb-3">
-                    <label class="form-label">Nama Ruangan</label>
-                    <input type="text" name="nama_ruangan" class="form-control" value="<?= htmlspecialchars($data['Nama_Ruangan']) ?>" required>
-                </div>
-
-                <!-- Kapasitas & Luas -->
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Kapasitas (Orang)</label>
-                        <input type="number" name="kapasitas" class="form-control" value="<?= (int)$data['Kapasitas'] ?>" required min="1">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Luas Ruangan</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="bi bi-aspect-ratio"></i></span>
-                            <input type="text" name="luas" class="form-control" value="<?= htmlspecialchars($data['Luas_Ruangan']) ?>">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Fasilitas -->
-                <div class="mb-3">
-                    <label class="form-label">Fasilitas Tersedia</label>
-                    <input type="text" name="fasilitas" class="form-control" value="<?= htmlspecialchars($data['Fasilitas']) ?>">
-                </div>
-
-                <!-- Deskripsi -->
-                <div class="mb-3">
-                    <label class="form-label">Deskripsi Ruangan</label>
-                    <textarea name="deskripsi" class="form-control" rows="3" required><?= htmlspecialchars($data['Deskripsi']) ?></textarea>
-                </div>
-
-                <!-- Upload Foto Baru (Opsional) -->
-                <div class="mb-4">
-                    <label class="form-label">Ganti Foto <span style="color:#94a3b8; text-transform:none; letter-spacing:0;">(kosongkan jika tidak ingin diganti)</span></label>
-                    <div class="file-input-wrapper">
-                        <input type="file" name="foto" id="foto-input" accept="image/jpg,image/jpeg,image/png" onchange="previewImage(event)">
-                        <p>📷 Klik untuk pilih foto baru – JPG/PNG maks 2MB</p>
-                    </div>
-                    <img id="preview-img" src="" alt="Preview">
-                </div>
-
-                <button type="submit" name="update" class="btn btn-update">
-                    <i class="bi bi-check2-all me-2"></i>Simpan Perubahan
-                </button>
-
-                <div class="text-center mt-3">
-                    <a href="list.php" class="text-muted small text-decoration-none fw-bold">Kembali ke Daftar</a>
-                </div>
-            </form>
+        <div>
+            <button onclick="confirmLogout(event)" class="btn btn-logout text-center d-block w-100">
+                <i class="bi bi-box-arrow-right me-2"></i> Keluar Sistem
+            </button>
         </div>
     </div>
-</div>
 
-<?php if ($success): ?>
-<script>
-    Swal.fire({
-        icon: 'success',
-        title: 'Berhasil!',
-        text: 'Data ruangan telah diperbarui.',
-        showConfirmButton: false,
-        timer: 1500,
-        confirmButtonColor: '#e8457a'
-    }).then(() => window.location = 'list.php');
-</script>
-<?php endif; ?>
+    <!-- MAIN CONTENT -->
+    <div class="main-content">
 
-<script>
-function previewImage(event) {
-    const file = event.target.files[0];
-    const img  = document.getElementById('preview-img');
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = e => { img.src = e.target.result; img.style.display = 'block'; };
-        reader.readAsDataURL(file);
-    }
-}
-</script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+        <!-- HEADER -->
+        <div class="dashboard-header">
+            <div>
+                <h3 class="fw-bold mb-1">Edit Ruangan</h3>
+                <p class="text-muted small mb-0">Perbarui data ruangan dan relasi paket foto.</p>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
+                    <i class="bi bi-clock-history me-1 text-danger"></i> <span id="live-clock">Memuat waktu...</span>
+                </span>
+                <div class="profile-header-btn shadow-sm" onclick="bukaModalBiodata()" title="Klik untuk melihat profil Anda">
+                    <img src="<?= $foto_admin_src ?>" alt="Admin Profil">
+                </div>
+            </div>
+        </div>
+
+        <!-- BREADCRUMB -->
+        <div class="breadcrumb-custom">
+            <a href="../../Role/Admin/index.php"><i class="bi bi-house-door-fill me-1"></i>Dashboard</a>
+            <i class="bi bi-chevron-right"></i>
+            <a href="./list.php">Data Master</a>
+            <i class="bi bi-chevron-right"></i>
+            <a href="./list.php">Ruangan</a>
+            <i class="bi bi-chevron-right"></i>
+            <span class="active">Edit Ruangan</span>
+        </div>
+
+        <!-- FORM CARD -->
+        <div class="form-card fade-in-up">
+            <div class="form-card-header">
+                <h4><i class="bi bi-pencil-square me-2"></i>Edit Ruangan: <?= htmlspecialchars($ruangan['Nama_Ruangan']) ?></h4>
+                <p>Perbarui informasi ruangan dan relasi paket foto.</p>
+            </div>
+            <div class="form-card-body">
+
+                <?php if ($error != ""): ?>
+                    <div class="alert-custom">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        <span><?= htmlspecialchars($error) ?></span>
+                    </div>
+                <?php endif; ?>
+
+                <form method="POST" enctype="multipart/form-data" id="formRuangan">
+                    <div class="row">
+                        <!-- Nama Ruangan -->
+                        <div class="col-md-8 mb-4">
+                            <label class="form-label">Nama Ruangan <span class="required">*</span></label>
+                            <input type="text" name="nama_ruangan" class="form-control-custom" required 
+                                   maxlength="100" placeholder="Contoh: Studio A Minimalis"
+                                   value="<?= htmlspecialchars($ruangan['Nama_Ruangan']) ?>">
+                            <div class="input-hint">
+                                <i class="bi bi-info-circle"></i> Maksimal 100 karakter, nama harus unik
+                            </div>
+                        </div>
+
+                        <!-- Kapasitas -->
+                        <div class="col-md-4 mb-4">
+                            <label class="form-label">Kapasitas (Orang) <span class="required">*</span></label>
+                            <input type="number" name="kapasitas" class="form-control-custom" required 
+                                   min="1" max="100" placeholder="4"
+                                   value="<?= (int)$ruangan['Kapasitas_Ruangan'] ?>">
+                            <div class="input-hint">
+                                <i class="bi bi-info-circle"></i> Minimal 1, maksimal 100 orang
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Deskripsi -->
+                    <div class="mb-4">
+                        <label class="form-label">Deskripsi Ruangan <span class="required">*</span></label>
+                        <textarea name="deskripsi" class="form-control-custom" required 
+                                  maxlength="255" placeholder="Deskripsikan suasana, konsep, dan keunggulan ruangan ini..."><?= htmlspecialchars($ruangan['Deskripsi'] ?? '') ?></textarea>
+                        <div class="input-hint">
+                            <i class="bi bi-info-circle"></i> Maksimal 255 karakter, akan ditampilkan ke pelanggan
+                        </div>
+                    </div>
+
+                    <!-- Foto Ruangan -->
+                    <div class="mb-4">
+                        <label class="form-label">Foto Ruangan</label>
+
+                        <!-- Foto Saat Ini -->
+                        <?php 
+                        $path_foto = "../../assets/img/ruangan/" . ($ruangan['Foto_Ruangan'] ?? '');
+                        $foto_exists = !empty($ruangan['Foto_Ruangan']) && file_exists($path_foto);
+                        ?>
+                        <?php if ($foto_exists): ?>
+                            <div class="current-foto-box">
+                                <img src="<?= $path_foto ?>" alt="Foto Saat Ini">
+                                <div class="current-foto-label">
+                                    <i class="bi bi-image me-1"></i> Foto saat ini: <?= htmlspecialchars($ruangan['Foto_Ruangan']) ?>
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <div class="alert alert-light border-2 border-dashed mb-3" style="border-color: #e2e8f0; border-radius: 14px;">
+                                <i class="bi bi-image me-2 text-muted"></i> Belum ada foto ruangan
+                            </div>
+                        <?php endif; ?>
+
+                        <!-- Upload Foto Baru -->
+                        <div class="file-upload-zone" id="dropzone" onclick="document.getElementById('foto-input').click()">
+                            <input type="file" name="foto" id="foto-input" 
+                                   accept="image/jpeg,image/jpg,image/png,image/webp" onchange="handleFileSelect(event)">
+                            <i class="bi bi-camera-fill" id="upload-icon"></i>
+                            <p id="upload-text">Klik untuk ganti foto (opsional)</p>
+                            <small>JPG, JPEG, PNG, WEBP — Maksimal 2MB</small>
+                        </div>
+                        <div id="preview-container">
+                            <img id="preview-img" src="" alt="Preview">
+                            <button type="button" class="remove-preview" onclick="removePreview(event)" title="Hapus foto">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- PILIH PAKET FOTO -->
+                    <div class="mb-4">
+                        <label class="form-label">Pilih Paket Foto <span class="required">*</span></label>
+                        <div class="input-hint mb-3">
+                            <i class="bi bi-info-circle"></i> Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini
+                        </div>
+
+                        <div class="paket-section">
+                            <div class="paket-section-title">
+                                <i class="bi bi-camera-fill text-danger"></i>
+                                Paket Foto Tersedia
+                            </div>
+
+                            <?php if (!empty($daftar_paket)): ?>
+                                <div class="paket-grid">
+                                    <?php foreach ($daftar_paket as $paket): 
+                                        $is_checked = in_array($paket['ID_Paket'], $paket_terhubung_ids) ? 'checked' : '';
+                                        $is_selected = $is_checked ? 'selected' : '';
+
+                                        // Cek apakah paket ini punya order aktif dengan ruangan ini
+                                        $cek_order_paket = safe_sqlsrv_count($conn,
+                                            "SELECT COUNT(*) as total FROM [Order] 
+                                             WHERE ID_Paket = ? AND ID_Ruangan = ? AND Status = 1 AND Status_Order <> 4",
+                                            [$paket['ID_Paket'], $id]
+                                        );
+                                        $has_order = ($cek_order_paket > 0);
+                                        $disabled = $has_order ? 'disabled' : '';
+                                        $order_badge = $has_order ? '<span class="order-badge">' . $cek_order_paket . ' order</span>' : '';
+                                    ?>
+                                        <div class="paket-checkbox-item <?= $is_selected ?> <?= $has_order ? 'has-order' : '' ?>" 
+                                             onclick="<?= $has_order ? '' : 'togglePaket(this)' ?>"
+                                             title="<?= $has_order ? 'Tidak bisa dihapus: ' . $cek_order_paket . ' order aktif menggunakan paket ini' : 'Klik untuk pilih' ?>">
+                                            <input type="checkbox" name="paket[]" value="<?= $paket['ID_Paket'] ?>" 
+                                                   <?= $is_checked ?> <?= $disabled ?> onchange="updatePaketCount()">
+                                            <div class="paket-info">
+                                                <div class="paket-nama"><?= htmlspecialchars($paket['Nama_Paket']) ?> <?= $order_badge ?></div>
+                                                <div class="paket-harga">Rp <?= number_format($paket['Harga_Paket'], 0, ',', '.') ?></div>
+                                                <div class="paket-kapasitas"><?= $paket['Kapasitas_Orang'] ?> orang</div>
+                                            </div>
+                                            <i class="bi bi-check-circle-fill paket-check-icon"></i>
+                                            <?php if ($has_order): ?>
+                                                <i class="bi bi-lock-fill lock-icon" title="Tidak bisa dihapus karena ada order aktif"></i>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php else: ?>
+                                <div class="paket-empty">
+                                    <i class="bi bi-exclamation-circle fs-1 mb-2 d-block" style="color: #cbd5e1;"></i>
+                                    <p>Belum ada paket foto aktif. <a href="../Paket Foto/add.php" style="color: var(--p-pink);">Tambah paket foto dulu</a>.</p>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="input-hint mt-2" id="paket-count-hint">
+                            <i class="bi bi-check-circle"></i> <span id="paket-count"><?= count($paket_terhubung_ids) ?></span> paket terpilih
+                        </div>
+                    </div>
+
+                    <!-- Status -->
+                    <div class="mb-4">
+                        <label class="form-label">Status Ruangan</label>
+                        <div class="status-toggle-group">
+                            <label class="status-option <?= ($ruangan['Status'] == 1) ? 'active' : '' ?>" onclick="selectStatus(this, 1)">
+                                <input type="radio" name="status" value="1" <?= ($ruangan['Status'] == 1) ? 'checked' : '' ?>>
+                                <div class="status-icon">✅</div>
+                                <div class="status-label">Aktif</div>
+                                <div class="status-desc">Bisa dipesan</div>
+                            </label>
+                            <label class="status-option <?= ($ruangan['Status'] == 0) ? 'active' : '' ?>" onclick="selectStatus(this, 0)">
+                                <input type="radio" name="status" value="0" <?= ($ruangan['Status'] == 0) ? 'checked' : '' ?>>
+                                <div class="status-icon">⛔</div>
+                                <div class="status-label">Nonaktif</div>
+                                <div class="status-desc">Sementara tutup</div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="d-flex gap-3 mt-4">
+                        <button type="submit" name="update" class="btn-submit">
+                            <i class="bi bi-check2-all"></i> Simpan Perubahan
+                        </button>
+                        <a href="list.php" class="btn-batal">
+                            <i class="bi bi-x-circle"></i> Batal
+                        </a>
+                    </div>
+                </form>
+
+            </div>
+        </div>
+
+    </div>
+
+    <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // Toggle Submenu
+        document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('data-target');
+                const targetEl = document.querySelector(targetId);
+                const chevron = this.querySelector('.icon-chevron');
+                if (targetEl) {
+                    const isShown = targetEl.classList.contains('show');
+                    document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
+                    document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
+                    if (!isShown) {
+                        targetEl.classList.add('show');
+                        if (chevron) chevron.style.transform = 'rotate(180deg)';
+                    }
+                }
+            });
+        });
+
+        // Status Toggle
+        function selectStatus(el, val) {
+            document.querySelectorAll('.status-option').forEach(opt => opt.classList.remove('active'));
+            el.classList.add('active');
+            el.querySelector('input').checked = true;
+        }
+
+        // Paket Checkbox Toggle
+        function togglePaket(el) {
+            const checkbox = el.querySelector('input[type="checkbox"]');
+            checkbox.checked = !checkbox.checked;
+            if (checkbox.checked) {
+                el.classList.add('selected');
+            } else {
+                el.classList.remove('selected');
+            }
+            updatePaketCount();
+        }
+
+        function updatePaketCount() {
+            const checked = document.querySelectorAll('input[name="paket[]"]:checked').length;
+            document.getElementById('paket-count').textContent = checked;
+            const hint = document.getElementById('paket-count-hint');
+            if (checked === 0) {
+                hint.style.color = '#dc2626';
+                hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Pilih minimal 1 paket!';
+            } else {
+                hint.style.color = '#059669';
+                hint.innerHTML = '<i class="bi bi-check-circle-fill"></i> ' + checked + ' paket terpilih';
+            }
+        }
+
+        // File Upload & Preview
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            const previewContainer = document.getElementById('preview-container');
+            const previewImg = document.getElementById('preview-img');
+            const uploadIcon = document.getElementById('upload-icon');
+            const uploadText = document.getElementById('upload-text');
+
+            if (file) {
+                if (file.size > 2097152) {
+                    Swal.fire({
+                        icon: 'error', title: 'Ukuran Terlalu Besar',
+                        text: 'Ukuran gambar maksimal 2MB.', confirmButtonColor: '#D53D66'
+                    });
+                    event.target.value = ''; return;
+                }
+                const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+                if (!allowed.includes(file.type)) {
+                    Swal.fire({
+                        icon: 'error', title: 'Format Tidak Valid',
+                        text: 'Format gambar harus JPG, JPEG, PNG, atau WEBP.', confirmButtonColor: '#D53D66'
+                    });
+                    event.target.value = ''; return;
+                }
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewImg.src = e.target.result;
+                    previewContainer.style.display = 'block';
+                    uploadIcon.style.display = 'none';
+                    uploadText.textContent = 'Foto baru: ' + file.name;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function removePreview(e) {
+            e.stopPropagation();
+            const input = document.getElementById('foto-input');
+            const previewContainer = document.getElementById('preview-container');
+            const uploadIcon = document.getElementById('upload-icon');
+            const uploadText = document.getElementById('upload-text');
+            input.value = '';
+            previewContainer.style.display = 'none';
+            uploadIcon.style.display = 'block';
+            uploadText.textContent = 'Klik untuk ganti foto (opsional)';
+        }
+
+        // Drag & Drop
+        const dropzone = document.getElementById('dropzone');
+        dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+        dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault(); dropzone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                document.getElementById('foto-input').files = files;
+                handleFileSelect({ target: { files: files } });
+            }
+        });
+
+        // Konfirmasi Logout
+        function confirmLogout(e) {
+            e.preventDefault();
+            Swal.fire({
+                title: 'Keluar Sistem?', text: 'Apakah Anda yakin ingin keluar?',
+                icon: 'warning', showCancelButton: true,
+                confirmButtonColor: '#D53D66', cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Keluar', cancelButtonText: 'Batal'
+            }).then((result) => { if (result.isConfirmed) window.location.href = '../../logout.php'; });
+        }
+
+        function confirmLandingPage(e) {
+            e.preventDefault();
+            Swal.fire({
+                title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama publik.',
+                icon: 'info', showCancelButton: true,
+                confirmButtonColor: '#D53D66', cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal'
+            }).then((result) => { if (result.isConfirmed) window.location.href = '../../index.php'; });
+        }
+
+        // Jam Real-Time
+        function updateLiveClock() {
+            const now = new Date();
+            const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+            const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+            document.getElementById('live-clock').innerText = 
+                `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()} - ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')} WIB`;
+        }
+        setInterval(updateLiveClock, 1000); updateLiveClock();
+
+        // Form validation
+        document.getElementById('formRuangan').addEventListener('submit', function(e) {
+            const paketChecked = document.querySelectorAll('input[name="paket[]"]:checked').length;
+            if (paketChecked === 0) {
+                e.preventDefault();
+                Swal.fire({
+                    icon: 'warning', title: 'Paket Belum Dipilih',
+                    text: 'Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini!',
+                    confirmButtonColor: '#D53D66'
+                });
+                return false;
+            }
+        });
+
+        // Init paket count
+        updatePaketCount();
+    </script>
+
+    <?php if ($success): ?>
+    <script>
+        Swal.fire({
+            icon: 'success', title: 'Berhasil!',
+            text: 'Data ruangan dan relasi paket foto telah diperbarui.',
+            confirmButtonColor: '#D53D66'
+        }).then(() => window.location = 'list.php?status_sukses=edit');
+    </script>
+    <?php endif; ?>
 </body>
 </html>

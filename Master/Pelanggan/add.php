@@ -3,7 +3,6 @@ ob_start();
 session_start();
 include '../../koneksi.php';
 
-<<<<<<< HEAD
 // Helper: Format tanggal ke bahasa Indonesia
 function formatTanggalIndo($dateStr) {
     if (empty($dateStr)) return '';
@@ -21,30 +20,20 @@ function formatTanggalIndo($dateStr) {
 
 // --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Admin') {
-=======
-// Proteksi Halaman: Hanya Admin yang bisa menambah pelanggan
-if (!isset($_SESSION['status']) || $_SESSION['role'] != 'Admin') {
->>>>>>> 298ddc1654af930b4da20d45cba40f1a517e2d8c
     header("Location: ../../login.php");
     exit();
 }
 
-<<<<<<< HEAD
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 $nama_admin = $_SESSION['nama'] ?? 'Administrator';
 
 // --- INISIALISASI VARIABEL ---
 $error_nama = $error_email = $error_username = $error_hp = $error_jk = $error_dob = $error_alamat = $error_password = $error_foto = $error_general = "";
-=======
-// 1. Inisialisasi variabel error
-$error_nama = ""; $error_email = ""; $error_hp = ""; $error_alamat = ""; $error_pass = ""; $error_general = "";
->>>>>>> 298ddc1654af930b4da20d45cba40f1a517e2d8c
 $success = false;
 $old_values = [];
 
 // --- PROSES SIMPAN ---
 if (isset($_POST['simpan'])) {
-<<<<<<< HEAD
     $nama       = trim($_POST['nama'] ?? '');
     $username   = trim($_POST['username'] ?? '');
     $email      = trim($_POST['email'] ?? '');
@@ -74,27 +63,6 @@ if (isset($_POST['simpan'])) {
         $error_username = "Username hanya boleh huruf, angka, dan underscore!";
     } elseif (strlen($username) > 20) {
         $error_username = "Username maksimal 20 karakter!";
-=======
-    $nama   = trim($_POST['nama']);
-    $email  = trim($_POST['email']);
-    $pass   = $_POST['password'];
-    $hp     = trim($_POST['no_hp']); 
-    $alamat = trim($_POST['alamat']);
-
-    // --- VALIDASI SERVER SIDE ---
-    
-    // Validasi Nama
-    if (!preg_match("/^[a-zA-Z ]*$/", $nama)) {
-        $error_nama = "Nama hanya boleh berisi huruf!";
-    }
-
-    // Validasi Nomor HP
-    $hp_clean = str_replace(['+', ' '], '', $hp); 
-    if (!ctype_digit($hp_clean)) {
-        $error_hp = "Nomor Telepon harus berupa angka!";
-    } elseif (strlen($hp_clean) < 11 || strlen($hp_clean) > 14) {
-        $error_hp = "Nomor Telepon tidak valid (Harus 11-14 digit termasuk 62)!";
->>>>>>> 298ddc1654af930b4da20d45cba40f1a517e2d8c
     }
 
     // === VALIDASI EMAIL ===
@@ -106,7 +74,6 @@ if (isset($_POST['simpan'])) {
         $error_email = "Email terlalu panjang (maks 100 karakter)!";
     }
 
-<<<<<<< HEAD
     // === VALIDASI PASSWORD ===
     if (empty($password)) {
         $error_password = "Kata sandi wajib diisi!";
@@ -134,28 +101,6 @@ if (isset($_POST['simpan'])) {
     } elseif (!preg_match("/^8[1-9][0-9]{8,11}$/", $hp_digits)) {
         $error_hp = "Nomor telepon tidak valid. Contoh: 81234567890";
     }
-=======
-    // Validasi Alamat
-    if (strlen($alamat) < 10) {
-        $error_alamat = "Mohon isi alamat lengkap (Min. 10 Karakter)!";
-    }
-
-    // --- VALIDASI KATA SANDI (HURUF, ANGKA, SIMBOL) ---
-    if (strlen($pass) < 8) {
-        $error_pass = "Kata sandi minimal 8 karakter!";
-    } elseif (!preg_match("/[a-zA-Z]/", $pass)) {
-        $error_pass = "Kata sandi wajib mengandung huruf!";
-    } elseif (!preg_match("/[0-9]/", $pass)) {
-        $error_pass = "Kata sandi wajib mengandung angka!";
-    } elseif (!preg_match("/[^a-zA-Z0-9]/", $pass)) {
-        $error_pass = "Kata sandi wajib mengandung simbol (contoh: @,#,$,!,%)!";
-    }
-
-    // 2. Jika validasi lolos, cek duplikasi email & simpan
-    if ($error_nama == "" && $error_hp == "" && $error_email == "" && $error_alamat == "" && $error_pass == "") {
-        $sql_cek = "SELECT * FROM Users WHERE Email_User = ?";
-        $stmt_cek = sqlsrv_query($conn, $sql_cek, array($email));
->>>>>>> 298ddc1654af930b4da20d45cba40f1a517e2d8c
 
     // === VALIDASI JENIS KELAMIN ===
     if (empty($jk)) {
@@ -172,7 +117,6 @@ if (isset($_POST['simpan'])) {
         if (!$dob_date || $dob_date->format('Y-m-d') !== $dob) {
             $error_dob = "Format tanggal lahir tidak valid!";
         } else {
-<<<<<<< HEAD
             $today = new DateTime();
             $age = $today->diff($dob_date)->y;
             if ($dob_date > $today) {
@@ -184,9 +128,6 @@ if (isset($_POST['simpan'])) {
             }
         }
     }
-=======
-            sqlsrv_begin_transaction($conn);
->>>>>>> 298ddc1654af930b4da20d45cba40f1a517e2d8c
 
     // === VALIDASI ALAMAT ===
     if (empty($alamat)) {
@@ -209,7 +150,6 @@ if (isset($_POST['simpan'])) {
             $error_email = "Email sudah terdaftar di sistem!";
         }
 
-<<<<<<< HEAD
         $cek_hp = sqlsrv_query($conn, "SELECT ID_Pelanggan FROM Pelanggan WHERE No_Hp = ?", [$hp_clean]);
         if (sqlsrv_has_rows($cek_hp)) {
             $error_hp = "Nomor telepon sudah terdaftar di sistem!";
@@ -283,23 +223,10 @@ if (isset($_POST['simpan'])) {
             $error_general = "Terjadi kesalahan sistem: " . $e->getMessage();
             if ($foto_name != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_name)) {
                 unlink("../../assets/img/pelanggan/" . $foto_name);
-=======
-                if ($stmt2) {
-                    sqlsrv_commit($conn); 
-                    $success = true;
-                } else {
-                    sqlsrv_rollback($conn);
-                    $error_general = "Gagal menyimpan biodata pelanggan.";
-                }
-            } else {
-                sqlsrv_rollback($conn);
-                $error_general = "Kesalahan sistem saat membuat akun.";
->>>>>>> 298ddc1654af930b4da20d45cba40f1a517e2d8c
             }
         }
     }
 }
-<<<<<<< HEAD
 
 // Ambil profil admin untuk sidebar
 $q_admin = sqlsrv_query($conn, "SELECT * FROM Karyawan WHERE ID_Karyawan = ?", [$id_admin]);
@@ -314,9 +241,6 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
     ? "../../assets/img/pelanggan/" . $foto_admin 
     : $default_svg_avatar;
 ?>
-=======
-?>  
->>>>>>> 298ddc1654af930b4da20d45cba40f1a517e2d8c
 
 <!DOCTYPE html>
 <html lang="id">
@@ -421,7 +345,6 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
         }
         .profile-header-btn img { width: 100%; height: 100%; object-fit: cover; }
 
-<<<<<<< HEAD
         /* FORM CARD */
         .form-card {
             background: #ffffff; border-radius: 24px;
@@ -714,20 +637,10 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
             .main-content { margin-left: 0; padding: 20px; }
             .sidebar { transform: translateX(-100%); }
         }
-=======
-.btn-batal:hover { 
-    background: #cbd5e1; 
-    color: #1e293b; 
-    transform: translateY(-5px); 
-    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-}
-.error-text { color: #ef4444; font-size: 11px; font-weight: 700; margin-top: 6px; display: flex; align-items: center; gap: 5px; }
->>>>>>> 298ddc1654af930b4da20d45cba40f1a517e2d8c
     </style>
 </head>
 <body>
 
-<<<<<<< HEAD
     <!-- SIDEBAR -->
     <div class="sidebar">
         <div class="sidebar-menu-wrapper">
@@ -750,78 +663,11 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
                             <li><a href="./list.php" class="submenu-link active"><i class="bi bi-people-fill me-2"></i>Pelanggan</a></li>
                             <li><a href="../Paket Foto/list.php" class="submenu-link"><i class="bi bi-camera-fill me-2"></i>Paket Foto</a></li>
                             <li><a href="../Ruangan/list.php" class="submenu-link"><i class="bi bi-door-open-fill me-2"></i>Ruangan</a></li>
-                            <li><a href="../Tema Foto/list.php" class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
                             <li><a href="../Properti/list.php" class="submenu-link"><i class="bi bi-box-seam-fill me-2"></i>Properti</a></li>
-                            <li><a href="../Barang Cetak/list.php" class="submenu-link"><i class="bi bi-printer-fill me-2"></i>Barang Cetak</a></li>
+                            <li><a href="../Tema Foto/list.php" class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
                             <li><a href="../Jadwal Studio/list.php" class="submenu-link"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Studio</a></li>
+                            <li><a href="../Barang Cetak/list.php" class="submenu-link"><i class="bi bi-printer-fill me-2"></i>Barang Cetak</a></li>
                         </ul>
-=======
-    <div class="container">
-        <div class="main-card row g-0">
-            <!-- Sisi Visual (Kiri) -->
-            <div class="col-md-5 side-visual d-none d-md-flex">
-                <div>
-                    <h2 class="fw-bold mb-4" style="font-size: 2.8rem; line-height: 1.1;">Welcome to <br><span style="color: #ffe0ec">SpotLight</span> Family.</h2>
-                    <p class="opacity-75">Manajemen data pelanggan membantu studio dalam mengelola riwayat booking dan pengiriman hasil foto cetak secara akurat.</p>
-                </div>
-                <div class="glass-box">
-                    <p class="mb-0 small" style="line-height: 1.7;"><i class="bi bi-info-circle-fill me-2"></i>Sistem secara otomatis membuat akun login dengan role "Customer" setelah data profil disimpan.</p>
-                </div>
-            </div>
-
-            <!-- Sisi Form (Kanan) -->
-            <div class="col-md-7 form-section">
-                <div class="mb-5">
-                    <h3 class="fw-bold text-dark mb-1">Tambah Pelanggan</h3>
-                    <p class="text-muted small fw-500">Daftarkan profil customer baru ke dalam sistem.</p>
-                </div>
-
-                <form method="POST">
-                    <div class="row">
-                        <!-- NAMA LENGKAP -->
-                        <div class="col-md-12 mb-3">
-                            <label class="form-label">Nama Lengkap Customer</label>
-                            <input type="text" name="nama" id="inputNama" class="form-control <?= ($error_nama != '') ? 'is-invalid' : '' ?>" placeholder="Masukkan nama (Huruf saja)" value="<?= @$_POST['nama'] ?>" required>
-                            <?php if($error_nama): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_nama ?></div><?php endif; ?>
-                        </div>
-
-                        <!-- EMAIL -->
-                        <div class="col-md-12 mb-3">
-                            <label class="form-label">Email Aktif</label>
-                            <input type="email" name="email" class="form-control <?= ($error_email != '') ? 'is-invalid' : '' ?>" placeholder="customer@email.com" value="<?= @$_POST['email'] ?>" required>
-                            <?php if($error_email): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_email ?></div><?php endif; ?>
-                        </div>
-
-                        <!-- WHATSAPP & PASSWORD -->
-                        <div class="col-md-6 mb-3">
-    <label class="form-label">Nomor Telepon</label>
-    <input type="text" name="no_hp" id="inputHP" 
-           class="form-control <?= ($error_hp != '') ? 'is-invalid' : '' ?>" 
-           value="<?= isset($_POST['no_hp']) ? $_POST['no_hp'] : '+62 ' ?>" required>
-    <?php if($error_hp): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_hp ?></div><?php endif; ?>
-</div>
-                       <div class="col-md-6 mb-3">
-    <label class="form-label">Kata Sandi</label>
-    <div class="position-relative">
-        <!-- Tambahkan class PHP is-invalid di bawah ini -->
-        <input type="password" name="password" id="inputPass" 
-               class="form-control <?= ($error_pass != '') ? 'is-invalid' : '' ?>" 
-               placeholder="••••••••" required>
-        <i class="bi bi-eye-slash position-absolute top-50 end-0 translate-middle-y me-3 text-muted" 
-           id="togglePassword" 
-           style="cursor: pointer; z-index: 10;"></i>
-    </div>
-     <?php if($error_pass): ?>
-        <div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_pass ?></div>
-    <?php endif; ?>
-</div>
-                        <!-- ALAMAT (VALIDASI MIN 10 KARAKTER) -->
-                        <div class="col-md-12 mb-4">
-                            <label class="form-label">Alamat Domisili</label>
-                            <textarea name="alamat" class="form-control <?= ($error_alamat != '') ? 'is-invalid' : '' ?>" rows="2" placeholder="Masukkan alamat lengkap (Min. 10 Karakter)..." required><?= @$_POST['alamat'] ?></textarea>
-                            <?php if($error_alamat): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_alamat ?></div><?php endif; ?>
-                        </div>
->>>>>>> 298ddc1654af930b4da20d45cba40f1a517e2d8c
                     </div>
                 </li>
                 <li class="nav-item">

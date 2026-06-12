@@ -9,19 +9,59 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 }
 
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
-$nama_admin = $_SESSION['nama'] ?? 'Administrator';
 
-// Ambil Profil Admin untuk Sidebar
-$q_admin = sqlsrv_query($conn, "SELECT * FROM Karyawan WHERE ID_Karyawan = ?", [$id_admin]);
-$d_admin = sqlsrv_fetch_array($q_admin, SQLSRV_FETCH_ASSOC);
-if ($d_admin) { $d_admin = array_change_key_case($d_admin, CASE_LOWER); }
-$nama_admin = $d_admin['nama_karyawan'] ?? 'Administrator';
-$foto_admin = $d_admin['foto_profil'] ?? 'default.jpg';
-$email_admin = $d_admin['email_karyawan'] ?? 'admin@spotlight.com';
+// =====================================================
+// HELPER FUNCTIONS - Safe SQLSRV (Anti-Crash)
+// =====================================================
+function safe_sqlsrv_fetch($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) {
+        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        return null;
+    }
+    $result = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $result;
+}
+
+function safe_sqlsrv_fetch_all($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) {
+        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        return [];
+    }
+    $results = [];
+    while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+        $results[] = $row;
+    }
+    sqlsrv_free_stmt($stmt);
+    return $results;
+}
+
+function safe_sqlsrv_count($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) return 0;
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $row['total'] ?? 0;
+}
+
+// =====================================================
+// AMBIL PROFIL ADMIN
+// =====================================================
+$admin_data = safe_sqlsrv_fetch($conn, 
+    "SELECT Nama_Karyawan, Foto_Profil, Email_Karyawan FROM Karyawan WHERE ID_Karyawan = ? AND Status = 1 AND Is_Deleted = 0", 
+    [$id_admin]
+);
+
+$nama_admin = $admin_data['Nama_Karyawan'] ?? 'Administrator';
+$foto_admin = $admin_data['Foto_Profil'] ?? 'default.jpg';
+$email_admin = $admin_data['Email_Karyawan'] ?? 'admin@spotlight.com';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
-$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_admin)) 
-    ? "../../assets/img/pelanggan/" . $foto_admin 
+
+$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
+    ? "../../assets/img/karyawan/" . $foto_admin 
     : $default_svg_avatar;
 
 // =====================================================
@@ -39,71 +79,88 @@ $sort = isset($_GET['sort']) ? trim($_GET['sort']) : "nama_asc";
 // =====================================================
 // QUERY STATISTIK
 // =====================================================
-$q_stats = "SELECT 
-    COUNT(*) as total,
-    SUM(CASE WHEN Status = 1 THEN 1 ELSE 0 END) as aktif,
-    SUM(CASE WHEN Status = 0 THEN 1 ELSE 0 END) as nonaktif
-FROM Ruangan WHERE Is_Deleted = 0";
-$stmt_stats = sqlsrv_query($conn, $q_stats);
-$stats = ['total' => 0, 'aktif' => 0, 'nonaktif' => 0];
-if ($stmt_stats !== false) {
-    $stats = sqlsrv_fetch_array($stmt_stats, SQLSRV_FETCH_ASSOC) ?: $stats;
-}
+$stats = safe_sqlsrv_fetch($conn, 
+    "SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN Status = 1 THEN 1 ELSE 0 END) as aktif,
+        SUM(CASE WHEN Status = 0 THEN 1 ELSE 0 END) as nonaktif
+    FROM Ruangan WHERE Is_Deleted = 0"
+) ?? ['total' => 0, 'aktif' => 0, 'nonaktif' => 0];
 
-// Ruangan terpopuler
-$top_ruangan = null;
-$sql_top = "SELECT TOP 1 r.Nama_Ruangan, COUNT(o.ID_Order) as total_booked 
-            FROM Ruangan r 
-            LEFT JOIN [Order] o ON r.ID_Ruangan = o.ID_Ruangan 
-            WHERE r.Is_Deleted = 0
-            GROUP BY r.Nama_Ruangan 
-            ORDER BY total_booked DESC";
-$res_top = sqlsrv_query($conn, $sql_top);
-if ($res_top !== false) {
-    $top_ruangan = sqlsrv_fetch_array($res_top, SQLSRV_FETCH_ASSOC);
-}
+// Ruangan terpopuler (dari Order)
+$top_ruangan = safe_sqlsrv_fetch($conn,
+    "SELECT TOP 1 r.Nama_Ruangan, COUNT(o.ID_Order) as total_booked 
+    FROM Ruangan r 
+    LEFT JOIN [Order] o ON r.ID_Ruangan = o.ID_Ruangan AND o.Status = 1 AND o.Status_Order <> 4
+    WHERE r.Is_Deleted = 0 AND r.Status = 1
+    GROUP BY r.Nama_Ruangan 
+    ORDER BY total_booked DESC"
+);
 
 // =====================================================
-// QUERY LIST DATA DENGAN FILTER
+// QUERY LIST DATA DENGAN FILTER & RELASI
 // =====================================================
-$conditions = array("Is_Deleted = 0");
-$params = array();
+$conditions = ["r.Is_Deleted = 0"];
+$params = [];
 
 if (!empty($cari)) {
-    $conditions[] = "(Nama_Ruangan LIKE ? OR Deskripsi LIKE ?)";
+    $conditions[] = "(r.Nama_Ruangan LIKE ? OR r.Deskripsi LIKE ?)";
     $params[] = "%$cari%"; 
     $params[] = "%$cari%";
 }
 if ($status_filter !== "") {
-    $conditions[] = "Status = ?";
+    $conditions[] = "r.Status = ?";
     $params[] = (int)$status_filter;
 }
 
-$order_clause = "Nama_Ruangan ASC";
-if ($sort == "nama_desc") { $order_clause = "Nama_Ruangan DESC"; }
-elseif ($sort == "harga_asc") { $order_clause = "Harga_Sewa ASC"; }
-elseif ($sort == "harga_desc") { $order_clause = "Harga_Sewa DESC"; }
-elseif ($sort == "kapasitas_asc") { $order_clause = "Kapasitas_Ruangan ASC"; }
-elseif ($sort == "kapasitas_desc") { $order_clause = "Kapasitas_Ruangan DESC"; }
+$order_clause = "r.Nama_Ruangan ASC";
+if ($sort == "nama_desc") { $order_clause = "r.Nama_Ruangan DESC"; }
+elseif ($sort == "kapasitas_asc") { $order_clause = "r.Kapasitas_Ruangan ASC"; }
+elseif ($sort == "kapasitas_desc") { $order_clause = "r.Kapasitas_Ruangan DESC"; }
+elseif ($sort == "paket_asc") { $order_clause = "total_paket ASC"; }
+elseif ($sort == "paket_desc") { $order_clause = "total_paket DESC"; }
 
 // Hitung total untuk pagination
-$sql_count = "SELECT COUNT(*) AS total FROM Ruangan WHERE " . implode(" AND ", $conditions);
-$query_count = sqlsrv_query($conn, $sql_count, $params);
-$total_records = 0;
-$total_halaman = 0;
-if ($query_count !== false) {
-    $row_count = sqlsrv_fetch_array($query_count, SQLSRV_FETCH_ASSOC);
-    $total_records = $row_count['total'] ?? 0;
-    $total_halaman = ceil($total_records / $limit);
-}
+$count_sql = "SELECT COUNT(*) AS total FROM Ruangan r WHERE " . implode(" AND ", $conditions);
+$total_records = safe_sqlsrv_count($conn, $count_sql, $params);
+$total_halaman = ceil($total_records / $limit);
 
-// Ambil data
-$sql_list = "SELECT * FROM Ruangan WHERE " . implode(" AND ", $conditions) . " ORDER BY " . $order_clause . " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
+// Ambil data dengan relasi (paket, properti, tema)
+$list_sql = "SELECT 
+    r.ID_Ruangan,
+    r.Nama_Ruangan,
+    r.Kapasitas_Ruangan,
+    r.Deskripsi,
+    r.Foto_Ruangan,
+    r.Status,
+    (SELECT COUNT(*) FROM Paket_Ruangan pr WHERE pr.ID_Ruangan = r.ID_Ruangan) as total_paket,
+    (SELECT COUNT(*) FROM Properti p WHERE p.ID_Ruangan = r.ID_Ruangan AND p.Status = 1 AND p.Is_Deleted = 0) as total_properti,
+    (SELECT COUNT(*) FROM Ruangan_Tema rt WHERE rt.ID_Ruangan = r.ID_Ruangan) as total_tema
+FROM Ruangan r
+WHERE " . implode(" AND ", $conditions) . "
+ORDER BY " . $order_clause . "
+OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
+
 $params_list = $params;
 $params_list[] = $offset;
 $params_list[] = $limit;
 
-$query = sqlsrv_query($conn, $sql_list, $params_list);
+$ruangan_list = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
+
+// Ambil daftar paket untuk setiap ruangan (untuk badge)
+$paket_per_ruangan = [];
+if (!empty($ruangan_list)) {
+    $ruangan_ids = array_column($ruangan_list, 'ID_Ruangan');
+    $placeholders = implode(',', array_fill(0, count($ruangan_ids), '?'));
+    $paket_sql = "SELECT pr.ID_Ruangan, p.Nama_Paket 
+                  FROM Paket_Ruangan pr 
+                  JOIN Paket_Foto p ON pr.ID_Paket = p.ID_Paket 
+                  WHERE pr.ID_Ruangan IN ($placeholders) AND p.Status = 1 AND p.Is_Deleted = 0";
+    $paket_data = safe_sqlsrv_fetch_all($conn, $paket_sql, $ruangan_ids);
+    foreach ($paket_data as $p) {
+        $paket_per_ruangan[$p['ID_Ruangan']][] = $p['Nama_Paket'];
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -240,6 +297,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         .stat-icon-pink { background: linear-gradient(135deg, #FFF0F3, #FFE4E9); color: #D53D66; }
         .stat-icon-green { background: linear-gradient(135deg, #ecfdf5, #d1fae5); color: #059669; }
         .stat-icon-orange { background: linear-gradient(135deg, #fff7ed, #fed7aa); color: #ea580c; }
+        .stat-icon-blue { background: linear-gradient(135deg, #eff6ff, #dbeafe); color: #2563eb; }
         .stat-content { flex: 1; min-width: 0; overflow: hidden; }
         .stat-val { font-size: 1.5rem; font-weight: 800; color: var(--text-dark); margin-bottom: 2px; line-height: 1.2; }
         .stat-title { font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
@@ -309,12 +367,6 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             transform: translateY(-4px) scale(1.03) !important;
             box-shadow: 0 12px 25px rgba(213, 61, 102, 0.4) !important;
         }
-        .sort-dropdown {
-            border: 2px solid #e2e8f0; border-radius: 14px; padding: 12px 18px;
-            font-weight: 600; font-size: 0.85rem; color: #4a5568;
-            background: #ffffff; cursor: pointer; transition: var(--transition-3d);
-        }
-        .sort-dropdown:focus { outline: none; border-color: var(--p-pink); }
 
         /* TABEL */
         .table-scroll-wrapper {
@@ -326,7 +378,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         .table-scroll-wrapper::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
         .table-scroll-wrapper::-webkit-scrollbar-thumb { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); border-radius: 10px; }
         .data-table {
-            width: 100%; min-width: 950px; border-collapse: separate; border-spacing: 0;
+            width: 100%; min-width: 1100px; border-collapse: separate; border-spacing: 0;
         }
         .data-table thead th {
             background: #ffffff; padding: 16px 20px;
@@ -347,29 +399,34 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         .data-table tbody tr:nth-child(odd) { background-color: #ffffff; }
         .data-table tbody tr:hover { background-color: #FFEDD5 !important; transform: scale(1.002); }
 
-        .ruangan-icon {
-            width: 60px; height: 60px; border-radius: 14px;
-            background: linear-gradient(135deg, #FFF0F3, #FFE4E9);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 1.8rem; color: #D53D66; flex-shrink: 0;
-            transition: var(--transition-3d);
+        .ruangan-preview {
+            width: 70px; height: 70px; object-fit: cover;
+            border-radius: 16px; border: 2px solid var(--light-pink);
+            transition: var(--transition-3d); flex-shrink: 0;
         }
-        .data-table tbody tr:hover .ruangan-icon { transform: scale(1.08) rotate(2deg); }
+        .data-table tbody tr:hover .ruangan-preview { transform: scale(1.08) rotate(2deg); }
 
         .td-nama { font-weight: 700; font-size: 0.9rem; color: var(--text-dark); }
         .td-deskripsi { font-size: 0.8rem; color: #718096; max-width: 200px; white-space: normal; }
-        .td-harga { font-weight: 800; color: var(--p-pink); font-size: 1rem; }
         .td-kapasitas { font-size: 0.85rem; color: #4a5568; font-weight: 600; }
+        .td-relasi { font-size: 0.8rem; color: #718096; font-weight: 600; }
 
         .badge-status {
             font-size: 0.72rem; font-weight: 700; padding: 6px 14px;
             border-radius: 50px; display: inline-flex; align-items: center; gap: 6px;
         }
-        .badge-tersedia { background: #ecfdf5; color: #059669; }
-        .badge-tidak-tersedia { background: #fef2f2; color: #dc2626; }
+        .badge-aktif { background: #ecfdf5; color: #059669; }
+        .badge-nonaktif { background: #fef2f2; color: #dc2626; }
         .badge-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
-        .badge-tersedia .badge-dot { background: #059669; }
-        .badge-tidak-tersedia .badge-dot { background: #dc2626; }
+        .badge-aktif .badge-dot { background: #059669; }
+        .badge-nonaktif .badge-dot { background: #dc2626; }
+
+        .badge-paket {
+            font-size: 0.65rem; font-weight: 700; padding: 3px 10px;
+            border-radius: 50px; background: linear-gradient(135deg, #FFF0F3, #FFE4E9);
+            color: var(--p-pink); border: 1px solid var(--light-pink);
+            display: inline-block; margin: 1px;
+        }
 
         .btn-action-circle {
             width: 34px; height: 34px; border-radius: 50%;
@@ -378,6 +435,8 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             background: #ffffff; font-size: 0.85rem; text-decoration: none;
             margin: 0 2px; cursor: pointer;
         }
+        .btn-action-detail { color: #D53D66; border-color: #FFE4E9; }
+        .btn-action-detail:hover { background: #D53D66; color: #ffffff; transform: translateY(-2px); }
         .btn-action-edit { color: var(--p-pink); border-color: #FFE4E9; }
         .btn-action-edit:hover { background: var(--p-pink); color: #ffffff; transform: translateY(-2px); }
         .btn-action-delete { color: #dc2626; border-color: #fee2e2; }
@@ -449,10 +508,10 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                             <li><a href="../Pelanggan/list.php" class="submenu-link"><i class="bi bi-people-fill me-2"></i>Pelanggan</a></li>
                             <li><a href="../Paket Foto/list.php" class="submenu-link"><i class="bi bi-camera-fill me-2"></i>Paket Foto</a></li>
                             <li><a href="./list.php" class="submenu-link active"><i class="bi bi-door-open-fill me-2"></i>Ruangan</a></li>
-                            <li><a href="../Tema Foto/list.php" class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
                             <li><a href="../Properti/list.php" class="submenu-link"><i class="bi bi-box-seam-fill me-2"></i>Properti</a></li>
-                            <li><a href="../Barang Cetak/list.php" class="submenu-link"><i class="bi bi-printer-fill me-2"></i>Barang Cetak</a></li>
+                            <li><a href="../Tema Foto/list.php" class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
                             <li><a href="../Jadwal Studio/list.php" class="submenu-link"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Studio</a></li>
+                            <li><a href="../Barang Cetak/list.php" class="submenu-link"><i class="bi bi-printer-fill me-2"></i>Barang Cetak</a></li>
                         </ul>
                     </div>
                 </li>
@@ -492,7 +551,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         <div class="dashboard-header" data-aos="fade-up">
             <div>
                 <h3 class="fw-bold mb-1">Master Ruangan</h3>
-                <p class="text-muted small mb-0">Kelola data ruangan studio untuk sesi foto pelanggan.</p>
+                <p class="text-muted small mb-0">Kelola data ruangan studio untuk sesi foto pelanggan. Ruangan terhubung ke paket, properti, dan tema.</p>
             </div>
             <div class="d-flex align-items-center gap-3">
                 <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
@@ -524,7 +583,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                         <div class="stat-card">
                             <div class="stat-icon stat-icon-green"><i class="bi bi-check-circle-fill"></i></div>
                             <div class="stat-content">
-                                <div class="stat-title">Ruangan Tersedia</div>
+                                <div class="stat-title">Ruangan Aktif</div>
                                 <div class="stat-val"><?= $stats['aktif'] ?? 0 ?> Ruangan</div>
                                 <div class="stat-subtitle">Siap digunakan</div>
                             </div>
@@ -536,27 +595,27 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                         <div class="stat-card">
                             <div class="stat-icon stat-icon-orange"><i class="bi bi-x-circle-fill"></i></div>
                             <div class="stat-content">
-                                <div class="stat-title">Tidak Tersedia</div>
+                                <div class="stat-title">Ruangan Nonaktif</div>
                                 <div class="stat-val"><?= $stats['nonaktif'] ?? 0 ?> Ruangan</div>
                                 <div class="stat-subtitle">Dinonaktifkan sementara</div>
                             </div>
                         </div>
                     </div>
                 </div>
+                <div class="stat-card-item">
+                    <div class="card-3d">
+                        <div class="stat-card">
+                            <div class="stat-icon stat-icon-blue"><i class="bi bi-award-fill"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-title">Terpopuler</div>
+                                <div class="stat-val" style="font-size: 1.1rem;"><?= $top_ruangan ? htmlspecialchars($top_ruangan['Nama_Ruangan']) : '-' ?></div>
+                                <div class="stat-subtitle"><?= $top_ruangan ? ($top_ruangan['total_booked'] ?? 0) . ' booking' : 'Belum ada data' ?></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-
-        <!-- BEST SELLER / TERPOPULER -->
-        <?php if ($top_ruangan && ($top_ruangan['total_booked'] ?? 0) > 0): ?>
-        <div class="best-seller-card fade-in-up">
-            <div class="best-seller-icon"><i class="bi bi-award-fill"></i></div>
-            <div>
-                <div class="best-seller-label">Ruangan Terpopuler</div>
-                <div class="best-seller-name"><?= htmlspecialchars($top_ruangan['Nama_Ruangan']) ?></div>
-                <div class="best-seller-count">Total Booking: <b><?= $top_ruangan['total_booked'] ?></b> kali</div>
-            </div>
-        </div>
-        <?php endif; ?>
 
         <!-- SEARCH & FILTER -->
         <div class="search-filter-bar">
@@ -580,15 +639,27 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             </a>
         </div>
 
+        <!-- INFO TEXT -->
+        <div class="alert alert-light border-2 border-dashed mb-3" style="border-color: #e2e8f0; border-radius: 14px; background: #f8fafc;">
+            <i class="bi bi-info-circle-fill me-2 text-info"></i>
+            <span class="small fw-bold text-muted">
+                <strong>Info:</strong> Properti & Tema muncul otomatis berdasarkan ruangan yang dipilih. 
+                Admin mengelola Properti di menu <a href="../Properti/list.php" style="color: var(--p-pink);">Properti</a> 
+                dan Tema di menu <a href="../Tema Foto/list.php" style="color: var(--p-pink);">Tema Foto</a>.
+            </span>
+        </div>
+
         <!-- TABEL DATA -->
         <div class="card-3d mb-4" style="padding: 24px;">
             <div class="table-scroll-wrapper">
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Preview</th>
+                            <th>Ruangan</th>
                             <th>Kapasitas</th>
-                            <th>Harga Sewa</th>
+                            <th>Paket Terhubung</th>
+                            <th>Properti <i class="bi bi-info-circle" title="Auto dari sistem berdasarkan ruangan"></i></th>
+                            <th>Tema <i class="bi bi-info-circle" title="Auto dari sistem berdasarkan ruangan"></i></th>
                             <th>Status</th>
                             <th class="text-center">Aksi</th>
                         </tr>
@@ -596,18 +667,22 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                     <tbody>
                         <?php
                         $no = $offset + 1;
-                        if ($query && sqlsrv_has_rows($query)):
-                            while($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
-                                // Status: 1 = Tersedia, 0 = Tidak Tersedia
-                                $badge_status = ($row['Status'] == 1) ? "badge-tersedia" : "badge-tidak-tersedia";
-                                $text_status = ($row['Status'] == 1) ? "Tersedia" : "Tidak Tersedia";
+                        if (!empty($ruangan_list)):
+                            foreach($ruangan_list as $row):
+                                $path_img = "../../assets/img/ruangan/" . ($row['Foto_Ruangan'] ?? '');
+                                $img_src = (!empty($row['Foto_Ruangan']) && file_exists($path_img))
+                                    ? $path_img 
+                                    : $default_svg_avatar;
+
+                                $badge_status = ($row['Status'] == 1) ? "badge-aktif" : "badge-nonaktif";
+                                $text_status = ($row['Status'] == 1) ? "Aktif" : "Nonaktif";
+
+                                $paket_list = $paket_per_ruangan[$row['ID_Ruangan']] ?? [];
                         ?>
                             <tr class="fade-in-up">
                                 <td>
                                     <div class="d-flex align-items-center gap-3">
-                                        <div class="ruangan-icon">
-                                            <i class="bi bi-door-open"></i>
-                                        </div>
+                                        <img src="<?= $img_src ?>" class="ruangan-preview" alt="<?= htmlspecialchars($row['Nama_Ruangan']) ?>">
                                         <div>
                                             <div class="td-nama"><?= htmlspecialchars($row['Nama_Ruangan']) ?></div>
                                             <div class="td-deskripsi"><?= htmlspecialchars($row['Deskripsi'] ?? '-') ?></div>
@@ -618,8 +693,22 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                                     <i class="bi bi-people-fill me-1 text-danger"></i><?= $row['Kapasitas_Ruangan'] ?? 0 ?> orang
                                 </td>
                                 <td>
-                                    <div class="td-harga">Rp <?= number_format($row['Harga_Sewa'] ?? 0, 0, ',', '.') ?></div>
-                                    <div class="small text-muted"><i class="bi bi-clock me-1"></i>per sesi</div>
+                                    <?php if (!empty($paket_list)): ?>
+                                        <?php foreach (array_slice($paket_list, 0, 2) as $paket): ?>
+                                            <span class="badge-paket"><?= htmlspecialchars($paket) ?></span>
+                                        <?php endforeach; ?>
+                                        <?php if (count($paket_list) > 2): ?>
+                                            <span class="badge-paket">+<?= count($paket_list) - 2 ?></span>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <span class="text-muted small">Belum terhubung</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="td-relasi">
+                                    <i class="bi bi-box-seam me-1 text-warning"></i><?= $row['total_properti'] ?? 0 ?> properti
+                                </td>
+                                <td class="td-relasi">
+                                    <i class="bi bi-palette me-1 text-info"></i><?= $row['total_tema'] ?? 0 ?> tema
                                 </td>
                                 <td>
                                     <span class="badge-status <?= $badge_status ?>">
@@ -628,6 +717,9 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                                     </span>
                                 </td>
                                 <td>
+                                    <a href="detail.php?id=<?= $row['ID_Ruangan'] ?>" class="btn-action-circle btn-action-detail" title="Lihat Detail">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
                                     <a href="edit.php?id=<?= $row['ID_Ruangan'] ?>" class="btn-action-circle btn-action-edit" title="Edit Ruangan">
                                         <i class="bi bi-pencil"></i>
                                     </a>
@@ -640,13 +732,14 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                                 </td>
                             </tr>
                         <?php 
-                            endwhile; 
+                            endforeach; 
                         else:
                         ?>
                             <tr>
-                                <td colspan="5" class="text-center text-muted py-5">
+                                <td colspan="7" class="text-center text-muted py-5">
                                     <i class="bi bi-inbox fs-1 mb-3 d-block" style="color: #cbd5e1;"></i>
                                     <p class="fw-bold">Tidak ada data ruangan yang sesuai.</p>
+                                    <p class="small">Coba ubah filter atau tambah ruangan baru.</p>
                                 </td>
                             </tr>
                         <?php endif; ?>
@@ -725,18 +818,18 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                         <select class="form-select" id="modalSort" style="border: 2px solid #e2e8f0; border-radius: 14px; padding: 14px 18px; font-weight: 600;">
                             <option value="nama_asc" <?= $sort == 'nama_asc' ? 'selected' : '' ?>>Nama A - Z</option>
                             <option value="nama_desc" <?= $sort == 'nama_desc' ? 'selected' : '' ?>>Nama Z - A</option>
-                            <option value="harga_asc" <?= $sort == 'harga_asc' ? 'selected' : '' ?>>Harga Termurah</option>
-                            <option value="harga_desc" <?= $sort == 'harga_desc' ? 'selected' : '' ?>>Harga Termahal</option>
                             <option value="kapasitas_asc" <?= $sort == 'kapasitas_asc' ? 'selected' : '' ?>>Kapasitas Terkecil</option>
                             <option value="kapasitas_desc" <?= $sort == 'kapasitas_desc' ? 'selected' : '' ?>>Kapasitas Terbesar</option>
+                            <option value="paket_asc" <?= $sort == 'paket_asc' ? 'selected' : '' ?>>Paket Terhubung (Sedikit)</option>
+                            <option value="paket_desc" <?= $sort == 'paket_desc' ? 'selected' : '' ?>>Paket Terhubung (Banyak)</option>
                         </select>
                     </div>
                     <div>
                         <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">STATUS</label>
                         <select class="form-select" id="modalStatus" style="border: 2px solid #e2e8f0; border-radius: 14px; padding: 14px 18px; font-weight: 600;">
                             <option value="" <?= $status_filter === '' ? 'selected' : '' ?>>Semua Status</option>
-                            <option value="1" <?= $status_filter === '1' ? 'selected' : '' ?>>Tersedia</option>
-                            <option value="0" <?= $status_filter === '0' ? 'selected' : '' ?>>Tidak Tersedia</option>
+                            <option value="1" <?= $status_filter === '1' ? 'selected' : '' ?>>Aktif</option>
+                            <option value="0" <?= $status_filter === '0' ? 'selected' : '' ?>>Nonaktif</option>
                         </select>
                     </div>
                 </div>
@@ -793,7 +886,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             document.getElementById('mainSearchForm').submit();
         }
 
-        // Toggle Status (Soft Delete)
+        // Toggle Status
         function toggleStatus(id, currentStatus, nama) {
             const newStatus = currentStatus === 1 ? 0 : 1;
             const actionText = currentStatus === 1 ? 'menonaktifkan' : 'mengaktifkan';
