@@ -388,7 +388,6 @@ if (isset($_POST['register'])) {
             border-bottom-color: var(--accent-pink);
         }
 
-<<<<<<< HEAD
         /* Grup Sandi */
         .password-group { 
             position: relative; 
@@ -408,12 +407,6 @@ if (isset($_POST['register'])) {
             background: #ffffff;
             border-color: var(--p-pink);
         }
-=======
-        .form-section { padding: 60px 80px; }
-        .form-label { font-weight: 800; font-size: 11px; color: #0e0e0e; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; }
-        .form-control { border-radius: 16px; padding: 14px 20px; border: 2px solid #f1f5f9; background: #f8fafc; font-size: 14px; font-weight: 600; transition: 0.3s; }
-        .form-control:focus { border-color: var(--p-pink); background: white; box-shadow: 0 10px 25px rgba(232, 69, 122, 0.08); }
->>>>>>> 298ddc1654af930b4da20d45cba40f1a517e2d8c
 
         .form-logo {
             height: 70px; width: auto; background: transparent;
