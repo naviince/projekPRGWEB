@@ -33,34 +33,42 @@ if ($foto_owner != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . 
 // QUERY STATISTIK RIIL
 // =====================================================
 $q_pendapatan = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status = 1");
+if ($q_profile === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $d_pendapatan = sqlsrv_fetch_array($q_pendapatan, SQLSRV_FETCH_ASSOC);
 $total_pendapatan = $d_pendapatan['total'] ?? 0;
 
 $q_karyawan = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE Is_Deleted = 0");
+if ($q_karyawan === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $d_karyawan = sqlsrv_fetch_array($q_karyawan, SQLSRV_FETCH_ASSOC);
 $total_karyawan = $d_karyawan['total'] ?? 0;
 
 $q_pelanggan = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Pelanggan WHERE Is_Deleted = 0");
+if ($q_pelanggan === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $d_pelanggan = sqlsrv_fetch_array($q_pelanggan, SQLSRV_FETCH_ASSOC);
 $total_pelanggan = $d_pelanggan['total'] ?? 0;
 
 $q_sesi = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Sesi_Foto WHERE Status = 1");
+if ($q_sesi === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $d_sesi = sqlsrv_fetch_array($q_sesi, SQLSRV_FETCH_ASSOC);
 $total_sesi = $d_sesi['total'] ?? 0;
 
 $q_booking_today = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM [Order] WHERE CAST(Tanggal_Booking AS DATE) = CAST(GETDATE() AS DATE)");
+if ($q_booking_today === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $d_booking_today = sqlsrv_fetch_array($q_booking_today, SQLSRV_FETCH_ASSOC);
 $booking_today = $d_booking_today['total'] ?? 0;
 
 $q_wait_dp = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Pembayaran WHERE Status = 0 AND Tipe_Pembayaran = 'DP'");
+if ($q_wait_dp === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $d_wait_dp = sqlsrv_fetch_array($q_wait_dp, SQLSRV_FETCH_ASSOC);
 $wait_dp = $d_wait_dp['total'] ?? 0;
 
 $q_batal_month = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM [Order] WHERE Status = 4 AND MONTH(Created_Date) = MONTH(GETDATE()) AND YEAR(Created_Date) = YEAR(GETDATE())");
+if ($q_batal_month === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $d_batal_month = sqlsrv_fetch_array($q_batal_month, SQLSRV_FETCH_ASSOC);
 $batal_month = $d_batal_month['total'] ?? 0;
 
 $q_stok_menipis = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Barang_Cetak WHERE Stok_Barang <= Stok_Minimum AND Is_Deleted = 0");
+if ($q_stok_menipis === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $d_stok_menipis = sqlsrv_fetch_array($q_stok_menipis, SQLSRV_FETCH_ASSOC);
 $stok_menipis = $d_stok_menipis['total'] ?? 0;
 
@@ -74,6 +82,7 @@ $q_status_booking = sqlsrv_query($conn, "
         SUM(CASE WHEN Status = 4 THEN 1 ELSE 0 END) AS dibatalkan
     FROM [Order]
 ");
+if ($q_status_booking === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $d_status_booking = sqlsrv_fetch_array($q_status_booking, SQLSRV_FETCH_ASSOC);
 
 $q_top_paket = sqlsrv_query($conn, "
@@ -84,6 +93,7 @@ $q_top_paket = sqlsrv_query($conn, "
     GROUP BY p.ID_Paket, p.Nama_Paket
     ORDER BY total_order DESC
 ");
+if ($q_top_paket === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $top_paket_labels = [];
 $top_paket_data = [];
 while ($row = sqlsrv_fetch_array($q_top_paket, SQLSRV_FETCH_ASSOC)) {
@@ -92,14 +102,17 @@ while ($row = sqlsrv_fetch_array($q_top_paket, SQLSRV_FETCH_ASSOC)) {
 }
 
 $q_pendapatan_dp = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status = 1 AND Tipe_Pembayaran = 'DP'");
+if ($q_pendapatan_dp === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $d_pendapatan_dp = sqlsrv_fetch_array($q_pendapatan_dp, SQLSRV_FETCH_ASSOC);
 $pendapatan_dp = $d_pendapatan_dp['total'] ?? 0;
 
 $q_pendapatan_lunas = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status = 1 AND Tipe_Pembayaran = 'Pelunasan'");
+if ($q_pendapatan_lunas === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $d_pendapatan_lunas = sqlsrv_fetch_array($q_pendapatan_lunas, SQLSRV_FETCH_ASSOC);
 $pendapatan_lunas = $d_pendapatan_lunas['total'] ?? 0;
 
 $q_pendapatan_barang = sqlsrv_query($conn, "SELECT SUM(Total_Harga) AS total FROM Penjualan WHERE Status = 1");
+if ($q_pendapatan_barang === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $d_pendapatan_barang = sqlsrv_fetch_array($q_pendapatan_barang, SQLSRV_FETCH_ASSOC);
 $pendapatan_barang = $d_pendapatan_barang['total'] ?? 0;
 
@@ -110,6 +123,7 @@ $q_tren_pelanggan = sqlsrv_query($conn, "
     GROUP BY MONTH(Created_Date)
     ORDER BY MONTH(Created_Date)
 ");
+if ($q_tren_pelanggan === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $tren_pelanggan_labels = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 $tren_pelanggan_data = array_fill(0, 12, 0);
 while ($row = sqlsrv_fetch_array($q_tren_pelanggan, SQLSRV_FETCH_ASSOC)) {
@@ -122,6 +136,7 @@ $q_stok_alert = sqlsrv_query($conn, "
     WHERE Stok_Barang <= Stok_Minimum AND Is_Deleted = 0
     ORDER BY Stok_Barang ASC
 ");
+if ($q_stok_alert === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 
 $q_pembayaran_alert = sqlsrv_query($conn, "
     SELECT TOP 3 p.ID_Pembayaran, pl.Nama_Pelanggan, p.Tanggal_Upload, p.Jumlah_Bayar
@@ -131,6 +146,7 @@ $q_pembayaran_alert = sqlsrv_query($conn, "
     WHERE p.Status = 0 AND DATEDIFF(HOUR, p.Tanggal_Upload, GETDATE()) > 24
     ORDER BY p.Tanggal_Upload ASC
 ");
+if ($q_pembayaran_alert === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 
 $q_aktivitas = sqlsrv_query($conn, "
     SELECT TOP 5 o.ID_Order, pl.Nama_Pelanggan, pk.Nama_Paket, o.Tanggal_Booking, o.Status, o.Total_Harga
@@ -139,16 +155,20 @@ $q_aktivitas = sqlsrv_query($conn, "
     JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket
     ORDER BY o.Created_Date DESC
 ");
+if ($q_aktivitas === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 
 $q_role_admin = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE Role_Karyawan = 'Admin' AND Is_Deleted = 0");
+if ($q_role_admin === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $d_role_admin = sqlsrv_fetch_array($q_role_admin, SQLSRV_FETCH_ASSOC);
 $count_admin = $d_role_admin['total'] ?? 0;
 
 $q_role_foto = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE Role_Karyawan = 'Fotografer' AND Is_Deleted = 0");
+if ($q_role_foto === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $d_role_foto = sqlsrv_fetch_array($q_role_foto, SQLSRV_FETCH_ASSOC);
 $count_foto = $d_role_foto['total'] ?? 0;
 
 $q_role_owner = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE Role_Karyawan = 'Owner' AND Is_Deleted = 0");
+if ($q_role_owner === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $d_role_owner = sqlsrv_fetch_array($q_role_owner, SQLSRV_FETCH_ASSOC);
 $count_owner = $d_role_owner['total'] ?? 0;
 
@@ -159,6 +179,7 @@ $q_pendapatan_bulan = sqlsrv_query($conn, "
     GROUP BY MONTH(Tanggal_Upload)
     ORDER BY MONTH(Tanggal_Upload)
 ");
+if ($q_pendapatan_bulan === false) { die('<pre>SQL ERROR: ' . print_r(sqlsrv_errors(), true) . '</pre>'); }
 $pendapatan_bulan_data = array_fill(0, 12, 0);
 while ($row = sqlsrv_fetch_array($q_pendapatan_bulan, SQLSRV_FETCH_ASSOC)) {
     $pendapatan_bulan_data[$row['bulan'] - 1] = $row['total'];
