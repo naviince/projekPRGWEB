@@ -9,10 +9,9 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 }
 
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
-$nama_admin = $_SESSION['nama'] ?? 'Administrator';
 
 // =====================================================
-// HELPER FUNCTIONS - Safe SQLSRV
+// HELPER FUNCTIONS - Safe SQLSRV (Anti-Crash)
 // =====================================================
 function safe_sqlsrv_fetch($conn, $sql, $params = []) {
     $stmt = sqlsrv_query($conn, $sql, $params);
@@ -39,93 +38,147 @@ function safe_sqlsrv_fetch_all($conn, $sql, $params = []) {
     return $results;
 }
 
+function safe_sqlsrv_count($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) return 0;
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $row['total'] ?? 0;
+}
+
 // =====================================================
 // AMBIL PROFIL ADMIN
 // =====================================================
-$admin_data = safe_sqlsrv_fetch($conn,
-    "SELECT Nama_Karyawan, Foto_Profil FROM Karyawan WHERE ID_Karyawan = ? AND Status = 1 AND Is_Deleted = 0",
+$admin_data = safe_sqlsrv_fetch($conn, 
+    "SELECT Nama_Karyawan, Foto_Profil, Email_Karyawan FROM Karyawan WHERE ID_Karyawan = ? AND Status = 1 AND Is_Deleted = 0", 
     [$id_admin]
 );
 
-$nama_admin    = $admin_data['Nama_Karyawan'] ?? 'Administrator';
-$foto_admin    = $admin_data['Foto_Profil']   ?? 'default.jpg';
+$nama_admin = $admin_data['Nama_Karyawan'] ?? 'Administrator';
+$foto_admin = $admin_data['Foto_Profil'] ?? 'default.jpg';
+$email_admin = $admin_data['Email_Karyawan'] ?? 'admin@spotlight.com';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
-$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin))
-    ? "../../assets/img/karyawan/" . $foto_admin
+$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
+    ? "../../assets/img/karyawan/" . $foto_admin 
     : $default_svg_avatar;
 
 // =====================================================
-// FILTER & PAGINATION
+// PAGINATION & FILTER
 // =====================================================
-$search    = trim($_GET['search']    ?? '');
-$filter_kat = trim($_GET['kategori'] ?? '');
-$filter_st  = $_GET['status'] ?? '';
-$page       = max(1, (int)($_GET['page'] ?? 1));
-$per_page   = 8;
-$offset     = ($page - 1) * $per_page;
+$limit = 10;
+$halaman = isset($_GET['halaman']) ? (int)$_GET['halaman'] : 1;
+if ($halaman < 1) $halaman = 1;
+$offset = ($halaman - 1) * $limit;
+
+$cari = isset($_GET['cari']) ? trim($_GET['cari']) : "";
+$status_filter = isset($_GET['status']) ? trim($_GET['status']) : "";
+$kategori_filter = isset($_GET['kategori']) ? trim($_GET['kategori']) : "";
+$sort = isset($_GET['sort']) ? trim($_GET['sort']) : "nama_asc";
 
 // =====================================================
-// QUERY DATA TEMA FOTO
+// QUERY STATISTIK
 // =====================================================
-$where_parts = ["t.Is_Deleted = 0"];
-$params      = [];
+$stats = safe_sqlsrv_fetch($conn, 
+    "SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN Status = 1 THEN 1 ELSE 0 END) as aktif,
+        SUM(CASE WHEN Status = 0 THEN 1 ELSE 0 END) as nonaktif
+    FROM Tema_Foto WHERE Is_Deleted = 0"
+) ?? ['total' => 0, 'aktif' => 0, 'nonaktif' => 0];
 
-if ($search !== '') {
-    $where_parts[] = "(t.Nama_Tema LIKE ? OR t.Kategori_Tema LIKE ? OR t.Deskripsi LIKE ?)";
-    $like = "%{$search}%";
-    $params[] = $like; $params[] = $like; $params[] = $like;
+// Tema terpopuler (dari Order)
+$top_tema = safe_sqlsrv_fetch($conn,
+    "SELECT TOP 1 t.Nama_Tema, COUNT(o.ID_Order) as total_booked 
+    FROM Tema_Foto t 
+    LEFT JOIN [Order] o ON t.ID_Tema = o.ID_Tema AND o.Status = 1 AND o.Status_Order <> 4
+    WHERE t.Is_Deleted = 0 AND t.Status = 1
+    GROUP BY t.Nama_Tema 
+    ORDER BY total_booked DESC"
+);
+
+// =====================================================
+// DAFTAR KATEGORI (UNTUK FILTER)
+// =====================================================
+$daftar_kategori_filter = safe_sqlsrv_fetch_all($conn,
+    "SELECT DISTINCT Kategori_Tema FROM Tema_Foto WHERE Is_Deleted = 0 AND Kategori_Tema IS NOT NULL ORDER BY Kategori_Tema ASC"
+);
+
+// =====================================================
+// QUERY LIST DATA DENGAN FILTER & RELASI
+// =====================================================
+$conditions = ["t.Is_Deleted = 0"];
+$params = [];
+
+if (!empty($cari)) {
+    $conditions[] = "(t.Nama_Tema LIKE ? OR t.Deskripsi LIKE ?)";
+    $params[] = "%$cari%"; 
+    $params[] = "%$cari%";
 }
-if ($filter_kat !== '') {
-    $where_parts[] = "t.Kategori_Tema = ?";
-    $params[] = $filter_kat;
+if ($status_filter !== "") {
+    $conditions[] = "t.Status = ?";
+    $params[] = (int)$status_filter;
 }
-if ($filter_st !== '') {
-    $where_parts[] = "t.Status = ?";
-    $params[] = (int)$filter_st;
+if ($kategori_filter !== "") {
+    $conditions[] = "t.Kategori_Tema = ?";
+    $params[] = $kategori_filter;
 }
 
-$where_sql = implode(' AND ', $where_parts);
+$order_clause = "t.Nama_Tema ASC";
+if ($sort == "nama_desc") { $order_clause = "t.Nama_Tema DESC"; }
+elseif ($sort == "kategori_asc") { $order_clause = "t.Kategori_Tema ASC"; }
+elseif ($sort == "kategori_desc") { $order_clause = "t.Kategori_Tema DESC"; }
+elseif ($sort == "ruangan_asc") { $order_clause = "total_ruangan ASC"; }
+elseif ($sort == "ruangan_desc") { $order_clause = "total_ruangan DESC"; }
 
-// Total count
-$count_sql = "SELECT COUNT(*) AS total FROM Tema_Foto t WHERE {$where_sql}";
-$count_row = safe_sqlsrv_fetch($conn, $count_sql, $params);
-$total_data = $count_row['total'] ?? 0;
-$total_page = max(1, ceil($total_data / $per_page));
+// Hitung total untuk pagination
+$count_sql = "SELECT COUNT(*) AS total FROM Tema_Foto t WHERE " . implode(" AND ", $conditions);
+$total_records = safe_sqlsrv_count($conn, $count_sql, $params);
+$total_halaman = ceil($total_records / $limit);
 
-// Main query — jumlah ruangan terhubung via subquery
-$sql_tema = "SELECT 
-    t.ID_Tema, t.Nama_Tema, t.Kategori_Tema, t.Deskripsi, t.Foto_Tema,
-    t.Status, t.Created_Date,
-    (SELECT COUNT(*) FROM Ruangan_Tema rt WHERE rt.ID_Tema = t.ID_Tema) AS Jumlah_Ruangan,
-    (SELECT COUNT(*) FROM [Order] o WHERE o.ID_Tema = t.ID_Tema AND o.Status = 1 AND o.Status_Order <> 4) AS Jumlah_Order_Aktif
+// Ambil data dengan relasi (jumlah ruangan terhubung)
+$list_sql = "SELECT 
+    t.ID_Tema,
+    t.Nama_Tema,
+    t.Kategori_Tema,
+    t.Deskripsi,
+    t.Foto_Tema,
+    t.Status,
+    (SELECT COUNT(*) FROM Ruangan_Tema rt WHERE rt.ID_Tema = t.ID_Tema) as total_ruangan
 FROM Tema_Foto t
-WHERE {$where_sql}
-ORDER BY t.Created_Date DESC
-OFFSET {$offset} ROWS FETCH NEXT {$per_page} ROWS ONLY";
+WHERE " . implode(" AND ", $conditions) . "
+ORDER BY " . $order_clause . "
+OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
 
-$daftar_tema = safe_sqlsrv_fetch_all($conn, $sql_tema, $params);
+$params_list = $params;
+$params_list[] = $offset;
+$params_list[] = $limit;
 
-// =====================================================
-// STATISTIK RINGKAS
-// =====================================================
-$stat_total   = safe_sqlsrv_fetch($conn, "SELECT COUNT(*) AS n FROM Tema_Foto WHERE Is_Deleted = 0");
-$stat_aktif   = safe_sqlsrv_fetch($conn, "SELECT COUNT(*) AS n FROM Tema_Foto WHERE Is_Deleted = 0 AND Status = 1");
-$stat_nonaktif = safe_sqlsrv_fetch($conn, "SELECT COUNT(*) AS n FROM Tema_Foto WHERE Is_Deleted = 0 AND Status = 0");
+$tema_list = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
 
-$daftar_kategori = ['Casual', 'Formal', 'Vintage', 'Modern', 'Outdoor', 'Wisuda', 'Pre-Wedding', 'Lainnya'];
-
-// Notifikasi dari action
-$notif_type    = $_GET['status_sukses'] ?? '';
-$notif_message = $_GET['message']      ?? '';
+// Ambil daftar ruangan untuk setiap tema (untuk badge)
+$ruangan_per_tema = [];
+if (!empty($tema_list)) {
+    $tema_ids = array_column($tema_list, 'ID_Tema');
+    $placeholders = implode(',', array_fill(0, count($tema_ids), '?'));
+    $ruangan_sql = "SELECT rt.ID_Tema, r.Nama_Ruangan 
+                  FROM Ruangan_Tema rt 
+                  JOIN Ruangan r ON rt.ID_Ruangan = r.ID_Ruangan 
+                  WHERE rt.ID_Tema IN ($placeholders) AND r.Status = 1 AND r.Is_Deleted = 0";
+    $ruangan_data = safe_sqlsrv_fetch_all($conn, $ruangan_sql, $tema_ids);
+    foreach ($ruangan_data as $r) {
+        $ruangan_per_tema[$r['ID_Tema']][] = $r['Nama_Ruangan'];
+    }
+}
 ?>
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Data Tema Foto – SpotLight Studio</title>
+    <title>Master Tema Foto – SpotLight Studio</title>
 
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
@@ -134,791 +187,820 @@ $notif_message = $_GET['message']      ?? '';
 
     <style>
         :root {
-            --p-pink:      #D53D66;
-            --d-pink:      #CA3366;
-            --s-pink:      #FFF0F3;
-            --light-pink:  #FFE4E9;
+            --p-pink: #D53D66;
+            --d-pink: #CA3366;
+            --s-pink: #FFF0F3;
+            --light-pink: #FFE4E9;
             --accent-pink: #E85D84;
-            --text-dark:   #1e1e24;
-            --text-muted:  #718096;
-            --body-bg:     #f8fafc;
+            --text-dark: #1e1e24;
+            --text-muted: #718096;
+            --sidebar-bg: #ffffff;
+            --body-bg: #f8fafc;
             --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--body-bg); color: var(--text-dark); overflow-x: hidden; }
-
-        /* ===== SIDEBAR ===== */
-        .sidebar {
-            width: 260px; height: 100vh; background: #fff;
-            position: fixed; top: 0; left: 0;
-            border-right: 1px solid rgba(255,228,233,.8);
-            display: flex; flex-direction: column;
-            justify-content: space-between;
-            padding: 30px 20px; z-index: 100;
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--body-bg);
+            color: var(--text-dark);
+            overflow-x: hidden;
         }
-        .sidebar-brand { font-weight: 800; font-size: 1.5rem; color: var(--p-pink); text-decoration: none; letter-spacing: -1px; margin-bottom: 40px; display: block; }
-        .sidebar-brand span { color: var(--text-dark); font-size: .85rem; font-weight: 600; }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 260px;
+            height: 100vh;
+            background: var(--sidebar-bg);
+            position: fixed;
+            top: 0; left: 0;
+            border-right: 1px solid rgba(255, 228, 233, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 30px 20px;
+            z-index: 100;
+        }
+        .sidebar-brand {
+            font-weight: 800; font-size: 1.5rem;
+            color: var(--p-pink); text-decoration: none;
+            letter-spacing: -1px; margin-bottom: 40px; display: block;
+        }
+        .sidebar-brand span { color: var(--text-dark); font-size: 0.85rem; font-weight: 600; }
         .sidebar-menu-wrapper { flex-grow: 1; overflow-y: auto; margin-bottom: 20px; scrollbar-width: none; }
         .sidebar-menu-wrapper::-webkit-scrollbar { display: none; }
         .nav-menu { list-style: none; padding: 0; margin: 0; }
         .nav-item { margin-bottom: 8px; }
-        .nav-link-custom { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; color: #4a5568; font-weight: 700; text-decoration: none; border-radius: 12px; font-size: .9rem; transition: var(--transition-3d); }
-        .nav-link-custom:hover, .nav-link-custom.active { background-color: var(--light-pink); color: var(--p-pink); transform: translateX(4px); }
-        .submenu { list-style: none; padding-left: 20px; margin-top: 5px; display: none; }
+        .nav-link-custom {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 18px; color: #4a5568; font-weight: 700;
+            text-decoration: none; border-radius: 12px; font-size: 0.9rem;
+            transition: var(--transition-3d);
+        }
+        .nav-link-custom:hover, .nav-link-custom.active {
+            background-color: var(--light-pink); color: var(--p-pink);
+            transform: translateX(4px);
+        }
+        .submenu { list-style: none; padding-left: 20px; margin-top: 5px; display: none; transition: var(--transition-3d); }
         .submenu.show { display: block !important; }
-        .submenu-link { display: flex; align-items: center; padding: 8px 18px; color: #718096; font-weight: 600; font-size: .85rem; text-decoration: none; border-radius: 10px; transition: .3s; }
-        .submenu-link:hover, .submenu-link.active { color: var(--p-pink); background-color: rgba(213,61,102,.03); padding-left: 22px; }
-        .btn-logout { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #fff; border: none; width: 100%; padding: 12px; border-radius: 12px; font-weight: 800; font-size: .85rem; transition: var(--transition-3d); }
-        .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213,61,102,.2); }
+        .submenu-link {
+            display: flex; align-items: center; padding: 8px 18px;
+            color: #718096; font-weight: 600; font-size: 0.85rem;
+            text-decoration: none; border-radius: 10px; transition: 0.3s;
+        }
+        .submenu-link:hover, .submenu-link.active {
+            color: var(--p-pink); background-color: rgba(213, 61, 102, 0.03); padding-left: 22px;
+        }
+        .btn-logout {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #ffffff; border: none; width: 100%; padding: 12px;
+            border-radius: 12px; font-weight: 800; font-size: 0.85rem;
+            transition: var(--transition-3d);
+        }
+        .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
 
-        /* ===== MAIN ===== */
+        /* MAIN CONTENT */
         .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
-        .dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; }
-        .profile-header-btn { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; border: 2px solid #fff; cursor: pointer; transition: var(--transition-3d); background: #fff; }
-        .profile-header-btn:hover { transform: scale(1.08) translateY(-2px); box-shadow: 0 8px 20px rgba(213,61,102,.15); border-color: var(--p-pink); }
+        .dashboard-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 35px;
+        }
+        .profile-header-btn {
+            width: 44px; height: 44px; border-radius: 50%; overflow: hidden;
+            border: 2px solid #ffffff; cursor: pointer; transition: var(--transition-3d); background: #ffffff;
+        }
+        .profile-header-btn:hover {
+            transform: scale(1.08) translateY(-2px);
+            box-shadow: 0 8px 20px rgba(213, 61, 102, 0.15);
+            border-color: var(--p-pink);
+        }
         .profile-header-btn img { width: 100%; height: 100%; object-fit: cover; }
 
-        /* ===== BREADCRUMB ===== */
-        .breadcrumb-custom { display: flex; align-items: center; gap: 8px; margin-bottom: 25px; font-size: .85rem; font-weight: 600; }
-        .breadcrumb-custom a { color: var(--text-muted); text-decoration: none; transition: color .2s; }
-        .breadcrumb-custom a:hover { color: var(--p-pink); }
-        .breadcrumb-custom .active { color: var(--p-pink); }
-
-        /* ===== STATS CARDS ===== */
-        .stat-card { background: #fff; border-radius: 18px; border: 1px solid rgba(255,228,233,.8); padding: 22px 24px; display: flex; align-items: center; gap: 16px; box-shadow: 0 4px 16px rgba(213,61,102,.04); transition: var(--transition-3d); }
-        .stat-card:hover { transform: translateY(-4px); box-shadow: 0 10px 28px rgba(213,61,102,.1); }
-        .stat-icon { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; flex-shrink: 0; }
-        .stat-icon.pink  { background: var(--s-pink);   color: var(--p-pink); }
-        .stat-icon.green { background: #f0fdf4;          color: #16a34a; }
-        .stat-icon.gray  { background: #f8fafc;          color: #64748b; }
-        .stat-num  { font-size: 1.6rem; font-weight: 800; line-height: 1; }
-        .stat-label { font-size: .78rem; color: var(--text-muted); font-weight: 600; margin-top: 2px; }
-
-        /* ===== TOOLBAR ===== */
-        .toolbar-card { background: #fff; border-radius: 18px; border: 1px solid rgba(255,228,233,.8); padding: 20px 24px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-        .search-input-wrap { position: relative; flex: 1; min-width: 220px; }
-        .search-input-wrap i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #a0aec0; }
-        .search-input { width: 100%; border: 2px solid #e2e8f0; border-radius: 12px; padding: 10px 16px 10px 40px; font-size: .85rem; font-weight: 600; color: #1e293b; transition: .3s; }
-        .search-input:focus { outline: none; border-color: var(--p-pink); box-shadow: 0 0 0 4px rgba(213,61,102,.08); }
-        .btn-tambah { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #fff; border: none; border-radius: 12px; padding: 10px 22px; font-weight: 800; font-size: .85rem; display: inline-flex; align-items: center; gap: 6px; transition: var(--transition-3d); text-decoration: none; white-space: nowrap; }
-        .btn-tambah:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(213,61,102,.3); color: #fff; }
-        .btn-reset { border: 2px solid #e2e8f0; background: #fff; border-radius: 12px; padding: 10px 16px; font-size: .85rem; font-weight: 700; color: #64748b; transition: .3s; text-decoration: none; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
-        .btn-reset:hover { border-color: var(--p-pink); color: var(--p-pink); }
-
-        /* Tombol Filter */
-        .btn-filter {
-            border: 2px solid #e2e8f0; background: #fff; border-radius: 12px;
-            padding: 10px 18px; font-size: .85rem; font-weight: 700; color: #475569;
-            display: inline-flex; align-items: center; gap: 8px;
-            cursor: pointer; transition: var(--transition-3d); white-space: nowrap;
-            position: relative;
+        /* STAT CARDS */
+        .stats-scroll-wrapper {
+            width: 100%; overflow-x: auto; overflow-y: hidden;
+            padding-bottom: 10px; margin-bottom: 20px;
+            scrollbar-width: thin; scrollbar-color: var(--p-pink) #f1f5f9;
         }
-        .btn-filter:hover { border-color: var(--p-pink); color: var(--p-pink); background: var(--s-pink); }
-        .btn-filter.has-filter { border-color: var(--p-pink); color: var(--p-pink); background: var(--s-pink); }
-        .filter-dot {
-            width: 8px; height: 8px; border-radius: 50%;
-            background: var(--p-pink); position: absolute; top: -3px; right: -3px;
-            display: none;
+        .stats-scroll-wrapper::-webkit-scrollbar { height: 6px; }
+        .stats-scroll-wrapper::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+        .stats-scroll-wrapper::-webkit-scrollbar-thumb { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); border-radius: 10px; }
+        .stats-row { display: flex; gap: 16px; min-width: max-content; }
+        .stat-card-item { min-width: 220px; max-width: 280px; flex: 0 0 auto; }
+        .card-3d {
+            background: #ffffff; border-radius: 22px;
+            border: 1px solid rgba(255, 228, 233, 0.8);
+            box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03);
+            transition: var(--transition-3d); padding: 20px;
+            height: 100%; position: relative; overflow: hidden;
         }
-        .btn-filter.has-filter .filter-dot { display: block; }
-
-        /* Active filter chips */
-        .active-filter-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-        .filter-chip {
-            display: inline-flex; align-items: center; gap: 5px;
-            background: var(--s-pink); color: var(--p-pink);
-            border: 1px solid var(--light-pink); border-radius: 20px;
-            padding: 4px 10px; font-size: .72rem; font-weight: 700;
+        .card-3d:hover {
+            transform: translateY(-8px) scale(1.01);
+            box-shadow: 0 22px 45px rgba(213, 61, 102, 0.14);
+            border-color: var(--p-pink);
         }
-        .filter-chip button { background: none; border: none; color: inherit; padding: 0; cursor: pointer; line-height: 1; font-size: .75rem; }
-
-        /* ===== FILTER MODAL ===== */
-        .filter-modal-overlay {
-            display: none; position: fixed; inset: 0;
-            background: rgba(15,23,42,.45); z-index: 1050;
-            align-items: center; justify-content: center;
-            backdrop-filter: blur(4px);
-        }
-        .filter-modal-overlay.show { display: flex; }
-        .filter-modal {
-            background: #fff; border-radius: 24px;
-            padding: 0; width: 100%; max-width: 460px;
-            box-shadow: 0 24px 60px rgba(0,0,0,.18);
-            animation: modalSlideIn .3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            overflow: hidden;
-        }
-        @keyframes modalSlideIn {
-            from { opacity: 0; transform: translateY(20px) scale(.97); }
-            to   { opacity: 1; transform: translateY(0)   scale(1); }
-        }
-        .filter-modal-header {
-            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            padding: 22px 28px; display: flex; align-items: center; justify-content: space-between;
-        }
-        .filter-modal-header h6 { color: #fff; font-weight: 800; font-size: 1rem; margin: 0; }
-        .filter-modal-header p  { color: rgba(255,255,255,.8); font-size: .78rem; margin: 4px 0 0; }
-        .filter-modal-close {
-            width: 32px; height: 32px; border-radius: 50%;
-            background: rgba(255,255,255,.2); border: none; color: #fff;
+        .stat-card { display: flex; align-items: center; gap: 14px; }
+        .stat-icon {
+            width: 48px; height: 48px; border-radius: 14px;
             display: flex; align-items: center; justify-content: center;
-            cursor: pointer; font-size: 1rem; transition: .2s;
+            font-size: 1.4rem; transition: var(--transition-3d); flex-shrink: 0;
         }
-        .filter-modal-close:hover { background: rgba(255,255,255,.35); }
-        .filter-modal-body { padding: 28px; }
-        .filter-section-label {
-            font-size: .72rem; font-weight: 800; text-transform: uppercase;
-            letter-spacing: .8px; color: #94a3b8; margin-bottom: 12px;
-        }
+        .stat-icon-pink { background: linear-gradient(135deg, #FFF0F3, #FFE4E9); color: #D53D66; }
+        .stat-icon-green { background: linear-gradient(135deg, #ecfdf5, #d1fae5); color: #059669; }
+        .stat-icon-orange { background: linear-gradient(135deg, #fff7ed, #fed7aa); color: #ea580c; }
+        .stat-icon-blue { background: linear-gradient(135deg, #eff6ff, #dbeafe); color: #2563eb; }
+        .stat-content { flex: 1; min-width: 0; overflow: hidden; }
+        .stat-val { font-size: 1.5rem; font-weight: 800; color: var(--text-dark); margin-bottom: 2px; line-height: 1.2; }
+        .stat-title { font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
+        .stat-subtitle { font-size: 0.68rem; color: #a0aec0; font-weight: 600; margin-top: 2px; }
 
-        /* Chip selector dalam modal */
-        .chip-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
-        .chip-opt {
-            padding: 8px 16px; border-radius: 20px; border: 2px solid #e2e8f0;
-            background: #fff; font-size: .82rem; font-weight: 700; color: #475569;
-            cursor: pointer; transition: var(--transition-3d); user-select: none;
+        /* SEARCH & FILTER */
+        .search-filter-bar {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 25px; flex-wrap: wrap;
         }
-        .chip-opt:hover { border-color: var(--p-pink); color: var(--p-pink); }
-        .chip-opt.selected { border-color: var(--p-pink); background: var(--s-pink); color: var(--p-pink); }
-
-        .filter-modal-footer {
-            padding: 20px 28px; border-top: 1px solid #f1f5f9;
-            display: flex; gap: 10px; justify-content: flex-end;
+        .search-form-flex { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 300px; }
+        .search-input-wrapper { position: relative; flex: 1; }
+        .search-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 1rem; z-index: 2; }
+        .search-input-main {
+            width: 100%; border: 2px solid #e2e8f0; border-radius: 14px;
+            padding: 12px 18px 12px 44px; font-weight: 600; font-size: 0.9rem;
+            color: #1e293b; transition: var(--transition-3d); background: #ffffff;
         }
-        .btn-filter-apply {
+        .search-input-main:focus { outline: none; border-color: var(--p-pink); box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); }
+        .btn-filter-modal {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            color: #fff; border: none; border-radius: 12px;
-            padding: 11px 28px; font-weight: 800; font-size: .875rem;
-            cursor: pointer; transition: var(--transition-3d);
-            display: inline-flex; align-items: center; gap: 6px;
+            color: #ffffff; border: none; border-radius: 14px;
+            padding: 12px 24px; font-weight: 700; font-size: 0.9rem;
+            display: inline-flex; align-items: center; cursor: pointer;
+            transition: var(--transition-3d); white-space: nowrap;
         }
-        .btn-filter-apply:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(213,61,102,.3); }
-        .btn-filter-clear {
-            background: #f1f5f9; color: #475569; border: none; border-radius: 12px;
-            padding: 11px 20px; font-weight: 700; font-size: .875rem;
-            cursor: pointer; transition: .2s;
+        .btn-filter-modal:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(213, 61, 102, 0.3); }
+        .btn-search-icon {
+            background: #ffffff; border: 2px solid #e2e8f0; border-radius: 14px;
+            padding: 12px 16px; color: #94a3b8; cursor: pointer; transition: var(--transition-3d);
+            display: flex; align-items: center; justify-content: center;
         }
-        .btn-filter-clear:hover { background: #e2e8f0; }
+        .btn-search-icon:hover { border-color: var(--p-pink); color: var(--p-pink); transform: translateY(-2px); }
+        .btn-reg-header {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink)) !important;
+            color: #ffffff !important; border-radius: 14px !important;
+            padding: 12px 28px !important; font-weight: 800 !important;
+            border: none !important; box-shadow: 0 8px 20px rgba(213, 61, 102, 0.25) !important;
+            transition: var(--transition-3d) !important; display: inline-flex;
+            align-items: center; gap: 8px; text-decoration: none;
+        }
+        .btn-reg-header:hover {
+            background: linear-gradient(135deg, #E85D84, var(--p-pink)) !important;
+            transform: translateY(-4px) scale(1.03) !important;
+            box-shadow: 0 12px 25px rgba(213, 61, 102, 0.4) !important;
+        }
 
-        /* ===== TABLE CARD ===== */
-        .table-card { background: #fff; border-radius: 22px; border: 1px solid rgba(255,228,233,.8); box-shadow: 0 8px 24px rgba(213,61,102,.03); overflow: hidden; }
-        .table-card-header { padding: 22px 28px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; }
-        .table-card-header h6 { font-weight: 800; font-size: .95rem; margin: 0; }
-        .table-responsive { overflow-x: auto; }
+        /* TABEL */
+        .table-scroll-wrapper {
+            width: 100%; overflow-x: auto; overflow-y: hidden;
+            border-radius: 20px; scrollbar-width: thin;
+            scrollbar-color: var(--p-pink) #f1f5f9;
+        }
+        .table-scroll-wrapper::-webkit-scrollbar { height: 8px; }
+        .table-scroll-wrapper::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+        .table-scroll-wrapper::-webkit-scrollbar-thumb { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); border-radius: 10px; }
+        .data-table {
+            width: 100%; min-width: 1000px; border-collapse: separate; border-spacing: 0;
+        }
+        .data-table thead th {
+            background: #ffffff; padding: 16px 20px;
+            font-size: 0.75rem; font-weight: 800; text-transform: uppercase;
+            letter-spacing: 1px; color: #94a3b8; white-space: nowrap;
+            border: none; border-bottom: 2px solid #f1f5f9; text-align: left;
+        }
+        .data-table thead th:first-child { padding-left: 24px; }
+        .data-table thead th:last-child { padding-right: 24px; text-align: center; }
+        .data-table tbody tr { transition: all 0.2s ease; }
+        .data-table tbody td {
+            padding: 16px 20px; border: none;
+            border-bottom: 1px solid #f1f5f9; vertical-align: middle; white-space: nowrap;
+        }
+        .data-table tbody td:first-child { padding-left: 24px; }
+        .data-table tbody td:last-child { padding-right: 24px; text-align: center; }
+        .data-table tbody tr:nth-child(even) { background-color: #FFF8F0; }
+        .data-table tbody tr:nth-child(odd) { background-color: #ffffff; }
+        .data-table tbody tr:hover { background-color: #FFEDD5 !important; transform: scale(1.002); }
 
-        table.tema-table { width: 100%; border-collapse: separate; border-spacing: 0; }
-        table.tema-table thead th { background: #fafbfc; padding: 14px 20px; font-size: .72rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: .8px; border-bottom: 1px solid #f1f5f9; white-space: nowrap; }
-        table.tema-table tbody tr { transition: background .2s; }
-        table.tema-table tbody tr:hover { background: #fafbfc; }
-        table.tema-table tbody td { padding: 16px 20px; border-bottom: 1px solid #f8fafc; font-size: .875rem; vertical-align: middle; }
-        table.tema-table tbody tr:last-child td { border-bottom: none; }
+        .tema-preview {
+            width: 70px; height: 70px; object-fit: cover;
+            border-radius: 16px; border: 2px solid var(--light-pink);
+            transition: var(--transition-3d); flex-shrink: 0;
+        }
+        .data-table tbody tr:hover .tema-preview { transform: scale(1.08) rotate(2deg); }
 
-        /* Foto thumbnail */
-        .tema-thumb { width: 56px; height: 56px; border-radius: 12px; object-fit: cover; border: 2px solid var(--light-pink); flex-shrink: 0; }
-        .tema-thumb-placeholder { width: 56px; height: 56px; border-radius: 12px; background: var(--s-pink); display: flex; align-items: center; justify-content: center; color: var(--p-pink); font-size: 1.3rem; flex-shrink: 0; border: 2px solid var(--light-pink); }
+        .td-nama { font-weight: 700; font-size: 0.9rem; color: var(--text-dark); }
+        .td-deskripsi { font-size: 0.8rem; color: #718096; max-width: 200px; white-space: normal; }
+        .td-relasi { font-size: 0.8rem; color: #718096; font-weight: 600; }
 
-        /* Badge */
-        .badge-kategori { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: .7rem; font-weight: 700; background: var(--s-pink); color: var(--p-pink); }
-        .badge-status-aktif    { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 20px; font-size: .72rem; font-weight: 700; background: #f0fdf4; color: #16a34a; }
-        .badge-status-nonaktif { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 20px; font-size: .72rem; font-weight: 700; background: #f8fafc; color: #64748b; }
-        .badge-ruangan { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 20px; font-size: .72rem; font-weight: 700; background: #eff6ff; color: #2563eb; }
+        .badge-kategori {
+            font-size: 0.72rem; font-weight: 700; padding: 6px 14px;
+            border-radius: 50px; display: inline-flex; align-items: center; gap: 6px;
+            background: linear-gradient(135deg, #FFF0F3, #FFE4E9);
+            color: var(--p-pink); border: 1px solid var(--light-pink);
+        }
 
-        /* Action buttons */
-        .action-btns { display: flex; gap: 6px; align-items: center; }
-        .btn-action { width: 34px; height: 34px; border-radius: 10px; border: none; display: flex; align-items: center; justify-content: center; font-size: .85rem; transition: var(--transition-3d); cursor: pointer; }
-        .btn-action:hover { transform: translateY(-2px); }
-        .btn-edit   { background: #eff6ff; color: #2563eb; }
-        .btn-edit:hover   { background: #dbeafe; box-shadow: 0 4px 10px rgba(37,99,235,.15); }
-        .btn-toggle-on  { background: #fef9c3; color: #ca8a04; }
-        .btn-toggle-on:hover  { background: #fef08a; }
-        .btn-toggle-off { background: #f0fdf4; color: #16a34a; }
-        .btn-toggle-off:hover { background: #dcfce7; }
-        .btn-delete { background: #fef2f2; color: #dc2626; }
-        .btn-delete:hover { background: #fee2e2; box-shadow: 0 4px 10px rgba(220,38,38,.15); }
+        .badge-ruangan {
+            font-size: 0.65rem; font-weight: 700; padding: 3px 10px;
+            border-radius: 50px; background: linear-gradient(135deg, #eff6ff, #dbeafe);
+            color: #2563eb; border: 1px solid #dbeafe;
+            display: inline-block; margin: 1px;
+        }
 
-        /* Empty state */
-        .empty-state { padding: 60px 20px; text-align: center; }
-        .empty-state i { font-size: 3rem; color: #e2e8f0; margin-bottom: 16px; display: block; }
-        .empty-state p { color: var(--text-muted); font-size: .9rem; font-weight: 600; margin: 0; }
+        .badge-status {
+            font-size: 0.72rem; font-weight: 700; padding: 6px 14px;
+            border-radius: 50px; display: inline-flex; align-items: center; gap: 6px;
+        }
+        .badge-aktif { background: #ecfdf5; color: #059669; }
+        .badge-nonaktif { background: #fef2f2; color: #dc2626; }
+        .badge-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+        .badge-aktif .badge-dot { background: #059669; }
+        .badge-nonaktif .badge-dot { background: #dc2626; }
 
-        /* Pagination */
-        .pagination-wrap { padding: 18px 28px; border-top: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-        .pagination-info { font-size: .8rem; color: var(--text-muted); font-weight: 600; }
-        .pagination-btns { display: flex; gap: 6px; }
-        .page-btn { width: 36px; height: 36px; border-radius: 10px; border: 2px solid #e2e8f0; background: #fff; font-size: .8rem; font-weight: 700; color: #64748b; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: .2s; text-decoration: none; }
-        .page-btn:hover { border-color: var(--p-pink); color: var(--p-pink); }
-        .page-btn.active { border-color: var(--p-pink); background: var(--p-pink); color: #fff; }
-        .page-btn.disabled { opacity: .4; pointer-events: none; }
+        .btn-action-circle {
+            width: 34px; height: 34px; border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+            transition: var(--transition-3d); border: 1.5px solid #eef2f6;
+            background: #ffffff; font-size: 0.85rem; text-decoration: none;
+            margin: 0 2px; cursor: pointer;
+        }
+        .btn-action-edit { color: var(--p-pink); border-color: #FFE4E9; }
+        .btn-action-edit:hover { background: var(--p-pink); color: #ffffff; transform: translateY(-2px); }
+        .btn-action-delete { color: #dc2626; border-color: #fee2e2; }
+        .btn-action-delete:hover { background: #dc2626; color: #ffffff; transform: translateY(-2px); }
 
-        @keyframes fadeIn { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
-        .fade-in-up { animation: fadeIn .4s ease-out; }
+        /* PAGINATION */
+        .pagination-wrapper {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-top: 30px; padding: 20px 24px;
+            background: #ffffff; border-radius: 20px;
+            border: 1px solid rgba(255, 228, 233, 0.8);
+            box-shadow: 0 4px 15px rgba(213, 61, 102, 0.04);
+        }
+        .pagination-info { font-size: 0.85rem; color: #718096; font-weight: 600; }
+        .pagination-info span { color: var(--p-pink); font-weight: 700; }
+        .pagination-nav { display: flex; gap: 6px; align-items: center; }
+        .page-link-pag {
+            display: flex; align-items: center; justify-content: center;
+            min-width: 40px; height: 40px; padding: 0 14px;
+            border-radius: 12px; background: #ffffff;
+            border: 2px solid #FFF5F7; color: #4a5568;
+            font-weight: 700; font-size: 0.9rem; text-decoration: none;
+            transition: var(--transition-3d);
+        }
+        .page-link-pag:hover {
+            background: var(--light-pink); border-color: var(--p-pink); color: var(--p-pink);
+            transform: translateY(-2px);
+        }
+        .page-link-pag.active-pag {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink)) !important;
+            color: #ffffff !important; border-color: var(--p-pink) !important;
+            box-shadow: 0 4px 12px rgba(213, 61, 102, 0.3);
+        }
+        .page-link-pag.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
-        @media (max-width: 992px) { .main-content { margin-left: 0; padding: 20px; } .sidebar { transform: translateX(-100%); } }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in-up { animation: fadeIn 0.5s ease-out; }
+
+        @media (max-width: 992px) {
+            .main-content { margin-left: 0; padding: 20px; }
+            .sidebar { transform: translateX(-100%); }
+        }
     </style>
 </head>
 <body>
 
-<!-- SIDEBAR -->
-<div class="sidebar">
-    <div class="sidebar-menu-wrapper">
-        <a href="../../index.php" class="sidebar-brand">SpotLight.<br><span>Panel Admin</span></a>
-        <ul class="nav-menu">
-            <li class="nav-item">
-                <a href="../../Role/Admin/index.php" class="nav-link-custom">
-                    <span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuMaster">
-                    <span><i class="bi bi-folder-fill me-2"></i> Data Master</span>
-                    <i class="bi bi-chevron-up small icon-chevron" style="transform:rotate(180deg);"></i>
-                </a>
-                <div class="submenu show" id="submenuMaster">
-                    <ul class="list-unstyled">
-                        <li><a href="../Pelanggan/list.php"     class="submenu-link"><i class="bi bi-people-fill me-2"></i>Pelanggan</a></li>
-                        <li><a href="../Paket Foto/list.php"   class="submenu-link"><i class="bi bi-camera-fill me-2"></i>Paket Foto</a></li>
-                        <li><a href="../Ruangan/list.php"       class="submenu-link"><i class="bi bi-door-open-fill me-2"></i>Ruangan</a></li>
-                        <li><a href="../Properti/list.php"      class="submenu-link"><i class="bi bi-box-seam-fill me-2"></i>Properti</a></li>
-                        <li><a href="./list.php"                class="submenu-link active"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
-                        <li><a href="../Jadwal Studio/list.php" class="submenu-link"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Studio</a></li>
-                        <li><a href="../Barang Cetak/list.php"  class="submenu-link"><i class="bi bi-printer-fill me-2"></i>Barang Cetak</a></li>
-                    </ul>
-                </div>
-            </li>
-            <li class="nav-item">
-                <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuTransaksi">
-                    <span><i class="bi bi-cart-fill me-2"></i> Transaksi</span>
-                    <i class="bi bi-chevron-down small icon-chevron"></i>
-                </a>
-                <div class="submenu" id="submenuTransaksi">
-                    <ul class="list-unstyled">
-                        <li><a href="../../Transaksi/Order/list.php"       class="submenu-link"><i class="bi bi-calendar-check-fill me-2"></i>Kelola Booking</a></li>
-                        <li><a href="../../Transaksi/Pembayaran/list.php"  class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran</a></li>
-                        <li><a href="../../Transaksi/Pembatalan/list.php"  class="submenu-link"><i class="bi bi-calendar-x-fill me-2"></i>Pembatalan Booking</a></li>
-                        <li><a href="../../Transaksi/Sesi Foto/list.php"   class="submenu-link"><i class="bi bi-camera-reels-fill me-2"></i>Upload Hasil Foto</a></li>
-                        <li><a href="../../Transaksi/Penjualan/list.php"   class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang</a></li>
-                    </ul>
-                </div>
-            </li>
-            <li class="nav-item">
-                <a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)">
-                    <span><i class="bi bi-house-door-fill me-2"></i> Landing Page</span>
-                </a>
-            </li>
-        </ul>
-    </div>
-    <div>
-        <button onclick="confirmLogout(event)" class="btn btn-logout text-center d-block w-100">
-            <i class="bi bi-box-arrow-right me-2"></i> Keluar Sistem
-        </button>
-    </div>
-</div>
-
-<!-- MAIN CONTENT -->
-<div class="main-content">
-
-    <!-- HEADER -->
-    <div class="dashboard-header">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <div class="sidebar-menu-wrapper">
+            <a href="../../index.php" class="sidebar-brand">
+                SpotLight.<br><span>Panel Admin</span>
+            </a>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="../../Role/Admin/index.php" class="nav-link-custom">
+                        <span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuMaster">
+                        <span><i class="bi bi-folder-fill me-2"></i> Data Master</span>
+                        <i class="bi bi-chevron-up small icon-chevron" style="transform: rotate(180deg);"></i>
+                    </a>
+                    <div class="submenu show" id="submenuMaster">
+                        <ul class="list-unstyled">
+                            <li><a href="../Pelanggan/list.php" class="submenu-link"><i class="bi bi-people-fill me-2"></i>Pelanggan</a></li>
+                            <li><a href="../Paket Foto/list.php" class="submenu-link"><i class="bi bi-camera-fill me-2"></i>Paket Foto</a></li>
+                            <li><a href="../Ruangan/list.php" class="submenu-link"><i class="bi bi-door-open-fill me-2"></i>Ruangan</a></li>
+                            <li><a href="../Properti/list.php" class="submenu-link"><i class="bi bi-box-seam-fill me-2"></i>Properti</a></li>
+                            <li><a href="./list.php" class="submenu-link active"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
+                            <li><a href="../Jadwal Studio/list.php" class="submenu-link"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Studio</a></li>
+                            <li><a href="../Barang Cetak/list.php" class="submenu-link"><i class="bi bi-printer-fill me-2"></i>Barang Cetak</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuTransaksi">
+                        <span><i class="bi bi-cart-fill me-2"></i> Transaksi</span>
+                        <i class="bi bi-chevron-down small icon-chevron"></i>
+                    </a>
+                    <div class="submenu" id="submenuTransaksi">
+                        <ul class="list-unstyled">
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-calendar-check-fill me-2"></i>Kelola Booking</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran</a></li>
+                            <li><a href="../../Transaksi/Pembatalan/list.php" class="submenu-link"><i class="bi bi-calendar-x-fill me-2"></i>Pembatalan Booking</a></li>
+                            <li><a href="../../Transaksi/Sesi Foto/list.php" class="submenu-link"><i class="bi bi-camera-reels-fill me-2"></i>Upload Hasil Foto</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    <a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)">
+                        <span><i class="bi bi-house-door-fill me-2"></i> Landing Page</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
         <div>
-            <h3 class="fw-bold mb-1">Tema Foto</h3>
-            <p class="text-muted small mb-0">Kelola tema foto dan ruangan yang bisa menggunakannya.</p>
-        </div>
-        <div class="d-flex align-items-center gap-3">
-            <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background:var(--light-pink);font-weight:700;border-radius:10px;">
-                <i class="bi bi-clock-history me-1 text-danger"></i>
-                <span id="live-clock">Memuat waktu...</span>
-            </span>
-            <div class="profile-header-btn shadow-sm" title="Profil">
-                <img src="<?= $foto_admin_src ?>" alt="Admin">
-            </div>
-        </div>
-    </div>
-
-    <!-- BREADCRUMB -->
-    <div class="breadcrumb-custom">
-        <a href="../../Role/Admin/index.php"><i class="bi bi-house-door-fill me-1"></i>Dashboard</a>
-        <i class="bi bi-chevron-right" style="font-size:.7rem;color:#cbd5e1;"></i>
-        <a href="./list.php">Data Master</a>
-        <i class="bi bi-chevron-right" style="font-size:.7rem;color:#cbd5e1;"></i>
-        <span class="active">Tema Foto</span>
-    </div>
-
-    <!-- STATS -->
-    <div class="row g-3 mb-4">
-        <div class="col-md-4">
-            <div class="stat-card">
-                <div class="stat-icon pink"><i class="bi bi-palette-fill"></i></div>
-                <div>
-                    <div class="stat-num"><?= $stat_total['n'] ?? 0 ?></div>
-                    <div class="stat-label">Total Tema Foto</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="stat-card">
-                <div class="stat-icon green"><i class="bi bi-check-circle-fill"></i></div>
-                <div>
-                    <div class="stat-num"><?= $stat_aktif['n'] ?? 0 ?></div>
-                    <div class="stat-label">Tema Aktif</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="stat-card">
-                <div class="stat-icon gray"><i class="bi bi-dash-circle-fill"></i></div>
-                <div>
-                    <div class="stat-num"><?= $stat_nonaktif['n'] ?? 0 ?></div>
-                    <div class="stat-label">Tema Nonaktif</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- TOOLBAR -->
-    <div class="toolbar-card fade-in-up">
-        <form method="GET" id="filterForm" class="d-flex align-items-center gap-2 flex-wrap w-100">
-            <!-- Hidden inputs untuk filter (diisi JS saat apply) -->
-            <input type="hidden" name="kategori" id="hidden-kategori" value="<?= htmlspecialchars($filter_kat) ?>">
-            <input type="hidden" name="status"   id="hidden-status"   value="<?= htmlspecialchars($filter_st) ?>">
-
-            <!-- Search -->
-            <div class="search-input-wrap">
-                <i class="bi bi-search"></i>
-                <input type="text" name="search" class="search-input"
-                       placeholder="Cari nama tema, deskripsi..."
-                       value="<?= htmlspecialchars($search) ?>" autocomplete="off">
-            </div>
-
-            <!-- Tombol Filter -->
-            <button type="button" id="btnOpenFilter"
-                    class="btn-filter <?= ($filter_kat || $filter_st !== '') ? 'has-filter' : '' ?>"
-                    onclick="openFilterModal()">
-                <i class="bi bi-sliders2"></i> Filter
-                <?php
-                $total_filter = ($filter_kat ? 1 : 0) + ($filter_st !== '' ? 1 : 0);
-                if ($total_filter > 0): ?>
-                    <span style="background:var(--p-pink);color:#fff;border-radius:20px;padding:1px 7px;font-size:.7rem;"><?= $total_filter ?></span>
-                <?php endif; ?>
-                <span class="filter-dot"></span>
+            <button onclick="confirmLogout(event)" class="btn btn-logout text-center d-block w-100">
+                <i class="bi bi-box-arrow-right me-2"></i> Keluar Sistem
             </button>
-
-            <!-- Tombol Cari -->
-            <button type="submit" class="btn-tambah" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);">
-                <i class="bi bi-search"></i> Cari
-            </button>
-
-            <!-- Reset (hanya muncul kalau ada filter aktif) -->
-            <?php if ($search || $filter_kat || $filter_st !== ''): ?>
-                <a href="list.php" class="btn-reset">
-                    <i class="bi bi-x-circle"></i> Reset
-                </a>
-            <?php endif; ?>
-
-            <div class="ms-auto">
-                <a href="add.php" class="btn-tambah"><i class="bi bi-plus-lg"></i> Tambah Tema</a>
-            </div>
-        </form>
-
-        <!-- Active filter chips (tampil di bawah toolbar kalau ada filter aktif) -->
-        <?php if ($filter_kat || $filter_st !== ''): ?>
-        <div class="active-filter-chips w-100 mt-2 pt-2" style="border-top:1px solid #f1f5f9;">
-            <span style="font-size:.72rem;color:#94a3b8;font-weight:700;">Filter aktif:</span>
-            <?php if ($filter_kat): ?>
-                <span class="filter-chip">
-                    <i class="bi bi-tag-fill"></i> <?= htmlspecialchars($filter_kat) ?>
-                    <button onclick="removeFilter('kategori')" title="Hapus filter"><i class="bi bi-x"></i></button>
-                </span>
-            <?php endif; ?>
-            <?php if ($filter_st !== ''): ?>
-                <span class="filter-chip">
-                    <i class="bi bi-circle-fill" style="font-size:.5rem;"></i>
-                    <?= $filter_st === '1' ? 'Aktif' : 'Nonaktif' ?>
-                    <button onclick="removeFilter('status')" title="Hapus filter"><i class="bi bi-x"></i></button>
-                </span>
-            <?php endif; ?>
         </div>
-        <?php endif; ?>
     </div>
 
-    <!-- ===== FILTER MODAL ===== -->
-    <div class="filter-modal-overlay" id="filterModalOverlay" onclick="closeFilterOnOverlay(event)">
-        <div class="filter-modal">
-            <div class="filter-modal-header">
-                <div>
-                    <h6><i class="bi bi-sliders2 me-2"></i>Filter Tema Foto</h6>
-                    <p>Pilih kategori dan status yang ingin ditampilkan</p>
-                </div>
-                <button class="filter-modal-close" onclick="closeFilterModal()">
-                    <i class="bi bi-x-lg"></i>
-                </button>
-            </div>
-            <div class="filter-modal-body">
+    <!-- MAIN CONTENT -->
+    <div class="main-content">
 
-                <!-- Kategori -->
-                <div class="filter-section-label"><i class="bi bi-tag-fill me-1"></i> Kategori Tema</div>
-                <div class="chip-group" id="chipKategori">
-                    <?php foreach ($daftar_kategori as $kat): ?>
-                        <div class="chip-opt <?= $filter_kat === $kat ? 'selected' : '' ?>"
-                             data-value="<?= $kat ?>" onclick="toggleChip(this, 'kategori')">
-                            <?= $kat ?>
+        <!-- HEADER -->
+        <div class="dashboard-header" data-aos="fade-up">
+            <div>
+                <h3 class="fw-bold mb-1">Master Tema Foto</h3>
+                <p class="text-muted small mb-0">Kelola data tema foto untuk sesi pemotretan pelanggan. Tema terhubung ke ruangan studio.</p>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
+                    <i class="bi bi-clock-history me-1 text-danger"></i> <span id="live-clock">Memuat waktu...</span>
+                </span>
+                <div class="profile-header-btn shadow-sm" onclick="bukaModalBiodata()" title="Klik untuk melihat profil Anda">
+                    <img src="<?= $foto_admin_src ?>" alt="Admin Profil">
+                </div>
+            </div>
+        </div>
+
+        <!-- STATISTIK CARDS -->
+        <div class="stats-scroll-wrapper animate-fade-in">
+            <div class="stats-row">
+                <div class="stat-card-item">
+                    <div class="card-3d">
+                        <div class="stat-card">
+                            <div class="stat-icon stat-icon-pink"><i class="bi bi-palette-fill"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-title">Total Tema</div>
+                                <div class="stat-val"><?= $stats['total'] ?? 0 ?> Tema</div>
+                                <div class="stat-subtitle">Tersedia di sistem</div>
+                            </div>
                         </div>
-                    <?php endforeach; ?>
-                </div>
-
-                <!-- Status -->
-                <div class="filter-section-label"><i class="bi bi-circle-fill me-1" style="font-size:.6rem;"></i> Status</div>
-                <div class="chip-group" id="chipStatus">
-                    <div class="chip-opt <?= $filter_st === '1' ? 'selected' : '' ?>"
-                         data-value="1" onclick="toggleChip(this, 'status')">
-                        ✅ Aktif
-                    </div>
-                    <div class="chip-opt <?= $filter_st === '0' ? 'selected' : '' ?>"
-                         data-value="0" onclick="toggleChip(this, 'status')">
-                        ⛔ Nonaktif
                     </div>
                 </div>
-
-            </div>
-            <div class="filter-modal-footer">
-                <button class="btn-filter-clear" onclick="clearAllFilter()">
-                    <i class="bi bi-arrow-counterclockwise me-1"></i> Reset Filter
-                </button>
-                <button class="btn-filter-apply" onclick="applyFilter()">
-                    <i class="bi bi-check2-circle"></i> Terapkan Filter
-                </button>
+                <div class="stat-card-item">
+                    <div class="card-3d">
+                        <div class="stat-card">
+                            <div class="stat-icon stat-icon-green"><i class="bi bi-check-circle-fill"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-title">Tema Aktif</div>
+                                <div class="stat-val"><?= $stats['aktif'] ?? 0 ?> Tema</div>
+                                <div class="stat-subtitle">Tampil ke pelanggan</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="stat-card-item">
+                    <div class="card-3d">
+                        <div class="stat-card">
+                            <div class="stat-icon stat-icon-orange"><i class="bi bi-x-circle-fill"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-title">Tema Nonaktif</div>
+                                <div class="stat-val"><?= $stats['nonaktif'] ?? 0 ?> Tema</div>
+                                <div class="stat-subtitle">Disembunyikan sementara</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="stat-card-item">
+                    <div class="card-3d">
+                        <div class="stat-card">
+                            <div class="stat-icon stat-icon-blue"><i class="bi bi-award-fill"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-title">Terpopuler</div>
+                                <div class="stat-val" style="font-size: 1.1rem;"><?= $top_tema ? htmlspecialchars($top_tema['Nama_Tema']) : '-' ?></div>
+                                <div class="stat-subtitle"><?= $top_tema ? ($top_tema['total_booked'] ?? 0) . ' booking' : 'Belum ada data' ?></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- TABLE -->
-    <div class="table-card fade-in-up">
-        <div class="table-card-header">
-            <h6><i class="bi bi-palette-fill me-2 text-danger"></i>Daftar Tema Foto</h6>
-            <span class="badge" style="background:var(--s-pink);color:var(--p-pink);font-weight:700;border-radius:20px;padding:6px 14px;">
-                <?= $total_data ?> tema
+        <!-- SEARCH & FILTER -->
+        <div class="search-filter-bar">
+            <form method="GET" class="search-form-flex" id="mainSearchForm">
+                <input type="hidden" name="status" id="hiddenStatus" value="<?= htmlspecialchars($status_filter) ?>">
+                <input type="hidden" name="kategori" id="hiddenKategori" value="<?= htmlspecialchars($kategori_filter) ?>">
+                <input type="hidden" name="sort" id="hiddenSort" value="<?= htmlspecialchars($sort) ?>">
+                <div class="search-input-wrapper">
+                    <i class="bi bi-search search-icon"></i>
+                    <input type="text" name="cari" class="search-input-main" placeholder="Cari nama tema atau deskripsi..." value="<?= htmlspecialchars($cari) ?>">
+                </div>
+                <button type="button" class="btn-filter-modal" onclick="bukaModalFilter()">
+                    <i class="bi bi-funnel-fill me-2"></i>Filter
+                    <i class="bi bi-chevron-down ms-2"></i>
+                </button>
+                <button type="submit" class="btn-search-icon" title="Cari">
+                    <i class="bi bi-search"></i>
+                </button>
+            </form>
+            <a href="add.php" class="btn-reg-header text-decoration-none">
+                <i class="bi bi-plus-circle-fill me-2"></i>Tambah Tema Foto
+            </a>
+        </div>
+
+        <!-- INFO TEXT -->
+        <div class="alert alert-light border-2 border-dashed mb-3" style="border-color: #e2e8f0; border-radius: 14px; background: #f8fafc;">
+            <i class="bi bi-info-circle-fill me-2 text-info"></i>
+            <span class="small fw-bold text-muted">
+                <strong>Info:</strong> Tema foto akan ditampilkan kepada pelanggan berdasarkan ruangan yang dipilih. 
+                Kelola ruangan di menu <a href="../Ruangan/list.php" style="color: var(--p-pink);">Ruangan</a>.
             </span>
         </div>
 
-        <?php if (!empty($daftar_tema)): ?>
-        <div class="table-responsive">
-            <table class="tema-table">
-                <thead>
-                    <tr>
-                        <th style="width:48px;">#</th>
-                        <th style="width:64px;">Foto</th>
-                        <th>Nama Tema</th>
-                        <th>Kategori</th>
-                        <th>Deskripsi</th>
-                        <th>Ruangan</th>
-                        <th>Status</th>
-                        <th style="width:130px;">Aksi</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($daftar_tema as $idx => $tema): ?>
-                    <tr>
-                        <td class="text-muted fw-700" style="font-size:.8rem;"><?= $offset + $idx + 1 ?></td>
-                        <td>
-                            <?php
-                            $foto = $tema['Foto_Tema'] ?? '';
-                            $foto_path = "../../assets/img/tema/" . $foto;
-                            if (!empty($foto) && $foto !== 'default_tema.jpg' && file_exists($foto_path)):
-                            ?>
-                                <img src="<?= $foto_path ?>" class="tema-thumb" alt="<?= htmlspecialchars($tema['Nama_Tema']) ?>">
-                            <?php else: ?>
-                                <div class="tema-thumb-placeholder"><i class="bi bi-palette-fill"></i></div>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <div style="font-weight:700;font-size:.875rem;"><?= htmlspecialchars($tema['Nama_Tema']) ?></div>
-                            <?php if ($tema['Jumlah_Order_Aktif'] > 0): ?>
-                                <div style="font-size:.72rem;color:#f59e0b;font-weight:600;margin-top:2px;">
-                                    <i class="bi bi-lightning-charge-fill"></i> <?= $tema['Jumlah_Order_Aktif'] ?> order aktif
-                                </div>
-                            <?php endif; ?>
-                        </td>
-                        <td><span class="badge-kategori"><?= htmlspecialchars($tema['Kategori_Tema'] ?? '-') ?></span></td>
-                        <td>
-                            <div style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted);font-size:.82rem;"
-                                 title="<?= htmlspecialchars($tema['Deskripsi'] ?? '') ?>">
-                                <?= !empty($tema['Deskripsi']) ? htmlspecialchars($tema['Deskripsi']) : '<span style="color:#cbd5e1;">—</span>' ?>
-                            </div>
-                        </td>
-                        <td>
-                            <span class="badge-ruangan">
-                                <i class="bi bi-door-open-fill"></i>
-                                <?= (int)$tema['Jumlah_Ruangan'] ?> ruangan
-                            </span>
-                        </td>
-                        <td>
-                            <?php if ($tema['Status'] == 1): ?>
-                                <span class="badge-status-aktif"><i class="bi bi-circle-fill" style="font-size:.5rem;"></i>Aktif</span>
-                            <?php else: ?>
-                                <span class="badge-status-nonaktif"><i class="bi bi-circle-fill" style="font-size:.5rem;"></i>Nonaktif</span>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <div class="action-btns">
-                                <!-- Edit -->
-                                <a href="edit.php?id=<?= $tema['ID_Tema'] ?>" class="btn-action btn-edit" title="Edit Tema">
-                                    <i class="bi bi-pencil-fill"></i>
-                                </a>
-                                <!-- Toggle Status -->
-                                <?php if ($tema['Status'] == 1): ?>
-                                    <button class="btn-action btn-toggle-on"
-                                            onclick="confirmToggle(<?= $tema['ID_Tema'] ?>, 'nonaktifkan', '<?= addslashes($tema['Nama_Tema']) ?>')"
-                                            title="Nonaktifkan">
-                                        <i class="bi bi-toggle-on"></i>
-                                    </button>
-                                <?php else: ?>
-                                    <button class="btn-action btn-toggle-off"
-                                            onclick="confirmToggle(<?= $tema['ID_Tema'] ?>, 'aktifkan', '<?= addslashes($tema['Nama_Tema']) ?>')"
-                                            title="Aktifkan">
-                                        <i class="bi bi-toggle-off"></i>
-                                    </button>
-                                <?php endif; ?>
-                                <!-- Hapus -->
-                                <button class="btn-action btn-delete"
-                                        onclick="confirmDelete(<?= $tema['ID_Tema'] ?>, '<?= addslashes($tema['Nama_Tema']) ?>', <?= (int)$tema['Jumlah_Order_Aktif'] ?>)"
-                                        title="Hapus Tema">
-                                    <i class="bi bi-trash-fill"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
+        <!-- TABEL DATA -->
+        <div class="card-3d mb-4" style="padding: 24px;">
+            <div class="table-scroll-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Tema Foto</th>
+                            <th>Kategori</th>
+                            <th>Ruangan Terhubung</th>
+                            <th>Status</th>
+                            <th class="text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        if (!empty($tema_list)):
+                            foreach($tema_list as $row):
+                                $path_img = "../../assets/img/tema/" . ($row['Foto_Tema'] ?? '');
+                                $img_src = (!empty($row['Foto_Tema']) && file_exists($path_img))
+                                    ? $path_img 
+                                    : $default_svg_avatar;
 
-        <!-- PAGINATION -->
-        <?php
-        $base_url = "list.php?" . http_build_query(array_filter([
-            'search'   => $search,
-            'kategori' => $filter_kat,
-            'status'   => $filter_st,
-        ]));
-        $from = $offset + 1;
-        $to   = min($offset + $per_page, $total_data);
-        ?>
-        <div class="pagination-wrap">
-            <div class="pagination-info">
-                Menampilkan <?= $from ?>–<?= $to ?> dari <?= $total_data ?> tema
+                                $badge_status = ($row['Status'] == 1) ? "badge-aktif" : "badge-nonaktif";
+                                $text_status = ($row['Status'] == 1) ? "Aktif" : "Nonaktif";
+
+                                $ruangan_list = $ruangan_per_tema[$row['ID_Tema']] ?? [];
+                        ?>
+                            <tr class="fade-in-up">
+                                <td>
+                                    <div class="d-flex align-items-center gap-3">
+                                        <img src="<?= $img_src ?>" class="tema-preview" alt="<?= htmlspecialchars($row['Nama_Tema']) ?>">
+                                        <div>
+                                            <div class="td-nama"><?= htmlspecialchars($row['Nama_Tema']) ?></div>
+                                            <div class="td-deskripsi"><?= htmlspecialchars($row['Deskripsi'] ?? '-') ?></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge-kategori">
+                                        <i class="bi bi-tag-fill"></i> <?= htmlspecialchars($row['Kategori_Tema'] ?? '-') ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <?php if (!empty($ruangan_list)): ?>
+                                        <?php foreach (array_slice($ruangan_list, 0, 2) as $ruangan): ?>
+                                            <span class="badge-ruangan"><?= htmlspecialchars($ruangan) ?></span>
+                                        <?php endforeach; ?>
+                                        <?php if (count($ruangan_list) > 2): ?>
+                                            <span class="badge-ruangan">+<?= count($ruangan_list) - 2 ?></span>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <span class="text-muted small">Belum terhubung</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <span class="badge-status <?= $badge_status ?>">
+                                        <span class="badge-dot"></span>
+                                        <?= $text_status ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <a href="edit.php?id=<?= $row['ID_Tema'] ?>" class="btn-action-circle btn-action-edit" title="Edit Tema Foto">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <button class="btn-action-circle btn-action-delete" onclick="toggleStatus(<?= $row['ID_Tema'] ?>, <?= $row['Status'] ?>, '<?= htmlspecialchars($row['Nama_Tema']) ?>')" title="Toggle Status">
+                                        <i class="bi bi-toggle-<?= $row['Status'] == 1 ? 'on' : 'off' ?>"></i>
+                                    </button>
+                                    <button class="btn-action-circle btn-action-delete" onclick="hardDelete(<?= $row['ID_Tema'] ?>, '<?= htmlspecialchars($row['Nama_Tema']) ?>')" title="Hapus Permanen">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php 
+                            endforeach; 
+                        else:
+                        ?>
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-5">
+                                    <i class="bi bi-inbox fs-1 mb-3 d-block" style="color: #cbd5e1;"></i>
+                                    <p class="fw-bold">Tidak ada data tema foto yang sesuai.</p>
+                                    <p class="small">Coba ubah filter atau tambah tema foto baru.</p>
+                                </td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
             </div>
-            <div class="pagination-btns">
-                <a href="<?= $base_url ?>&page=<?= max(1, $page - 1) ?>"
-                   class="page-btn <?= $page <= 1 ? 'disabled' : '' ?>">
-                    <i class="bi bi-chevron-left"></i>
-                </a>
-                <?php for ($p = 1; $p <= $total_page; $p++): ?>
-                    <?php if ($p == 1 || $p == $total_page || abs($p - $page) <= 1): ?>
-                        <a href="<?= $base_url ?>&page=<?= $p ?>"
-                           class="page-btn <?= $p == $page ? 'active' : '' ?>"><?= $p ?></a>
-                    <?php elseif (abs($p - $page) == 2): ?>
-                        <span class="page-btn" style="pointer-events:none;border:none;">…</span>
+
+            <!-- PAGINATION -->
+            <?php if ($total_halaman > 1): ?>
+            <div class="pagination-wrapper">
+                <div class="pagination-info">
+                    Menampilkan <span><?= $offset + 1 ?></span> - <span><?= min($offset + $limit, $total_records) ?></span> dari <span><?= $total_records ?></span> tema foto
+                </div>
+                <nav class="pagination-nav">
+                    <?php 
+                    $base_qs = "cari=" . urlencode($cari) . "&status=" . $status_filter . "&kategori=" . urlencode($kategori_filter) . "&sort=" . $sort;
+                    ?>
+                    <?php if ($halaman > 1): ?>
+                        <a class="page-link-pag" href="list.php?halaman=<?= $halaman - 1 ?>&<?= $base_qs ?>" title="Sebelumnya">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+                    <?php else: ?>
+                        <span class="page-link-pag disabled"><i class="bi bi-chevron-left"></i></span>
                     <?php endif; ?>
-                <?php endfor; ?>
-                <a href="<?= $base_url ?>&page=<?= min($total_page, $page + 1) ?>"
-                   class="page-btn <?= $page >= $total_page ? 'disabled' : '' ?>">
-                    <i class="bi bi-chevron-right"></i>
-                </a>
-            </div>
-        </div>
 
-        <?php else: ?>
-        <div class="empty-state">
-            <i class="bi bi-palette"></i>
-            <p>
-                <?= ($search || $filter_kat || $filter_st !== '') ? 'Tidak ada tema yang sesuai filter.' : 'Belum ada tema foto. Klik "Tambah Tema" untuk memulai.' ?>
-            </p>
-            <?php if ($search || $filter_kat || $filter_st !== ''): ?>
-                <a href="list.php" class="btn-reset mt-2 d-inline-block"><i class="bi bi-x-circle me-1"></i>Reset Filter</a>
+                    <?php 
+                    $start_page = max(1, $halaman - 2);
+                    $end_page = min($total_halaman, $halaman + 2);
+
+                    if ($start_page > 1) {
+                        echo '<a class="page-link-pag" href="list.php?halaman=1&' . $base_qs . '">1</a>';
+                        if ($start_page > 2) echo '<span class="page-link-pag disabled">...</span>';
+                    }
+
+                    for ($i = $start_page; $i <= $end_page; $i++): 
+                    ?>
+                        <a class="page-link-pag <?= ($halaman == $i) ? 'active-pag' : '' ?>" href="list.php?halaman=<?= $i ?>&<?= $base_qs ?>">
+                            <?= $i ?>
+                        </a>
+                    <?php endfor; 
+
+                    if ($end_page < $total_halaman) {
+                        if ($end_page < $total_halaman - 1) echo '<span class="page-link-pag disabled">...</span>';
+                        echo '<a class="page-link-pag" href="list.php?halaman=' . $total_halaman . '&' . $base_qs . '">' . $total_halaman . '</a>';
+                    }
+                    ?>
+
+                    <?php if ($halaman < $total_halaman): ?>
+                        <a class="page-link-pag" href="list.php?halaman=<?= $halaman + 1 ?>&<?= $base_qs ?>" title="Selanjutnya">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    <?php else: ?>
+                        <span class="page-link-pag disabled"><i class="bi bi-chevron-right"></i></span>
+                    <?php endif; ?>
+                </nav>
+            </div>
+            <?php elseif ($total_records > 0): ?>
+            <div class="pagination-wrapper">
+                <div class="pagination-info">
+                    Menampilkan <span>1</span> - <span><?= $total_records ?></span> dari <span><?= $total_records ?></span> tema foto
+                </div>
+            </div>
             <?php endif; ?>
         </div>
-        <?php endif; ?>
+
     </div>
 
-</div><!-- /main-content -->
+    <!-- FILTER MODAL POPUP -->
+    <div class="modal fade" id="modalFilterData" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content" style="border: none; border-radius: 24px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); overflow: hidden;">
+                <div class="modal-header" style="border: none; padding: 24px 24px 16px; background: #ffffff;">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-funnel-fill me-2 text-danger"></i>Filter Data</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="padding: 0 24px 20px; background: #ffffff;">
+                    <div class="mb-3">
+                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">URUT BERDASARKAN</label>
+                        <select class="form-select" id="modalSort" style="border: 2px solid #e2e8f0; border-radius: 14px; padding: 14px 18px; font-weight: 600;">
+                            <option value="nama_asc" <?= $sort == 'nama_asc' ? 'selected' : '' ?>>Nama A - Z</option>
+                            <option value="nama_desc" <?= $sort == 'nama_desc' ? 'selected' : '' ?>>Nama Z - A</option>
+                            <option value="kategori_asc" <?= $sort == 'kategori_asc' ? 'selected' : '' ?>>Kategori A - Z</option>
+                            <option value="kategori_desc" <?= $sort == 'kategori_desc' ? 'selected' : '' ?>>Kategori Z - A</option>
+                            <option value="ruangan_asc" <?= $sort == 'ruangan_asc' ? 'selected' : '' ?>>Ruangan Terhubung (Sedikit)</option>
+                            <option value="ruangan_desc" <?= $sort == 'ruangan_desc' ? 'selected' : '' ?>>Ruangan Terhubung (Banyak)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">KATEGORI</label>
+                        <select class="form-select" id="modalKategori" style="border: 2px solid #e2e8f0; border-radius: 14px; padding: 14px 18px; font-weight: 600;">
+                            <option value="" <?= $kategori_filter === '' ? 'selected' : '' ?>>Semua Kategori</option>
+                            <?php foreach ($daftar_kategori_filter as $k): ?>
+                                <option value="<?= htmlspecialchars($k['Kategori_Tema']) ?>" <?= $kategori_filter == $k['Kategori_Tema'] ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($k['Kategori_Tema']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">STATUS</label>
+                        <select class="form-select" id="modalStatus" style="border: 2px solid #e2e8f0; border-radius: 14px; padding: 14px 18px; font-weight: 600;">
+                            <option value="" <?= $status_filter === '' ? 'selected' : '' ?>>Semua Status</option>
+                            <option value="1" <?= $status_filter === '1' ? 'selected' : '' ?>>Aktif</option>
+                            <option value="0" <?= $status_filter === '0' ? 'selected' : '' ?>>Nonaktif</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border: none; padding: 0 24px 24px; background: #ffffff; display: flex; gap: 12px;">
+                    <button type="button" class="btn btn-secondary" style="flex: 1; background: #f1f5f9; color: #475569; border: none; border-radius: 14px; padding: 14px 20px; font-weight: 700;" onclick="resetFilter()">
+                        <i class="bi bi-arrow-counterclockwise me-2"></i>Reset
+                    </button>
+                    <button type="button" class="btn btn-danger" style="flex: 1; background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; border-radius: 14px; padding: 14px 20px; font-weight: 700;" onclick="applyFilter()">
+                        <i class="bi bi-check-lg me-2"></i>Terapkan
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-<script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
-<script>
-    // Submenu toggle
-    document.querySelectorAll('.btn-toggle-submenu').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            const target   = document.querySelector(this.getAttribute('data-target'));
-            const chevron  = this.querySelector('.icon-chevron');
-            const isShown  = target.classList.contains('show');
-            document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
-            document.querySelectorAll('.icon-chevron').forEach(ic => ic.style.transform = 'rotate(0deg)');
-            if (!isShown) {
-                target.classList.add('show');
-                if (chevron) chevron.style.transform = 'rotate(180deg)';
-            }
-        });
-    });
+    <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
-    // Konfirmasi Toggle Status
-    function confirmToggle(id, aksi, nama) {
-        const label = aksi === 'aktifkan' ? 'mengaktifkan' : 'menonaktifkan';
-        Swal.fire({
-            title: aksi === 'aktifkan' ? 'Aktifkan Tema?' : 'Nonaktifkan Tema?',
-            html: `Apakah Anda yakin ingin ${label} tema <strong>${nama}</strong>?<br>
-                   <small class="text-muted">Tema nonaktif tidak akan muncul ke pelanggan.</small>`,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonColor: '#D53D66',
-            cancelButtonColor: '#718096',
-            confirmButtonText: 'Ya, ' + (aksi === 'aktifkan' ? 'Aktifkan' : 'Nonaktifkan'),
-            cancelButtonText: 'Batal'
-        }).then(result => {
-            if (result.isConfirmed) {
-                window.location.href = `action_tema.php?aksi=toggle_status&id=${id}`;
-            }
-        });
-    }
-
-    // Konfirmasi Hapus
-    function confirmDelete(id, nama, orderAktif) {
-        if (orderAktif > 0) {
-            Swal.fire({
-                icon: 'warning',
-                title: 'Tidak Bisa Dihapus',
-                html: `Tema <strong>${nama}</strong> tidak bisa dihapus karena masih memiliki <strong>${orderAktif} order aktif</strong>.<br>
-                       <small class="text-muted">Nonaktifkan atau selesaikan order terkait terlebih dahulu.</small>`,
-                confirmButtonColor: '#D53D66'
+    <script>
+        // Toggle Submenu
+        document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('data-target');
+                const targetEl = document.querySelector(targetId);
+                const chevron = this.querySelector('.icon-chevron');
+                if (targetEl) {
+                    const isShown = targetEl.classList.contains('show');
+                    document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
+                    document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
+                    if (!isShown) {
+                        targetEl.classList.add('show');
+                        if (chevron) chevron.style.transform = 'rotate(180deg)';
+                    }
+                }
             });
-            return;
-        }
-        Swal.fire({
-            title: 'Hapus Tema Foto?',
-            html: `Apakah Anda yakin ingin menghapus tema <strong>${nama}</strong>?<br>
-                   <small class="text-danger"><i class="bi bi-exclamation-triangle-fill"></i> Tindakan ini tidak dapat dibatalkan.</small>`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#dc2626',
-            cancelButtonColor: '#718096',
-            confirmButtonText: '<i class="bi bi-trash-fill me-1"></i> Ya, Hapus',
-            cancelButtonText: 'Batal'
-        }).then(result => {
-            if (result.isConfirmed) {
-                window.location.href = `action_tema.php?aksi=hard_delete&id=${id}`;
-            }
         });
-    }
 
-    function confirmLogout(e) {
-        e.preventDefault();
-        Swal.fire({
-            title: 'Keluar Sistem?', text: 'Apakah Anda yakin ingin keluar?',
-            icon: 'warning', showCancelButton: true,
-            confirmButtonColor: '#D53D66', cancelButtonColor: '#718096',
-            confirmButtonText: 'Ya, Keluar', cancelButtonText: 'Batal'
-        }).then(r => { if (r.isConfirmed) window.location.href = '../../logout.php'; });
-    }
-
-    function confirmLandingPage(e) {
-        e.preventDefault();
-        Swal.fire({
-            title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama publik.',
-            icon: 'info', showCancelButton: true,
-            confirmButtonColor: '#D53D66', cancelButtonColor: '#718096',
-            confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal'
-        }).then(r => { if (r.isConfirmed) window.location.href = '../../index.php'; });
-    }
-
-    // ===== FILTER MODAL =====
-    const selectedFilter = {
-        kategori: '<?= addslashes($filter_kat) ?>',
-        status:   '<?= addslashes($filter_st) ?>'
-    };
-
-    function openFilterModal() {
-        document.getElementById('filterModalOverlay').classList.add('show');
-        document.body.style.overflow = 'hidden';
-    }
-
-    function closeFilterModal() {
-        document.getElementById('filterModalOverlay').classList.remove('show');
-        document.body.style.overflow = '';
-    }
-
-    function closeFilterOnOverlay(e) {
-        if (e.target === document.getElementById('filterModalOverlay')) closeFilterModal();
-    }
-
-    // Keyboard ESC
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeFilterModal(); });
-
-    function toggleChip(el, type) {
-        // Single select per group: deselect yang lain dulu
-        const group = type === 'kategori' ? 'chipKategori' : 'chipStatus';
-        document.querySelectorAll(`#${group} .chip-opt`).forEach(c => c.classList.remove('selected'));
-        // Toggle: kalau sudah selected → deselect; kalau belum → select
-        const wasSelected = selectedFilter[type] === el.dataset.value;
-        if (!wasSelected) {
-            el.classList.add('selected');
-            selectedFilter[type] = el.dataset.value;
-        } else {
-            selectedFilter[type] = '';
+        // Filter Modal
+        var filterModal;
+        function bukaModalFilter() {
+            filterModal = new bootstrap.Modal(document.getElementById('modalFilterData'));
+            filterModal.show();
         }
-    }
-
-    function clearAllFilter() {
-        selectedFilter.kategori = '';
-        selectedFilter.status   = '';
-        document.querySelectorAll('.chip-opt').forEach(c => c.classList.remove('selected'));
-    }
-
-    function applyFilter() {
-        document.getElementById('hidden-kategori').value = selectedFilter.kategori;
-        document.getElementById('hidden-status').value   = selectedFilter.status;
-        closeFilterModal();
-        document.getElementById('filterForm').submit();
-    }
-
-    // Hapus filter satu per satu dari chip aktif di toolbar
-    function removeFilter(type) {
-        if (type === 'kategori') {
-            document.getElementById('hidden-kategori').value = '';
-        } else {
-            document.getElementById('hidden-status').value = '';
+        function applyFilter() {
+            document.getElementById('hiddenSort').value = document.getElementById('modalSort').value;
+            document.getElementById('hiddenKategori').value = document.getElementById('modalKategori').value;
+            document.getElementById('hiddenStatus').value = document.getElementById('modalStatus').value;
+            document.getElementById('mainSearchForm').submit();
         }
-        document.getElementById('filterForm').submit();
-    }
+        function resetFilter() {
+            document.getElementById('modalSort').value = 'nama_asc';
+            document.getElementById('modalKategori').value = '';
+            document.getElementById('modalStatus').value = '';
+            document.getElementById('hiddenSort').value = 'nama_asc';
+            document.getElementById('hiddenKategori').value = '';
+            document.getElementById('hiddenStatus').value = '';
+            document.getElementById('mainSearchForm').submit();
+        }
 
-    // ===== JAM REAL-TIME =====
-    function updateLiveClock() {
-        const now = new Date();
-        const days   = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
-        const months = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
-        document.getElementById('live-clock').innerText =
-            `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()} - ` +
-            `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')} WIB`;
-    }
-    setInterval(updateLiveClock, 1000); updateLiveClock();
-</script>
+        // Toggle Status
+        function toggleStatus(id, currentStatus, nama) {
+            const newStatus = currentStatus === 1 ? 0 : 1;
+            const actionText = currentStatus === 1 ? 'menonaktifkan' : 'mengaktifkan';
 
-<?php
-// SweetAlert notifikasi dari action_tema.php
-$notif_map = [
-    'tambah'        => ['success', 'Berhasil!',         'Tema foto baru berhasil ditambahkan.'],
-    'edit'          => ['success', 'Berhasil Diperbarui!','Data tema foto berhasil diperbarui.'],
-    'toggle_status' => ['success', 'Status Diperbarui!', $notif_message ?: 'Status tema foto berhasil diubah.'],
-    'hard_delete'   => ['success', 'Berhasil Dihapus!', 'Tema foto berhasil dihapus dari sistem.'],
-    'error'         => ['error',   'Terjadi Kesalahan',  $notif_message ?: 'Terjadi kesalahan. Coba lagi.'],
-];
-if (isset($notif_map[$notif_type])):
-    [$icon, $title, $text] = $notif_map[$notif_type];
-?>
-<script>
-    Swal.fire({
-        icon:  '<?= $icon ?>',
-        title: '<?= $title ?>',
-        text:  '<?= addslashes($text) ?>',
-        confirmButtonColor: '#D53D66'
-    });
-</script>
-<?php endif; ?>
+            Swal.fire({
+                title: 'Ubah Status Tema Foto?',
+                text: 'Anda akan ' + actionText + ' tema "' + nama + '"',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#D53D66',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Ubah',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = 'action_tema.php?aksi=toggle_status&id=' + id;
+                }
+            });
+        }
 
+        // Hard Delete
+        function hardDelete(id, nama) {
+            Swal.fire({
+                title: 'HAPUS PERMANEN?',
+                text: 'Tema foto "' + nama + '" akan dihapus PERMANEN dari database!',
+                icon: 'error',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Hapus',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = 'action_tema.php?aksi=hard_delete&id=' + id;
+                }
+            });
+        }
+
+        // Konfirmasi Logout
+        function confirmLogout(e) {
+            e.preventDefault();
+            Swal.fire({
+                title: 'Keluar Sistem?',
+                text: 'Apakah Anda yakin ingin keluar dari sistem SpotLight Studio?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#D53D66',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Keluar',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = '../../logout.php';
+                }
+            });
+        }
+
+        function confirmLandingPage(e) {
+            e.preventDefault();
+            Swal.fire({
+                title: 'Kembali ke Beranda?',
+                text: 'Anda akan dialihkan ke halaman utama publik.',
+                icon: 'info',
+                showCancelButton: true,
+                confirmButtonColor: '#D53D66',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Kembali',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = '../../index.php';
+                }
+            });
+        }
+
+        // Jam Real-Time
+        function updateLiveClock() {
+            const now = new Date();
+            const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+            const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+            const dayName = days[now.getDay()];
+            const day = now.getDate();
+            const monthName = months[now.getMonth()];
+            const year = now.getFullYear();
+            let hours = now.getHours();
+            let minutes = now.getMinutes();
+            let seconds = now.getSeconds();
+            hours = hours < 10 ? '0' + hours : hours;
+            minutes = minutes < 10 ? '0' + minutes : minutes;
+            seconds = seconds < 10 ? '0' + seconds : seconds;
+            document.getElementById('live-clock').innerText = `${dayName}, ${day} ${monthName} ${year} - ${hours}:${minutes}:${seconds} WIB`;
+        }
+        setInterval(updateLiveClock, 1000);
+        updateLiveClock();
+    </script>
+
+    <!-- Notifikasi -->
+    <?php if(isset($_GET['status_sukses'])): ?>
+    <script>
+        let msg = "";
+        let t_icon = "success";
+        let t_title = "Berhasil!";
+
+        if ("<?= $_GET['status_sukses'] ?>" == 'tambah') msg = "Tema foto baru berhasil ditambahkan!";
+        else if ("<?= $_GET['status_sukses'] ?>" == 'edit') msg = "Data tema foto berhasil diperbarui!";
+        else if ("<?= $_GET['status_sukses'] ?>" == 'toggle_status') { msg = "Status tema foto berhasil diubah!"; t_title = "Status Diubah"; }
+        else if ("<?= $_GET['status_sukses'] ?>" == 'hard_delete') { msg = "Tema foto berhasil dihapus permanen!"; t_title = "Hard Delete Berhasil"; }
+        else if ("<?= $_GET['status_sukses'] ?>" == 'error') { msg = "<?= $_GET['message'] ?? 'Terjadi kesalahan!' ?>"; t_icon = "error"; t_title = "Gagal!"; }
+
+        Swal.fire({
+            icon: t_icon,
+            title: t_title,
+            text: msg,
+            confirmButtonColor: '#D53D66'
+        });
+    </script>
+    <?php endif; ?>
 </body>
 </html>
