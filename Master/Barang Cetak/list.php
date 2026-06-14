@@ -11,11 +11,14 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 
 // =====================================================
-// HELPER FUNCTIONS
+// HELPER FUNCTIONS - Safe SQLSRV (Anti-Crash)
 // =====================================================
 function safe_sqlsrv_fetch($conn, $sql, $params = []) {
     $stmt = sqlsrv_query($conn, $sql, $params);
-    if ($stmt === false) return null;
+    if ($stmt === false) {
+        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        return null;
+    }
     $result = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
     sqlsrv_free_stmt($stmt);
     return $result;
@@ -23,66 +26,116 @@ function safe_sqlsrv_fetch($conn, $sql, $params = []) {
 
 function safe_sqlsrv_fetch_all($conn, $sql, $params = []) {
     $stmt = sqlsrv_query($conn, $sql, $params);
-    if ($stmt === false) return [];
+    if ($stmt === false) {
+        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        return [];
+    }
     $results = [];
-    while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) { $results[] = $row; }
+    while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+        $results[] = $row;
+    }
     sqlsrv_free_stmt($stmt);
     return $results;
+}
+
+function safe_sqlsrv_count($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) return 0;
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $row['total'] ?? 0;
 }
 
 // =====================================================
 // AMBIL PROFIL ADMIN
 // =====================================================
-$admin_data = safe_sqlsrv_fetch($conn, "SELECT Nama_Karyawan, Foto_Profil FROM Karyawan WHERE ID_Karyawan = ?", [$id_admin]);
+$admin_data = safe_sqlsrv_fetch($conn, 
+    "SELECT Nama_Karyawan, Foto_Profil, Email_Karyawan FROM Karyawan WHERE ID_Karyawan = ? AND Status = 1 AND Is_Deleted = 0", 
+    [$id_admin]
+);
+
 $nama_admin = $admin_data['Nama_Karyawan'] ?? 'Administrator';
-$foto_admin_src = ($admin_data['Foto_Profil'] != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $admin_data['Foto_Profil']))
-    ? "../../assets/img/karyawan/" . $admin_data['Foto_Profil'] : "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
+$foto_admin = $admin_data['Foto_Profil'] ?? 'default.jpg';
+
+$default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
+
+$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
+    ? "../../assets/img/karyawan/" . $foto_admin 
+    : $default_svg_avatar;
 
 // =====================================================
-// FILTER & PAGINATION
+// PAGINATION & FILTER
 // =====================================================
-$search   = trim($_GET['search'] ?? '');
-$f_status = $_GET['status'] ?? ''; // Filter Status dari Modal
-$page     = max(1, (int)($_GET['page'] ?? 1));
-$per_page = 10;
-$offset   = ($page - 1) * $per_page;
+$limit = 10;
+$halaman = isset($_GET['halaman']) ? (int)$_GET['halaman'] : 1;
+if ($halaman < 1) $halaman = 1;
+$offset = ($halaman - 1) * $limit;
+
+$cari = isset($_GET['cari']) ? trim($_GET['cari']) : "";
+$status_filter = isset($_GET['status']) ? trim($_GET['status']) : "";
+$stok_filter = isset($_GET['stok']) ? trim($_GET['stok']) : "";
+$sort = isset($_GET['sort']) ? trim($_GET['sort']) : "nama_asc";
 
 // =====================================================
 // QUERY STATISTIK
 // =====================================================
-$res_total = safe_sqlsrv_fetch($conn, "SELECT COUNT(*) as n FROM Barang_Cetak WHERE Is_Deleted = 0");
-$total_brg = $res_total['n'] ?? 0;
-
-$res_low = safe_sqlsrv_fetch($conn, "SELECT COUNT(*) as n FROM Barang_Cetak WHERE Is_Deleted = 0 AND Stok_Barang <= Stok_Minimum");
-$jml_low = $res_low['n'] ?? 0;
-
-$res_aktif = safe_sqlsrv_fetch($conn, "SELECT COUNT(*) as n FROM Barang_Cetak WHERE Is_Deleted = 0 AND Status = 1");
-$jml_aktif = $res_aktif['n'] ?? 0;
+$stats = safe_sqlsrv_fetch($conn, 
+    "SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN Status = 1 THEN 1 ELSE 0 END) as aktif,
+        SUM(CASE WHEN Status = 0 THEN 1 ELSE 0 END) as nonaktif,
+        SUM(CASE WHEN Stok_Barang <= Stok_Minimum AND Status = 1 THEN 1 ELSE 0 END) as stok_menipis
+    FROM Barang_Cetak WHERE Is_Deleted = 0"
+) ?? ['total' => 0, 'aktif' => 0, 'nonaktif' => 0, 'stok_menipis' => 0];
 
 // =====================================================
-// QUERY DATA BARANG
+// QUERY LIST DATA DENGAN FILTER
 // =====================================================
-$where_parts = ["Is_Deleted = 0"];
-$params      = [];
+$conditions = ["Is_Deleted = 0"];
+$params = [];
 
-if ($search !== '') {
-    $where_parts[] = "(Nama_Barang LIKE ? OR Deskripsi LIKE ?)";
-    $like = "%{$search}%"; $params[] = $like; $params[] = $like;
+if (!empty($cari)) {
+    $conditions[] = "(Nama_Barang LIKE ? OR Deskripsi LIKE ?)";
+    $params[] = "%$cari%"; 
+    $params[] = "%$cari%";
 }
-if ($f_status !== '') {
-    $where_parts[] = "Status = ?"; $params[] = (int)$f_status;
+if ($status_filter !== "") {
+    $conditions[] = "Status = ?";
+    $params[] = (int)$status_filter;
+}
+if ($stok_filter === "menipis") {
+    $conditions[] = "Stok_Barang <= Stok_Minimum AND Status = 1";
 }
 
-$where_sql = implode(' AND ', $where_parts);
+$order_clause = "Nama_Barang ASC";
+if ($sort == "nama_desc") { $order_clause = "Nama_Barang DESC"; }
+elseif ($sort == "harga_asc") { $order_clause = "Harga_Barang ASC"; }
+elseif ($sort == "harga_desc") { $order_clause = "Harga_Barang DESC"; }
+elseif ($sort == "stok_asc") { $order_clause = "Stok_Barang ASC"; }
+elseif ($sort == "stok_desc") { $order_clause = "Stok_Barang DESC"; }
 
-$count_row = safe_sqlsrv_fetch($conn, "SELECT COUNT(*) AS total FROM Barang_Cetak WHERE {$where_sql}", $params);
-$total_data = $count_row['total'] ?? 0;
-$total_page = max(1, ceil($total_data / $per_page));
+// Hitung total untuk pagination
+$count_sql = "SELECT COUNT(*) AS total FROM Barang_Cetak WHERE " . implode(" AND ", $conditions);
+$total_records = safe_sqlsrv_count($conn, $count_sql, $params);
+$total_halaman = ceil($total_records / $limit);
 
-$sql_list = "SELECT * FROM Barang_Cetak WHERE {$where_sql} ORDER BY Created_Date DESC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
-$params_final = array_merge($params, [$offset, $per_page]);
-$daftar_barang = safe_sqlsrv_fetch_all($conn, $sql_list, $params_final);
+// Ambil data
+$list_sql = "SELECT 
+    ID_Barang,
+    Nama_Barang,
+    Deskripsi,
+    Harga_Barang,
+    Stok_Barang,
+    Stok_Minimum,
+    Foto_Barang,
+    Status
+FROM Barang_Cetak
+WHERE " . implode(" AND ", $conditions) . "
+ORDER BY " . $order_clause . "
+OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
 
+$params_list = array_merge($params, [$offset, $limit]);
+$daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -90,14 +143,33 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $sql_list, $params_final);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Master Barang Cetak – SpotLight Studio</title>
+
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
     <style>
-        :root {--sidebar-bg: #ffffff; --p-pink: #D53D66; --d-pink: #CA3366; --s-pink: #FFF0F3; --light-pink: #FFE4E9; --text-dark: #1e1e24; --text-muted: #718096; --body-bg: #f8fafc; --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--body-bg); color: var(--text-dark); overflow-x: hidden; }
-        
+        :root {
+            --p-pink: #D53D66;
+            --d-pink: #CA3366;
+            --s-pink: #FFF0F3;
+            --light-pink: #FFE4E9;
+            --accent-pink: #E85D84;
+            --text-dark: #1e1e24;
+            --text-muted: #718096;
+            --sidebar-bg: #ffffff;
+            --body-bg: #f8fafc;
+            --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--body-bg);
+            color: var(--text-dark);
+            overflow-x: hidden;
+        }
+
         /* SIDEBAR */
         .sidebar {
             width: 260px;
@@ -142,7 +214,7 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $sql_list, $params_final);
         .submenu-link:hover, .submenu-link.active {
             color: var(--p-pink); background-color: rgba(213, 61, 102, 0.03); padding-left: 22px;
         }
-         .btn-logout {
+        .btn-logout {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
             color: #ffffff; border: none; width: 100%; padding: 12px;
             border-radius: 12px; font-weight: 800; font-size: 0.85rem;
@@ -150,41 +222,217 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $sql_list, $params_final);
         }
         .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
 
-        .main-content { margin-left: 260px; padding: 40px; }
-        .dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; }
-        .profile-header-btn { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; border: 2px solid #fff; cursor: pointer; transition: var(--transition-3d); background: #fff; }
+        /* MAIN CONTENT */
+        .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
+        .dashboard-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 35px;
+        }
+        .profile-header-btn {
+            width: 44px; height: 44px; border-radius: 50%; overflow: hidden;
+            border: 2px solid #ffffff; cursor: pointer; transition: var(--transition-3d); background: #ffffff;
+        }
+        .profile-header-btn:hover {
+            transform: scale(1.08) translateY(-2px);
+            box-shadow: 0 8px 20px rgba(213, 61, 102, 0.15);
+            border-color: var(--p-pink);
+        }
         .profile-header-btn img { width: 100%; height: 100%; object-fit: cover; }
 
-        .stat-card { background: #fff; border-radius: 18px; border: 1px solid rgba(255,228,233,.8); padding: 22px 24px; display: flex; align-items: center; gap: 16px; box-shadow: 0 4px 16px rgba(213,61,102,.04); transition: var(--transition-3d); }
-        .stat-icon { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
-        .icon-pink { background: var(--s-pink); color: var(--p-pink); }
-        .icon-red { background: #fef2f2; color: #dc2626; }
-        .icon-green { background: #f0fdf4; color: #16a34a; }
-        .stat-num { font-size: 1.6rem; font-weight: 800; }
-        .stat-label { font-size: .78rem; color: var(--text-muted); font-weight: 600; }
+        /* STAT CARDS */
+        .stats-scroll-wrapper {
+            width: 100%; overflow-x: auto; overflow-y: hidden;
+            padding-bottom: 10px; margin-bottom: 20px;
+            scrollbar-width: thin; scrollbar-color: var(--p-pink) #f1f5f9;
+        }
+        .stats-scroll-wrapper::-webkit-scrollbar { height: 6px; }
+        .stats-scroll-wrapper::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+        .stats-scroll-wrapper::-webkit-scrollbar-thumb { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); border-radius: 10px; }
+        .stats-row { display: flex; gap: 16px; min-width: max-content; }
+        .stat-card-item { min-width: 220px; max-width: 280px; flex: 0 0 auto; }
+        .card-3d {
+            background: #ffffff; border-radius: 22px;
+            border: 1px solid rgba(255, 228, 233, 0.8);
+            box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03);
+            transition: var(--transition-3d); padding: 20px;
+            height: 100%; position: relative; overflow: hidden;
+        }
+        .card-3d:hover {
+            transform: translateY(-8px) scale(1.01);
+            box-shadow: 0 22px 45px rgba(213, 61, 102, 0.14);
+            border-color: var(--p-pink);
+        }
+        .stat-card { display: flex; align-items: center; gap: 14px; }
+        .stat-icon {
+            width: 48px; height: 48px; border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.4rem; transition: var(--transition-3d); flex-shrink: 0;
+        }
+        .stat-icon-pink { background: linear-gradient(135deg, #FFF0F3, #FFE4E9); color: #D53D66; }
+        .stat-icon-green { background: linear-gradient(135deg, #ecfdf5, #d1fae5); color: #059669; }
+        .stat-icon-red { background: linear-gradient(135deg, #fef2f2, #fee2e2); color: #dc2626; }
+        .stat-icon-orange { background: linear-gradient(135deg, #fff7ed, #fed7aa); color: #ea580c; }
+        .stat-content { flex: 1; min-width: 0; overflow: hidden; }
+        .stat-val { font-size: 1.5rem; font-weight: 800; color: var(--text-dark); margin-bottom: 2px; line-height: 1.2; }
+        .stat-title { font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
+        .stat-subtitle { font-size: 0.68rem; color: #a0aec0; font-weight: 600; margin-top: 2px; }
 
-        .toolbar-card { background: #fff; border-radius: 18px; border: 1px solid rgba(255,228,233,.8); padding: 20px 24px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-        .search-input { border: 2px solid #e2e8f0; border-radius: 12px; padding: 10px 16px 10px 40px; font-size: .85rem; font-weight: 600; width: 100%; transition: .3s; }
-        .search-input:focus { border-color: var(--p-pink); outline: none; box-shadow: 0 0 0 4px rgba(213,61,102,.08); }
-        .btn-filter { border: 2px solid #e2e8f0; background: #fff; border-radius: 12px; padding: 10px 20px; font-weight: 700; color: #475569; display: inline-flex; align-items: center; gap: 10px; cursor: pointer; height: 45px; }
-        .btn-tambah { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #fff; border: none; border-radius: 12px; padding: 11px 22px; font-weight: 800; font-size: .85rem; text-decoration: none; transition: var(--transition-3d); }
-        .btn-tambah:hover { transform: translateY(-2px); color: #fff; box-shadow: 0 8px 20px rgba(213, 61, 102, 0.3); }
+        /* SEARCH & FILTER */
+        .search-filter-bar {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 25px; flex-wrap: wrap;
+        }
+        .search-form-flex { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 300px; }
+        .search-input-wrapper { position: relative; flex: 1; }
+        .search-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 1rem; z-index: 2; }
+        .search-input-main {
+            width: 100%; border: 2px solid #e2e8f0; border-radius: 14px;
+            padding: 12px 18px 12px 44px; font-weight: 600; font-size: 0.9rem;
+            color: #1e293b; transition: var(--transition-3d); background: #ffffff;
+        }
+        .search-input-main:focus { outline: none; border-color: var(--p-pink); box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); }
+        .btn-filter-modal {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #ffffff; border: none; border-radius: 14px;
+            padding: 12px 24px; font-weight: 700; font-size: 0.9rem;
+            display: inline-flex; align-items: center; cursor: pointer;
+            transition: var(--transition-3d); white-space: nowrap;
+        }
+        .btn-filter-modal:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(213, 61, 102, 0.3); }
+        .btn-search-icon {
+            background: #ffffff; border: 2px solid #e2e8f0; border-radius: 14px;
+            padding: 12px 16px; color: #94a3b8; cursor: pointer; transition: var(--transition-3d);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .btn-search-icon:hover { border-color: var(--p-pink); color: var(--p-pink); transform: translateY(-2px); }
+        .btn-reg-header {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink)) !important;
+            color: #ffffff !important; border-radius: 14px !important;
+            padding: 12px 28px !important; font-weight: 800 !important;
+            border: none !important; box-shadow: 0 8px 20px rgba(213, 61, 102, 0.25) !important;
+            transition: var(--transition-3d) !important; display: inline-flex;
+            align-items: center; gap: 8px; text-decoration: none;
+        }
+        .btn-reg-header:hover {
+            background: linear-gradient(135deg, #E85D84, var(--p-pink)) !important;
+            transform: translateY(-4px) scale(1.03) !important;
+            box-shadow: 0 12px 25px rgba(213, 61, 102, 0.4) !important;
+        }
 
-        .card-table { background: white; border-radius: 20px; padding: 30px; border: 1px solid #f1f5f9; box-shadow: 0 8px 24px rgba(0,0,0,0.02); }
-        .table thead th { background: transparent; border-bottom: 2px solid #f8fafc; color: #a0aec0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; padding: 15px; }
-        .table tbody td { padding: 20px 15px; vertical-align: middle; border-bottom: 1px solid #f8fafc; font-size: 0.85rem; font-weight: 600; }
-        .brg-img { width: 55px; height: 55px; border-radius: 12px; object-fit: cover; border: 2px solid #f1f5f9; }
-        .badge-status { padding: 6px 14px; border-radius: 20px; font-size: .72rem; font-weight: 700; }
-        .badge-aktif { background: #f0fdf4; color: #16a34a; }
-        .badge-nonaktif { background: #f8fafc; color: #64748b; }
-        .action-btn { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; transition: 0.2s; margin: 0 2px; border: none; }
-        .btn-edit { background: #eff6ff; color: #2563eb; }
-        .btn-delete { background: #fef2f2; color: #dc2626; }
+        /* TABEL */
+        .table-scroll-wrapper {
+            width: 100%; overflow-x: auto; overflow-y: hidden;
+            border-radius: 20px; scrollbar-width: thin;
+            scrollbar-color: var(--p-pink) #f1f5f9;
+        }
+        .table-scroll-wrapper::-webkit-scrollbar { height: 8px; }
+        .table-scroll-wrapper::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+        .table-scroll-wrapper::-webkit-scrollbar-thumb { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); border-radius: 10px; }
+        .data-table {
+            width: 100%; min-width: 1000px; border-collapse: separate; border-spacing: 0;
+        }
+        .data-table thead th {
+            background: #ffffff; padding: 16px 20px;
+            font-size: 0.75rem; font-weight: 800; text-transform: uppercase;
+            letter-spacing: 1px; color: #94a3b8; white-space: nowrap;
+            border: none; border-bottom: 2px solid #f1f5f9; text-align: left;
+        }
+        .data-table thead th:first-child { padding-left: 24px; }
+        .data-table thead th:last-child { padding-right: 24px; text-align: center; }
+        .data-table tbody tr { transition: all 0.2s ease; }
+        .data-table tbody td {
+            padding: 16px 20px; border: none;
+            border-bottom: 1px solid #f1f5f9; vertical-align: middle; white-space: nowrap;
+        }
+        .data-table tbody td:first-child { padding-left: 24px; }
+        .data-table tbody td:last-child { padding-right: 24px; text-align: center; }
+        .data-table tbody tr:nth-child(even) { background-color: #FFF8F0; }
+        .data-table tbody tr:nth-child(odd) { background-color: #ffffff; }
+        .data-table tbody tr:hover { background-color: #FFEDD5 !important; transform: scale(1.002); }
+
+        .brg-preview {
+            width: 55px; height: 55px; object-fit: cover;
+            border-radius: 14px; border: 2px solid var(--light-pink);
+            transition: var(--transition-3d); flex-shrink: 0;
+        }
+        .data-table tbody tr:hover .brg-preview { transform: scale(1.08) rotate(2deg); }
+
+        .td-nama { font-weight: 700; font-size: 0.9rem; color: var(--text-dark); }
+        .td-deskripsi { font-size: 0.8rem; color: #718096; max-width: 200px; white-space: normal; }
+        .td-harga { font-weight: 800; color: #dc2626; font-size: 0.9rem; }
+        .td-stok { font-weight: 700; font-size: 0.9rem; }
+        .td-stok.menipis { color: #dc2626; }
+        .td-stok.aman { color: #059669; }
+        .stok-minimum { font-size: 0.75rem; color: #a0aec0; font-weight: 600; }
+        .stok-minimum.menipis { color: #dc2626; font-weight: 700; }
+
+        .badge-status {
+            font-size: 0.72rem; font-weight: 700; padding: 6px 14px;
+            border-radius: 50px; display: inline-flex; align-items: center; gap: 6px;
+        }
+        .badge-aktif { background: #ecfdf5; color: #059669; }
+        .badge-nonaktif { background: #fef2f2; color: #dc2626; }
+        .badge-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+        .badge-aktif .badge-dot { background: #059669; }
+        .badge-nonaktif .badge-dot { background: #dc2626; }
+
+        .btn-action-circle {
+            width: 34px; height: 34px; border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+            transition: var(--transition-3d); border: 1.5px solid #eef2f6;
+            background: #ffffff; font-size: 0.85rem; text-decoration: none;
+            margin: 0 2px; cursor: pointer;
+        }
+        .btn-action-edit { color: var(--p-pink); border-color: #FFE4E9; }
+        .btn-action-edit:hover { background: var(--p-pink); color: #ffffff; transform: translateY(-2px); }
+        .btn-action-delete { color: #dc2626; border-color: #fee2e2; }
+        .btn-action-delete:hover { background: #dc2626; color: #ffffff; transform: translateY(-2px); }
+
+        /* PAGINATION */
+        .pagination-wrapper {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-top: 30px; padding: 20px 24px;
+            background: #ffffff; border-radius: 20px;
+            border: 1px solid rgba(255, 228, 233, 0.8);
+            box-shadow: 0 4px 15px rgba(213, 61, 102, 0.04);
+        }
+        .pagination-info { font-size: 0.85rem; color: #718096; font-weight: 600; }
+        .pagination-info span { color: var(--p-pink); font-weight: 700; }
+        .pagination-nav { display: flex; gap: 6px; align-items: center; }
+        .page-link-pag {
+            display: flex; align-items: center; justify-content: center;
+            min-width: 40px; height: 40px; padding: 0 14px;
+            border-radius: 12px; background: #ffffff;
+            border: 2px solid #FFF5F7; color: #4a5568;
+            font-weight: 700; font-size: 0.9rem; text-decoration: none;
+            transition: var(--transition-3d);
+        }
+        .page-link-pag:hover {
+            background: var(--light-pink); border-color: var(--p-pink); color: var(--p-pink);
+            transform: translateY(-2px);
+        }
+        .page-link-pag.active-pag {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink)) !important;
+            color: #ffffff !important; border-color: var(--p-pink) !important;
+            box-shadow: 0 4px 12px rgba(213, 61, 102, 0.3);
+        }
+        .page-link-pag.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in-up { animation: fadeIn 0.5s ease-out; }
+
+        @media (max-width: 992px) {
+            .main-content { margin-left: 0; padding: 20px; }
+            .sidebar { transform: translateX(-100%); }
+        }
     </style>
 </head>
 <body>
 
-<!-- SIDEBAR -->
+    <!-- SIDEBAR -->
     <div class="sidebar">
         <div class="sidebar-menu-wrapper">
             <a href="../../index.php" class="sidebar-brand">
@@ -242,102 +490,403 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $sql_list, $params_final);
         </div>
     </div>
 
-<!-- MAIN CONTENT -->
-<div class="main-content">
-    <div class="dashboard-header">
-        <div><h3 class="fw-bold mb-1">Barang Cetak</h3><p class="text-muted small mb-0">Kelola katalog produk cetak dan ketersediaan stok.</p></div>
-        <div class="profile-header-btn shadow-sm"><img src="<?= $foto_admin_src ?>" alt="Admin"></div>
-    </div>
+    <!-- MAIN CONTENT -->
+    <div class="main-content">
 
-    <!-- STATS -->
-    <div class="row g-3 mb-4">
-        <div class="col-md-4"><div class="stat-card"><div class="stat-icon icon-pink"><i class="bi bi-box-seam"></i></div><div><div class="stat-num"><?= $total_brg ?></div><div class="stat-label">Total Produk</div></div></div></div>
-        <div class="col-md-4"><div class="stat-card"><div class="stat-icon icon-red"><i class="bi bi-exclamation-triangle"></i></div><div><div class="stat-num"><?= $jml_low ?></div><div class="stat-label">Stok Menipis</div></div></div></div>
-        <div class="col-md-4"><div class="stat-card"><div class="stat-icon icon-green"><i class="bi bi-check-circle-fill"></i></div><div><div class="stat-num"><?= $jml_aktif ?></div><div class="stat-label">Produk Aktif</div></div></div></div>
-    </div>
-
-    <!-- TOOLBAR -->
-    <div class="toolbar-card">
-        <form method="GET" class="d-flex align-items-center gap-2 flex-grow-1">
-            <div style="position:relative; flex:1;">
-                <i class="bi bi-search" style="position:absolute; left:14px; top:50%; transform:translateY(-50%); color:#a0aec0;"></i>
-                <input type="text" name="search" class="search-input" placeholder="Cari nama barang..." value="<?= htmlspecialchars($search) ?>">
+        <!-- HEADER -->
+        <div class="dashboard-header">
+            <div>
+                <h3 class="fw-bold mb-1">Master Barang Cetak</h3>
+                <p class="text-muted small mb-0">Kelola katalog produk cetak dan ketersediaan stok.</p>
             </div>
-            <input type="hidden" name="status" id="hidden-status" value="<?= htmlspecialchars($f_status) ?>">
-            <button type="button" class="btn-filter" data-bs-toggle="modal" data-bs-target="#modalFilterBarang"><i class="bi bi-sliders2"></i> Filter</button>
-            <button type="submit" class="btn btn-primary px-4" style="border-radius:12px; height:45px;">Cari</button>
-            <?php if($search || $f_status !== ''): ?><a href="list.php" class="btn btn-light border px-3" style="border-radius:12px; height:45px; display:flex; align-items:center;">Reset</a><?php endif; ?>
-        </form>
-        <div class="ms-3"><a href="add.php" class="btn-tambah"><i class="bi bi-plus-lg"></i> Tambah Barang</a></div>
-    </div>
+            <div class="d-flex align-items-center gap-3">
+                <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
+                    <i class="bi bi-clock-history me-1 text-danger"></i> <span id="live-clock">Memuat waktu...</span>
+                </span>
+                <div class="profile-header-btn shadow-sm" onclick="bukaModalBiodata()" title="Klik untuk melihat profil Anda">
+                    <img src="<?= $foto_admin_src ?>" alt="Admin Profil">
+                </div>
+            </div>
+        </div>
 
-    <!-- TABLE -->
-    <div class="card-table">
-        <div class="table-responsive">
-            <table class="table">
-                <thead>
-                    <tr><th>Foto</th><th>Nama Produk</th><th>Harga</th><th>Stok</th><th>Status</th><th class="text-center">Aksi</th></tr>
-                </thead>
-                <tbody>
-                    <?php if(!empty($daftar_barang)): foreach($daftar_barang as $idx => $b): 
-                        $foto = !empty($b['Foto_Barang']) && file_exists("../../assets/img/barang/".$b['Foto_Barang']) ? "../../assets/img/barang/".$b['Foto_Barang'] : "../../assets/img/default_item.jpg";
-                        $low_stok = $b['Stok_Barang'] <= $b['Stok_Minimum'];
+        <!-- BREADCRUMB -->
+        <div class="breadcrumb-custom" style="display: flex; align-items: center; gap: 8px; margin-bottom: 25px; font-size: 0.85rem; font-weight: 600;">
+            <a href="../../Role/Admin/index.php" style="color: var(--text-muted); text-decoration: none; transition: color 0.2s;"><i class="bi bi-house-door-fill me-1"></i>Dashboard</a>
+            <i class="bi bi-chevron-right" style="color: #cbd5e1; font-size: 0.7rem;"></i>
+            <a href="./list.php" style="color: var(--text-muted); text-decoration: none; transition: color 0.2s;">Data Master</a>
+            <i class="bi bi-chevron-right" style="color: #cbd5e1; font-size: 0.7rem;"></i>
+            <span class="active" style="color: var(--p-pink);">Barang Cetak</span>
+        </div>
+
+        <!-- STATISTIK CARDS -->
+        <div class="stats-scroll-wrapper animate-fade-in">
+            <div class="stats-row">
+                <div class="stat-card-item">
+                    <div class="card-3d">
+                        <div class="stat-card">
+                            <div class="stat-icon stat-icon-pink"><i class="bi bi-box-seam"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-title">Total Produk</div>
+                                <div class="stat-val"><?= $stats['total'] ?? 0 ?> Produk</div>
+                                <div class="stat-subtitle">Tersedia di sistem</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="stat-card-item">
+                    <div class="card-3d">
+                        <div class="stat-card">
+                            <div class="stat-icon stat-icon-green"><i class="bi bi-check-circle-fill"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-title">Produk Aktif</div>
+                                <div class="stat-val"><?= $stats['aktif'] ?? 0 ?> Produk</div>
+                                <div class="stat-subtitle">Tampil ke pelanggan</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="stat-card-item">
+                    <div class="card-3d">
+                        <div class="stat-card">
+                            <div class="stat-icon stat-icon-red"><i class="bi bi-exclamation-triangle-fill"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-title">Stok Menipis</div>
+                                <div class="stat-val"><?= $stats['stok_menipis'] ?? 0 ?> Produk</div>
+                                <div class="stat-subtitle">Perlu restock segera</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="stat-card-item">
+                    <div class="card-3d">
+                        <div class="stat-card">
+                            <div class="stat-icon stat-icon-orange"><i class="bi bi-x-circle-fill"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-title">Produk Nonaktif</div>
+                                <div class="stat-val"><?= $stats['nonaktif'] ?? 0 ?> Produk</div>
+                                <div class="stat-subtitle">Disembunyikan</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SEARCH & FILTER BAR -->
+        <div class="search-filter-bar">
+            <form method="GET" class="search-form-flex" id="mainSearchForm">
+                <input type="hidden" name="status" id="hiddenStatus" value="<?= htmlspecialchars($status_filter) ?>">
+                <input type="hidden" name="stok" id="hiddenStok" value="<?= htmlspecialchars($stok_filter) ?>">
+                <input type="hidden" name="sort" id="hiddenSort" value="<?= htmlspecialchars($sort) ?>">
+                <div class="search-input-wrapper">
+                    <i class="bi bi-search search-icon"></i>
+                    <input type="text" name="cari" class="search-input-main" placeholder="Cari nama barang atau deskripsi..." value="<?= htmlspecialchars($cari) ?>">
+                </div>
+                <button type="button" class="btn-filter-modal" onclick="bukaModalFilter()">
+                    <i class="bi bi-funnel-fill me-2"></i>Filter
+                    <i class="bi bi-chevron-down ms-2"></i>
+                </button>
+                <button type="submit" class="btn-search-icon" title="Cari">
+                    <i class="bi bi-search"></i>
+                </button>
+            </form>
+            <a href="add.php" class="btn-reg-header text-decoration-none">
+                <i class="bi bi-plus-circle-fill me-2"></i>Tambah Barang
+            </a>
+        </div>
+
+        <!-- INFO ALERT -->
+        <div class="alert alert-light border-2 border-dashed mb-3" style="border-color: #e2e8f0; border-radius: 14px; background: #f8fafc;">
+            <i class="bi bi-info-circle-fill me-2 text-info"></i>
+            <span class="small fw-bold text-muted">
+                <strong>Info:</strong> Barang cetak ditampilkan ke pelanggan saat booking. 
+                Stok menipis = stok <= minimum. Kelola stok di menu <a href="../../Transaksi/Penjualan/list.php" style="color: var(--p-pink);">Penjualan Barang</a>.
+            </span>
+        </div>
+
+        <!-- TABEL DATA -->
+        <div class="card-3d mb-4" style="padding: 24px;">
+            <div class="table-scroll-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Foto</th>
+                            <th>Nama Produk</th>
+                            <th>Harga</th>
+                            <th>Stok</th>
+                            <th>Status</th>
+                            <th class="text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        if (!empty($daftar_barang)):
+                            foreach($daftar_barang as $idx => $b):
+                                $path_img = "../../assets/img/barang/" . ($b['Foto_Barang'] ?? '');
+                                $img_src = (!empty($b['Foto_Barang']) && file_exists($path_img))
+                                    ? $path_img 
+                                    : "../../assets/img/default_item.jpg";
+
+                                $low_stok = ($b['Stok_Barang'] <= $b['Stok_Minimum']);
+                                $badge_status = ($b['Status'] == 1) ? "badge-aktif" : "badge-nonaktif";
+                                $text_status = ($b['Status'] == 1) ? "Aktif" : "Nonaktif";
+                        ?>
+                            <tr class="fade-in-up">
+                                <td><img src="<?= $img_src ?>" class="brg-preview" alt="<?= htmlspecialchars($b['Nama_Barang']) ?>"></td>
+                                <td>
+                                    <div class="td-nama"><?= htmlspecialchars($b['Nama_Barang']) ?></div>
+                                    <div class="td-deskripsi"><?= htmlspecialchars(substr($b['Deskripsi'] ?? '-', 0, 35)) ?><?= strlen($b['Deskripsi'] ?? '') > 35 ? '...' : '' ?></div>
+                                </td>
+                                <td class="td-harga">Rp <?= number_format($b['Harga_Barang'], 0, ',', '.') ?></td>
+                                <td>
+                                    <div class="td-stok <?= $low_stok ? 'menipis' : 'aman' ?>"><?= $b['Stok_Barang'] ?> Unit</div>
+                                    <div class="stok-minimum <?= $low_stok ? 'menipis' : '' ?>">Min: <?= $b['Stok_Minimum'] ?> unit</div>
+                                </td>
+                                <td>
+                                    <span class="badge-status <?= $badge_status ?>">
+                                        <span class="badge-dot"></span>
+                                        <?= $text_status ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <a href="edit.php?id=<?= $b['ID_Barang'] ?>" class="btn-action-circle btn-action-edit" title="Edit Barang">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <button class="btn-action-circle btn-action-delete" onclick="toggleStatus(<?= $b['ID_Barang'] ?>, <?= $b['Status'] ?>, '<?= htmlspecialchars($b['Nama_Barang']) ?>')" title="Toggle Status">
+                                        <i class="bi bi-toggle-<?= $b['Status'] == 1 ? 'on' : 'off' ?>"></i>
+                                    </button>
+                                    <button class="btn-action-circle btn-action-delete" onclick="softDelete(<?= $b['ID_Barang'] ?>, '<?= htmlspecialchars($b['Nama_Barang']) ?>')" title="Hapus Barang">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php 
+                            endforeach; 
+                        else:
+                        ?>
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-5">
+                                    <i class="bi bi-inbox fs-1 mb-3 d-block" style="color: #cbd5e1;"></i>
+                                    <p class="fw-bold">Tidak ada data barang cetak yang sesuai.</p>
+                                    <p class="small">Coba ubah filter atau tambah barang baru.</p>
+                                </td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- PAGINATION -->
+            <?php if ($total_halaman > 1): ?>
+            <div class="pagination-wrapper">
+                <div class="pagination-info">
+                    Menampilkan <span><?= $offset + 1 ?></span> - <span><?= min($offset + $limit, $total_records) ?></span> dari <span><?= $total_records ?></span> barang cetak
+                </div>
+                <nav class="pagination-nav">
+                    <?php 
+                    $base_qs = "cari=" . urlencode($cari) . "&status=" . $status_filter . "&stok=" . urlencode($stok_filter) . "&sort=" . $sort;
                     ?>
-                    <tr>
-                        <td><img src="<?= $foto ?>" class="brg-img"></td>
-                        <td><div class="fw-bold"><?= htmlspecialchars($b['Nama_Barang']) ?></div><small class="text-muted"><?= substr($b['Deskripsi'], 0, 35) ?>...</small></td>
-                        <td class="text-danger">Rp <?= number_format($b['Harga_Barang'], 0, ',', '.') ?></td>
-                        <td><div class="fw-bold <?= $low_stok ? 'text-danger' : '' ?>"><?= $b['Stok_Barang'] ?> Unit</div><small class="<?= $low_stok ? 'text-danger fw-bold' : 'text-muted' ?>">Min: <?= $b['Stok_Minimum'] ?></small></td>
-                        <td><span class="badge-status <?= $b['Status'] == 1 ? 'badge-aktif' : 'badge-nonaktif' ?>"><?= $b['Status'] == 1 ? 'Aktif' : 'Nonaktif' ?></span></td>
-                        <td class="text-center"><div class="d-flex justify-content-center"><a href="edit.php?id=<?= $b['ID_Barang'] ?>" class="action-btn btn-edit"><i class="bi bi-pencil-fill"></i></a><button onclick="confirmDelete(<?= $b['ID_Barang'] ?>)" class="action-btn btn-delete"><i class="bi bi-trash-fill"></i></button></div></td>
-                    </tr>
-                    <?php endforeach; else: ?>
-                        <tr><td colspan="6" class="text-center py-5 text-muted">Data barang tidak ditemukan.</td></tr>
+                    <?php if ($halaman > 1): ?>
+                        <a class="page-link-pag" href="list.php?halaman=<?= $halaman - 1 ?>&<?= $base_qs ?>" title="Sebelumnya">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+                    <?php else: ?>
+                        <span class="page-link-pag disabled"><i class="bi bi-chevron-left"></i></span>
                     <?php endif; ?>
-                </tbody>
-            </table>
+
+                    <?php 
+                    $start_page = max(1, $halaman - 2);
+                    $end_page = min($total_halaman, $halaman + 2);
+
+                    if ($start_page > 1) {
+                        echo '<a class="page-link-pag" href="list.php?halaman=1&' . $base_qs . '">1</a>';
+                        if ($start_page > 2) echo '<span class="page-link-pag disabled">...</span>';
+                    }
+
+                    for ($i = $start_page; $i <= $end_page; $i++): 
+                    ?>
+                        <a class="page-link-pag <?= ($halaman == $i) ? 'active-pag' : '' ?>" href="list.php?halaman=<?= $i ?>&<?= $base_qs ?>">
+                            <?= $i ?>
+                        </a>
+                    <?php endfor; 
+
+                    if ($end_page < $total_halaman) {
+                        if ($end_page < $total_halaman - 1) echo '<span class="page-link-pag disabled">...</span>';
+                        echo '<a class="page-link-pag" href="list.php?halaman=' . $total_halaman . '&' . $base_qs . '">' . $total_halaman . '</a>';
+                    }
+                    ?>
+
+                    <?php if ($halaman < $total_halaman): ?>
+                        <a class="page-link-pag" href="list.php?halaman=<?= $halaman + 1 ?>&<?= $base_qs ?>" title="Selanjutnya">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    <?php else: ?>
+                        <span class="page-link-pag disabled"><i class="bi bi-chevron-right"></i></span>
+                    <?php endif; ?>
+                </nav>
+            </div>
+            <?php elseif ($total_records > 0): ?>
+            <div class="pagination-wrapper">
+                <div class="pagination-info">
+                    Menampilkan <span>1</span> - <span><?= $total_records ?></span> dari <span><?= $total_records ?></span> barang cetak
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
-        <!-- PAGINATION -->
-        <div class="d-flex justify-content-between align-items-center mt-4">
-            <div class="small text-muted">Halaman <?= $page ?> dari <?= $total_page ?></div>
-            <div class="d-flex gap-1">
-                <a href="?page=<?= max(1, $page-1) ?>&search=<?= $search ?>&status=<?= $f_status ?>" class="btn btn-sm btn-light border <?= $page==1?'disabled':'' ?>"><i class="bi bi-chevron-left"></i></a>
-                <a href="?page=<?= min($total_page, $page+1) ?>&search=<?= $search ?>&status=<?= $f_status ?>" class="btn btn-sm btn-light border <?= $page==$total_page?'disabled':'' ?>"><i class="bi bi-chevron-right"></i></a>
+
+    </div>
+
+    <!-- FILTER MODAL POPUP -->
+    <div class="modal fade" id="modalFilterData" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content" style="border: none; border-radius: 24px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); overflow: hidden;">
+                <div class="modal-header" style="border: none; padding: 24px 24px 16px; background: #ffffff;">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-funnel-fill me-2 text-danger"></i>Filter Data</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="padding: 0 24px 20px; background: #ffffff;">
+                    <div class="mb-3">
+                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">URUT BERDASARKAN</label>
+                        <select class="form-select" id="modalSort" style="border: 2px solid #e2e8f0; border-radius: 14px; padding: 14px 18px; font-weight: 600;">
+                            <option value="nama_asc" <?= $sort == 'nama_asc' ? 'selected' : '' ?>>Nama A - Z</option>
+                            <option value="nama_desc" <?= $sort == 'nama_desc' ? 'selected' : '' ?>>Nama Z - A</option>
+                            <option value="harga_asc" <?= $sort == 'harga_asc' ? 'selected' : '' ?>>Harga Termurah</option>
+                            <option value="harga_desc" <?= $sort == 'harga_desc' ? 'selected' : '' ?>>Harga Termahal</option>
+                            <option value="stok_asc" <?= $sort == 'stok_asc' ? 'selected' : '' ?>>Stok Sedikit</option>
+                            <option value="stok_desc" <?= $sort == 'stok_desc' ? 'selected' : '' ?>>Stok Banyak</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">STATUS</label>
+                        <select class="form-select" id="modalStatus" style="border: 2px solid #e2e8f0; border-radius: 14px; padding: 14px 18px; font-weight: 600;">
+                            <option value="" <?= $status_filter === '' ? 'selected' : '' ?>>Semua Status</option>
+                            <option value="1" <?= $status_filter === '1' ? 'selected' : '' ?>>Aktif</option>
+                            <option value="0" <?= $status_filter === '0' ? 'selected' : '' ?>>Nonaktif</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">STOK</label>
+                        <select class="form-select" id="modalStok" style="border: 2px solid #e2e8f0; border-radius: 14px; padding: 14px 18px; font-weight: 600;">
+                            <option value="" <?= $stok_filter === '' ? 'selected' : '' ?>>Semua Stok</option>
+                            <option value="menipis" <?= $stok_filter === 'menipis' ? 'selected' : '' ?>>Stok Menipis (<= Minimum)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border: none; padding: 0 24px 24px; background: #ffffff; display: flex; gap: 12px;">
+                    <button type="button" class="btn btn-secondary" style="flex: 1; background: #f1f5f9; color: #475569; border: none; border-radius: 14px; padding: 14px 20px; font-weight: 700;" onclick="resetFilter()">
+                        <i class="bi bi-arrow-counterclockwise me-2"></i>Reset
+                    </button>
+                    <button type="button" class="btn btn-danger" style="flex: 1; background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; border-radius: 14px; padding: 14px 20px; font-weight: 700;" onclick="applyFilter()">
+                        <i class="bi bi-check-lg me-2"></i>Terapkan
+                    </button>
+                </div>
             </div>
         </div>
     </div>
-</div>
 
-<!-- MODAL FILTER -->
-<div class="modal fade" id="modalFilterBarang" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content border-0" style="border-radius: 20px;">
-            <div class="modal-header border-0 pb-0"><h6 class="fw-bold mb-0">Filter Status</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-            <div class="modal-body">
-                <label class="small fw-bold text-muted mb-2 d-block">PILIH STATUS PRODUK</label>
-                <select id="modal-select-status" class="form-select border-2" style="border-radius:12px;">
-                    <option value="">Semua Status</option>
-                    <option value="1" <?= $f_status === '1' ? 'selected' : '' ?>>Aktif</option>
-                    <option value="0" <?= $f_status === '0' ? 'selected' : '' ?>>Nonaktif</option>
-                </select>
-            </div>
-            <div class="modal-footer border-0 pt-0"><button type="button" class="btn btn-primary w-100" style="background:#D53D66; border:none; border-radius:12px;" onclick="applyFilter()">Terapkan</button></div>
-        </div>
-    </div>
-</div>
+    <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
-<script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
-<script>
-    function applyFilter() {
-        document.getElementById('hidden-status').value = document.getElementById('modal-select-status').value;
-        document.querySelector('.toolbar-card form').submit();
-    }
-    function confirmDelete(id) {
-        Swal.fire({ title: 'Hapus Barang?', text: 'Data akan masuk ke folder sampah.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#dc2626', confirmButtonText: 'Hapus' })
-        .then(r => { if(r.isConfirmed) window.location.href = `action_cetak.php?act=delete&id=${id}`; });
-    }
+    <script>
+        // Toggle Submenu
+        document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('data-target');
+                const targetEl = document.querySelector(targetId);
+                const chevron = this.querySelector('.icon-chevron');
+                if (targetEl) {
+                    const isShown = targetEl.classList.contains('show');
+                    document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
+                    document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
+                    if (!isShown) {
+                        targetEl.classList.add('show');
+                        if (chevron) chevron.style.transform = 'rotate(180deg)';
+                    }
+                }
+            });
+        });
 
-    function confirmLandingPage(e) {
+        // Filter Modal
+        var filterModal;
+        function bukaModalFilter() {
+            filterModal = new bootstrap.Modal(document.getElementById('modalFilterData'));
+            filterModal.show();
+        }
+        function applyFilter() {
+            document.getElementById('hiddenSort').value = document.getElementById('modalSort').value;
+            document.getElementById('hiddenStatus').value = document.getElementById('modalStatus').value;
+            document.getElementById('hiddenStok').value = document.getElementById('modalStok').value;
+            document.getElementById('mainSearchForm').submit();
+        }
+        function resetFilter() {
+            document.getElementById('modalSort').value = 'nama_asc';
+            document.getElementById('modalStatus').value = '';
+            document.getElementById('modalStok').value = '';
+            document.getElementById('hiddenSort').value = 'nama_asc';
+            document.getElementById('hiddenStatus').value = '';
+            document.getElementById('hiddenStok').value = '';
+            document.getElementById('mainSearchForm').submit();
+        }
+
+        // Toggle Status
+        function toggleStatus(id, currentStatus, nama) {
+            const newStatus = currentStatus === 1 ? 0 : 1;
+            const actionText = currentStatus === 1 ? 'menonaktifkan' : 'mengaktifkan';
+
+            Swal.fire({
+                title: 'Ubah Status Barang?',
+                text: 'Anda akan ' + actionText + ' barang "' + nama + '"',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#D53D66',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Ubah',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = 'action_barang.php?aksi=toggle_status&id=' + id;
+                }
+            });
+        }
+
+        // Soft Delete
+        function softDelete(id, nama) {
+            Swal.fire({
+                title: 'Hapus Barang?',
+                text: 'Anda akan menghapus barang "' + nama + '" (soft delete)',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Hapus',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = 'action_barang.php?aksi=soft_delete&id=' + id;
+                }
+            });
+        }
+
+        // Konfirmasi Logout
+        function confirmLogout(e) {
+            e.preventDefault();
+            Swal.fire({
+                title: 'Keluar Sistem?',
+                text: 'Apakah Anda yakin ingin keluar dari sistem SpotLight Studio?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#D53D66',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Keluar',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = '../../logout.php';
+                }
+            });
+        }
+
+        function confirmLandingPage(e) {
             e.preventDefault();
             Swal.fire({
                 title: 'Kembali ke Beranda?',
@@ -354,33 +903,41 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $sql_list, $params_final);
                 }
             });
         }
-        
-    function confirmLogout(e) {
-    e.preventDefault();
-    Swal.fire({
-        title: 'Keluar Sistem?',
-        text: 'Apakah Anda yakin ingin keluar?',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#D53D66',
-        cancelButtonColor: '#718096',
-        confirmButtonText: 'Ya, Keluar',
-        cancelButtonText: 'Batal'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            window.location.href = '../../logout.php';
+
+        // Jam Real-Time
+        function updateLiveClock() {
+            const now = new Date();
+            const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+            const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+            document.getElementById('live-clock').innerText = 
+                days[now.getDay()] + ', ' + now.getDate() + ' ' + months[now.getMonth()] + ' ' + now.getFullYear() + ' - ' + 
+                String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0') + ' WIB';
         }
-    });
-}
-    document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            const target = document.querySelector(this.getAttribute('data-target'));
-            const icon = this.querySelector('.icon-chevron');
-            target.classList.toggle('show');
-            if(icon) icon.style.transform = target.classList.contains('show') ? 'rotate(180deg)' : 'rotate(0deg)';
+        setInterval(updateLiveClock, 1000);
+        updateLiveClock();
+    </script>
+
+    <!-- Notifikasi -->
+    <?php if(isset($_GET['status_sukses'])): ?>
+    <script>
+        let msg = "";
+        let t_icon = "success";
+        let t_title = "Berhasil!";
+
+        if ("<?= $_GET['status_sukses'] ?>" == 'tambah') msg = "Barang cetak baru berhasil ditambahkan!";
+        else if ("<?= $_GET['status_sukses'] ?>" == 'edit') msg = "Data barang cetak berhasil diperbarui!";
+        else if ("<?= $_GET['status_sukses'] ?>" == 'toggle_status') { msg = "<?= $_GET['message'] ?? 'Status barang berhasil diubah!' ?>"; t_title = "Status Diubah"; }
+        else if ("<?= $_GET['status_sukses'] ?>" == 'soft_delete') { msg = "<?= $_GET['message'] ?? 'Barang cetak berhasil dihapus (soft delete)!' ?>"; t_title = "Dihapus"; }
+        else if ("<?= $_GET['status_sukses'] ?>" == 'hard_delete') { msg = "Barang cetak berhasil dihapus permanen!"; t_title = "Hard Delete Berhasil"; }
+        else if ("<?= $_GET['status_sukses'] ?>" == 'error') { msg = "<?= $_GET['message'] ?? 'Terjadi kesalahan!' ?>"; t_icon = "error"; t_title = "Gagal!"; }
+
+        Swal.fire({
+            icon: t_icon,
+            title: t_title,
+            text: msg,
+            confirmButtonColor: '#D53D66'
         });
-    });
-</script>
+    </script>
+    <?php endif; ?>
 </body>
 </html>

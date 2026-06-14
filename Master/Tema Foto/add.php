@@ -148,24 +148,40 @@ if (isset($_POST['simpan'])) {
                 sqlsrv_begin_transaction($conn);
 
                 try {
-                    // 1. INSERT TEMA_FOTO
+                    // 1. INSERT TEMA_FOTO dengan OUTPUT INSERTED.ID_Tema (cara SQL Server native)
                     $sql_tema = "INSERT INTO Tema_Foto (Nama_Tema, Kategori_Tema, Deskripsi, Foto_Tema, Status, Is_Deleted, Created_By, Created_Date) 
-                                    VALUES (?, ?, ?, ?, ?, 0, ?, GETDATE());
-                                    SELECT SCOPE_IDENTITY() AS ID_Tema;";
+                                 OUTPUT INSERTED.ID_Tema
+                                 VALUES (?, ?, ?, ?, ?, 0, ?, GETDATE())";
                     $params_tema = [$nama, $kategori, $deskripsi, $new_filename, $status, $nama_admin];
                     $stmt_tema = sqlsrv_query($conn, $sql_tema, $params_tema);
 
                     if ($stmt_tema === false) {
-                        throw new Exception("Gagal insert tema foto: " . print_r(sqlsrv_errors(), true));
+                        $sql_errors = sqlsrv_errors();
+                        $error_msg = "Gagal menyimpan tema foto ke database.";
+                        if (!empty($sql_errors)) {
+                            foreach ($sql_errors as $err) {
+                                $error_msg .= " [SQL State: " . ($err['SQLSTATE'] ?? 'N/A') . ", Code: " . ($err['code'] ?? 'N/A') . ", Message: " . ($err['message'] ?? 'N/A') . "]";
+                            }
+                        }
+                        throw new Exception($error_msg);
                     }
 
-                    // Ambil ID_Tema yang baru
                     $row_tema = sqlsrv_fetch_array($stmt_tema, SQLSRV_FETCH_ASSOC);
                     $id_tema_baru = $row_tema['ID_Tema'] ?? null;
                     sqlsrv_free_stmt($stmt_tema);
 
+                    // Fallback: kalau OUTPUT gagal, coba @@IDENTITY
                     if (!$id_tema_baru) {
-                        throw new Exception("Gagal mendapatkan ID Tema baru.");
+                        $stmt_identity = sqlsrv_query($conn, "SELECT @@IDENTITY AS ID_Tema");
+                        if ($stmt_identity) {
+                            $row_identity = sqlsrv_fetch_array($stmt_identity, SQLSRV_FETCH_ASSOC);
+                            $id_tema_baru = $row_identity['ID_Tema'] ?? null;
+                            sqlsrv_free_stmt($stmt_identity);
+                        }
+                    }
+
+                    if (!$id_tema_baru) {
+                        throw new Exception("Gagal mendapatkan ID Tema baru. Kemungkinan penyebab: (1) Kolom ID_Tema bukan IDENTITY di database, (2) Ada trigger yang mengubah INSERT, atau (3) Koneksi database terputus. Silakan cek struktur tabel Tema_Foto.");
                     }
 
                     // 2. INSERT RUANGAN_TEMA (Junction)
