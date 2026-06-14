@@ -8,19 +8,61 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
     exit();
 }
 
-$id_admin   = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
+$id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 $nama_admin = $_SESSION['nama'] ?? 'Administrator';
 
 // =====================================================
-// HELPER FUNCTIONS
+// HELPER FUNCTIONS - Safe SQLSRV (Anti-Crash)
 // =====================================================
 function safe_sqlsrv_fetch($conn, $sql, $params = []) {
     $stmt = sqlsrv_query($conn, $sql, $params);
-    if ($stmt === false) return null;
+    if ($stmt === false) {
+        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        return null;
+    }
     $result = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
     sqlsrv_free_stmt($stmt);
     return $result;
 }
+
+function safe_sqlsrv_fetch_all($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) {
+        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        return [];
+    }
+    $results = [];
+    while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+        $results[] = $row;
+    }
+    sqlsrv_free_stmt($stmt);
+    return $results;
+}
+
+function safe_sqlsrv_count($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) return 0;
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $row['total'] ?? 0;
+}
+
+// =====================================================
+// AMBIL PROFIL ADMIN
+// =====================================================
+$admin_data = safe_sqlsrv_fetch($conn, 
+    "SELECT Nama_Karyawan, Foto_Profil FROM Karyawan WHERE ID_Karyawan = ? AND Status = 1 AND Is_Deleted = 0", 
+    [$id_admin]
+);
+
+$nama_admin = $admin_data['Nama_Karyawan'] ?? 'Administrator';
+$foto_admin = $admin_data['Foto_Profil'] ?? 'default.jpg';
+
+$default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
+
+$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
+    ? "../../assets/img/karyawan/" . $foto_admin 
+    : $default_svg_avatar;
 
 // =====================================================
 // AMBIL ID BARANG DARI URL
@@ -31,64 +73,202 @@ if ($id_barang <= 0) {
     exit();
 }
 
-// Ambil Profil Admin untuk Header
-$admin_data = safe_sqlsrv_fetch($conn, "SELECT Nama_Karyawan, Foto_Profil FROM Karyawan WHERE ID_Karyawan = ?", [$id_admin]);
-$foto_admin_src = ($admin_data['Foto_Profil'] != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $admin_data['Foto_Profil']))
-    ? "../../assets/img/karyawan/" . $admin_data['Foto_Profil'] : "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
-
 // =====================================================
 // AMBIL DATA BARANG LAMA
 // =====================================================
-$data_lama = safe_sqlsrv_fetch($conn, "SELECT * FROM Barang_Cetak WHERE ID_Barang = ? AND Is_Deleted = 0", [$id_barang]);
+$data_lama = safe_sqlsrv_fetch($conn, 
+    "SELECT * FROM Barang_Cetak WHERE ID_Barang = ? AND Is_Deleted = 0", 
+    [$id_barang]
+);
+
 if (!$data_lama) {
     header("Location: list.php?status_sukses=error&message=Data tidak ditemukan");
     exit();
 }
 
 // =====================================================
-// PROSES SIMPAN PERUBAHAN
+// PROSES SIMPAN PERUBAHAN (SELF-POST)
 // =====================================================
-$error = "";
+$errors = [];
 $success = false;
 
 if (isset($_POST['simpan'])) {
-    $nama      = trim($_POST['nama']);
-    $harga     = $_POST['harga'];
-    $stok      = $_POST['stok'];
-    $stok_min  = $_POST['stok_min'];
-    $deskripsi = trim($_POST['deskripsi']);
-    $status    = (int)$_POST['status'];
-    $foto_lama = $_POST['foto_lama'];
+    $nama_barang = isset($_POST['nama_barang']) ? trim($_POST['nama_barang']) : '';
+    $harga_barang = isset($_POST['harga_barang']) ? $_POST['harga_barang'] : '';
+    $stok_barang = isset($_POST['stok_barang']) ? $_POST['stok_barang'] : '';
+    $stok_minimum = isset($_POST['stok_minimum']) ? $_POST['stok_minimum'] : '5';
+    $deskripsi = isset($_POST['deskripsi']) ? trim($_POST['deskripsi']) : '';
+    $status = isset($_POST['status']) ? (int)$_POST['status'] : 1;
+    $foto_lama = $_POST['foto_lama'] ?? $data_lama['Foto_Barang'];
 
-    if (empty($nama) || empty($harga)) {
-        $error = "Nama dan Harga barang wajib diisi!";
-    } else {
-        // Handle Upload Foto Baru
-        $foto_final = $foto_lama;
-        if (isset($_FILES['foto']) && $_FILES['foto']['error'] == UPLOAD_ERR_OK) {
-            $ext = pathinfo($_FILES['foto']['name'], PATHINFO_EXTENSION);
-            $foto_final = "brg_" . time() . "_" . uniqid() . "." . $ext;
-            $target = "../../assets/img/barang/" . $foto_final;
-            
-            if (move_uploaded_file($_FILES['foto']['tmp_name'], $target)) {
-                // Hapus foto lama jika ada
-                if (!empty($foto_lama) && file_exists("../../assets/img/barang/" . $foto_lama)) {
-                    unlink("../../assets/img/barang/" . $foto_lama);
-                }
+    // --- LAYER 1: Validasi Nama Barang (Wajib) ---
+    if (empty($nama_barang)) {
+        $errors[] = 'Nama barang wajib diisi!';
+    }
+    // --- LAYER 2: Validasi Max Length (100 karakter) ---
+    elseif (strlen($nama_barang) > 100) {
+        $errors[] = 'Nama barang maksimal 100 karakter!';
+    }
+    // --- LAYER 3: Cek Duplikat Nama (Unik, EXCLUDE ID SENDIRI) ---
+    else {
+        $count = safe_sqlsrv_count($conn, 
+            "SELECT COUNT(*) as total FROM Barang_Cetak WHERE Nama_Barang = ? AND ID_Barang <> ? AND Is_Deleted = 0", 
+            [$nama_barang, $id_barang]
+        );
+        if ($count > 0) {
+            $errors[] = 'Nama barang "'.htmlspecialchars($nama_barang).'" sudah ada! Gunakan nama lain.';
+        }
+    }
+
+    // --- LAYER 4: Validasi Harga (Wajib) ---
+    if ($harga_barang === '' || $harga_barang === null) {
+        $errors[] = 'Harga barang wajib diisi!';
+    }
+    // --- LAYER 5: Validasi Harga >= 0 ---
+    elseif (!is_numeric($harga_barang) || (float)$harga_barang < 0) {
+        $errors[] = 'Harga barang tidak boleh negatif!';
+    }
+
+    // --- LAYER 6: Validasi Stok (Wajib) ---
+    if ($stok_barang === '' || $stok_barang === null) {
+        $errors[] = 'Stok barang wajib diisi!';
+    }
+    // --- LAYER 7: Validasi Stok >= 0 ---
+    elseif (!is_numeric($stok_barang) || (int)$stok_barang < 0) {
+        $errors[] = 'Stok barang tidak boleh negatif!';
+    }
+
+    // --- LAYER 8: Validasi Stok Minimum <= Stok Saat Ini ---
+    if (!is_numeric($stok_minimum) || (int)$stok_minimum < 0) {
+        $errors[] = 'Stok minimum tidak boleh negatif!';
+    } elseif ((int)$stok_minimum > (int)$stok_barang) {
+        $errors[] = 'Stok minimum ('.$stok_minimum.') tidak boleh lebih besar dari stok saat ini ('.$stok_barang.')!';
+    }
+
+    // --- LAYER 9: Validasi File Upload (Opsional) ---
+    $new_filename = $foto_lama;
+    $upload_error = '';
+    $file_changed = false;
+    $old_file_to_delete = '';
+
+    if (isset($_FILES['foto_barang']) && $_FILES['foto_barang']['error'] !== UPLOAD_ERR_NO_FILE) {
+        $file = $_FILES['foto_barang'];
+        $file_changed = true;
+
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            $upload_error = 'Gagal upload file. Error code: '.$file['error'];
+        } elseif ($file['size'] > 2 * 1024 * 1024) {
+            $upload_error = 'Ukuran file maksimal 2MB!';
+        } else {
+            $allowed_types = ['image/jpeg', 'image/jpg', 'image/png'];
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime_type = finfo_file($finfo, $file['tmp_name']);
+            finfo_close($finfo);
+
+            if (!in_array($mime_type, $allowed_types)) {
+                $upload_error = 'Format file harus JPG atau PNG!';
+            } elseif (!getimagesize($file['tmp_name'])) {
+                $upload_error = 'File bukan gambar yang valid!';
             }
         }
 
-        // Update Query
-        $sql_upd = "UPDATE Barang_Cetak SET Nama_Barang=?, Deskripsi=?, Harga_Barang=?, Stok_Barang=?, Stok_Minimum=?, Foto_Barang=?, Status=?, Modified_By=?, Modified_Date=GETDATE() WHERE ID_Barang=?";
-        $params_upd = [$nama, $deskripsi, $harga, $stok, $stok_min, $foto_final, $status, $nama_admin, $id_barang];
-        $stmt = sqlsrv_query($conn, $sql_upd, $params_upd);
+        if (!empty($upload_error)) {
+            $errors[] = $upload_error;
+        } else {
+            $upload_dir = '../../uploads/barang/';
+            if (!is_dir($upload_dir)) {
+                mkdir($upload_dir, 0755, true);
+            }
 
-        if ($stmt) { $success = true; } 
-        else { $error = "Gagal memperbarui data di database."; }
+            $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+            $new_filename = 'barang_'.time().'_'.rand(1000,9999).'.'.$ext;
+            $target_path = $upload_dir . $new_filename;
+
+            if (!move_uploaded_file($file['tmp_name'], $target_path)) {
+                $errors[] = 'Gagal menyimpan file ke server!';
+                $new_filename = $foto_lama;
+                $file_changed = false;
+            } else {
+                // Siapkan file lama untuk dihapus kalau update berhasil
+                if ($foto_lama != 'default_barang.jpg' && file_exists($upload_dir . $foto_lama)) {
+                    $old_file_to_delete = $upload_dir . $foto_lama;
+                }
+            }
+        }
+    }
+
+    // --- LAYER 10: Update Database (Transaction) ---
+    if (empty($errors)) {
+        sqlsrv_begin_transaction($conn);
+
+        try {
+            $sql_update = "UPDATE Barang_Cetak SET 
+                Nama_Barang = ?, Harga_Barang = ?, Stok_Barang = ?, Stok_Minimum = ?, 
+                Deskripsi = ?, Foto_Barang = ?, Status = ?, 
+                Modified_By = ?, Modified_Date = GETDATE() 
+                WHERE ID_Barang = ?";
+
+            $params = [
+                $nama_barang,
+                (float)$harga_barang,
+                (int)$stok_barang,
+                (int)$stok_minimum,
+                $deskripsi,
+                $new_filename,
+                $status,
+                $nama_admin,
+                $id_barang
+            ];
+
+            $stmt_update = sqlsrv_query($conn, $sql_update, $params);
+
+            if ($stmt_update === false) {
+                throw new Exception('Gagal update barang: '.print_r(sqlsrv_errors(), true));
+            }
+            sqlsrv_free_stmt($stmt_update);
+
+            sqlsrv_commit($conn);
+            $success = true;
+
+            // Hapus file lama kalau ada dan berbeda
+            if (!empty($old_file_to_delete) && file_exists($old_file_to_delete)) {
+                unlink($old_file_to_delete);
+            }
+
+            // Update data_lama untuk tampilan
+            $data_lama['Nama_Barang'] = $nama_barang;
+            $data_lama['Harga_Barang'] = $harga_barang;
+            $data_lama['Stok_Barang'] = $stok_barang;
+            $data_lama['Stok_Minimum'] = $stok_minimum;
+            $data_lama['Deskripsi'] = $deskripsi;
+            $data_lama['Foto_Barang'] = $new_filename;
+            $data_lama['Status'] = $status;
+
+        } catch (Exception $e) {
+            sqlsrv_rollback($conn);
+            $errors[] = 'Gagal menyimpan perubahan: '.$e->getMessage();
+
+            // Hapus file baru yang sudah diupload kalau gagal
+            if ($file_changed && isset($target_path) && file_exists($target_path)) {
+                unlink($target_path);
+            }
+        }
+    }
+}
+
+// =====================================================
+// PATH FOTO BARANG
+// =====================================================
+$upload_dir = '../../uploads/barang/';
+$foto_barang_src = 'default_barang.jpg';
+if (!empty($data_lama['Foto_Barang']) && $data_lama['Foto_Barang'] != 'default_barang.jpg') {
+    if (file_exists($upload_dir . $data_lama['Foto_Barang'])) {
+        $foto_barang_src = $upload_dir . $data_lama['Foto_Barang'];
+    } else {
+        $foto_barang_src = 'default_barang.jpg';
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -100,45 +280,55 @@ if (isset($_POST['simpan'])) {
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-        :root { --p-pink: #D53D66; --d-pink: #CA3366; --s-pink: #FFF0F3; --light-pink: #FFE4E9; --text-dark: #1e1e24; --text-muted: #718096; --body-bg: #f8fafc; --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        :root {
+            --sidebar-bg: #ffffff;
+            --p-pink: #D53D66;
+            --d-pink: #CA3366;
+            --s-pink: #FFF0F3;
+            --light-pink: #FFE4E9;
+            --text-dark: #1e1e24;
+            --text-muted: #718096;
+            --body-bg: #f8fafc;
+            --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--body-bg); color: var(--text-dark); overflow-x: hidden; }
-        
-        .sidebar { width: 260px; height: 100vh; background: #fff; position: fixed; top: 0; left: 0; border-right: 1px solid rgba(255,228,233,.8); display: flex; flex-direction: column; justify-content: space-between; padding: 30px 20px; z-index: 100; }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 260px; height: 100vh; background: var(--sidebar-bg);
+            position: fixed; top: 0; left: 0;
+            border-right: 1px solid rgba(255, 228, 233, 0.8);
+            display: flex; flex-direction: column; justify-content: space-between;
+            padding: 30px 20px; z-index: 100;
+        }
         .sidebar-brand { font-weight: 800; font-size: 1.5rem; color: var(--p-pink); text-decoration: none; letter-spacing: -1px; margin-bottom: 40px; display: block; }
-        .sidebar-brand span { color: var(--text-dark); font-size: .85rem; font-weight: 600; }
+        .sidebar-brand span { color: var(--text-dark); font-size: 0.85rem; font-weight: 600; }
         .sidebar-menu-wrapper { flex-grow: 1; overflow-y: auto; margin-bottom: 20px; scrollbar-width: none; }
         .sidebar-menu-wrapper::-webkit-scrollbar { display: none; }
-        .sidebar ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-/* Jika kamu menggunakan class .nav-menu di HTML-nya */
-.nav-menu {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
+        .nav-menu { list-style: none; padding: 0; margin: 0; }
+        .nav-item { margin-bottom: 8px; }
         .nav-link-custom { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; color: #4a5568; font-weight: 700; text-decoration: none; border-radius: 12px; font-size: 0.9rem; transition: var(--transition-3d); }
         .nav-link-custom:hover, .nav-link-custom.active { background-color: var(--light-pink); color: var(--p-pink); transform: translateX(4px); }
         .submenu { list-style: none; padding-left: 20px; margin-top: 5px; display: none; }
         .submenu.show { display: block !important; }
-        .submenu-link { display: flex; align-items: center; padding: 8px 18px; color: #718096; font-weight: 600; font-size: .85rem; text-decoration: none; border-radius: 10px; transition: .3s; }
-        .submenu-link:hover, .submenu-link.active { color: var(--p-pink); background-color: rgba(213,61,102,.03); padding-left: 22px; }
-
-        .btn-logout { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #fff; border: none; width: 100%; padding: 12px; border-radius: 12px; font-weight: 800; font-size: .85rem; transition: var(--transition-3d); }
-        .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213,61,102,.2); }
+        .submenu-link { display: flex; align-items: center; padding: 8px 18px; color: #718096; font-weight: 600; font-size: 0.85rem; text-decoration: none; border-radius: 10px; transition: 0.3s; }
+        .submenu-link:hover, .submenu-link.active { color: var(--p-pink); background-color: rgba(213,61,102,0.03); padding-left: 22px; }
+        .btn-logout { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; width: 100%; padding: 12px; border-radius: 12px; font-weight: 800; font-size: 0.85rem; transition: var(--transition-3d); }
+        .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
 
         .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
         .dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; }
         .profile-header-btn { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; border: 2px solid #fff; cursor: pointer; transition: var(--transition-3d); background: #fff; }
+        .profile-header-btn:hover { transform: scale(1.08) translateY(-2px); box-shadow: 0 8px 20px rgba(213, 61, 102, 0.15); border-color: var(--p-pink); }
         .profile-header-btn img { width: 100%; height: 100%; object-fit: cover; }
 
         .breadcrumb-custom { display: flex; align-items: center; gap: 8px; margin-bottom: 25px; font-size: 0.85rem; font-weight: 600; }
-        .breadcrumb-custom a { color: var(--text-muted); text-decoration: none; }
+        .breadcrumb-custom a { color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
+        .breadcrumb-custom a:hover { color: var(--p-pink); }
         .breadcrumb-custom .active { color: var(--p-pink); }
+        .breadcrumb-custom i { color: #cbd5e1; font-size: 0.7rem; }
 
+        /* FORM CARD */
         .form-card { background: #ffffff; border-radius: 22px; border: 1px solid rgba(255, 228, 233, 0.8); box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03); overflow: hidden; }
         .form-card-header { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); padding: 30px 40px; color: #ffffff; }
         .form-card-header h4 { font-weight: 800; font-size: 1.4rem; margin-bottom: 4px; }
@@ -146,25 +336,60 @@ if (isset($_POST['simpan'])) {
         .form-card-body { padding: 40px; }
 
         .form-label { font-weight: 700; font-size: 0.75rem; color: var(--text-dark); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
-        .form-label span { color: #dc2626; margin-left: 2px; }
+        .form-label .required { color: #dc2626; margin-left: 2px; }
         .form-control-custom { width: 100%; border: 2px solid #e2e8f0; border-radius: 14px; padding: 14px 18px; font-weight: 600; font-size: 0.9rem; color: #1e293b; transition: var(--transition-3d); background: #ffffff; }
         .form-control-custom:focus { outline: none; border-color: var(--p-pink); box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); }
+        .form-control-custom::placeholder { color: #a0aec0; font-weight: 500; }
+        textarea.form-control-custom { min-height: 120px; resize: vertical; }
 
+        .input-hint { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+
+        /* STATUS TOGGLE */
         .status-toggle-group { display: flex; gap: 12px; margin-top: 8px; }
         .status-option { flex: 1; padding: 14px 16px; border-radius: 14px; border: 2px solid #e2e8f0; cursor: pointer; text-align: center; transition: var(--transition-3d); background: #ffffff; }
+        .status-option:hover { border-color: var(--p-pink); }
         .status-option.active { border-color: var(--p-pink); background: var(--s-pink); }
         .status-option input { display: none; }
+        .status-option .status-icon { font-size: 1.3rem; margin-bottom: 4px; }
         .status-option .status-label { font-weight: 700; font-size: 0.85rem; }
+        .status-option .status-desc { font-size: 0.7rem; color: var(--text-muted); }
 
+        /* BUTTONS */
         .btn-submit { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; border-radius: 14px; padding: 14px 32px; font-weight: 800; font-size: 0.95rem; transition: var(--transition-3d); display: inline-flex; align-items: center; gap: 8px; }
         .btn-submit:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(213, 61, 102, 0.35); color: #ffffff; }
-        .btn-batal { background: #f1f5f9; color: #475569; border: none; border-radius: 14px; padding: 14px 32px; font-weight: 800; font-size: 0.95rem; transition: var(--transition-3d); text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
-        
-        .current-foto-box { border: 2px solid var(--light-pink); border-radius: 16px; padding: 16px; background: var(--s-pink); display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
+        .btn-batal { background: #f1f5f9; color: #475569; border: none; border-radius: 14px; padding: 14px 32px; font-weight: 800; font-size: 0.95rem; transition: var(--transition-3d); display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+        .btn-batal:hover { background: #e2e8f0; color: #1e293b; transform: translateY(-3px); }
+
+        /* ALERT */
+        .alert-custom-error { background: #fef2f2; border: none; border-left: 4px solid #dc2626; border-radius: 12px; color: #991b1b; font-size: 0.85rem; padding: 14px 18px; margin-bottom: 24px; display: flex; align-items: start; gap: 10px; }
+        .alert-custom-error i { font-size: 1.1rem; margin-top: 2px; }
+        .alert-custom-success { background: #f0fdf4; border: none; border-left: 4px solid #22c55e; border-radius: 12px; color: #166534; font-size: 0.85rem; padding: 14px 18px; margin-bottom: 24px; display: flex; align-items: center; gap: 10px; }
+        .alert-custom-success i { font-size: 1.1rem; }
+
+        /* INFO BOX */
+        .info-box { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; padding: 14px 18px; margin-bottom: 24px; font-size: 0.8rem; color: #0369a1; font-weight: 600; }
+        .info-box i { margin-right: 8px; }
+
+        /* CURRENT FOTO */
+        .current-foto-box { 
+            border: 2px solid var(--light-pink); border-radius: 16px; padding: 16px; 
+            background: var(--s-pink); display: flex; align-items: center; gap: 16px; margin-bottom: 12px; 
+        }
         .current-foto-box img { width: 80px; height: 80px; border-radius: 12px; object-fit: cover; border: 2px solid #fff; }
+
+        /* PREVIEW IMAGE */
+        .preview-container { width: 120px; height: 120px; border: 2px dashed #cbd5e0; border-radius: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s ease; overflow: hidden; background: #f8fafc; }
+        .preview-container:hover { border-color: var(--p-pink); background: var(--s-pink); }
+        .preview-container img { width: 100%; height: 100%; object-fit: cover; }
+        .preview-container i { font-size: 32px; color: #cbd5e0; }
 
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
         .fade-in-up { animation: fadeIn 0.5s ease-out; }
+
+        @media (max-width: 992px) {
+            .main-content { margin-left: 0; padding: 20px; }
+            .sidebar { transform: translateX(-100%); }
+        }
     </style>
 </head>
 <body>
@@ -172,7 +397,9 @@ if (isset($_POST['simpan'])) {
 <!-- SIDEBAR -->
 <div class="sidebar">
     <div class="sidebar-menu-wrapper">
-        <a href="../../index.php" class="sidebar-brand">SpotLight.<br><span>Panel Admin</span></a>
+        <a href="../../index.php" class="sidebar-brand">
+            SpotLight.<br><span>Panel Admin</span>
+        </a>
         <ul class="nav-menu">
             <li class="nav-item">
                 <a href="../../Role/Admin/index.php" class="nav-link-custom">
@@ -182,17 +409,17 @@ if (isset($_POST['simpan'])) {
             <li class="nav-item">
                 <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuMaster">
                     <span><i class="bi bi-folder-fill me-2"></i> Data Master</span>
-                    <i class="bi bi-chevron-up small icon-chevron" style="transform:rotate(180deg);"></i>
+                    <i class="bi bi-chevron-up small icon-chevron" style="transform: rotate(180deg);"></i>
                 </a>
                 <div class="submenu show" id="submenuMaster">
                     <ul class="list-unstyled">
-                        <li><a href="../Pelanggan/list.php"     class="submenu-link"><i class="bi bi-people-fill me-2"></i>Pelanggan</a></li>
-                        <li><a href="../Paket Foto/list.php"   class="submenu-link"><i class="bi bi-camera-fill me-2"></i>Paket Foto</a></li>
-                        <li><a href="../Ruangan/list.php"       class="submenu-link"><i class="bi bi-door-open-fill me-2"></i>Ruangan</a></li>
-                        <li><a href="../Properti/list.php"      class="submenu-link"><i class="bi bi-box-seam-fill me-2"></i>Properti</a></li>
-                        <li><a href="../Tema Foto/list.php"     class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
+                        <li><a href="../Pelanggan/list.php" class="submenu-link"><i class="bi bi-people-fill me-2"></i>Pelanggan</a></li>
+                        <li><a href="../Paket Foto/list.php" class="submenu-link"><i class="bi bi-camera-fill me-2"></i>Paket Foto</a></li>
+                        <li><a href="../Ruangan/list.php" class="submenu-link"><i class="bi bi-door-open-fill me-2"></i>Ruangan</a></li>
+                        <li><a href="../Properti/list.php" class="submenu-link"><i class="bi bi-box-seam-fill me-2"></i>Properti</a></li>
+                        <li><a href="../Tema Foto/list.php" class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
                         <li><a href="../Jadwal Studio/list.php" class="submenu-link"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Studio</a></li>
-                        <li><a href="./list.php"                class="submenu-link active"><i class="bi bi-printer-fill me-2"></i>Barang Cetak</a></li>
+                        <li><a href="./list.php" class="submenu-link active"><i class="bi bi-printer-fill me-2"></i>Barang Cetak</a></li>
                     </ul>
                 </div>
             </li>
@@ -203,11 +430,11 @@ if (isset($_POST['simpan'])) {
                 </a>
                 <div class="submenu" id="submenuTransaksi">
                     <ul class="list-unstyled">
-                        <li><a href="../../Transaksi/Order/list.php"      class="submenu-link"><i class="bi bi-calendar-check-fill me-2"></i>Kelola Booking</a></li>
+                        <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-calendar-check-fill me-2"></i>Kelola Booking</a></li>
                         <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran</a></li>
                         <li><a href="../../Transaksi/Pembatalan/list.php" class="submenu-link"><i class="bi bi-calendar-x-fill me-2"></i>Pembatalan Booking</a></li>
-                        <li><a href="../../Transaksi/Sesi Foto/list.php"  class="submenu-link"><i class="bi bi-camera-reels-fill me-2"></i>Upload Hasil Foto</a></li>
-                        <li><a href="../../Transaksi/Penjualan/list.php"  class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang</a></li>
+                        <li><a href="../../Transaksi/Sesi Foto/list.php" class="submenu-link"><i class="bi bi-camera-reels-fill me-2"></i>Upload Hasil Foto</a></li>
+                        <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang</a></li>
                     </ul>
                 </div>
             </li>
@@ -228,14 +455,27 @@ if (isset($_POST['simpan'])) {
 <!-- MAIN CONTENT -->
 <div class="main-content">
     <div class="dashboard-header">
-        <div><h3 class="fw-bold mb-1">Edit Barang Cetak</h3><p class="text-muted small mb-0">Sesuaikan informasi produk katalog studio.</p></div>
-        <div class="profile-header-btn shadow-sm"><img src="<?= $foto_admin_src ?>" alt="Admin"></div>
+        <div>
+            <h3 class="fw-bold mb-1">Edit Barang Cetak</h3>
+            <p class="text-muted small mb-0">Sesuaikan informasi produk katalog studio.</p>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+            <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
+                <i class="bi bi-clock-history me-1 text-danger"></i> <span id="live-clock">Memuat waktu...</span>
+            </span>
+            <div class="profile-header-btn shadow-sm" onclick="bukaModalBiodata()" title="Klik untuk melihat profil Anda">
+                <img src="<?= $foto_admin_src ?>" alt="Admin Profil">
+            </div>
+        </div>
     </div>
 
     <div class="breadcrumb-custom">
-        <a href="../../Role/Admin/index.php">Dashboard</a> <i class="bi bi-chevron-right small"></i> 
-        <a href="./list.php">Data Master</a> <i class="bi bi-chevron-right small"></i> 
-        <a href="./list.php">Barang Cetak</a> <i class="bi bi-chevron-right small"></i> 
+        <a href="../../Role/Admin/index.php"><i class="bi bi-house-door-fill me-1"></i>Dashboard</a>
+        <i class="bi bi-chevron-right"></i>
+        <a href="./list.php">Data Master</a>
+        <i class="bi bi-chevron-right"></i>
+        <a href="./list.php">Barang Cetak</a>
+        <i class="bi bi-chevron-right"></i>
         <span class="active">Edit Barang #<?= $id_barang ?></span>
     </div>
 
@@ -243,121 +483,282 @@ if (isset($_POST['simpan'])) {
     <div class="form-card fade-in-up">
         <div class="form-card-header">
             <h4><i class="bi bi-pencil-square me-2"></i>Edit Barang Cetak</h4>
-            <p>Ubah detail nama, harga, stok, atau foto barang cetak.</p>
+            <p>Ubah detail nama, harga, stok, atau foto barang cetak. Stok minimum untuk alert menipis.</p>
         </div>
         <div class="form-card-body">
-            <?php if ($error != ""): ?>
-                <div class="alert alert-danger border-0 rounded-4 mb-4"><i class="bi bi-exclamation-triangle-fill me-2"></i><?= $error ?></div>
+
+            <!-- INFO BOX -->
+            <div class="info-box">
+                <i class="bi bi-info-circle-fill"></i>
+                <strong>Petunjuk:</strong> Nama harus unik (tidak boleh sama dengan barang lain, kecuali nama sendiri). 
+                Harga dalam Rupiah (contoh: 50000). Stok minimum untuk alert saat stok menipis. 
+                Kosongkan upload foto jika tidak ingin mengganti foto saat ini.
+            </div>
+
+            <?php if (!empty($errors)): ?>
+            <div class="alert-custom-error">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <div>
+                    <strong>Gagal menyimpan perubahan!</strong>
+                    <ul class="mb-0 mt-1 ps-3">
+                        <?php foreach ($errors as $error): ?>
+                        <li><?= $error ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+            </div>
             <?php endif; ?>
 
-            <form method="POST" enctype="multipart/form-data">
-                <input type="hidden" name="foto_lama" value="<?= $data_lama['Foto_Barang'] ?>">
+            <?php if ($success): ?>
+            <div class="alert-custom-success">
+                <i class="bi bi-check-circle-fill"></i>
+                <strong>Data barang berhasil diperbarui!</strong>
+            </div>
+            <?php endif; ?>
+
+            <form method="POST" action="" enctype="multipart/form-data" id="formEditBarang">
+                <input type="hidden" name="foto_lama" value="<?= htmlspecialchars($data_lama['Foto_Barang']) ?>">
 
                 <div class="row">
+                    <!-- Nama Barang -->
                     <div class="col-md-6 mb-4">
-                        <label class="form-label">Nama Barang <span>*</span></label>
-                        <input type="text" name="nama" class="form-control-custom" value="<?= htmlspecialchars($data_lama['Nama_Barang']) ?>" required>
+                        <label class="form-label">Nama Barang <span class="required">*</span></label>
+                        <input type="text" name="nama_barang" class="form-control-custom" 
+                               placeholder="Contoh: Album Foto 4R, Frame Kayu 8x10" 
+                               maxlength="100"
+                               value="<?= isset($_POST['nama_barang']) ? htmlspecialchars($_POST['nama_barang']) : htmlspecialchars($data_lama['Nama_Barang']) ?>"
+                               required>
+                        <div class="input-hint">
+                            <i class="bi bi-info-circle"></i> Maksimal 100 karakter. Harus unik, tidak boleh sama dengan barang lain.
+                        </div>
                     </div>
+                    <!-- Harga -->
                     <div class="col-md-6 mb-4">
-                        <label class="form-label">Harga Barang (Rp) <span>*</span></label>
-                        <input type="number" name="harga" class="form-control-custom" value="<?= (int)$data_lama['Harga_Barang'] ?>" required>
+                        <label class="form-label">Harga (Rp) <span class="required">*</span></label>
+                        <input type="number" name="harga_barang" class="form-control-custom" 
+                               placeholder="Contoh: 50000" min="0" step="100"
+                               value="<?= isset($_POST['harga_barang']) ? htmlspecialchars($_POST['harga_barang']) : htmlspecialchars($data_lama['Harga_Barang']) ?>"
+                               required>
+                        <div class="input-hint">
+                            <i class="bi bi-info-circle"></i> Harga dalam Rupiah. Tidak boleh negatif.
+                        </div>
                     </div>
                 </div>
 
                 <div class="row">
+                    <!-- Stok -->
                     <div class="col-md-6 mb-4">
-                        <label class="form-label">Stok Saat Ini <span>*</span></label>
-                        <input type="number" name="stok" class="form-control-custom" value="<?= $data_lama['Stok_Barang'] ?>" required>
+                        <label class="form-label">Stok Saat Ini <span class="required">*</span></label>
+                        <input type="number" name="stok_barang" class="form-control-custom" 
+                               placeholder="Contoh: 20" min="0"
+                               value="<?= isset($_POST['stok_barang']) ? htmlspecialchars($_POST['stok_barang']) : htmlspecialchars($data_lama['Stok_Barang']) ?>"
+                               required>
+                        <div class="input-hint">
+                            <i class="bi bi-info-circle"></i> Stok real-time. Tidak boleh negatif.
+                        </div>
                     </div>
+                    <!-- Stok Minimum -->
                     <div class="col-md-6 mb-4">
-                        <label class="form-label">Stok Minimum <span>*</span></label>
-                        <input type="number" name="stok_min" class="form-control-custom" value="<?= $data_lama['Stok_Minimum'] ?>" required>
+                        <label class="form-label">Stok Minimum (Alert) <span class="required">*</span></label>
+                        <input type="number" name="stok_minimum" class="form-control-custom" 
+                               placeholder="Contoh: 5" min="0"
+                               value="<?= isset($_POST['stok_minimum']) ? htmlspecialchars($_POST['stok_minimum']) : htmlspecialchars($data_lama['Stok_Minimum']) ?>"
+                               required>
+                        <div class="input-hint">
+                            <i class="bi bi-info-circle"></i> Alert saat stok <= nilai ini. Harus <= Stok Saat Ini.
+                        </div>
                     </div>
                 </div>
 
+                <!-- Deskripsi -->
                 <div class="mb-4">
-                    <label class="form-label">Deskripsi Barang</label>
-                    <textarea name="deskripsi" class="form-control-custom" rows="3"><?= htmlspecialchars($data_lama['Deskripsi']) ?></textarea>
+                    <label class="form-label">Deskripsi</label>
+                    <textarea name="deskripsi" class="form-control-custom" rows="3" 
+                              placeholder="Jelaskan detail barang, ukuran, atau keterangan lain (opsional, max 255 karakter)"
+                              maxlength="255"><?= isset($_POST['deskripsi']) ? htmlspecialchars($_POST['deskripsi']) : htmlspecialchars($data_lama['Deskripsi'] ?? '') ?></textarea>
+                    <div class="input-hint">
+                        <i class="bi bi-info-circle"></i> Maksimal 255 karakter. Opsional.
+                    </div>
                 </div>
 
+                <!-- Foto Barang -->
                 <div class="mb-4">
-                    <label class="form-label">Foto Produk</label>
+                    <label class="form-label">Foto Barang</label>
+
+                    <!-- Foto Saat Ini -->
                     <div class="current-foto-box">
-                        <img src="../../assets/img/barang/<?= !empty($data_lama['Foto_Barang']) ? $data_lama['Foto_Barang'] : 'default_item.jpg' ?>" alt="Current">
-                        <div><p>Foto saat ini</p><small class="text-muted">Kosongkan file upload jika tidak ingin mengganti foto.</small></div>
+                        <img src="<?= $foto_barang_src ?>" alt="Foto Saat Ini">
+                        <div>
+                            <p class="mb-1 fw-semibold">Foto saat ini</p>
+                            <small class="text-muted">Kosongkan upload di bawah jika tidak ingin mengganti foto.</small>
+                        </div>
                     </div>
-                    <input type="file" name="foto" class="form-control-custom" accept="image/*">
+
+                    <!-- Upload Foto Baru -->
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="preview-container" onclick="document.getElementById('foto_barang').click()">
+                            <img id="previewImg" src="" alt="" style="display: none;">
+                            <i class="bi bi-camera" id="previewIcon"></i>
+                        </div>
+                        <div>
+                            <input type="file" name="foto_barang" id="foto_barang" 
+                                   class="d-none" accept="image/jpeg,image/jpg,image/png"
+                                   onchange="previewFile()">
+                            <button type="button" class="btn btn-outline-primary btn-sm" 
+                                    onclick="document.getElementById('foto_barang').click()"
+                                    style="border-radius: 10px;">
+                                <i class="bi bi-upload me-1"></i> Ganti Foto
+                            </button>
+                            <div class="small text-muted mt-1">
+                                Format: JPG/PNG. Max: 2MB. Kosongkan = tetap pakai foto lama.
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
+                <!-- Status -->
                 <div class="mb-4">
                     <label class="form-label">Status Produk</label>
                     <div class="status-toggle-group">
-                        <label class="status-option <?= $data_lama['Status'] == 1 ? 'active' : '' ?>" onclick="selectStatus(this, 1)">
-                            <input type="radio" name="status" value="1" <?= $data_lama['Status'] == 1 ? 'checked' : '' ?>>
-                            <div class="status-label">✅ AKTIF</div>
+                        <?php
+                        $status_val = isset($_POST['status']) ? $_POST['status'] : $data_lama['Status'];
+                        ?>
+                        <label class="status-option <?= $status_val == 1 ? 'active' : '' ?>" 
+                               onclick="selectStatus(this, 1)">
+                            <input type="radio" name="status" value="1" <?= $status_val == 1 ? 'checked' : '' ?>>
+                            <div class="status-icon">✅</div>
+                            <div class="status-label">AKTIF</div>
+                            <div class="status-desc">Ditampilkan ke customer</div>
                         </label>
-                        <label class="status-option <?= $data_lama['Status'] == 0 ? 'active' : '' ?>" onclick="selectStatus(this, 0)">
-                            <input type="radio" name="status" value="0" <?= $data_lama['Status'] == 0 ? 'checked' : '' ?>>
-                            <div class="status-label">⛔ TIDAK AKTIF</div>
+                        <label class="status-option <?= $status_val == 0 ? 'active' : '' ?>" 
+                               onclick="selectStatus(this, 0)">
+                            <input type="radio" name="status" value="0" <?= $status_val == 0 ? 'checked' : '' ?>>
+                            <div class="status-icon">⛔</div>
+                            <div class="status-label">NONAKTIF</div>
+                            <div class="status-desc">Disembunyikan</div>
                         </label>
                     </div>
                 </div>
 
+                <!-- Buttons -->
                 <div class="d-flex gap-3 mt-5">
-                    <button type="submit" name="simpan" class="btn-submit"><i class="bi bi-save2"></i> Simpan Perubahan</button>
-                    <a href="list.php" class="btn-batal"><i class="bi bi-x-circle"></i> Batal</a>
+                    <button type="submit" name="simpan" class="btn-submit">
+                        <i class="bi bi-save2"></i> Simpan Perubahan
+                    </button>
+                    <a href="list.php" class="btn-batal">
+                        <i class="bi bi-x-circle"></i> Batal
+                    </a>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
+<script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script>
+// Live Clock
+function updateLiveClock() {
+    const now = new Date();
+    const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+    const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    document.getElementById('live-clock').innerText = 
+        days[now.getDay()] + ', ' + now.getDate() + ' ' + months[now.getMonth()] + ' ' + now.getFullYear() + ' - ' + 
+        String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0') + ' WIB';
+}
+setInterval(updateLiveClock, 1000);
+updateLiveClock();
+
+// Status Toggle
+function selectStatus(el, val) {
+    document.querySelectorAll('.status-option').forEach(opt => opt.classList.remove('active'));
+    el.classList.add('active');
+    el.querySelector('input').checked = true;
+}
+
+// Preview Image
+function previewFile() {
+    const file = document.getElementById('foto_barang').files[0];
+    const preview = document.getElementById('previewImg');
+    const icon = document.getElementById('previewIcon');
+
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            preview.src = e.target.result;
+            preview.style.display = 'block';
+            icon.style.display = 'none';
+        }
+        reader.readAsDataURL(file);
+    }
+}
+
+// Toggle Submenu
 document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
     button.addEventListener('click', function(e) {
         e.preventDefault();
-        
-        // Ambil ID target dari atribut data-target
         const targetId = this.getAttribute('data-target');
-        const submenu = document.querySelector(targetId);
-        const icon = this.querySelector('.icon-chevron');
-
-        // Toggle class 'show' (ini yang memicu CSS display: block !important)
-        if (submenu) {
-            submenu.classList.toggle('show');
-        }
-
-        // Putar icon chevron jika ada
-        if (icon) {
-            if (submenu.classList.contains('show')) {
-                icon.style.transform = 'rotate(180deg)';
-            } else {
-                icon.style.transform = 'rotate(0deg)';
+        const targetEl = document.querySelector(targetId);
+        const chevron = this.querySelector('.icon-chevron');
+        if (targetEl) {
+            const isShown = targetEl.classList.contains('show');
+            document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
+            document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
+            if (!isShown) {
+                targetEl.classList.add('show');
+                if (chevron) chevron.style.transform = 'rotate(180deg)';
             }
         }
     });
 });
-</script>
 
-<script>
-    function selectStatus(el, val) {
-        document.querySelectorAll('.status-option').forEach(opt => opt.classList.remove('active'));
-        el.classList.add('active');
-        el.querySelector('input').checked = true;
-    }
-    function confirmLogout(e) {
-        e.preventDefault();
-        Swal.fire({ title: 'Keluar Sistem?', text: 'Apakah Anda yakin ingin keluar?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#D53D66', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Keluar', cancelButtonText: 'Batal' })
-        .then(r => { if (r.isConfirmed) window.location.href = '../../logout.php'; });
-    }
-</script>
+// Konfirmasi Logout
+function confirmLogout(e) {
+    e.preventDefault();
+    Swal.fire({
+        title: 'Keluar Sistem?',
+        text: 'Apakah Anda yakin ingin keluar dari sistem SpotLight Studio?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#D53D66',
+        cancelButtonColor: '#718096',
+        confirmButtonText: 'Ya, Keluar',
+        cancelButtonText: 'Batal'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            window.location.href = '../../logout.php';
+        }
+    });
+}
 
-<?php if($success): ?>
-<script>
-    Swal.fire({ icon: 'success', title: 'Berhasil!', text: 'Data barang telah diperbarui.', confirmButtonColor: '#D53D66' })
-    .then(() => window.location = 'list.php?status_sukses=edit');
-</script>
+function confirmLandingPage(e) {
+    e.preventDefault();
+    Swal.fire({
+        title: 'Kembali ke Beranda?',
+        text: 'Anda akan dialihkan ke halaman utama publik.',
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonColor: '#D53D66',
+        cancelButtonColor: '#718096',
+        confirmButtonText: 'Ya, Kembali',
+        cancelButtonText: 'Batal'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            window.location.href = '../../index.php';
+        }
+    });
+}
+
+<?php if ($success): ?>
+Swal.fire({
+    icon: 'success',
+    title: 'Berhasil!',
+    text: 'Data barang cetak telah diperbarui.',
+    confirmButtonColor: '#D53D66'
+}).then(() => {
+    window.location = 'list.php?status_sukses=edit';
+});
 <?php endif; ?>
+</script>
 
 </body>
 </html>

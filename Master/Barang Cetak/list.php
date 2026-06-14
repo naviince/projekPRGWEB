@@ -77,22 +77,37 @@ $stok_filter = isset($_GET['stok']) ? trim($_GET['stok']) : "";
 $sort = isset($_GET['sort']) ? trim($_GET['sort']) : "nama_asc";
 
 // =====================================================
-// QUERY STATISTIK
+// FILTER TAB DATA (BARU - KUNCI PENTING!)
+// =====================================================
+$tab_filter = isset($_GET['tab']) ? trim($_GET['tab']) : 'aktif'; // aktif | dihapus | semua
+
+// =====================================================
+// QUERY STATISTIK (UPDATE - TAMBAH STATISTIK DIHAPUS)
 // =====================================================
 $stats = safe_sqlsrv_fetch($conn, 
     "SELECT 
         COUNT(*) as total,
-        SUM(CASE WHEN Status = 1 THEN 1 ELSE 0 END) as aktif,
-        SUM(CASE WHEN Status = 0 THEN 1 ELSE 0 END) as nonaktif,
-        SUM(CASE WHEN Stok_Barang <= Stok_Minimum AND Status = 1 THEN 1 ELSE 0 END) as stok_menipis
-    FROM Barang_Cetak WHERE Is_Deleted = 0"
-) ?? ['total' => 0, 'aktif' => 0, 'nonaktif' => 0, 'stok_menipis' => 0];
+        SUM(CASE WHEN Status = 1 AND Is_Deleted = 0 THEN 1 ELSE 0 END) as aktif,
+        SUM(CASE WHEN Status = 0 AND Is_Deleted = 0 THEN 1 ELSE 0 END) as nonaktif,
+        SUM(CASE WHEN Stok_Barang <= Stok_Minimum AND Status = 1 AND Is_Deleted = 0 THEN 1 ELSE 0 END) as stok_menipis,
+        SUM(CASE WHEN Is_Deleted = 1 THEN 1 ELSE 0 END) as dihapus
+    FROM Barang_Cetak"
+) ?? ['total' => 0, 'aktif' => 0, 'nonaktif' => 0, 'stok_menipis' => 0, 'dihapus' => 0];
 
 // =====================================================
-// QUERY LIST DATA DENGAN FILTER
+// QUERY LIST DATA DENGAN FILTER & TAB
 // =====================================================
-$conditions = ["Is_Deleted = 0"];
+$conditions = [];
 $params = [];
+
+// KUNCI: Filter tab menentukan kondisi Is_Deleted
+if ($tab_filter === 'aktif') {
+    $conditions[] = "Is_Deleted = 0";
+} elseif ($tab_filter === 'dihapus') {
+    $conditions[] = "Is_Deleted = 1";
+} else {
+    $conditions[] = "Is_Deleted IN (0, 1)";
+}
 
 if (!empty($cari)) {
     $conditions[] = "(Nama_Barang LIKE ? OR Deskripsi LIKE ?)";
@@ -128,7 +143,8 @@ $list_sql = "SELECT
     Stok_Barang,
     Stok_Minimum,
     Foto_Barang,
-    Status
+    Status,
+    Is_Deleted
 FROM Barang_Cetak
 WHERE " . implode(" AND ", $conditions) . "
 ORDER BY " . $order_clause . "
@@ -272,6 +288,7 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
         .stat-icon-green { background: linear-gradient(135deg, #ecfdf5, #d1fae5); color: #059669; }
         .stat-icon-red { background: linear-gradient(135deg, #fef2f2, #fee2e2); color: #dc2626; }
         .stat-icon-orange { background: linear-gradient(135deg, #fff7ed, #fed7aa); color: #ea580c; }
+        .stat-icon-gray { background: linear-gradient(135deg, #f3f4f6, #e5e7eb); color: #6b7280; }
         .stat-content { flex: 1; min-width: 0; overflow: hidden; }
         .stat-val { font-size: 1.5rem; font-weight: 800; color: var(--text-dark); margin-bottom: 2px; line-height: 1.2; }
         .stat-title { font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
@@ -372,9 +389,11 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
         }
         .badge-aktif { background: #ecfdf5; color: #059669; }
         .badge-nonaktif { background: #fef2f2; color: #dc2626; }
+        .badge-deleted { background: #f3f4f6; color: #6b7280; }
         .badge-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
         .badge-aktif .badge-dot { background: #059669; }
         .badge-nonaktif .badge-dot { background: #dc2626; }
+        .badge-deleted .badge-dot { background: #6b7280; }
 
         .btn-action-circle {
             width: 34px; height: 34px; border-radius: 50%;
@@ -387,6 +406,10 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
         .btn-action-edit:hover { background: var(--p-pink); color: #ffffff; transform: translateY(-2px); }
         .btn-action-delete { color: #dc2626; border-color: #fee2e2; }
         .btn-action-delete:hover { background: #dc2626; color: #ffffff; transform: translateY(-2px); }
+        .btn-action-restore { color: #059669; border-color: #d1fae5; }
+        .btn-action-restore:hover { background: #059669; color: #ffffff; transform: translateY(-2px); }
+        .btn-action-hard { color: #7f1d1d; border-color: #fee2e2; }
+        .btn-action-hard:hover { background: #7f1d1d; color: #ffffff; transform: translateY(-2px); }
 
         /* PAGINATION */
         .pagination-wrapper {
@@ -417,6 +440,36 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
             box-shadow: 0 4px 12px rgba(213, 61, 102, 0.3);
         }
         .page-link-pag.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
+        /* TAB FILTER BARU */
+        .tab-filter-wrapper {
+            display: flex; gap: 8px; margin-bottom: 20px;
+        }
+        .tab-filter-btn {
+            padding: 10px 24px; border-radius: 12px;
+            font-weight: 700; font-size: 0.85rem;
+            border: 2px solid #e2e8f0; background: #ffffff;
+            color: #718096; text-decoration: none;
+            transition: var(--transition-3d); cursor: pointer;
+            display: inline-flex; align-items: center; gap: 8px;
+        }
+        .tab-filter-btn:hover {
+            border-color: var(--p-pink); color: var(--p-pink);
+            transform: translateY(-2px);
+        }
+        .tab-filter-btn.active {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #ffffff; border-color: var(--p-pink);
+            box-shadow: 0 4px 15px rgba(213, 61, 102, 0.2);
+        }
+        .tab-filter-btn .tab-badge {
+            background: rgba(255,255,255,0.2); color: inherit;
+            padding: 2px 10px; border-radius: 50px;
+            font-size: 0.75rem; font-weight: 800;
+        }
+        .tab-filter-btn.active .tab-badge {
+            background: rgba(255,255,255,0.3); color: #ffffff;
+        }
 
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-10px); }
@@ -569,12 +622,25 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
                         </div>
                     </div>
                 </div>
+                <div class="stat-card-item">
+                    <div class="card-3d">
+                        <div class="stat-card">
+                            <div class="stat-icon stat-icon-gray"><i class="bi bi-trash-fill"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-title">Produk Dihapus</div>
+                                <div class="stat-val"><?= $stats['dihapus'] ?? 0 ?> Produk</div>
+                                <div class="stat-subtitle">Soft delete</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
         <!-- SEARCH & FILTER BAR -->
         <div class="search-filter-bar">
             <form method="GET" class="search-form-flex" id="mainSearchForm">
+                <input type="hidden" name="tab" id="hiddenTab" value="<?= htmlspecialchars($tab_filter) ?>">
                 <input type="hidden" name="status" id="hiddenStatus" value="<?= htmlspecialchars($status_filter) ?>">
                 <input type="hidden" name="stok" id="hiddenStok" value="<?= htmlspecialchars($stok_filter) ?>">
                 <input type="hidden" name="sort" id="hiddenSort" value="<?= htmlspecialchars($sort) ?>">
@@ -592,6 +658,25 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
             </form>
             <a href="add.php" class="btn-reg-header text-decoration-none">
                 <i class="bi bi-plus-circle-fill me-2"></i>Tambah Barang
+            </a>
+        </div>
+
+        <!-- TAB FILTER (BARU - KUNCI PENTING!) -->
+        <div class="tab-filter-wrapper">
+            <a href="list.php?tab=aktif<?= !empty($cari) ? '&cari='.urlencode($cari) : '' ?><?= !empty($status_filter) ? '&status='.$status_filter : '' ?><?= !empty($stok_filter) ? '&stok='.$stok_filter : '' ?><?= !empty($sort) ? '&sort='.$sort : '' ?>" 
+               class="tab-filter-btn <?= $tab_filter === 'aktif' ? 'active' : '' ?>">
+                <i class="bi bi-check-circle-fill"></i> Data Aktif
+                <span class="tab-badge"><?= ($stats['aktif'] ?? 0) + ($stats['nonaktif'] ?? 0) ?></span>
+            </a>
+            <a href="list.php?tab=dihapus<?= !empty($cari) ? '&cari='.urlencode($cari) : '' ?><?= !empty($status_filter) ? '&status='.$status_filter : '' ?><?= !empty($stok_filter) ? '&stok='.$stok_filter : '' ?><?= !empty($sort) ? '&sort='.$sort : '' ?>" 
+               class="tab-filter-btn <?= $tab_filter === 'dihapus' ? 'active' : '' ?>">
+                <i class="bi bi-trash-fill"></i> Sudah Dihapus
+                <span class="tab-badge"><?= $stats['dihapus'] ?? 0 ?></span>
+            </a>
+            <a href="list.php?tab=semua<?= !empty($cari) ? '&cari='.urlencode($cari) : '' ?><?= !empty($status_filter) ? '&status='.$status_filter : '' ?><?= !empty($stok_filter) ? '&stok='.$stok_filter : '' ?><?= !empty($sort) ? '&sort='.$sort : '' ?>" 
+               class="tab-filter-btn <?= $tab_filter === 'semua' ? 'active' : '' ?>">
+                <i class="bi bi-grid-fill"></i> Semua Data
+                <span class="tab-badge"><?= $stats['total'] ?? 0 ?></span>
             </a>
         </div>
 
@@ -622,14 +707,22 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
                         <?php
                         if (!empty($daftar_barang)):
                             foreach($daftar_barang as $idx => $b):
-                                $path_img = "../../assets/img/barang/" . ($b['Foto_Barang'] ?? '');
-                                $img_src = (!empty($b['Foto_Barang']) && file_exists($path_img))
+                                // KUNCI: Path foto harus sinkron dengan add.php/edit.php
+                                $path_img = "../../uploads/barang/" . ($b['Foto_Barang'] ?? '');
+                                $img_src = (!empty($b['Foto_Barang']) && $b['Foto_Barang'] !== 'default_barang.jpg' && file_exists($path_img))
                                     ? $path_img 
                                     : "../../assets/img/default_item.jpg";
 
                                 $low_stok = ($b['Stok_Barang'] <= $b['Stok_Minimum']);
-                                $badge_status = ($b['Status'] == 1) ? "badge-aktif" : "badge-nonaktif";
-                                $text_status = ($b['Status'] == 1) ? "Aktif" : "Nonaktif";
+
+                                // KUNCI: Status badge sesuai Is_Deleted dan Status
+                                if ($b['Is_Deleted'] == 1) {
+                                    $badge_status = "badge-deleted";
+                                    $text_status = "Dihapus";
+                                } else {
+                                    $badge_status = ($b['Status'] == 1) ? "badge-aktif" : "badge-nonaktif";
+                                    $text_status = ($b['Status'] == 1) ? "Aktif" : "Nonaktif";
+                                }
                         ?>
                             <tr class="fade-in-up">
                                 <td><img src="<?= $img_src ?>" class="brg-preview" alt="<?= htmlspecialchars($b['Nama_Barang']) ?>"></td>
@@ -639,7 +732,12 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
                                 </td>
                                 <td class="td-harga">Rp <?= number_format($b['Harga_Barang'], 0, ',', '.') ?></td>
                                 <td>
-                                    <div class="td-stok <?= $low_stok ? 'menipis' : 'aman' ?>"><?= $b['Stok_Barang'] ?> Unit</div>
+                                    <div class="td-stok <?= $low_stok ? 'menipis' : 'aman' ?>">
+                                        <?= $b['Stok_Barang'] ?> Unit
+                                        <?php if ($low_stok): ?>
+                                            <span class="badge bg-danger ms-1" style="font-size: 0.65rem; padding: 3px 8px;">Menipis</span>
+                                        <?php endif; ?>
+                                    </div>
                                     <div class="stok-minimum <?= $low_stok ? 'menipis' : '' ?>">Min: <?= $b['Stok_Minimum'] ?> unit</div>
                                 </td>
                                 <td>
@@ -649,15 +747,26 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
                                     </span>
                                 </td>
                                 <td>
-                                    <a href="edit.php?id=<?= $b['ID_Barang'] ?>" class="btn-action-circle btn-action-edit" title="Edit Barang">
-                                        <i class="bi bi-pencil"></i>
-                                    </a>
-                                    <button class="btn-action-circle btn-action-delete" onclick="toggleStatus(<?= $b['ID_Barang'] ?>, <?= $b['Status'] ?>, '<?= htmlspecialchars($b['Nama_Barang']) ?>')" title="Toggle Status">
-                                        <i class="bi bi-toggle-<?= $b['Status'] == 1 ? 'on' : 'off' ?>"></i>
-                                    </button>
-                                    <button class="btn-action-circle btn-action-delete" onclick="softDelete(<?= $b['ID_Barang'] ?>, '<?= htmlspecialchars($b['Nama_Barang']) ?>')" title="Hapus Barang">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
+                                    <?php if ($b['Is_Deleted'] == 0): ?>
+                                        <!-- Data Aktif: Edit, Toggle, Soft Delete -->
+                                        <a href="edit.php?id=<?= $b['ID_Barang'] ?>" class="btn-action-circle btn-action-edit" title="Edit Barang">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <button class="btn-action-circle btn-action-delete" onclick="toggleStatus(<?= $b['ID_Barang'] ?>, <?= $b['Status'] ?>, '<?= htmlspecialchars($b['Nama_Barang']) ?>')" title="Toggle Status">
+                                            <i class="bi bi-toggle-<?= $b['Status'] == 1 ? 'on' : 'off' ?>"></i>
+                                        </button>
+                                        <button class="btn-action-circle btn-action-delete" onclick="softDelete(<?= $b['ID_Barang'] ?>, '<?= htmlspecialchars($b['Nama_Barang']) ?>')" title="Hapus Barang (Soft Delete)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    <?php else: ?>
+                                        <!-- Data Dihapus: Restore, Hard Delete -->
+                                        <button class="btn-action-circle btn-action-restore" onclick="restoreBarang(<?= $b['ID_Barang'] ?>, '<?= htmlspecialchars($b['Nama_Barang']) ?>')" title="Pulihkan Barang">
+                                            <i class="bi bi-arrow-counterclockwise"></i>
+                                        </button>
+                                        <button class="btn-action-circle btn-action-hard" onclick="hardDelete(<?= $b['ID_Barang'] ?>, '<?= htmlspecialchars($b['Nama_Barang']) ?>')" title="Hapus Permanen (Hard Delete)">
+                                            <i class="bi bi-trash-fill"></i>
+                                        </button>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php 
@@ -684,7 +793,7 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
                 </div>
                 <nav class="pagination-nav">
                     <?php 
-                    $base_qs = "cari=" . urlencode($cari) . "&status=" . $status_filter . "&stok=" . urlencode($stok_filter) . "&sort=" . $sort;
+                    $base_qs = "tab=" . $tab_filter . "&cari=" . urlencode($cari) . "&status=" . $status_filter . "&stok=" . urlencode($stok_filter) . "&sort=" . $sort;
                     ?>
                     <?php if ($halaman > 1): ?>
                         <a class="page-link-pag" href="list.php?halaman=<?= $halaman - 1 ?>&<?= $base_qs ?>" title="Sebelumnya">
@@ -829,6 +938,7 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
         }
 
         // Toggle Status
+        // KUNCI: URL harus action_cetak.php?act= (bukan action_barang.php?aksi=)
         function toggleStatus(id, currentStatus, nama) {
             const newStatus = currentStatus === 1 ? 0 : 1;
             const actionText = currentStatus === 1 ? 'menonaktifkan' : 'mengaktifkan';
@@ -844,16 +954,17 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
                 cancelButtonText: 'Batal'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    window.location.href = 'action_barang.php?aksi=toggle_status&id=' + id;
+                    window.location.href = 'action_cetak.php?act=toggle_status&id=' + id;
                 }
             });
         }
 
         // Soft Delete
+        // KUNCI: URL harus action_cetak.php?act=soft_delete (bukan action_barang.php?aksi=)
         function softDelete(id, nama) {
             Swal.fire({
                 title: 'Hapus Barang?',
-                text: 'Anda akan menghapus barang "' + nama + '" (soft delete)',
+                text: 'Anda akan menghapus barang "' + nama + '" (soft delete). Data masih bisa dipulihkan.',
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#dc2626',
@@ -862,7 +973,43 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
                 cancelButtonText: 'Batal'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    window.location.href = 'action_barang.php?aksi=soft_delete&id=' + id;
+                    window.location.href = 'action_cetak.php?act=soft_delete&id=' + id;
+                }
+            });
+        }
+
+        // Restore Barang (BARU - KUNCI PENTING!)
+        function restoreBarang(id, nama) {
+            Swal.fire({
+                title: 'Pulihkan Barang?',
+                text: 'Anda akan memulihkan barang "' + nama + '" ke data aktif.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#059669',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Pulihkan',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = 'action_cetak.php?act=restore&id=' + id;
+                }
+            });
+        }
+
+        // Hard Delete (BARU - KUNCI PENTING!)
+        function hardDelete(id, nama) {
+            Swal.fire({
+                title: 'Hapus Permanen?',
+                text: 'Barang "' + nama + '" akan dihapus PERMANEN dan tidak bisa dikembalikan!',
+                icon: 'error',
+                showCancelButton: true,
+                confirmButtonColor: '#7f1d1d',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Hapus Permanen',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = 'action_cetak.php?act=hard_delete&id=' + id;
                 }
             });
         }
@@ -929,6 +1076,7 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
         else if ("<?= $_GET['status_sukses'] ?>" == 'toggle_status') { msg = "<?= $_GET['message'] ?? 'Status barang berhasil diubah!' ?>"; t_title = "Status Diubah"; }
         else if ("<?= $_GET['status_sukses'] ?>" == 'soft_delete') { msg = "<?= $_GET['message'] ?? 'Barang cetak berhasil dihapus (soft delete)!' ?>"; t_title = "Dihapus"; }
         else if ("<?= $_GET['status_sukses'] ?>" == 'hard_delete') { msg = "Barang cetak berhasil dihapus permanen!"; t_title = "Hard Delete Berhasil"; }
+        else if ("<?= $_GET['status_sukses'] ?>" == 'restore') { msg = "Barang cetak berhasil dipulihkan!"; t_title = "Pulihkan Berhasil"; }
         else if ("<?= $_GET['status_sukses'] ?>" == 'error') { msg = "<?= $_GET['message'] ?? 'Terjadi kesalahan!' ?>"; t_icon = "error"; t_title = "Gagal!"; }
 
         Swal.fire({
