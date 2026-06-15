@@ -1,895 +1,1222 @@
 <?php
+// MUST be first - no whitespace before this!
+ob_start();
 session_start();
-include 'koneksi.php'; 
+include 'koneksi.php';
 
-// 1. Inisialisasi Variabel Masuk (Login)
-$error_email_login = "";
-$error_pass_login = "";
-
-// 2. Inisialisasi Variabel Daftar (Register)
-$error_nama = ""; $error_username = ""; $error_email_reg = ""; $error_hp = ""; 
-$error_jk = ""; $error_dob = ""; $error_alamat = ""; $error_pass = ""; $error_confirm_pass = "";
-$error_foto = "";
-$success_register = false;
-
-// KUNCI LOGIKA OTOMATIS: Membaca letak panel geser berdasarkan aksi URL atau kegagalan pendaftaran
-$panel_aktif = "";
-if (isset($_GET['aksi']) && $_GET['aksi'] == 'daftar') {
-    $panel_aktif = "ke-daftar"; // Otomatis membuka panel daftar jika diakses dari tombol DAFTAR di Landing Page
+// --- CSRF TOKEN ---
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
-$foto_profil = isset($_POST['existing_foto_profil']) ? trim($_POST['existing_foto_profil']) : 'default.jpg';
+$csrf_token = $_SESSION['csrf_token'];
 
+// --- DEBUG: Uncomment to see errors ---
+// error_reporting(E_ALL);
+// ini_set('display_errors', 1);
+
+// Inisialisasi variabel
+$error_email_login = "";
+$error_nama = $error_username = $error_email_reg = $error_hp = "";
+$error_jk = $error_dob = $error_alamat = $error_pass = $error_confirm_pass = $error_foto = "";
+$success_register = false;
+$registered_email = $registered_password = "";
+$panel_aktif = "";
+$foto_profil = 'default.jpg';
+
+if (isset($_GET['aksi']) && $_GET['aksi'] == 'daftar') {
+    $panel_aktif = "ke-daftar";
+}
 
 // =====================================================
-// BLOK A: PENANGANAN TRANSAKSI MASUK (LOGIN) MULTI-ROLE
+// LOGIN MULTI-ROLE
 // =====================================================
 if (isset($_POST['login'])) {
-    $email_login = trim($_POST['email_login']);
-    $password_login = $_POST['password_login'];
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        $error_email_login = "Sesi tidak valid.";
+    } else {
+        $email_login = trim($_POST['email_login'] ?? '');
+        $password_login = $_POST['password_login'] ?? '';
 
-    if (empty($email_login) || empty($password_login)) { 
-        $error_email_login = "Nama pengguna dan kata sandi wajib diisi!"; 
-    }
-
-    if (!empty($email_login) && !empty($password_login)) {
-        
-        // 1. Cek Pertama ke Tabel Pelanggan (Customer) Sesuai Database Baru Kita
-        $sql_cust = "SELECT * FROM Pelanggan WHERE (Email_Pelanggan = ? OR Username_Pelanggan = ?) AND Password_Pelanggan = ? AND Is_Deleted = 0";
-        $stmt_cust = sqlsrv_query($conn, $sql_cust, array($email_login, $email_login, $password_login));
-
-        if ($stmt_cust === false) { die(print_r(sqlsrv_errors(), true)); }
-        $user_cust = sqlsrv_fetch_array($stmt_cust, SQLSRV_FETCH_ASSOC);
-
-        if ($user_cust) {
-            // Blokir Login jika akun ditangguhkan (Status = 0)
-            if ($user_cust['Status'] == 0) {
-                $error_email_login = "Akses akun ditangguhkan. Silakan hubungi tim kami.";
-            } else {
-                $_SESSION['status']   = "login";
-                $_SESSION['id_user']  = $user_cust['ID_Pelanggan'];
-                $_SESSION['email']    = $user_cust['Email_Pelanggan'];
-                $_SESSION['role']     = "Customer";
-
-                // DIALIKKAN KE DIREKTORI BARU: Role/Customer/index.php
-                header("Location: Role/Customer/index.php");
-                exit();
-            }
+        if (empty($email_login) || empty($password_login)) {
+            $error_email_login = "Email/username dan kata sandi wajib diisi!";
         } else {
-            // 2. Cek Kedua ke Tabel Karyawan (Admin, Owner, Fotografer) jika tidak ditemukan di Pelanggan
-            $sql_karyawan = "SELECT * FROM Karyawan WHERE (Email_Karyawan = ? OR Username_Karyawan = ?) AND Password_Karyawan = ? AND Is_Deleted = 0";
-            $stmt_karyawan = sqlsrv_query($conn, $sql_karyawan, array($email_login, $email_login, $password_login));
+            // CEK PELANGGAN (CUSTOMER)
+            $sql = "SELECT * FROM Pelanggan WHERE (LOWER(Email_Pelanggan)=LOWER(?) OR LOWER(Username_Pelanggan)=LOWER(?)) AND Is_Deleted=0 AND Status=1";
+            $stmt = sqlsrv_query($conn, $sql, [$email_login, $email_login]);
+            $user = ($stmt !== false) ? sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC) : null;
 
-            if ($stmt_karyawan === false) { die(print_r(sqlsrv_errors(), true)); }
-            $user_karyawan = sqlsrv_fetch_array($stmt_karyawan, SQLSRV_FETCH_ASSOC);
-
-            if ($user_karyawan) {
-                // Blokir Login jika status karyawan tidak aktif (Status = 0)
-                if ($user_karyawan['Status'] == 0) {
-                    $error_email_login = "Akses akun ditangguhkan. Silakan hubungi tim kami.";
-                } else {
-                    $_SESSION['status']   = "login";
-                    $_SESSION['id_user']  = $user_karyawan['ID_Karyawan'];
-                    $_SESSION['email']    = $user_karyawan['Email_Karyawan'];
-                    $_SESSION['role']     = $user_karyawan['Role_Karyawan'];
-
-                    // REDIRECT BERDASARKAN ROLE (Alur Merujuk pada Folder Baru /Role/)
-                    if ($user_karyawan['Role_Karyawan'] == 'Admin') {
-                        header("Location: Role/Admin/index.php");
-                    } elseif ($user_karyawan['Role_Karyawan'] == 'Owner') {
-                        header("Location: Role/Owner/index.php");
-                    } elseif ($user_karyawan['Role_Karyawan'] == 'Fotografer') {
-                        header("Location: Role/Fotografer/index.php");
-                    }
+            if ($user) {
+                $valid = password_verify($password_login, $user['Password_Pelanggan']) || ($password_login === $user['Password_Pelanggan']);
+                if ($valid) {
+                    $_SESSION = array_merge($_SESSION, [
+                        'status' => 'login', 'id_user' => $user['ID_Pelanggan'],
+                        'email' => $user['Email_Pelanggan'], 'role' => 'Customer',
+                        'nama' => $user['Nama_Pelanggan']
+                    ]);
+                    session_write_close();
+                    header("Location: Role/Customer/index.php");
                     exit();
+                } else {
+                    $error_email_login = "Kata sandi tidak cocok!";
                 }
             } else {
-                // Notifikasi disamarkan murni menjadi tidak valid demi keamanan data privasi di dunia nyata
-                $error_email_login = "Nama pengguna atau kata sandi tidak valid!";
+                // CEK KARYAWAN
+                $sql = "SELECT * FROM Karyawan WHERE (LOWER(Email_Karyawan)=LOWER(?) OR LOWER(Username_Karyawan)=LOWER(?)) AND Is_Deleted=0 AND Status=1";
+                $stmt = sqlsrv_query($conn, $sql, [$email_login, $email_login]);
+                $user = ($stmt !== false) ? sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC) : null;
+
+                if ($user) {
+                    $valid = password_verify($password_login, $user['Password_Karyawan']) || ($password_login === $user['Password_Karyawan']);
+                    if ($valid) {
+                        $role = $user['Role_Karyawan'];
+                        $redirect = ['Admin'=>'Role/Admin/index.php', 'Owner'=>'Role/Owner/index.php', 'Fotografer'=>'Role/Fotografer/index.php'];
+                        if (isset($redirect[$role])) {
+                            $_SESSION = array_merge($_SESSION, [
+                                'status' => 'login', 'id_user' => $user['ID_Karyawan'],
+                                'email' => $user['Email_Karyawan'], 'role' => $role,
+                                'nama' => $user['Nama_Karyawan']
+                            ]);
+                            session_write_close();
+                            header("Location: " . $redirect[$role]);
+                            exit();
+                        }
+                    } else {
+                        $error_email_login = "Kata sandi tidak cocok!";
+                    }
+                } else {
+                    $error_email_login = "Akun tidak ditemukan!";
+                }
             }
         }
     }
 }
 
-
 // =====================================================
-// BLOK B: PENANGANAN PENDAFTARAN (REGISTER) PELANGGAN
+// REGISTER PELANGGAN
 // =====================================================
 if (isset($_POST['register'])) {
-    $nama      = trim($_POST['nama']);
-    $username  = trim($_POST['username']);
-    $email     = trim($_POST['email']);
-    $hp        = trim($_POST['no_hp']); 
-    
-    // Sinkronisasi Aturan Constraint: Hilangkan spasi agar formatnya valid (+628xxxxxxxx)
-    $hp_db     = '+' . preg_replace('/[^0-9]/', '', $hp); 
-    $hp_bersih = str_replace(['+', ' '], '', $hp); 
-    
-    // Membaca Pilihan Radio Button Jenis Kelamin
-    $jk        = isset($_POST['jenis_kelamin']) ? $_POST['jenis_kelamin'] : "";
-    
-    // Membaca Tiga Dropdown Tanggal Lahir (Hari, Bulan, Tahun)
-    $dob_hari  = isset($_POST['dob_hari']) ? $_POST['dob_hari'] : "";
-    $dob_bulan = isset($_POST['dob_bulan']) ? $_POST['dob_bulan'] : "";
-    $dob_tahun = isset($_POST['dob_tahun']) ? $_POST['dob_tahun'] : "";
-
-    $alamat    = trim($_POST['alamat']);
-    $pass      = $_POST['password'];
-    $confirm_pass = $_POST['confirm_password'];
-
-    // Paksa agar tampilan form tetap bertahan di sisi "Daftar" saat muat ulang halaman akibat eror
-    $panel_aktif = "ke-daftar";
-
-    // --- VALIDASI SERVER SIDE DAFTAR ---
-    if (empty($nama)) { 
-        $error_nama = "Nama lengkap wajib diisi!"; 
-    } elseif (!preg_match("/^[a-zA-Z ]*$/", $nama)) { 
-        $error_nama = "Format salah! Gunakan nama asli berupa huruf tanpa simbol."; 
-    }
-    
-    if (empty($username)) { 
-        $error_username = "Nama pengguna wajib diisi!"; 
-    } elseif (!preg_match("/^[a-zA-Z0-9_]*$/", $username)) { 
-        $error_username = "Format salah! Gunakan kombinasi huruf, angka, atau garis bawah tanpa spasi."; 
-    }
-    
-    // KETAT: Validasi panjang nomor telepon disesuaikan dengan fisik kolom VARCHAR(15) pada database Anda
-    if (empty($hp)) { 
-        $error_hp = "Nomor telepon wajib diisi!"; 
-    } elseif (!ctype_digit($hp_bersih) || strlen($hp_db) < 12 || strlen($hp_db) > 15) { 
-        $error_hp = "Format salah! Gunakan nomor hp aktif diawali +62 dengan total 12-15 karakter."; 
-    }
-    
-    if (empty($email)) { 
-        $error_email_reg = "Email wajib diisi!"; 
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) { 
-        $error_email_reg = "Format salah! Masukkan alamat email aktif (contoh: nama@domain.com)."; 
-    }
-    
-    if (empty($jk) || !in_array($jk, ['Laki-laki', 'Perempuan'])) { 
-        $error_jk = "Pilih salah satu jenis kelamin Anda."; 
-    }
-
-    // Rekonstruksi & Validasi Logika Tanggal Lahir Kustom 100% Bahasa Indonesia
-    $tanggal_lahir = "";
-    if (empty($dob_hari) || empty($dob_bulan) || empty($dob_tahun)) {
-        $error_dob = "Masukkan hari, nama bulan, dan tahun lahir secara lengkap.";
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        $error_email_reg = "Sesi tidak valid.";
     } else {
-        $tanggal_lahir = "$dob_tahun-$dob_bulan-$dob_hari"; // Format standar database SQL Server
-        
-        // Pengecekan kebenaran tanggal kalender (mencegah eror matematika seperti 31 Februari)
-        if (!checkdate((int)$dob_bulan, (int)$dob_hari, (int)$dob_tahun)) {
-            $error_dob = "Tanggal kalender yang dimasukkan tidak valid.";
-        } elseif (strtotime($tanggal_lahir) > time()) {
-            $error_dob = "Tanggal lahir tidak boleh melebihi tanggal hari ini.";
-        }
-    }
-    
-    if (empty($alamat)) { 
-        $error_alamat = "Alamat wajib diisi!"; 
-    } elseif (strlen($alamat) < 10) { 
-        $error_alamat = "Tuliskan alamat tinggal Anda secara jelas (minimal 10 karakter)."; 
-    }
-    
-    // Validasi pola sandi sesuai constraint database
-    if (strlen($pass) < 8 || !preg_match("/[A-Za-z]/", $pass) || !preg_match("/[0-9]/", $pass) || !preg_match("/[^A-Za-z0-9]/", $pass)) { 
-        $error_pass = "Format salah! Sandi wajib minimal 8 karakter dengan kombinasi huruf, angka, dan simbol."; 
-    }
-    
-    if ($pass !== $confirm_pass) { 
-        $error_confirm_pass = "Verifikasi sandi tidak cocok! Pastikan ketikannya sama persis."; 
-    }
+        $nama = trim($_POST['nama'] ?? '');
+        $username = trim($_POST['username'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $hp_raw = trim($_POST['no_hp'] ?? '');
+        $jk = $_POST['jenis_kelamin'] ?? '';
+        $dob = $_POST['tanggal_lahir'] ?? '';
+        $alamat = trim($_POST['alamat'] ?? '');
+        $pass = $_POST['password'] ?? '';
+        $confirm_pass = $_POST['confirm_password'] ?? '';
+        $panel_aktif = "ke-daftar";
 
-    // --- PENGUNGGAHAN FOTO PROFIL ---
-    if (isset($_FILES['foto_profil']) && $_FILES['foto_profil']['error'] === UPLOAD_ERR_OK) {
-        $file_name = $_FILES['foto_profil']['name'];
-        $file_size = $_FILES['foto_profil']['size'];
-        $file_tmp  = $_FILES['foto_profil']['tmp_name'];
-        $file_ext  = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
-        
-        $allowed_ext = ['jpg', 'jpeg', 'png'];
-        
-        if (!in_array($file_ext, $allowed_ext)) {
-            $error_foto = "Ekstensi tidak sesuai! Gunakan berkas gambar berformat JPG, JPEG, atau PNG.";
-        } elseif ($file_size > 2097152) { 
-            $error_foto = "Ukuran berkas terlalu besar! Batas maksimal foto adalah 2MB.";
-        } else {
-            $new_file_name = "pelanggan_" . time() . "_" . uniqid() . "." . $file_ext;
-            $target_dir = "assets/img/pelanggan/";
-            
-            if (!is_dir($target_dir)) { mkdir($target_dir, 0777, true); }
-            
-            if (move_uploaded_file($file_tmp, $target_dir . $new_file_name)) {
-                if ($foto_profil != 'default.jpg' && file_exists($target_dir . $foto_profil)) { unlink($target_dir . $foto_profil); }
-                $foto_profil = $new_file_name;
-            } else {
-                $error_foto = "Gagal mengunggah berkas foto profil ke server!";
+        // VALIDASI
+        if (empty($nama) || strlen($nama) < 3) $error_nama = "Nama min 3 karakter!";
+        elseif (!preg_match("/^[a-zA-Z\s]+$/", $nama)) $error_nama = "Hanya huruf dan spasi!";
+
+        if (empty($username) || strlen($username) < 5) $error_username = "Username min 5 karakter!";
+        elseif (!preg_match("/^[a-zA-Z0-9_]+$/", $username)) $error_username = "Hanya huruf, angka, underscore!";
+        elseif (strlen($username) > 50) $error_username = "Max 50 karakter!";
+        else {
+            $cek = sqlsrv_query($conn, "SELECT 1 FROM Pelanggan WHERE LOWER(Username_Pelanggan)=LOWER(?)", [$username]);
+            if ($cek && sqlsrv_has_rows($cek)) $error_username = "Username sudah digunakan!";
+        }
+
+        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) $error_email_reg = "Email tidak valid!";
+        elseif (strlen($email) > 100) $error_email_reg = "Email max 100 karakter!";
+        else {
+            $cek = sqlsrv_query($conn, "SELECT 1 FROM Pelanggan WHERE LOWER(Email_Pelanggan)=LOWER(?)", [$email]);
+            if ($cek && sqlsrv_has_rows($cek)) $error_email_reg = "Email sudah terdaftar!";
+        }
+
+        // NO HP: +62 + max 12 digit = 15 chars total
+        $hp_digits = preg_replace('/[^0-9]/', '', $hp_raw);
+        $hp_clean = '+62' . $hp_digits;
+        if (empty($hp_raw)) $error_hp = "No HP wajib diisi!";
+        elseif (strlen($hp_digits) < 9) $error_hp = "Min 9 digit!";
+        elseif (strlen($hp_digits) > 12) $error_hp = "Max 12 digit setelah +62!";
+        elseif (!preg_match("/^8[1-9][0-9]{7,11}$/", $hp_digits)) $error_hp = "Format: 81234567890";
+        else {
+            $cek = sqlsrv_query($conn, "SELECT 1 FROM Pelanggan WHERE No_Hp=?", [$hp_clean]);
+            if ($cek && sqlsrv_has_rows($cek)) $error_hp = "No HP sudah terdaftar!";
+        }
+
+        if (empty($jk) || !in_array($jk, ['Laki-laki', 'Perempuan'])) $error_jk = "Pilih jenis kelamin!";
+
+        if (empty($dob)) $error_dob = "Tanggal lahir wajib diisi!";
+        else {
+            $dob_date = DateTime::createFromFormat('Y-m-d', $dob);
+            if (!$dob_date || $dob_date->format('Y-m-d') !== $dob) $error_dob = "Format tidak valid!";
+            else {
+                $age = (new DateTime())->diff($dob_date)->y;
+                if ($dob_date > new DateTime()) $error_dob = "Tidak boleh masa depan!";
+                elseif ($age < 13) $error_dob = "Min 13 tahun!";
+                elseif ($age > 100) $error_dob = "Umur tidak valid!";
             }
         }
-    }
 
-    // --- CEK DUPLIKASI DATABASE ---
-    if ($error_nama == "" && $error_username == "" && $error_hp == "" && $error_email_reg == "" && $error_jk == "" && $error_dob == "" && $error_alamat == "" && $error_pass == "" && $error_confirm_pass == "" && $error_foto == "") {
-        
-        // Pengecekan data menggunakan format nomor telepon tanpa spasi ($hp_db)
-        $sql_cek = "SELECT Email_Pelanggan, Username_Pelanggan, No_Hp FROM Pelanggan WHERE Email_Pelanggan = ? OR Username_Pelanggan = ? OR No_Hp = ?";
-        $stmt_cek = sqlsrv_query($conn, $sql_cek, array($email, $username, $hp_db));
+        if (empty($alamat) || strlen($alamat) < 10) $error_alamat = "Alamat min 10 karakter!";
+        elseif (strlen($alamat) > 255) $error_alamat = "Alamat max 255 karakter!";
 
-        if ($stmt_cek && sqlsrv_has_rows($stmt_cek)) {
-            // Demi alasan privasi keamanan data, menyamarkan pesan bentrok data agar tidak dapat dilacak pihak luar
-            $error_email_reg = "Pendaftaran tidak dapat diproses. Mohon pastikan data yang dimasukkan benar dan belum terdaftar.";
-        } else {
-            // Proses penyimpanan data pelanggan baru
-            $sql_insert = "INSERT INTO Pelanggan (Nama_Pelanggan, Username_Pelanggan, Email_Pelanggan, Password_Pelanggan, Jenis_Kelamin, Tanggal_Lahir, No_Hp, Alamat, Foto_Profil, Status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)";
-            $stmt_insert = sqlsrv_query($conn, $sql_insert, array($nama, $username, $email, $pass, $jk, $tanggal_lahir, $hp_db, $alamat, $foto_profil));
-            
-            if ($stmt_insert) { 
+        if (strlen($pass) < 8 || !preg_match("/[A-Za-z]/", $pass) || !preg_match("/[0-9]/", $pass) || !preg_match("/[^A-Za-z0-9]/", $pass))
+            $error_pass = "Min 8: huruf+angka+simbol!";
+        if ($pass !== $confirm_pass) $error_confirm_pass = "Kata sandi tidak cocok!";
+
+        // FOTO: Preserve if already uploaded
+        $foto_name = isset($_POST['existing_foto_profil']) ? trim($_POST['existing_foto_profil']) : 'default.jpg';
+        if (isset($_FILES['foto_profil']) && $_FILES['foto_profil']['error'] === UPLOAD_ERR_OK) {
+            $ext = strtolower(pathinfo($_FILES['foto_profil']['name'], PATHINFO_EXTENSION));
+            if (!in_array($ext, ['jpg','jpeg','png'])) $error_foto = "Format: JPG/JPEG/PNG!";
+            elseif ($_FILES['foto_profil']['size'] > 2*1024*1024) $error_foto = "Max 2MB!";
+            else {
+                $foto_name = "pelanggan_" . time() . "_" . uniqid() . "." . $ext;
+                $dir = "assets/img/pelanggan/";
+                if (!is_dir($dir)) mkdir($dir, 0777, true);
+
+                if (extension_loaded('gd')) {
+                    list($w, $h) = getimagesize($_FILES['foto_profil']['tmp_name']);
+                    $thumb = imagecreatetruecolor(300, 300);
+                    $src = ($ext == 'png') ? imagecreatefrompng($_FILES['foto_profil']['tmp_name']) : imagecreatefromjpeg($_FILES['foto_profil']['tmp_name']);
+                    imagecopyresampled($thumb, $src, 0, 0, 0, 0, 300, 300, $w, $h);
+                    ($ext == 'png') ? imagepng($thumb, $dir . $foto_name, 8) : imagejpeg($thumb, $dir . $foto_name, 85);
+                    imagedestroy($thumb); imagedestroy($src);
+                } else {
+                    move_uploaded_file($_FILES['foto_profil']['tmp_name'], $dir . $foto_name);
+                }
+                $foto_profil = $foto_name; // Update for re-render
+            }
+        }
+
+        // INSERT KE DATABASE
+        if (empty($error_nama) && empty($error_username) && empty($error_email_reg) && empty($error_hp) &&
+            empty($error_jk) && empty($error_dob) && empty($error_alamat) && empty($error_pass) &&
+            empty($error_confirm_pass) && empty($error_foto)) {
+
+            $pass_hash = password_hash($pass, PASSWORD_BCRYPT);
+            $sql = "INSERT INTO Pelanggan (Nama_Pelanggan, Username_Pelanggan, Email_Pelanggan, Password_Pelanggan, Jenis_Kelamin, Tanggal_Lahir, No_Hp, Alamat, Foto_Profil, Status, Created_By, Created_Date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'system', GETDATE())";
+            $params = [$nama, $username, $email, $pass_hash, $jk, $dob, $hp_clean, $alamat, $foto_name];
+            $stmt = sqlsrv_query($conn, $sql, $params);
+
+            if ($stmt) {
                 $success_register = true;
-                $panel_aktif = ""; // Kembali ke panel masuk saat registrasi sukses
-            } else { 
-                $error_email_reg = "Terjadi kesalahan sistem saat menyimpan data ke database!"; 
+                $registered_email = $email;
+                $registered_password = $pass;
+            } else {
+                $err = sqlsrv_errors();
+                $error_email_reg = "Database error: " . ($err[0]['message'] ?? 'Unknown');
             }
         }
     }
 }
-?>
 
+// Collect errors for display
+$all_errors = [];
+foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_email_reg, 'hp'=>$error_hp,
+          'jk'=>$error_jk, 'dob'=>$error_dob, 'alamat'=>$error_alamat, 'pass'=>$error_pass, 
+          'confirm'=>$error_confirm_pass, 'foto'=>$error_foto] as $key => $val) {
+    if ($val) $all_errors[] = ucfirst($key) . ": " . $val;
+}
+?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pintu Masuk & Daftar Akun – SpotLight Studio</title>
-    
+    <title>Pintu Masuk & Daftar Akun - SpotLight Studio</title>
     <link href="assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    
     <style>
-        :root { 
-            --p-pink: #d83f67; 
-            --d-pink: #c73165; 
-            --s-pink: #fff5f6; 
+        :root {
+            --p-pink: #d83f67;
+            --d-pink: #c73165;
+            --s-pink: #fff5f6;
             --accent-pink: #ff6694;
             --text-dark: #1e1e24;
-            --glass: rgba(255, 255, 255, 0.94); 
-            --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            --transition-slide: all 0.6s cubic-bezier(0.76, 0, 0.24, 1); 
+            --glass: rgba(255, 255, 255, 0.96);
+            --transition-soft: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        body { 
-            background: linear-gradient(135deg, rgba(30, 31, 34, 0.85), rgba(216, 63, 103, 0.45)), 
-                        url('assets/img/login/ruangan1.jpg') no-repeat center center fixed; 
-            background-size: cover; 
-            font-family: 'Plus Jakarta Sans', sans-serif; 
-            min-height: 100vh; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            padding: 40px 20px; 
-            perspective: 2000px; 
-            overflow-x: hidden;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        .reg-card { 
-            border-radius: 35px; 
-            overflow: hidden; 
-            max-width: 1100px; 
-            width: 100%; 
-            height: 720px; 
-            position: relative; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08), 0 25px 60px rgba(216, 63, 103, 0.2), inset 0 1px 0 rgba(255,255,255,0.4); 
-            transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.3s ease;
-            background: #ffffff;
-            padding: 0 !important; 
-        }
-
-        .btn-kembali-beranda {
-            position: absolute; top: 30px; right: 30px; z-index: 100;
-            background: #ffffff; border: 1.5px solid var(--p-pink); padding: 8px 18px;
-            border-radius: 50px; font-size: 13px; font-weight: 500; color: var(--p-pink);
-            text-decoration: none; box-shadow: 0 6px 15px rgba(216, 63, 103, 0.1);
-            transition: var(--transition-3d); display: flex; align-items: center; gap: 6px;
-        }
-        .btn-kembali-beranda:hover {
-            background: var(--p-pink); color: #ffffff; transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(216, 63, 103, 0.25);
-        }
-
-        .form-section { 
-            position: absolute;
-            top: 0;
-            height: 100%;
-            transition: var(--transition-slide);
-            padding: 45px 50px; 
-            overflow-y: auto; 
-            background: var(--glass);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-        }
-
-        .form-masuk {
-            left: 45%;
-            width: 55%;
-            z-index: 5;
-            opacity: 1;
-        }
-
-        .form-daftar {
-            left: 0;
-            width: 55%;
-            z-index: 1;
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        .side-visual { 
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 45%;
-            height: 100%;
-            z-index: 10;
-            transition: var(--transition-slide);
-            background: linear-gradient(135deg, rgba(216, 63, 103, 0.9), rgba(18, 20, 22, 0.95));
-            color: white; 
-            padding: 50px; 
-            display: flex; 
-            flex-direction: column; 
-            justify-content: center; 
-        }
-
-        .ke-daftar .form-masuk {
-            opacity: 0;
-            z-index: 1;
-            pointer-events: none;
-        }
-        .ke-daftar .form-daftar {
-            opacity: 1;
-            z-index: 5;
-            pointer-events: auto;
-        }
-        .ke-daftar .side-visual {
-            left: 55%;
-        }
-
-        .visual-badge {
-            background: rgba(255, 255, 255, 0.15); padding: 8px 18px; border-radius: 50px;
-            font-size: 0.8rem; font-weight: 500; display: inline-block; margin-bottom: 20px;
-            backdrop-filter: blur(5px); border: 1px solid rgba(255, 255, 255, 0.2); color: #ffffff;
-        }
-
-        .required-star { color: #ef4444; font-weight: normal; margin-left: 2px; }
-        .form-label { font-weight: 500; font-size: 11px; color: #8a99a8; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 8px; }
-        
-        .form-control, .form-select { 
-            border-radius: 14px; padding: 12px 18px; border: 2px solid #eef2f6; 
-            background: #f8fafc; font-size: 14px; font-weight: 500; 
-            transition: var(--transition-3d); color: var(--text-dark); 
-        }
-        
-        .form-select {
-            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23d83f67' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
-            background-repeat: no-repeat !important; background-position: right 18px center !important;
-            background-size: 16px 12px !important; padding-right: 45px !important; 
-        }
-
-        .form-control:focus, .form-select:focus { 
-            border-color: var(--p-pink); background: #ffffff; 
-            transform: translateY(-3px) scale(1.01); 
-            box-shadow: 0 12px 25px rgba(216, 63, 103, 0.15); outline: none;
-        }
-
-        .link-lupa-sandi {
-            color: var(--p-pink) !important;
-            font-weight: 500;
-            text-decoration: none !important;
-            font-size: 0.85rem;
-            transition: var(--transition-3d);
-            border-bottom: 2px solid transparent;
-        }
-        .link-lupa-sandi:hover {
-            color: var(--accent-pink) !important;
-            border-bottom-color: var(--accent-pink);
-        }
-
-        .password-group { 
-            position: relative; 
-            transition: var(--transition-3d);
-            border-radius: 14px;
-        }
-        .password-group:focus-within {
-            transform: translateY(-3px) scale(1.01);
-            box-shadow: 0 12px 25px rgba(216, 63, 103, 0.15);
-        }
-        .password-group .form-control {
-            transition: border-color 0.3s ease, background-color 0.3s ease; 
-        }
-        .password-group .form-control:focus {
-            transform: none !important; 
-            box-shadow: none !important;
-            background: #ffffff;
-            border-color: var(--p-pink);
-        }
-
-        .form-logo {
-            height: 70px; width: auto; background: transparent;
-            border: none; display: block;
-        }
-
-        .profile-preview-box {
-            width: 70px; height: 70px; border-radius: 50%; overflow: hidden;
-            border: 2px solid #eef2f6; background: #f8fafc; display: flex;
-            align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);
-            transition: var(--transition-3d);
-        }
-        .profile-preview-box img {
-            width: 100%; height: 100%; object-fit: cover;
-        }
-        .btn-pilih-foto {
-            background: #ffffff; border: 1.5px solid var(--p-pink); color: var(--p-pink);
-            font-weight: 500; border-radius: 10px; padding: 8px 18px; font-size: 0.85rem;
-            transition: var(--transition-3d);
-        }
-        .btn-pilih-foto:hover {
-            background: var(--p-pink); color: #ffffff; transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(216, 63, 103, 0.15);
-        }
-
-        .btn-reg { 
-            background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: white; 
-            border-radius: 16px; padding: 16px; font-weight: 500; border: none; 
-            width: 100%; transition: var(--transition-3d); margin-top: 15px; 
-            font-size: 15px; box-shadow: 0 10px 25px rgba(216, 63, 103, 0.25); 
-        }
-        .btn-reg:hover { 
-            transform: translateY(-4px) scale(1.02); 
-            box-shadow: 0 15px 35px rgba(216, 63, 103, 0.35); 
-        }
-        .error-text { color: #ef4444; font-size: 11px; font-weight: 500; margin-top: 6px; display: flex; align-items: center; gap: 5px; }
-        .is-invalid { border-color: #ef4444 !important; background-color: #fff1f2 !important; }
-        
-        .password-group .form-control.is-invalid {
-            background-image: none !important;
-            padding-right: 45px !important; 
-        }
-
-        .login-link { color: var(--p-pink); font-weight: 500; text-decoration: none; border-bottom: 2px solid transparent; transition: 0.3s; }
-        .login-link:hover { border-bottom-color: var(--p-pink); }
-        .toggle-password { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #94a3b8; font-size: 18px; z-index: 10; transition: 0.3s; }
-        .toggle-password:hover { color: var(--p-pink); }
-
-        /* Kustom Desain Radio Button */
-        .gender-radio-group {
-            display: flex;
-            gap: 15px;
-            padding-top: 2px;
-        }
-        .gender-radio-box {
-            position: relative;
-            flex: 1;
-        }
-        .gender-radio-box input[type="radio"] {
-            display: none;
-        }
-        .gender-radio-label {
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #d83f67 100%);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        /* Floating particles background */
+        .particles {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 0;
+            overflow: hidden;
+        }
+        .particle {
+            position: absolute;
+            width: 10px; height: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            animation: float 15s infinite;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-100vh) rotate(720deg); opacity: 0; }
+        }
+
+        /* Main Card */
+        .main-card {
+            position: relative;
+            width: 100%;
+            max-width: 1100px;
+            min-height: 700px;
+            background: var(--glass);
+            border-radius: 40px;
+            overflow: hidden;
+            box-shadow: 0 25px 80px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.1);
+            backdrop-filter: blur(20px);
+            z-index: 10;
+            display: flex;
+            transition: var(--transition-soft);
+        }
+
+        /* Left Panel - Visual */
+        .visual-panel {
+            width: 45%;
+            background: linear-gradient(180deg, #d83f67 0%, #c73165 50%, #1a1a2e 100%);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 50px;
+            color: white;
+            transition: var(--transition-soft);
+        }
+
+        .visual-panel::before {
+            content: '';
+            position: absolute;
+            top: -50%; left: -50%;
+            width: 200%; height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
+            animation: pulse 4s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        .visual-content {
+            position: relative;
+            z-index: 2;
+            text-align: center;
+        }
+
+        .visual-badge {
+            display: inline-flex;
+            align-items: center;
             gap: 8px;
-            padding: 12px;
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            padding: 10px 24px;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255,255,255,0.2);
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        .visual-title {
+            font-size: 2.5rem;
+            font-weight: 800;
+            line-height: 1.2;
+            margin-bottom: 20px;
+            animation: fadeInUp 0.8s ease-out 0.2s both;
+        }
+
+        .visual-text {
+            font-size: 1rem;
+            line-height: 1.8;
+            opacity: 0.9;
+            margin-bottom: 40px;
+            animation: fadeInUp 0.8s ease-out 0.4s both;
+        }
+
+        .visual-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 14px 32px;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: var(--transition-soft);
+            animation: fadeInUp 0.8s ease-out 0.6s both;
+        }
+        .visual-btn:hover {
+            background: white;
+            color: var(--p-pink);
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+        }
+
+        /* Floating icons */
+        .float-icon {
+            position: absolute;
+            font-size: 2rem;
+            opacity: 0.15;
+            animation: floatIcon 6s ease-in-out infinite;
+        }
+        @keyframes floatIcon {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(10deg); }
+        }
+
+        /* Right Panel - Forms */
+        .forms-panel {
+            width: 55%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .form-container {
+            position: relative;
+            width: 100%;
+            min-height: 100%;
+            padding: 50px;
+            overflow-y: auto;
+            transition: var(--transition-soft);
+            opacity: 0;
+            transform: translateX(50px);
+            pointer-events: none;
+            display: none;
+        }
+
+        .form-container.active {
+            opacity: 1;
+            transform: translateX(0);
+            pointer-events: auto;
+            display: block;
+        }
+
+        .form-container.hidden {
+            opacity: 0;
+            transform: translateX(-50px);
+            pointer-events: none;
+            display: none;
+        }
+
+        /* Logo */
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 30px;
+        }
+        .logo-icon {
+            width: 50px; height: 50px;
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+            box-shadow: 0 8px 25px rgba(216, 63, 103, 0.3);
+        }
+        .logo-text {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--text-dark);
+        }
+        .logo-text span { color: var(--p-pink); }
+
+        /* Title */
+        .form-title {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: var(--text-dark);
+            margin-bottom: 8px;
+        }
+        .form-subtitle {
+            color: #8a99a8;
+            font-size: 0.95rem;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        /* Input Groups */
+        .input-group-custom {
+            margin-bottom: 20px;
+        }
+        .input-label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #8a99a8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        .input-label .required { color: #ef4444; margin-left: 2px; }
+
+        .input-field {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid #eef2f6;
+            border-radius: 16px;
+            background: #f8fafc;
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--text-dark);
+            transition: var(--transition-soft);
+            outline: none;
+        }
+        .input-field:focus {
+            border-color: var(--p-pink);
+            background: white;
+            box-shadow: 0 0 0 4px rgba(216, 63, 103, 0.1), 0 8px 25px rgba(216, 63, 103, 0.1);
+            transform: translateY(-2px);
+        }
+        .input-field.is-invalid {
+            border-color: #ef4444;
+            background: #fff1f2;
+        }
+        .input-field::placeholder { color: #cbd5e1; }
+
+        /* Password Group */
+        .password-wrap {
+            position: relative;
+        }
+        .password-wrap .input-field {
+            padding-right: 50px;
+        }
+        .toggle-eye {
+            position: absolute;
+            right: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #94a3b8;
+            font-size: 1.2rem;
+            transition: 0.3s;
+        }
+        .toggle-eye:hover { color: var(--p-pink); }
+
+
+
+        /* Radio Buttons - Compact Layout */
+        .radio-group-fix {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+        }
+        .radio-fix {
+            flex: 1;
+            cursor: pointer;
+            margin: 0;
+        }
+        .radio-fix input {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .radio-box {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 10px 8px;
             background: #f8fafc;
             border: 2px solid #eef2f6;
-            border-radius: 14px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.8rem;
             color: #64748b;
-            transition: var(--transition-3d);
+            transition: var(--transition-soft);
+            text-align: center;
+            min-height: 42px;
         }
-        .gender-radio-box input[type="radio"]:checked + .gender-radio-label {
-            background: var(--s-pink);
+        .radio-box .radio-icon {
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+        .radio-box .radio-text {
+            white-space: nowrap;
+        }
+        .radio-fix:hover .radio-box {
+            border-color: #ffd1dc;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(216, 63, 103, 0.08);
+        }
+        .radio-fix input:checked + .radio-box {
+            background: linear-gradient(135deg, #fff5f6, #ffe4e9);
+            border-color: var(--p-pink);
+            color: var(--p-pink);
+            box-shadow: 0 6px 20px rgba(216, 63, 103, 0.12);
+            transform: translateY(-1px);
+        }
+        .radio-fix input:checked + .radio-box .radio-icon {
+            color: var(--p-pink);
+        }
+
+        /* Reduce row gap for compact layout */
+        .forms-panel .row {
+            --bs-gutter-x: 12px;
+        }
+
+        /* Date Picker */
+        .date-wrap {
+            position: relative;
+        }
+        .date-wrap .input-field {
+            cursor: pointer;
+        }
+        .date-icon {
+            position: absolute;
+            right: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #94a3b8;
+            pointer-events: none;
+        }
+
+        /* File Upload */
+        .upload-area {
+            border: 2px dashed #eef2f6;
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            background: #f8fafc;
+            transition: var(--transition-soft);
+            cursor: pointer;
+        }
+        .upload-area:hover {
+            border-color: var(--p-pink);
+            background: #fff5f6;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(216, 63, 103, 0.1);
+        }
+        .upload-preview {
+            width: 80px; height: 80px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin: 0 auto 15px;
+            border: 3px solid white;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .upload-text {
+            font-size: 0.85rem;
+            color: #8a99a8;
+            font-weight: 500;
+        }
+        .upload-text span { color: var(--p-pink); font-weight: 700; }
+
+        /* Submit Button */
+        .btn-submit {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: white;
+            border: none;
+            border-radius: 16px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: var(--transition-soft);
+            box-shadow: 0 10px 30px rgba(216, 63, 103, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-submit::after {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%;
+            width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: 0.5s;
+        }
+        .btn-submit:hover::after {
+            left: 100%;
+        }
+        .btn-submit:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(216, 63, 103, 0.4);
+        }
+        .btn-submit:active {
+            transform: translateY(-1px);
+        }
+
+        /* Loading spinner */
+        .btn-submit.loading {
+            pointer-events: none;
+        }
+        .btn-submit.loading .btn-text {
+            opacity: 0;
+        }
+        .btn-submit.loading::before {
+            content: '';
+            position: absolute;
+            width: 24px; height: 24px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Link styles */
+        .link-pink {
+            color: var(--p-pink);
+            font-weight: 600;
+            text-decoration: none;
+            transition: 0.3s;
+            border-bottom: 2px solid transparent;
+        }
+        .link-pink:hover {
+            border-bottom-color: var(--p-pink);
+        }
+
+        /* Error text */
+        .error-msg {
+            color: #ef4444;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        /* Back to home */
+        .btn-home {
+            position: absolute;
+            top: 25px;
+            right: 25px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: white;
+            border: 2px solid #eef2f6;
+            border-radius: 50px;
+            color: var(--text-dark);
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-decoration: none;
+            transition: var(--transition-soft);
+            z-index: 100;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        .btn-home:hover {
             border-color: var(--p-pink);
             color: var(--p-pink);
             transform: translateY(-2px);
-            box-shadow: 0 8px 16px rgba(216, 63, 103, 0.08);
+            box-shadow: 0 8px 25px rgba(216, 63, 103, 0.15);
         }
 
+        /* Animations */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(30px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        /* Responsive */
         @media (max-width: 991px) {
-            .reg-card {
-                height: auto;
+            .main-card {
+                flex-direction: column;
+                max-width: 500px;
             }
-            .side-visual {
-                display: none !important;
+            .visual-panel {
+                width: 100%;
+                min-height: 200px;
+                padding: 30px;
             }
-            .form-section {
+            .forms-panel {
+                width: 100%;
+                min-height: auto;
+            }
+            .form-container {
                 position: relative;
-                width: 100% !important;
-                left: 0 !important;
-                padding: 40px 30px;
-                opacity: 1 !important;
-                pointer-events: auto !important;
-            }
-            .form-daftar {
-                display: none; 
-            }
-            .ke-daftar .form-daftar {
-                display: block;
-            }
-            .ke-daftar .form-masuk {
+                padding: 30px;
+                transform: none;
+                opacity: 1;
+                pointer-events: auto;
                 display: none;
             }
+            .form-container.active {
+                display: block;
+            }
+            .visual-title { font-size: 1.8rem; }
+        }
+
+        /* Scrollbar */
+        .form-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        .form-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .form-container::-webkit-scrollbar-thumb {
+            background: #eef2f6;
+            border-radius: 10px;
+        }
+        .form-container::-webkit-scrollbar-thumb:hover {
+            background: var(--p-pink);
         }
     </style>
 </head>
 <body>
 
-    <div class="reg-card <?= $panel_aktif ?>">
-        
-        <!-- =====================================================
-           PANEL VISUAL SLIDER (LEBAR 45%)
-           ===================================================== -->
-        <div class="side-visual">
-            <div class="panel-info-masuk">
-                <span class="visual-badge">✦ STUDIO TERPOPULER DI CIKARANG</span>
-                <h1 class="mb-3 text-white" style="font-size: 2.3rem; line-height: 1.2; font-weight: 500;">Yuk, Bergabung<br>Bersama Kami! 🌟🎉</h1>
-                <p class="mb-0 opacity-90 small" style="line-height: 1.8; color: #e2e8f0; font-weight: normal;">Daftar sekarang dalam hitungan detik dan nikmati kemudahan melakukan pemesanan studio secara online, memilih tema foto estetik favorit, serta memantau jadwal Anda dengan praktis! ✨📸</p>
-                <button class="btn btn-pilih-foto mt-4 text-white border-white bg-transparent" onclick="tampilkanDaftar()"><i class="bi bi-person-plus me-2"></i>Daftar Baru</button>
-            </div>
-            
-            <div class="panel-info-daftar d-none">
-                <span class="visual-badge">✦ SPOTLIGHT STUDIO FOTO</span>
-                <h1 class="mb-3 text-white" style="font-size: 2.3rem; line-height: 1.2; font-weight: 500;">Pintu Masuk<br>Kehangatan Studio! 👋💖</h1>
-                <p class="mb-0 opacity-90 small" style="line-height: 1.8; color: #e2e8f0; font-weight: normal;">Selamat datang kembali, Sahabat SpotLight! Silakan masuk untuk mengelola pesanan, menyelesaikan sisa pelunasan, atau mengunduh langsung seluruh hasil jepretan terbaik Anda di sini! 📸🎈</p>
-                <button class="btn btn-pilih-foto mt-4 text-white border-white bg-transparent" onclick="tampilkanMasuk()"><i class="bi bi-box-arrow-in-right me-2"></i>Masuk Akun</button>
-            </div>
-        </div>
+    <!-- Particles Background -->
+    <div class="particles" id="particles"></div>
 
-        <!-- =====================================================
-           FORMULIR MASUK / LOGIN (LEBAR 55%)
-           ===================================================== -->
-        <div class="form-section form-masuk">
-            <a href="index.php" class="btn-kembali-beranda shadow-sm">
-                <i class="bi bi-house-door-fill"></i> Beranda
-            </a>
-            
-            <div class="text-center text-lg-start mb-4">
-                <img src="assets/img/logo.png" class="form-logo mb-2" alt="SpotLight Logo">
-                <h3 class="text-dark mb-1" style="font-size: 1.8rem; font-weight: 500;">Halo Kak, Selamat Datang Kembali! 👋✨</h3>
-                <p class="text-muted small" style="font-weight: normal;">Masukkan akun terdaftar Anda untuk melanjutkan kisah indah bersama SpotLight Studio! 📸💖</p>
-            </div>
-            
-            <form method="POST">
-                <div class="mb-4">
-                    <label class="form-label">Nama Pengguna / Email Terdaftar<span class="required-star">*</span></label>
-                    <input type="text" name="email_login" class="form-control" placeholder="nama@email.com atau username" value="<?= @$_POST['email_login'] ?>" required>
+    <!-- Main Card -->
+    <div class="main-card" id="mainCard">
+
+        <!-- Visual Panel (Left) -->
+        <div class="visual-panel" id="visualPanel">
+            <div class="float-icon" style="top: 10%; left: 15%; animation-delay: 0s;">📸</div>
+            <div class="float-icon" style="top: 20%; right: 20%; animation-delay: 1s;">✨</div>
+            <div class="float-icon" style="bottom: 25%; left: 20%; animation-delay: 2s;">🎨</div>
+            <div class="float-icon" style="bottom: 15%; right: 15%; animation-delay: 3s;">💖</div>
+
+            <div class="visual-content" id="visualContent">
+                <div class="visual-badge" id="visualBadge">
+                    <i class="bi bi-stars"></i> Studio Terpopuler di Cikarang
                 </div>
-
-                <div class="mb-4">
-                    <label class="form-label">Kata Sandi<span class="required-star">*</span></label>
-                    <div class="password-group">
-                        <input type="password" name="password_login" id="password_login" class="form-control" placeholder="Masukkan kata sandi Anda" required value="<?= htmlspecialchars(@$_POST['password_login']) ?>">
-                        <i class="bi bi-eye-slash toggle-password" id="btnToggleLoginPass"></i>
-                    </div>
-                </div>
-
-                <div class="d-flex justify-content-end mb-4">
-                    <a href="lupa_password.php" class="link-lupa-sandi">Kesulitan masuk / Lupa Sandi?</a>
-                </div>
-
-                <button type="submit" name="login" class="btn btn-reg shadow">
-                    Masuk Sekarang <i class="bi bi-arrow-right-short ms-1"></i>
+                <h1 class="visual-title" id="visualTitle">
+                    Yuk, Bergabung<br>Bersama Kami! 🌟
+                </h1>
+                <p class="visual-text" id="visualText">
+                    Daftar sekarang dan nikmati kemudahan booking studio, pilih tema foto estetik favorit, serta pantau jadwal Anda dengan praktis! ✨📸
+                </p>
+                <button class="visual-btn" id="visualBtn" onclick="switchPanel()">
+                    <i class="bi bi-person-plus" id="btnIcon"></i>
+                    <span id="btnText">Daftar Baru</span>
                 </button>
-            </form>
+            </div>
         </div>
 
-        <!-- =====================================================
-           FORMULIR PENDAFTARAN / REGISTER (LEBAR 55%)
-           ===================================================== -->
-        <div class="form-section form-daftar">
-            <a href="index.php" class="btn-kembali-beranda shadow-sm">
-                <i class="bi bi-house-door-fill"></i> Beranda
+        <!-- Forms Panel (Right) -->
+        <div class="forms-panel">
+            <a href="index.php" class="btn-home">
+                <i class="bi bi-house-door"></i> Beranda
             </a>
-            
-            <div class="text-center text-lg-start mb-4">
-                <img src="assets/img/logo.png" class="form-logo mb-2" alt="SpotLight Logo">
-                <h3 class="text-dark mb-1" style="font-size: 1.6rem; font-weight: 500;">Mari Mulai Kisah Indah Anda! 🌟📷</h3>
-                <p class="text-muted small" style="font-weight: normal;">Ciptakan akun dalam sekejap untuk akses penuh ke seluruh layanan studio terbaik kami! ✨🎈</p>
-            </div>
-            
-            <form method="POST" enctype="multipart/form-data">
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Nama Lengkap Anda<span class="required-star">*</span></label>
-                        <input type="text" name="nama" id="inputNama" class="form-control <?= ($error_nama != '') ? 'is-invalid' : '' ?>" placeholder="Masukkan nama lengkap" value="<?= @$_POST['nama'] ?>" required>
-                        <?php if($error_nama): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_nama ?></div><?php endif; ?>
-                    </div>
 
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Nama Pengguna (Username)<span class="required-star">*</span></label>
-                        <input type="text" name="username" id="inputUsername" class="form-control <?= ($error_username != '') ? 'is-invalid' : '' ?>" placeholder="Masukkan username" value="<?= @$_POST['username'] ?>" required>
-                        <?php if($error_username): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_username ?></div><?php endif; ?>
-                    </div>
-
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Alamat Email<span class="required-star">*</span></label>
-                        <input type="email" name="email" class="form-control <?= ($error_email_reg != '') ? 'is-invalid' : '' ?>" placeholder="nama@email.com" value="<?= @$_POST['email'] ?>" required>
-                        <?php if($error_email_reg): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_email_reg ?></div><?php endif; ?>
-                    </div>
-
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Nomor Telepon<span class="required-star">*</span></label>
-                        <input type="text" name="no_hp" id="inputHP" class="form-control <?= ($error_hp != '') ? 'is-invalid' : '' ?>" value="<?= isset($_POST['no_hp']) ? @$_POST['no_hp'] : '+62 ' ?>" required>
-                        <?php if($error_hp): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_hp ?></div><?php endif; ?>
-                    </div>
-
-                    <!-- Kustom Radio Button Jenis Kelamin (Smooth UI) -->
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Jenis Kelamin<span class="required-star">*</span></label>
-                        <div class="gender-radio-group">
-                            <div class="gender-radio-box">
-                                <input type="radio" name="jenis_kelamin" id="jk_laki" value="Laki-laki" <?= (@$_POST['jenis_kelamin'] == 'Laki-laki') ? 'checked' : '' ?> required>
-                                <label for="jk_laki" class="gender-radio-label">
-                                    <i class="bi bi-gender-male"></i> Laki-laki
-                                </label>
-                            </div>
-                            <div class="gender-radio-box">
-                                <input type="radio" name="jenis_kelamin" id="jk_perempuan" value="Perempuan" <?= (@$_POST['jenis_kelamin'] == 'Perempuan') ? 'checked' : '' ?> required>
-                                <label for="jk_perempuan" class="gender-radio-label">
-                                    <i class="bi bi-gender-female"></i> Perempuan
-                                </label>
-                            </div>
-                        </div>
-                        <?php if($error_jk): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_jk ?></div><?php endif; ?>
-                    </div>
-
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Tanggal Lahir<span class="required-star">*</span></label>
-                        <div class="row g-2">
-                            <div class="col-4">
-                                <select name="dob_hari" class="form-select <?= ($error_dob != '') ? 'is-invalid' : '' ?>" required style="padding: 12px 10px;">
-                                    <option value="" disabled selected>Hari</option>
-                                    <?php for($i=1; $i<=31; $i++): $val = str_pad($i, 2, '0', STR_PAD_LEFT); ?>
-                                        <option value="<?= $val ?>" <?= (@$_POST['dob_hari'] == $val) ? 'selected' : '' ?>><?= $i ?></option>
-                                    <?php endfor; ?>
-                                </select>
-                            </div>
-                            <div class="col-4">
-                                <select name="dob_bulan" class="form-select <?= ($error_dob != '') ? 'is-invalid' : '' ?>" required style="padding: 12px 10px; background-position: right 10px center !important;">
-                                    <option value="" disabled selected>Bulan</option>
-                                    <?php 
-                                    $bulan_indo = [
-                                        "01"=>"Januari", "02"=>"Februari", "03"=>"Maret", "04"=>"April", 
-                                        "05"=>"Mei", "06"=>"Juni", "07"=>"Juli", "08"=>"Agustus", 
-                                        "09"=>"September", "10"=>"Oktober", "11"=>"November", "12"=>"Desember"
-                                    ];
-                                    foreach($bulan_indo as $num => $nama_bln):
-                                    ?>
-                                        <option value="<?= $num ?>" <?= (@$_POST['dob_bulan'] == $num) ? 'selected' : '' ?>><?= $nama_bln ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                            <div class="col-4">
-                                <select name="dob_tahun" class="form-select <?= ($error_dob != '') ? 'is-invalid' : '' ?>" required style="padding: 12px 10px;">
-                                    <option value="" disabled selected>Tahun</option>
-                                    <?php for($i=date('Y'); $i>=1940; $i--): ?>
-                                        <option value="<?= $i ?>" <?= (@$_POST['dob_tahun'] == $i) ? 'selected' : '' ?>><?= $i ?></option>
-                                    <?php endfor; ?>
-                                </select>
-                            </div>
-                        </div>
-                        <?php if($error_dob): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_dob ?></div><?php endif; ?>
-                    </div>
-
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Kata Sandi<span class="required-star">*</span></label>
-                        <div class="password-group">
-                            <input type="password" name="password" id="password" class="form-control <?= ($error_pass != '') ? 'is-invalid' : '' ?>" required placeholder="Huruf, Angka, & Simbol" value="<?= htmlspecialchars(@$_POST['password']) ?>">
-                            <i class="bi bi-eye-slash toggle-password" id="btnPass"></i>
-                        </div>
-                        <?php if($error_pass): ?><div class="error-text"><i class="bi bi-shield-lock-fill"></i> <?= $error_pass ?></div><?php endif; ?>
-                    </div>
-
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Verifikasi Sandi<span class="required-star">*</span></label>
-                        <div class="password-group">
-                            <input type="password" name="confirm_password" id="confirm_password" class="form-control <?= ($error_confirm_pass != '') ? 'is-invalid' : '' ?>" required placeholder="Ulangi kata sandi anda" value="<?= htmlspecialchars(@$_POST['confirm_password']) ?>">
-                            <i class="bi bi-eye-slash toggle-password" id="btnConfirmPass"></i>
-                        </div>
-                        <?php if($error_confirm_pass): ?><div class="error-text"><i class="bi bi-check-circle-fill"></i> <?= $error_confirm_pass ?></div><?php endif; ?>
-                    </div>
-
-                    <div class="col-md-12 mb-3">
-                        <label class="form-label">Alamat Lengkap<span class="required-star">*</span></label>
-                        <input type="text" name="alamat" class="form-control <?= ($error_alamat != '') ? 'is-invalid' : '' ?>" placeholder="Masukkan alamat lengkap" value="<?= @$_POST['alamat'] ?>" required>
-                        <?php if($error_alamat): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_alamat ?></div><?php endif; ?>
-                    </div>
-
-                    <div class="col-md-12 mb-3">
-                        <label class="form-label">Upload Foto Profil (Opsional)</label>
-                        <div class="d-flex align-items-center gap-3">
-                            <div class="profile-preview-box">
-                                <?php 
-                                $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23cbd5e1'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
-                                $preview_src = $default_svg_avatar;
-                                if ($foto_profil != 'default.jpg') {
-                                    $preview_src = "assets/img/pelanggan/" . $foto_profil;
-                                }
-                                ?>
-                                <img id="profile-preview" src="<?= $preview_src ?>" alt="Tidak ada profil">
-                            </div>
-                            <div>
-                                <input type="hidden" name="existing_foto_profil" value="<?= htmlspecialchars($foto_profil) ?>">
-                                <input type="file" name="foto_profil" id="inputFoto" class="form-control d-none" accept=".jpg,.jpeg,.png">
-                                <button type="button" class="btn btn-pilih-foto" onclick="document.getElementById('inputFoto').click();"><i class="bi bi-upload me-2"></i>Pilih Foto</button>
-                            </div>
-                        </div>
-                        <?php if($error_foto): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_foto ?></div><?php endif; ?>
-                    </div>
+            <!-- LOGIN FORM -->
+            <div class="form-container active" id="loginForm">
+                <div class="logo-area">
+                    <div class="logo-icon"><i class="bi bi-camera-fill"></i></div>
+                    <div class="logo-text">Spot<span>Light</span></div>
                 </div>
 
-                <button type="submit" name="register" class="btn btn-reg shadow">Daftar Akun Sekarang ✨</button>
-            </form>
+                <h2 class="form-title">Halo Kak, Welcome Back! 👋✨</h2>
+                <p class="form-subtitle">Masukkan akun terdaftar Anda untuk melanjutkan kisah indah bersama SpotLight Studio! 📸💖</p>
+
+                <form method="POST" id="formLogin">
+                    <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
+
+                    <div class="input-group-custom">
+                        <label class="input-label">Email / Username <span class="required">*</span></label>
+                        <input type="text" name="email_login" class="input-field" placeholder="nama@email.com atau username" value="<?= htmlspecialchars(@$_POST['email_login'] ?? '') ?>" required>
+                    </div>
+
+                    <div class="input-group-custom">
+                        <label class="input-label">Kata Sandi <span class="required">*</span></label>
+                        <div class="password-wrap">
+                            <input type="password" name="password_login" id="password_login" class="input-field" placeholder="Masukkan kata sandi" required>
+                            <i class="bi bi-eye-slash toggle-eye" onclick="togglePassword('password_login', this)"></i>
+                        </div>
+                    </div>
+
+                    <div style="text-align: right; margin-bottom: 25px;">
+                        <a href="lupa_password.php" class="link-pink">Lupa kata sandi? 🔐</a>
+                    </div>
+
+                    <button type="submit" name="login" class="btn-submit" id="btnLogin" onclick="showLoading(this)">
+                        <span class="btn-text">Masuk Sekarang <i class="bi bi-arrow-right"></i></span>
+                    </button>
+                </form>
+            </div>
+
+            <!-- REGISTER FORM -->
+            <div class="form-container hidden" id="registerForm">
+                <div class="logo-area">
+                    <div class="logo-icon"><i class="bi bi-camera-fill"></i></div>
+                    <div class="logo-text">Spot<span>Light</span></div>
+                </div>
+
+                <h2 class="form-title">Mari Mulai Kisah Indah! 🌟📷</h2>
+                <p class="form-subtitle">Ciptakan akun dalam sekejap untuk akses penuh ke seluruh layanan studio terbaik kami! ✨🎈</p>
+
+                <form method="POST" enctype="multipart/form-data" id="formRegister">
+                    <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
+                    <input type="hidden" name="existing_foto_profil" id="existingFoto" value="<?= htmlspecialchars($foto_profil ?? 'default.jpg') ?>">
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="input-group-custom">
+                                <label class="input-label">Nama Lengkap <span class="required">*</span></label>
+                                <input type="text" name="nama" id="inputNama" class="input-field <?= $error_nama ? 'is-invalid' : '' ?>" placeholder="Nama sesuai KTP" value="<?= htmlspecialchars(@$_POST['nama'] ?? '') ?>" required>
+                                <?php if($error_nama): ?><div class="error-msg"><i class="bi bi-x-circle-fill"></i> <?= $error_nama ?></div><?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="input-group-custom">
+                                <label class="input-label">Username <span class="required">*</span></label>
+                                <input type="text" name="username" id="inputUsername" class="input-field <?= $error_username ? 'is-invalid' : '' ?>" placeholder="huruf_angka_123" value="<?= htmlspecialchars(@$_POST['username'] ?? '') ?>" required>
+                                <?php if($error_username): ?><div class="error-msg"><i class="bi bi-x-circle-fill"></i> <?= $error_username ?></div><?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="input-group-custom">
+                                <label class="input-label">Email <span class="required">*</span></label>
+                                <input type="email" name="email" class="input-field <?= $error_email_reg ? 'is-invalid' : '' ?>" placeholder="nama@email.com" value="<?= htmlspecialchars(@$_POST['email'] ?? '') ?>" required>
+                                <?php if($error_email_reg): ?><div class="error-msg"><i class="bi bi-x-circle-fill"></i> <?= $error_email_reg ?></div><?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="input-group-custom">
+                                <label class="input-label">No. Telepon <span class="required">*</span></label>
+                                <div class="d-flex align-items-stretch" style="border: 2px solid #eef2f6; border-radius: 16px; overflow: hidden; background: #f8fafc; transition: all 0.3s ease;">
+                                    <span style="display: flex; align-items: center; padding: 14px 16px; font-weight: 700; color: #d83f67; font-size: 0.9rem; border-right: 2px solid #eef2f6; background: #f8fafc; white-space: nowrap;">+62</span>
+                                    <input type="text" name="no_hp" id="inputHP" class="flex-grow-1" style="border: none; background: transparent; padding: 14px 18px; font-size: 0.95rem; font-weight: 500; color: #1e1e24; outline: none; min-width: 0;" placeholder="81234567890" value="<?= htmlspecialchars(@$_POST['no_hp'] ?? '') ?>" required>
+                                </div>
+                                <?php if($error_hp): ?><div class="error-msg"><i class="bi bi-x-circle-fill"></i> <?= $error_hp ?></div><?php endif; ?>
+                                <small style="color: #94a3b8; font-size: 0.75rem; display: block; margin-top: 6px;">Format: 81234567890 (tanpa angka 0 di depan) 📱</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="input-group-custom">
+                                <label class="input-label">Jenis Kelamin <span class="required">*</span></label>
+                                <div class="radio-group-fix">
+                                    <label class="radio-fix" for="jk_laki">
+                                        <input type="radio" name="jenis_kelamin" id="jk_laki" value="Laki-laki" <?= (@$_POST['jenis_kelamin'] == 'Laki-laki') ? 'checked' : '' ?> required>
+                                        <span class="radio-box">
+                                            <i class="bi bi-gender-male radio-icon"></i>
+                                            <span class="radio-text">Laki-laki</span>
+                                        </span>
+                                    </label>
+                                    <label class="radio-fix" for="jk_perempuan">
+                                        <input type="radio" name="jenis_kelamin" id="jk_perempuan" value="Perempuan" <?= (@$_POST['jenis_kelamin'] == 'Perempuan') ? 'checked' : '' ?> required>
+                                        <span class="radio-box">
+                                            <i class="bi bi-gender-female radio-icon"></i>
+                                            <span class="radio-text">Perempuan</span>
+                                        </span>
+                                    </label>
+                                </div>
+                                <?php if($error_jk): ?><div class="error-msg"><i class="bi bi-x-circle-fill"></i> <?= $error_jk ?></div><?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="input-group-custom">
+                                <label class="input-label">Tanggal Lahir <span class="required">*</span></label>
+                                <div class="date-wrap">
+                                    <input type="date" name="tanggal_lahir" id="inputDOB" class="input-field <?= $error_dob ? 'is-invalid' : '' ?>" value="<?= htmlspecialchars(@$_POST['tanggal_lahir'] ?? '') ?>" max="<?= date('Y-m-d', strtotime('-13 years')) ?>" required>
+                                    <i class="bi bi-calendar-event date-icon"></i>
+                                </div>
+                                <?php if($error_dob): ?><div class="error-msg"><i class="bi bi-x-circle-fill"></i> <?= $error_dob ?></div><?php endif; ?>
+                                <small style="color: #94a3b8; font-size: 0.75rem; display: block; margin-top: 6px;">Format: dd/mm/yyyy • Minimal 13 tahun ya Kak! 🎂</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="input-group-custom">
+                                <label class="input-label">Kata Sandi <span class="required">*</span></label>
+                                <div class="password-wrap">
+                                    <input type="password" name="password" id="password" class="input-field <?= $error_pass ? 'is-invalid' : '' ?>" placeholder="Min 8: huruf+angka+simbol" required>
+                                    <i class="bi bi-eye-slash toggle-eye" onclick="togglePassword('password', this)"></i>
+                                </div>
+                                <?php if($error_pass): ?><div class="error-msg"><i class="bi bi-x-circle-fill"></i> <?= $error_pass ?></div><?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="input-group-custom">
+                                <label class="input-label">Verifikasi Sandi <span class="required">*</span></label>
+                                <div class="password-wrap">
+                                    <input type="password" name="confirm_password" id="confirm_password" class="input-field <?= $error_confirm_pass ? 'is-invalid' : '' ?>" placeholder="Ulangi kata sandi" required>
+                                    <i class="bi bi-eye-slash toggle-eye" onclick="togglePassword('confirm_password', this)"></i>
+                                </div>
+                                <?php if($error_confirm_pass): ?><div class="error-msg"><i class="bi bi-x-circle-fill"></i> <?= $error_confirm_pass ?></div><?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="input-group-custom">
+                        <label class="input-label">Alamat Lengkap <span class="required">*</span></label>
+                        <input type="text" name="alamat" class="input-field <?= $error_alamat ? 'is-invalid' : '' ?>" placeholder="Alamat lengkap domisili (min 10 karakter)" value="<?= htmlspecialchars(@$_POST['alamat'] ?? '') ?>" required>
+                        <?php if($error_alamat): ?><div class="error-msg"><i class="bi bi-x-circle-fill"></i> <?= $error_alamat ?></div><?php endif; ?>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="input-group-custom">
+                                <label class="input-label">Foto Profil (Opsional)</label>
+                                <div class="upload-area" onclick="document.getElementById('inputFoto').click()">
+                                    <?php
+                                    $default_svg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23cbd5e1'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
+                                    ?>
+                                    <img id="previewFoto" src="<?= (isset($foto_profil) && $foto_profil != 'default.jpg') ? 'assets/img/pelanggan/' . htmlspecialchars($foto_profil) : $default_svg ?>" class="upload-preview" alt="Preview" onerror="this.src='<?= $default_svg ?>'">
+                                    <div class="upload-text">
+                                        <span>Klik untuk upload</span><br>
+                                        JPG, JPEG, PNG (Max 2MB)
+                                    </div>
+                                </div>
+                                <input type="file" name="foto_profil" id="inputFoto" class="d-none" accept=".jpg,.jpeg,.png" onchange="previewImage(this)">
+                                <?php if($error_foto): ?><div class="error-msg"><i class="bi bi-x-circle-fill"></i> <?= $error_foto ?></div><?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" name="register" class="btn-submit" id="btnRegister" onclick="showLoading(this)">
+                        <span class="btn-text">Daftar Akun Sekarang ✨</span>
+                    </button>
+                </form>
+            </div>
         </div>
-
     </div>
-
-    <!-- =====================================================
-       MODAL LUPA KATA SANDI (POPUP)
-       ===================================================== -->
-    <div class="modal fade" id="modalLupaSandi" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(5px);">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 15px 40px rgba(216, 63, 103, 0.25);">
-          <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
-            <h5 class="text-dark mb-0" style="font-weight: 500;"><i class="bi bi-shield-lock-fill text-danger me-2"></i>Kesulitan Masuk?</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body px-4 pb-4 pt-3">
-            <p class="text-muted small mb-4" style="line-height: 1.6; font-weight: normal;">Masukkan alamat email terdaftar Anda di bawah ini. Kami akan mengirimkan tautan pemulihan kata sandi kustom yang aman ke kotak masuk email Anda.</p>
-            <form method="POST" action="lupa_password.php">
-              <div class="mb-4">
-                <label class="form-label text-dark">Email Terdaftar Anda<span class="required-star">*</span></label>
-                <input type="email" name="email_lupa" class="form-control" placeholder="nama@email.com" required style="border-radius: 14px;">
-              </div>
-              <button type="submit" name="request_reset" class="btn btn-reg shadow-sm py-3 mt-0" style="border-radius: 14px;">Kirim Tautan Pemulihan ✉</button>
-            </form>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Script JavaScript -->
+<script src="assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
-        const regCard = document.querySelector('.reg-card');
-        const panelMasukInfo = document.querySelector('.panel-info-masuk');
-        const panelDaftarInfo = document.querySelector('.panel-info-daftar');
-
-        function tampilkanDaftar() {
-            regCard.classList.add('ke-daftar');
-            panelMasukInfo.classList.add('d-none');
-            panelDaftarInfo.classList.remove('d-none');
+        // Create particles
+        const particlesContainer = document.getElementById('particles');
+        for (let i = 0; i < 20; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'particle';
+            particle.style.left = Math.random() * 100 + '%';
+            particle.style.animationDelay = Math.random() * 15 + 's';
+            particle.style.animationDuration = (10 + Math.random() * 10) + 's';
+            particle.style.width = particle.style.height = (5 + Math.random() * 15) + 'px';
+            particlesContainer.appendChild(particle);
         }
 
-        function tampilkanMasuk() {
-            regCard.classList.remove('ke-daftar');
-            panelDaftarInfo.classList.add('d-none');
-            panelMasukInfo.classList.remove('d-none');
+        // Panel switch
+        let isRegister = false;
+        const loginForm = document.getElementById('loginForm');
+        const registerForm = document.getElementById('registerForm');
+        const visualTitle = document.getElementById('visualTitle');
+        const visualText = document.getElementById('visualText');
+        const visualBtn = document.getElementById('visualBtn');
+        const btnText = document.getElementById('btnText');
+        const visualBadge = document.getElementById('visualBadge');
+
+        const visualData = {
+            login: {
+                badge: '<i class="bi bi-stars"></i> Studio Terpopuler di Cikarang',
+                title: 'Yuk, Bergabung<br>Bersama Kami! 🌟',
+                text: 'Daftar sekarang dan nikmati kemudahan booking studio, pilih tema foto estetik favorit, serta pantau jadwal Anda dengan praktis! ✨📸',
+                btnIcon: 'bi-person-plus',
+                btnText: 'Daftar Baru'
+            },
+            register: {
+                badge: '<i class="bi bi-camera-fill"></i> SPOTLIGHT STUDIO FOTO',
+                title: 'Pintu Masuk<br>Kehangatan Studio! 👋💖',
+                text: 'Selamat datang kembali, Sahabat SpotLight! Masuk untuk mengelola pesanan, pelunasan, atau download hasil jepretan terbaik Anda! 📸🎈',
+                btnIcon: 'bi-box-arrow-in-right',
+                btnText: 'Masuk Akun'
+            }
+        };
+
+        function switchPanel(forceToLogin = false) {
+            // If forceToLogin is true, always switch to login regardless of current state
+            if (forceToLogin) {
+                isRegister = true; // Set to true so toggling will make it false (login)
+            }
+
+            isRegister = !isRegister;
+            const data = isRegister ? visualData.register : visualData.login;
+
+            // Animate visual panel content
+            visualBadge.style.opacity = '0';
+            visualTitle.style.opacity = '0';
+            visualText.style.opacity = '0';
+            visualBtn.style.opacity = '0';
+
+            setTimeout(() => {
+                visualBadge.innerHTML = data.badge;
+                visualTitle.innerHTML = data.title;
+                visualText.innerHTML = data.text;
+                const icon = document.getElementById('btnIcon');
+                const text = document.getElementById('btnText');
+                if (icon) icon.className = `bi ${data.btnIcon}`;
+                if (text) text.textContent = data.btnText;
+
+                visualBadge.style.opacity = '1';
+                visualTitle.style.opacity = '1';
+                visualText.style.opacity = '1';
+                visualBtn.style.opacity = '1';
+            }, 300);
+
+            // Switch forms
+            if (isRegister) {
+                loginForm.classList.remove('active');
+                loginForm.classList.add('hidden');
+                setTimeout(() => {
+                    registerForm.classList.remove('hidden');
+                    registerForm.classList.add('active');
+                }, 300);
+            } else {
+                registerForm.classList.remove('active');
+                registerForm.classList.add('hidden');
+                setTimeout(() => {
+                    loginForm.classList.remove('hidden');
+                    loginForm.classList.add('active');
+                }, 300);
+            }
         }
 
         <?php if($panel_aktif == "ke-daftar"): ?>
-            tampilkanDaftar();
+        switchPanel();
         <?php endif; ?>
 
-        const inputNama = document.getElementById('inputNama');
-        if (inputNama) {
-            inputNama.addEventListener('input', function() {
-                this.value = this.value.replace(/[^a-zA-Z ]/g, '');
-            });
-        }
-
-        const inputUsername = document.getElementById('inputUsername');
-        if (inputUsername) {
-            inputUsername.addEventListener('input', function() {
-                this.value = this.value.replace(/[^a-zA-Z0-9_]/g, '');
-            });
-        }
-        
-        const inputFoto = document.getElementById('inputFoto');
-        if (inputFoto) {
-            inputFoto.addEventListener('change', function(e) {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = function(event) {
-                        document.getElementById('profile-preview').src = event.target.result;
-                    };
-                    reader.readAsDataURL(file);
-                }
-            });
-        }
-
-        function setupPasswordToggle(buttonId, inputId) {
-            const btn = document.getElementById(buttonId);
+        // Password toggle
+        function togglePassword(inputId, icon) {
             const input = document.getElementById(inputId);
-            if (btn && input) {
-                btn.addEventListener('click', function () {
-                    const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
-                    input.setAttribute('type', type);
-                    this.classList.toggle('bi-eye'); this.classList.toggle('bi-eye-slash');
-                });
+            const type = input.type === 'password' ? 'text' : 'password';
+            input.type = type;
+            icon.classList.toggle('bi-eye');
+            icon.classList.toggle('bi-eye-slash');
+        }
+
+        // Image preview
+        function previewImage(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('previewFoto').src = e.target.result;
+                    // Update hidden field with new photo name placeholder
+                    document.getElementById('existingFoto').value = 'new_upload';
+                };
+                reader.readAsDataURL(input.files[0]);
             }
         }
-        setupPasswordToggle('btnPass', 'password');
-        setupPasswordToggle('btnConfirmPass', 'confirm_password');
-        setupPasswordToggle('btnToggleLoginPass', 'password_login');
-        
-        const inputHP = document.getElementById('inputHP'), prefix = '+62 ';
-        function moveCursorToEnd() { if (inputHP.selectionStart < prefix.length) { if (inputHP.setSelectionRange) inputHP.setSelectionRange(prefix.length, prefix.length); } }
-        if (inputHP) {
-            inputHP.addEventListener('mousedown', () => setTimeout(moveCursorToEnd, 1));
-            inputHP.addEventListener('focus', moveCursorToEnd);
-            inputHP.addEventListener('keyup', moveCursorToEnd);
-            inputHP.addEventListener('keydown', function(e) { if (this.selectionStart <= prefix.length && (e.keyCode === 8 || e.keyCode === 46)) { e.preventDefault(); } });
-            inputHP.addEventListener('input', function() {
-                if (!this.value.startsWith(prefix)) { this.value = prefix + this.value.replace(/[^0-9]/g, '').substring(2); }
-                let digits = this.value.split(prefix)[1].replace(/[^0-9]/g, '');
-                // Batasi digit maksimal di sisi klien agar selalu pas dengan VARCHAR(15) database (+62 dan maksimal 12 digit)
-                if (digits.length > 12) digits = digits.slice(0, 12);
-                this.value = prefix + digits;
-            });
+
+        // Real-time validation
+        document.getElementById('inputNama')?.addEventListener('input', function() {
+            this.value = this.value.replace(/[^a-zA-Z\s]/g, '');
+        });
+
+        document.getElementById('inputUsername')?.addEventListener('input', function() {
+            this.value = this.value.replace(/[^a-zA-Z0-9_]/g, '');
+        });
+
+        document.getElementById('inputHP')?.addEventListener('input', function() {
+            let val = this.value.replace(/[^0-9]/g, '').substring(0, 13);
+            if (val.startsWith('0')) {
+                val = val.substring(1);
+                this.parentElement.style.borderColor = '#f59e0b';
+                setTimeout(() => { this.parentElement.style.borderColor = '#eef2f6'; }, 800);
+            }
+            this.value = val;
+        });
+
+        // Loading state
+        function showLoading(btn) {
+            btn.classList.add('loading');
+            setTimeout(() => {
+                btn.classList.remove('loading');
+            }, 3000);
         }
 
-        if (regCard) {
-            document.addEventListener('mousemove', (e) => {
-                const { clientX, clientY } = e;
-                const { innerWidth, innerHeight } = window;
-                const xRotation = ((clientY / innerHeight) - 0.5) * -6; 
-                const yRotation = ((clientX / innerWidth) - 0.5) * 6;  
-                regCard.style.transform = `rotateX(${xRotation}deg) rotateY(${yRotation}deg)`;
-            });
-            document.addEventListener('mouseleave', () => {
-                regCard.style.transform = `rotateX(0deg) rotateY(0deg)`; 
-            });
-        }
-    </script>
-    
-    <!-- SweetAlert Berhasil Daftar -->
-    <?php if($success_register): ?>
-    <script>
-        Swal.fire({
-            icon: 'success', 
-            title: 'Daftar Akun Berhasil! 🎉', 
-            text: 'Selamat datang di SpotLight! Akun Anda telah aktif, silakan masuk.', 
-            confirmButtonColor: '#d83f67', 
-            confirmButtonText: 'Masuk Sekarang'
-        });
-    </script>
-    <?php endif; ?>
 
-    <!-- SweetAlert Gagal Pendaftaran -->
-    <?php if($error_email_reg != "" && $success_register == false): ?>
-    <script>
+        // Success register - Auto switch to login with countdown
+        <?php if($success_register && !isset($_SESSION['status'])): ?>
+        let countdown = 3;
         Swal.fire({
-            icon: 'error', 
-            title: 'Pendaftaran Gagal! ❌', 
-            text: '<?= $error_email_reg ?>', 
-            confirmButtonColor: '#d83f67', 
-            confirmButtonText: 'Periksa Kembali'
-        });
-    </script>
-    <?php endif; ?>
+            icon: 'success',
+            title: 'Yeay, Akun Berhasil Dibuat! 🎉✨',
+            html: 'Selamat datang di keluarga SpotLight!<br>Akan otomatis ke halaman masuk dalam <b>3</b> detik... 📸💖',
+            confirmButtonColor: '#d83f67',
+            confirmButtonText: 'Masuk Sekarang 🚀',
+            backdrop: 'rgba(216, 63, 103, 0.2)',
+            timer: 3000,
+            timerProgressBar: true,
+            allowOutsideClick: false,
+            willClose: () => {
+                // Switch panel when SweetAlert closes
+                if (!isRegister) {
+                    switchPanel(); // Switch to login if currently on register
+                }
+            }
+        }).then((result) => {
+            // Auto-fill login form with registered credentials
+            const emailField = document.querySelector('input[name="email_login"]');
+            const passField = document.querySelector('input[name="password_login"]');
+            if (emailField) emailField.value = '<?= htmlspecialchars($registered_email ?? '') ?>';
+            if (passField) passField.value = '<?= htmlspecialchars($registered_password ?? '') ?>';
 
-    <!-- SweetAlert Gagal Masuk -->
-    <?php if($error_email_login != ""): ?>
-    <script>
-        Swal.fire({
-            icon: 'error', 
-            title: 'Masuk Gagal! ❌', 
-            text: '<?= $error_email_login ?>', 
-            confirmButtonColor: '#d83f67', 
-            confirmButtonText: 'Coba Lagi'
+            // Force switch to login panel
+            switchPanel(true);
         });
+        <?php endif; ?>
+
+        // Error alerts - Show all validation errors with guidance
+        <?php if(!empty($all_errors)): ?>
+        Swal.fire({
+            icon: 'warning',
+            title: 'Ups, Ada yang Perlu Dicek! 😅',
+            html: '<div style="text-align:left; font-size:0.9rem;">' +
+                  '<?php foreach($all_errors as $err): ?>' +
+                  '<div style="margin-bottom:8px; display:flex; align-items:start; gap:8px;">' +
+                  '<span style="color:#ef4444; font-size:1.1rem;">⚠️</span>' +
+                  '<span><?= addslashes($err) ?></span>' +
+                  '</div>' +
+                  '<?php endforeach; ?>' +
+                  '</div>' +
+                  '<div style="margin-top:15px; padding-top:15px; border-top:1px solid #eee; color:#8a99a8; font-size:0.85rem;">' +
+                  '💡 <b>Tips:</b> Pastikan semua data terisi dengan benar ya Kak!' +
+                  '</div>',
+            confirmButtonColor: '#d83f67',
+            confirmButtonText: 'Oke, Dicek Lagi! 🔍',
+            backdrop: 'rgba(216, 63, 103, 0.2)',
+            width: '480px'
+        });
+        <?php endif; ?>
+
+        <?php if($error_email_login): ?>
+        Swal.fire({
+            icon: 'error',
+            title: 'Ups, Gagal Masuk! 😢',
+            text: '<?= addslashes($error_email_login) ?>',
+            confirmButtonColor: '#d83f67',
+            confirmButtonText: 'Coba Lagi 💪',
+            backdrop: 'rgba(216, 63, 103, 0.2)'
+        });
+        <?php endif; ?>
     </script>
-    <?php endif; ?>
 </body>
 </html>

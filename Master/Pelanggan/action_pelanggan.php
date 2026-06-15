@@ -2,7 +2,6 @@
 session_start();
 include '../../koneksi.php';
 
-// --- PROTEKSI AKSES ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Admin') {
     header("Location: ../../login.php");
     exit();
@@ -11,201 +10,117 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 $nama_admin = $_SESSION['nama'] ?? 'Administrator';
 
-// --- VALIDASI PARAMETER ---
-if (!isset($_GET['id']) || empty($_GET['id']) || !isset($_GET['aksi']) || empty($_GET['aksi'])) {
-    header("Location: list.php?status_sukses=error&message=parameter_tidak_valid");
+$aksi = $_GET['aksi'] ?? '';
+$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+
+if ($id <= 0) {
+    header("Location: list.php?status_sukses=error&message=ID tidak valid!");
     exit();
 }
 
-$id_pelanggan = (int)$_GET['id'];
-$aksi = $_GET['aksi'];
-
-// --- CEK DATA PELANGGAN EXIST ---
-$cek_sql = "SELECT ID_Pelanggan, Nama_Pelanggan, Status, Is_Deleted FROM Pelanggan WHERE ID_Pelanggan = ?";
-$cek_stmt = sqlsrv_query($conn, $cek_sql, [$id_pelanggan]);
-$pelanggan = sqlsrv_fetch_array($cek_stmt, SQLSRV_FETCH_ASSOC);
-
-if (!$pelanggan) {
-    header("Location: list.php?status_sukses=error&message=data_tidak_ditemukan");
-    exit();
+// Helper: cek apakah pelanggan punya order
+function hasOrder($conn, $id_pelanggan) {
+    $sql = "SELECT COUNT(*) as total FROM [Order] WHERE ID_Pelanggan = ? AND Status = 1";
+    $stmt = sqlsrv_query($conn, $sql, [$id_pelanggan]);
+    if ($stmt === false) return true; // assume has order if error
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    return ($row['total'] ?? 0) > 0;
 }
 
-$nama_pelanggan = $pelanggan['Nama_Pelanggan'];
+// Helper: cek apakah pelanggan punya pembayaran
+function hasPembayaran($conn, $id_pelanggan) {
+    $sql = "SELECT COUNT(*) as total FROM Pembayaran p JOIN [Order] o ON p.ID_Order = o.ID_Order WHERE o.ID_Pelanggan = ? AND p.Status = 1";
+    $stmt = sqlsrv_query($conn, $sql, [$id_pelanggan]);
+    if ($stmt === false) return true;
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    return ($row['total'] ?? 0) > 0;
+}
 
-// ============================================================
-// SOFT DELETE (Toggle Status: Aktif <-> Nonaktif)
-// ============================================================
-if ($aksi == 'soft_delete') {
+// Helper: get pelanggan data
+function getPelanggan($conn, $id) {
+    $sql = "SELECT * FROM Pelanggan WHERE ID_Pelanggan = ?";
+    $stmt = sqlsrv_query($conn, $sql, [$id]);
+    if ($stmt === false) return false;
+    return sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+}
 
-    // Toggle status: 1 (Aktif) -> 0 (Nonaktif), 0 -> 1
-    $new_status = ($pelanggan['Status'] == 1) ? 0 : 1;
-    $status_text = ($new_status == 1) ? 'Aktif' : 'Nonaktif';
-
-    sqlsrv_begin_transaction($conn);
-
-    try {
-        // Update Status, Modified_By, Modified_Date
-        $sql = "UPDATE Pelanggan SET 
-                Status = ?, 
-                Modified_By = ?, 
-                Modified_Date = GETDATE() 
-                WHERE ID_Pelanggan = ?";
-
-        $stmt = sqlsrv_query($conn, $sql, [$new_status, $nama_admin, $id_pelanggan]);
-
-        if ($stmt) {
-            sqlsrv_commit($conn);
-
-            // Redirect dengan pesan sukses
-            header("Location: list.php?status_sukses=soft_delete&status=" . $status_text . "&nama=" . urlencode($nama_pelanggan));
+switch ($aksi) {
+    case 'soft_delete':
+        // Soft delete: Is_Deleted = 1, Status = 0, set Deleted_By, Deleted_Date
+        $sql = "UPDATE Pelanggan SET Is_Deleted = 1, Status = 0, Deleted_By = ?, Deleted_Date = GETDATE() WHERE ID_Pelanggan = ?";
+        $stmt = sqlsrv_query($conn, $sql, [$nama_admin, $id]);
+        if ($stmt === false) {
+            $errors = sqlsrv_errors();
+            $msg = isset($errors[0]['message']) ? $errors[0]['message'] : 'Gagal mengarsipkan data!';
+            header("Location: list.php?status_sukses=error&message=" . urlencode($msg));
             exit();
-        } else {
-            throw new Exception("Gagal update status");
         }
-
-    } catch (Exception $e) {
-        sqlsrv_rollback($conn);
-        header("Location: list.php?status_sukses=error&message=" . urlencode($e->getMessage()));
-        exit();
-    }
-}
-
-// ============================================================
-// HARD DELETE (Hapus Permanen)
-// ============================================================
-elseif ($aksi == 'hard_delete') {
-
-    // --- CEK RELASI DI TABEL LAIN ---
-    // Cek apakah pelanggan punya booking/order
-    $cek_booking_sql = "SELECT COUNT(*) as total FROM [Order] WHERE ID_Pelanggan = ?";
-    $cek_booking_stmt = sqlsrv_query($conn, $cek_booking_sql, [$id_pelanggan]);
-    $booking = sqlsrv_fetch_array($cek_booking_stmt, SQLSRV_FETCH_ASSOC);
-
-    // Cek apakah pelanggan punya transaksi pembayaran
-    $cek_pembayaran_sql = "SELECT COUNT(*) as total FROM Pembayaran WHERE ID_Pelanggan = ?";
-    $cek_pembayaran_stmt = sqlsrv_query($conn, $cek_pembayaran_sql, [$id_pelanggan]);
-    $pembayaran = sqlsrv_fetch_array($cek_pembayaran_stmt, SQLSRV_FETCH_ASSOC);
-
-    // Cek apakah pelanggan punya riwayat sesi foto
-    $cek_sesi_sql = "SELECT COUNT(*) as total FROM Sesi_Foto WHERE ID_Pelanggan = ?";
-    $cek_sesi_stmt = sqlsrv_query($conn, $cek_sesi_sql, [$id_pelanggan]);
-    $sesi = sqlsrv_fetch_array($cek_sesi_stmt, SQLSRV_FETCH_ASSOC);
-
-    // Cek apakah pelanggan punya penjualan barang cetak
-    $cek_penjualan_sql = "SELECT COUNT(*) as total FROM Penjualan WHERE ID_Pelanggan = ?";
-    $cek_penjualan_stmt = sqlsrv_query($conn, $cek_penjualan_sql, [$id_pelanggan]);
-    $penjualan = sqlsrv_fetch_array($cek_penjualan_stmt, SQLSRV_FETCH_ASSOC);
-
-    $total_relasi = ($booking['total'] ?? 0) + ($pembayaran['total'] ?? 0) + 
-                    ($sesi['total'] ?? 0) + ($penjualan['total'] ?? 0);
-
-    // --- JIKA PUNYA RELASI, TIDAK BOLEH HARD DELETE ---
-    if ($total_relasi > 0) {
-        $detail_relasi = [];
-        if ($booking['total'] > 0) $detail_relasi[] = $booking['total'] . " booking";
-        if ($pembayaran['total'] > 0) $detail_relasi[] = $pembayaran['total'] . " pembayaran";
-        if ($sesi['total'] > 0) $detail_relasi[] = $sesi['total'] . " sesi foto";
-        if ($penjualan['total'] > 0) $detail_relasi[] = $penjualan['total'] . " penjualan";
-
-        $pesan_relasi = implode(", ", $detail_relasi);
-
-        header("Location: list.php?status_sukses=error&message=" . urlencode(
-            "Tidak dapat hapus permanen! Pelanggan '" . $nama_pelanggan . "' memiliki riwayat " . $pesan_relasi . 
-            ". Gunakan fitur Nonaktifkan saja."
-        ));
-        exit();
-    }
-
-    // --- JIKA TIDAK PUNYA RELASI, LAKUKAN HARD DELETE ---
-    sqlsrv_begin_transaction($conn);
-
-    try {
-        // 1. Hapus foto profil jika bukan default
-        $foto_sql = "SELECT Foto_Profil FROM Pelanggan WHERE ID_Pelanggan = ?";
-        $foto_stmt = sqlsrv_query($conn, $foto_sql, [$id_pelanggan]);
-        $foto_data = sqlsrv_fetch_array($foto_stmt, SQLSRV_FETCH_ASSOC);
-
-        if ($foto_data && $foto_data['Foto_Profil'] != 'default.jpg') {
-            $foto_path = "../../assets/img/pelanggan/" . $foto_data['Foto_Profil'];
-            if (file_exists($foto_path)) {
-                unlink($foto_path);
-            }
-        }
-
-        // 2. Update Is_Deleted = 1, Deleted_By, Deleted_Date (Soft delete log)
-        $soft_delete_sql = "UPDATE Pelanggan SET 
-                            Is_Deleted = 1, 
-                            Deleted_By = ?, 
-                            Deleted_Date = GETDATE() 
-                            WHERE ID_Pelanggan = ?";
-        $soft_delete_stmt = sqlsrv_query($conn, $soft_delete_sql, [$nama_admin, $id_pelanggan]);
-
-        if (!$soft_delete_stmt) {
-            throw new Exception("Gagal soft delete log");
-        }
-
-        // 3. Hard delete dari database (opsional - bisa di-comment jika mau soft delete only)
-        // Uncomment baris di bawah ini jika ingin benar-benar hapus dari database
-        // $hard_delete_sql = "DELETE FROM Pelanggan WHERE ID_Pelanggan = ?";
-        // $hard_delete_stmt = sqlsrv_query($conn, $hard_delete_sql, [$id_pelanggan]);
-        // if (!$hard_delete_stmt) { throw new Exception("Gagal hard delete"); }
-
-        sqlsrv_commit($conn);
-
-        header("Location: list.php?status_sukses=hard_delete&nama=" . urlencode($nama_pelanggan));
+        header("Location: list.php?tab=aktif&status_sukses=soft_delete");
         exit();
 
-    } catch (Exception $e) {
-        sqlsrv_rollback($conn);
-        header("Location: list.php?status_sukses=error&message=" . urlencode($e->getMessage()));
-        exit();
-    }
-}
-
-// ============================================================
-// TOGGLE STATUS (Aktif/Nonaktif dari list.php)
-// ============================================================
-elseif ($aksi == 'toggle_status') {
-
-    if (!isset($_GET['status']) || !in_array($_GET['status'], ['0', '1'])) {
-        header("Location: list.php?status_sukses=error&message=status_tidak_valid");
-        exit();
-    }
-
-    $new_status = (int)$_GET['status'];
-    $status_text = ($new_status == 1) ? 'Aktif' : 'Nonaktif';
-
-    sqlsrv_begin_transaction($conn);
-
-    try {
-        $sql = "UPDATE Pelanggan SET 
-                Status = ?, 
-                Modified_By = ?, 
-                Modified_Date = GETDATE() 
-                WHERE ID_Pelanggan = ?";
-
-        $stmt = sqlsrv_query($conn, $sql, [$new_status, $nama_admin, $id_pelanggan]);
-
-        if ($stmt) {
-            sqlsrv_commit($conn);
-            header("Location: list.php?status_sukses=toggle_status&status=" . $status_text . "&nama=" . urlencode($nama_pelanggan));
+    case 'restore':
+        // Restore: Is_Deleted = 0, Status = 1, clear Deleted_By, Deleted_Date
+        $sql = "UPDATE Pelanggan SET Is_Deleted = 0, Status = 1, Deleted_By = NULL, Deleted_Date = NULL, Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Pelanggan = ?";
+        $stmt = sqlsrv_query($conn, $sql, [$nama_admin, $id]);
+        if ($stmt === false) {
+            $errors = sqlsrv_errors();
+            $msg = isset($errors[0]['message']) ? $errors[0]['message'] : 'Gagal memulihkan data!';
+            header("Location: list.php?tab=dihapus&status_sukses=error&message=" . urlencode($msg));
             exit();
-        } else {
-            throw new Exception("Gagal toggle status");
+        }
+        header("Location: list.php?tab=dihapus&status_sukses=restore");
+        exit();
+
+    case 'hard_delete':
+        // Hard delete: cek relasi dulu
+        if (hasOrder($conn, $id)) {
+            header("Location: list.php?tab=dihapus&status_sukses=error&message=" . urlencode("Tidak bisa hapus permanen! Pelanggan masih memiliki data Order/Booking."));
+            exit();
+        }
+        if (hasPembayaran($conn, $id)) {
+            header("Location: list.php?tab=dihapus&status_sukses=error&message=" . urlencode("Tidak bisa hapus permanen! Pelanggan masih memiliki data Pembayaran."));
+            exit();
         }
 
-    } catch (Exception $e) {
-        sqlsrv_rollback($conn);
-        header("Location: list.php?status_sukses=error&message=" . urlencode($e->getMessage()));
-        exit();
-    }
-}
+        // Get foto to delete
+        $pelanggan = getPelanggan($conn, $id);
+        $foto_path = '';
+        if ($pelanggan && !empty($pelanggan['Foto_Profil']) && $pelanggan['Foto_Profil'] != 'default.jpg') {
+            $foto_path = "../../assets/img/pelanggan/" . $pelanggan['Foto_Profil'];
+        }
 
-// ============================================================
-// AKSI TIDAK DIKENAL
-// ============================================================
-else {
-    header("Location: list.php?status_sukses=error&message=aksi_tidak_dikenal");
-    exit();
+        $sql = "DELETE FROM Pelanggan WHERE ID_Pelanggan = ?";
+        $stmt = sqlsrv_query($conn, $sql, [$id]);
+        if ($stmt === false) {
+            $errors = sqlsrv_errors();
+            $msg = isset($errors[0]['message']) ? $errors[0]['message'] : 'Gagal menghapus permanen!';
+            header("Location: list.php?tab=dihapus&status_sukses=error&message=" . urlencode($msg));
+            exit();
+        }
+
+        // Delete foto file if exists
+        if (!empty($foto_path) && file_exists($foto_path)) {
+            @unlink($foto_path);
+        }
+
+        header("Location: list.php?tab=dihapus&status_sukses=hard_delete");
+        exit();
+
+    case 'toggle_status':
+        $new_status = isset($_GET['status']) ? (int)$_GET['status'] : 1;
+        $sql = "UPDATE Pelanggan SET Status = ?, Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Pelanggan = ? AND Is_Deleted = 0";
+        $stmt = sqlsrv_query($conn, $sql, [$new_status, $nama_admin, $id]);
+        if ($stmt === false) {
+            $errors = sqlsrv_errors();
+            $msg = isset($errors[0]['message']) ? $errors[0]['message'] : 'Gagal mengubah status!';
+            header("Location: list.php?tab=aktif&status_sukses=error&message=" . urlencode($msg));
+            exit();
+        }
+        header("Location: list.php?tab=aktif&status_sukses=toggle_status");
+        exit();
+
+    default:
+        header("Location: list.php?status_sukses=error&message=Aksi tidak dikenal!");
+        exit();
 }
 ?>
