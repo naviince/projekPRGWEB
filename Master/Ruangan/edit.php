@@ -11,12 +11,13 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 
 // =====================================================
-// HELPER FUNCTIONS - Safe SQLSRV (Anti-Crash)
+// HELPER FUNCTIONS
 // =====================================================
 function safe_sqlsrv_fetch($conn, $sql, $params = []) {
     $stmt = sqlsrv_query($conn, $sql, $params);
     if ($stmt === false) {
-        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        $errors = sqlsrv_errors();
+        error_log("[safe_sqlsrv_fetch] SQL Error: " . ($errors ? json_encode($errors) : 'Unknown error'));
         return null;
     }
     $result = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
@@ -27,7 +28,8 @@ function safe_sqlsrv_fetch($conn, $sql, $params = []) {
 function safe_sqlsrv_fetch_all($conn, $sql, $params = []) {
     $stmt = sqlsrv_query($conn, $sql, $params);
     if ($stmt === false) {
-        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        $errors = sqlsrv_errors();
+        error_log("[safe_sqlsrv_fetch_all] SQL Error: " . ($errors ? json_encode($errors) : 'Unknown error'));
         return [];
     }
     $results = [];
@@ -41,7 +43,8 @@ function safe_sqlsrv_fetch_all($conn, $sql, $params = []) {
 function safe_sqlsrv_count($conn, $sql, $params = []) {
     $stmt = sqlsrv_query($conn, $sql, $params);
     if ($stmt === false) {
-        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        $errors = sqlsrv_errors();
+        error_log("[safe_sqlsrv_count] SQL Error: " . ($errors ? json_encode($errors) : 'Unknown error'));
         return 0;
     }
     $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
@@ -112,166 +115,196 @@ $paket_terhubung_ids = array_column($paket_terhubung, 'ID_Paket');
 // =====================================================
 $error = "";
 $success = false;
+$field_errors = [];
 
-if (isset($_POST['update'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
+    
     $nama       = trim($_POST['nama_ruangan'] ?? '');
     $kapasitas  = (int)($_POST['kapasitas'] ?? 0);
     $deskripsi  = trim($_POST['deskripsi'] ?? '');
     $status     = (int)($_POST['status'] ?? 1);
-    $paket_baru = $_POST['paket'] ?? []; // Array ID_Paket dari form
+    $paket_baru = $_POST['paket'] ?? [];
 
-    // --- VALIDASI SERVER-SIDE (KUAT) ---
+    // --- VALIDASI SERVER-SIDE ---
     if (empty($nama)) {
-        $error = "Nama ruangan wajib diisi!";
+        $field_errors['nama_ruangan'] = "Nama ruangan wajib diisi!";
     } elseif (strlen($nama) > 100) {
-        $error = "Nama ruangan maksimal 100 karakter!";
-    } elseif ($kapasitas <= 0) {
-        $error = "Kapasitas ruangan harus lebih dari 0!";
+        $field_errors['nama_ruangan'] = "Maksimal 100 karakter!";
+    }
+    
+    if ($kapasitas <= 0) {
+        $field_errors['kapasitas'] = "Kapasitas harus lebih dari 0!";
     } elseif ($kapasitas > 100) {
-        $error = "Kapasitas ruangan maksimal 100 orang!";
-    } elseif (empty($deskripsi)) {
-        $error = "Deskripsi ruangan wajib diisi!";
+        $field_errors['kapasitas'] = "Maksimal 100 orang!";
+    }
+    
+    if (empty($deskripsi)) {
+        $field_errors['deskripsi'] = "Deskripsi wajib diisi!";
     } elseif (strlen($deskripsi) > 255) {
-        $error = "Deskripsi maksimal 255 karakter!";
-    } elseif (empty($paket_baru)) {
-        $error = "Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini!";
-    } else {
-        // --- CEK DUPLIKAT NAMA (kecuali nama sendiri) ---
+        $field_errors['deskripsi'] = "Maksimal 255 karakter!";
+    }
+    
+    if (empty($paket_baru)) {
+        $field_errors['paket'] = "Pilih minimal 1 paket!";
+    }
+
+    // --- CEK DUPLIKAT NAMA (kecuali nama sendiri) ---
+    if (empty($field_errors)) {
         $cek_dup = safe_sqlsrv_fetch($conn, 
             "SELECT COUNT(*) as total FROM Ruangan WHERE Nama_Ruangan = ? AND ID_Ruangan <> ? AND Is_Deleted = 0", 
             [$nama, $id]
         );
         if (($cek_dup['total'] ?? 0) > 0) {
-            $error = "Nama ruangan '{$nama}' sudah digunakan oleh ruangan lain!";
+            $field_errors['nama_ruangan'] = "Nama ini sudah digunakan ruangan lain!";
+        }
+    }
+
+    // --- PROSES FOTO (OPSIONAL) ---
+    $foto_lama = $ruangan['Foto_Ruangan'] ?? '';
+    $foto_baru = $foto_lama;
+    $upload_path = '';
+    $hapus_foto_lama = false;
+
+    if (empty($field_errors) && isset($_FILES['foto']) && $_FILES['foto']['name'] != '') {
+        $foto_name = $_FILES['foto']['name'];
+        $foto_tmp  = $_FILES['foto']['tmp_name'];
+        $foto_size = $_FILES['foto']['size'];
+        $foto_error = $_FILES['foto']['error'];
+
+        if ($foto_error != UPLOAD_ERR_OK) {
+            $field_errors['foto'] = "Upload gagal (Error: {$foto_error})";
         } else {
-            // --- PROSES FOTO ---
-            $foto_lama = $ruangan['Foto_Ruangan'] ?? '';
-            $foto_baru = $foto_lama;
-            $upload_path = '';
-            $hapus_foto_lama = false;
+            $ext = strtolower(pathinfo($foto_name, PATHINFO_EXTENSION));
+            $allowed = ['jpg', 'jpeg', 'png', 'webp'];
 
-            if (isset($_FILES['foto']) && $_FILES['foto']['name'] != '') {
-                $foto_name = $_FILES['foto']['name'];
-                $foto_tmp  = $_FILES['foto']['tmp_name'];
-                $foto_size = $_FILES['foto']['size'];
-                $foto_error = $_FILES['foto']['error'];
-
-                if ($foto_error != UPLOAD_ERR_OK) {
-                    $error = "Terjadi kesalahan saat upload foto.";
+            if (!in_array($ext, $allowed)) {
+                $field_errors['foto'] = "Format harus JPG/PNG/WEBP!";
+            } elseif ($foto_size > 2097152) {
+                $field_errors['foto'] = "Ukuran maksimal 2MB!";
+            } else {
+                $check = getimagesize($foto_tmp);
+                if ($check === false) {
+                    $field_errors['foto'] = "File bukan gambar valid!";
                 } else {
-                    $ext = strtolower(pathinfo($foto_name, PATHINFO_EXTENSION));
-                    $allowed = ['jpg', 'jpeg', 'png', 'webp'];
+                    $new_filename = "ruangan_" . time() . "_" . bin2hex(random_bytes(4)) . "." . $ext;
+                    $upload_dir = "../../assets/img/ruangan/";
+                    if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
+                    $upload_path = $upload_dir . $new_filename;
 
-                    if (!in_array($ext, $allowed)) {
-                        $error = "Format gambar harus JPG, JPEG, PNG, atau WEBP!";
-                    } elseif ($foto_size > 2097152) {
-                        $error = "Ukuran gambar maksimal 2MB!";
+                    if (move_uploaded_file($foto_tmp, $upload_path)) {
+                        $foto_baru = $new_filename;
+                        $hapus_foto_lama = true;
                     } else {
-                        $check = getimagesize($foto_tmp);
-                        if ($check === false) {
-                            $error = "File yang diupload bukan gambar valid!";
-                        } else {
-                            $new_filename = "ruangan_" . time() . "_" . bin2hex(random_bytes(4)) . "." . $ext;
-                            $upload_dir = "../../assets/img/ruangan/";
-                            if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
-                            $upload_path = $upload_dir . $new_filename;
-
-                            if (move_uploaded_file($foto_tmp, $upload_path)) {
-                                $foto_baru = $new_filename;
-                                $hapus_foto_lama = true;
-                            } else {
-                                $error = "Gagal memindahkan file ke server.";
-                            }
-                        }
+                        $field_errors['foto'] = "Gagal simpan file ke server!";
                     }
                 }
             }
+        }
+    }
 
-            if ($error == "") {
-                // --- BEGIN TRANSACTION ---
-                sqlsrv_begin_transaction($conn);
+    // --- JIKA ADA ERROR VALIDASI ---
+    if (!empty($field_errors)) {
+        $error = "Mohon lengkapi semua field yang bertanda merah (*) di bawah!";
+    } else {
+        // --- UPDATE DATABASE DENGAN TRANSACTION ---
+        $begin_result = sqlsrv_begin_transaction($conn);
+        if ($begin_result === false) {
+            $error = "Gagal memulai transaksi database.";
+            if (!empty($upload_path) && file_exists($upload_path)) unlink($upload_path);
+        } else {
+            try {
+                // 1. UPDATE RUANGAN
+                $sql_update = "UPDATE Ruangan SET 
+                    Nama_Ruangan = ?, Kapasitas_Ruangan = ?, Deskripsi = ?, 
+                    Foto_Ruangan = ?, Status = ?, Modified_By = ?, Modified_Date = GETDATE() 
+                    WHERE ID_Ruangan = ?";
+                $params_update = [$nama, $kapasitas, $deskripsi, $foto_baru, $status, $nama_admin, $id];
+                $stmt_update = sqlsrv_query($conn, $sql_update, $params_update);
 
-                try {
-                    // 1. UPDATE RUANGAN
-                    $sql_update = "UPDATE Ruangan SET 
-                        Nama_Ruangan = ?, Kapasitas_Ruangan = ?, Deskripsi = ?, 
-                        Foto_Ruangan = ?, Status = ?, Modified_By = ?, Modified_Date = GETDATE() 
-                        WHERE ID_Ruangan = ?";
-                    $params_update = [$nama, $kapasitas, $deskripsi, $foto_baru, $status, $nama_admin, $id];
-                    $stmt_update = sqlsrv_query($conn, $sql_update, $params_update);
-
-                    if ($stmt_update === false) {
-                        throw new Exception("Gagal update ruangan: " . print_r(sqlsrv_errors(), true));
-                    }
-                    sqlsrv_free_stmt($stmt_update);
-
-                    // 2. AMBIL PAKET YANG SUDAH TERHUBUNG SEKARANG
-                    $paket_sekarang = [];
-                    $sql_now = "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?";
-                    $stmt_now = sqlsrv_query($conn, $sql_now, [$id]);
-                    while ($row = sqlsrv_fetch_array($stmt_now, SQLSRV_FETCH_ASSOC)) {
-                        $paket_sekarang[] = $row['ID_Paket'];
-                    }
-                    sqlsrv_free_stmt($stmt_now);
-
-                    // 3. INSERT PAKET BARU (yang belum ada)
-                    foreach ($paket_baru as $id_paket) {
-                        $id_paket = (int)$id_paket;
-                        if (!in_array($id_paket, $paket_sekarang)) {
-                            $sql_insert = "INSERT INTO Paket_Ruangan (ID_Paket, ID_Ruangan) VALUES (?, ?)";
-                            $stmt_insert = sqlsrv_query($conn, $sql_insert, [$id_paket, $id]);
-                            if ($stmt_insert === false) {
-                                throw new Exception("Gagal tambah relasi paket ID {$id_paket}: " . print_r(sqlsrv_errors(), true));
-                            }
-                            sqlsrv_free_stmt($stmt_insert);
-                        }
-                    }
-
-                    // 4. HAPUS PAKET YANG TIDAK DIPILIH LAGI (dengan cek order)
-                    foreach ($paket_sekarang as $id_paket_lama) {
-                        if (!in_array($id_paket_lama, $paket_baru)) {
-                            // CEK: Apakah ada order aktif yang pakai kombinasi ini?
-                            $sql_cek_order = "SELECT COUNT(*) as total FROM [Order] WHERE ID_Paket = ? AND ID_Ruangan = ? AND Status = 1 AND Status_Order <> 4";
-                            $stmt_cek = sqlsrv_query($conn, $sql_cek_order, [$id_paket_lama, $id]);
-                            $row_cek = sqlsrv_fetch_array($stmt_cek, SQLSRV_FETCH_ASSOC);
-                            sqlsrv_free_stmt($stmt_cek);
-
-                            if (($row_cek['total'] ?? 0) > 0) {
-                                // Ada order aktif → jangan hapus, skip saja
-                                continue;
-                            }
-
-                            // Tidak ada order → bisa hapus
-                            $sql_delete = "DELETE FROM Paket_Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ?";
-                            $stmt_delete = sqlsrv_query($conn, $sql_delete, [$id_paket_lama, $id]);
-                            if ($stmt_delete === false) {
-                                throw new Exception("Gagal hapus relasi paket ID {$id_paket_lama}: " . print_r(sqlsrv_errors(), true));
-                            }
-                            sqlsrv_free_stmt($stmt_delete);
-                        }
-                    }
-
-                    // COMMIT
-                    sqlsrv_commit($conn);
-
-                    // Hapus foto lama kalau semua sukses
-                    if ($hapus_foto_lama && !empty($foto_lama) && $foto_lama != 'default_ruangan.jpg') {
-                        $old_path = "../../assets/img/ruangan/" . $foto_lama;
-                        if (file_exists($old_path)) unlink($old_path);
-                    }
-
-                    $success = true;
-
-                    // Refresh data
-                    $ruangan = safe_sqlsrv_fetch($conn, "SELECT * FROM Ruangan WHERE ID_Ruangan = ?", [$id]);
-                    $paket_terhubung = safe_sqlsrv_fetch_all($conn, "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?", [$id]);
-                    $paket_terhubung_ids = array_column($paket_terhubung, 'ID_Paket');
-
-                } catch (Exception $e) {
-                    sqlsrv_rollback($conn);
-                    if (!empty($upload_path) && file_exists($upload_path)) unlink($upload_path);
-                    $error = $e->getMessage();
+                if ($stmt_update === false) {
+                    throw new Exception("Gagal update ruangan: " . json_encode(sqlsrv_errors()));
                 }
+                sqlsrv_free_stmt($stmt_update);
+
+                // 2. AMBIL PAKET YANG SUDAH TERHUBUNG SEKARANG
+                $paket_sekarang = [];
+                $sql_now = "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?";
+                $stmt_now = sqlsrv_query($conn, $sql_now, [$id]);
+                while ($row = sqlsrv_fetch_array($stmt_now, SQLSRV_FETCH_ASSOC)) {
+                    $paket_sekarang[] = $row['ID_Paket'];
+                }
+                sqlsrv_free_stmt($stmt_now);
+
+                // 3. INSERT PAKET BARU (yang belum ada)
+                foreach ($paket_baru as $id_paket) {
+                    $id_paket = (int)$id_paket;
+                    if (!in_array($id_paket, $paket_sekarang)) {
+                        // Cek paket valid
+                        $cek_paket = safe_sqlsrv_fetch($conn,
+                            "SELECT ID_Paket FROM Paket_Foto WHERE ID_Paket = ? AND Status = 1 AND Is_Deleted = 0",
+                            [$id_paket]
+                        );
+                        if (!$cek_paket) {
+                            throw new Exception("Paket ID {$id_paket} tidak valid atau tidak aktif.");
+                        }
+                        
+                        $sql_insert = "INSERT INTO Paket_Ruangan (ID_Paket, ID_Ruangan) VALUES (?, ?)";
+                        $stmt_insert = sqlsrv_query($conn, $sql_insert, [$id_paket, $id]);
+                        if ($stmt_insert === false) {
+                            throw new Exception("Gagal tambah relasi paket ID {$id_paket}: " . json_encode(sqlsrv_errors()));
+                        }
+                        sqlsrv_free_stmt($stmt_insert);
+                    }
+                }
+
+                // 4. HAPUS PAKET YANG TIDAK DIPILIH LAGI (dengan cek order)
+                foreach ($paket_sekarang as $id_paket_lama) {
+                    if (!in_array($id_paket_lama, $paket_baru)) {
+                        // CEK: Apakah ada order aktif yang pakai kombinasi ini?
+                        $cek_order = safe_sqlsrv_fetch($conn,
+                            "SELECT COUNT(*) as total FROM [Order] 
+                             WHERE ID_Paket = ? AND ID_Ruangan = ? AND Status = 1 AND Status_Order <> 4",
+                            [$id_paket_lama, $id]
+                        );
+                        
+                        if (($cek_order['total'] ?? 0) > 0) {
+                            // Ada order aktif → jangan hapus, skip saja
+                            continue;
+                        }
+
+                        // Tidak ada order → bisa hapus
+                        $sql_delete = "DELETE FROM Paket_Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ?";
+                        $stmt_delete = sqlsrv_query($conn, $sql_delete, [$id_paket_lama, $id]);
+                        if ($stmt_delete === false) {
+                            throw new Exception("Gagal hapus relasi paket ID {$id_paket_lama}: " . json_encode(sqlsrv_errors()));
+                        }
+                        sqlsrv_free_stmt($stmt_delete);
+                    }
+                }
+
+                // COMMIT
+                $commit_result = sqlsrv_commit($conn);
+                if ($commit_result === false) {
+                    throw new Exception("Gagal commit transaksi: " . json_encode(sqlsrv_errors()));
+                }
+
+                // Hapus foto lama kalau semua sukses
+                if ($hapus_foto_lama && !empty($foto_lama) && $foto_lama != 'default_ruangan.jpg') {
+                    $old_path = "../../assets/img/ruangan/" . $foto_lama;
+                    if (file_exists($old_path)) unlink($old_path);
+                }
+
+                $success = true;
+
+                // Refresh data
+                $ruangan = safe_sqlsrv_fetch($conn, "SELECT * FROM Ruangan WHERE ID_Ruangan = ?", [$id]);
+                $paket_terhubung = safe_sqlsrv_fetch_all($conn, "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?", [$id]);
+                $paket_terhubung_ids = array_column($paket_terhubung, 'ID_Paket');
+
+            } catch (Exception $e) {
+                sqlsrv_rollback($conn);
+                if (!empty($upload_path) && file_exists($upload_path)) unlink($upload_path);
+                $error = $e->getMessage();
             }
         }
     }
@@ -302,6 +335,9 @@ if (isset($_POST['update'])) {
             --sidebar-bg: #ffffff;
             --body-bg: #f8fafc;
             --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            --error-red: #dc2626;
+            --error-bg: #fef2f2;
+            --success-green: #22c55e;
         }
 
         body {
@@ -311,7 +347,6 @@ if (isset($_POST['update'])) {
             overflow-x: hidden;
         }
 
-        /* SIDEBAR - SAMA PERSIS DENGAN LIST */
         .sidebar {
             width: 260px;
             height: 100vh;
@@ -363,7 +398,6 @@ if (isset($_POST['update'])) {
         }
         .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
 
-        /* MAIN CONTENT */
         .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
         .dashboard-header {
             display: flex; justify-content: space-between; align-items: center;
@@ -380,7 +414,6 @@ if (isset($_POST['update'])) {
         }
         .profile-header-btn img { width: 100%; height: 100%; object-fit: cover; }
 
-        /* BREADCRUMB */
         .breadcrumb-custom {
             display: flex; align-items: center; gap: 8px;
             margin-bottom: 25px; font-size: 0.85rem; font-weight: 600;
@@ -390,7 +423,6 @@ if (isset($_POST['update'])) {
         .breadcrumb-custom .active { color: var(--p-pink); }
         .breadcrumb-custom i { color: #cbd5e1; font-size: 0.7rem; }
 
-        /* FORM CARD */
         .form-card {
             background: #ffffff; border-radius: 22px;
             border: 1px solid rgba(255, 228, 233, 0.8);
@@ -406,12 +438,87 @@ if (isset($_POST['update'])) {
         .form-card-header p { opacity: 0.85; font-size: 0.85rem; margin: 0; }
         .form-card-body { padding: 40px; }
 
+        /* 🔥 GUIDE BOX - PANDUAN WAJIB DIISI */
+        .guide-box {
+            background: linear-gradient(135deg, #fff7ed, #ffedd5);
+            border: 2px solid #fdba74;
+            border-radius: 16px;
+            padding: 20px 24px;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+        }
+        .guide-box-icon {
+            width: 44px;
+            height: 44px;
+            background: #fff;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            box-shadow: 0 2px 8px rgba(251, 146, 60, 0.2);
+        }
+        .guide-box-icon i {
+            font-size: 1.4rem;
+            color: #f97316;
+        }
+        .guide-box-content h5 {
+            font-weight: 800;
+            font-size: 0.95rem;
+            color: #c2410c;
+            margin-bottom: 6px;
+        }
+        .guide-box-content p {
+            font-size: 0.85rem;
+            color: #9a3412;
+            margin: 0;
+            line-height: 1.6;
+        }
+        .guide-box-content .guide-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #fff;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #c2410c;
+            margin-right: 6px;
+            margin-top: 6px;
+            border: 1px solid #fed7aa;
+        }
+        .guide-box-content .guide-item i {
+            color: #f97316;
+            font-size: 0.7rem;
+        }
+
         .form-label {
             font-weight: 700; font-size: 0.75rem;
             color: var(--text-dark); text-transform: uppercase;
             letter-spacing: 0.8px; margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
-        .form-label .required { color: #dc2626; margin-left: 2px; }
+        .form-label .required { 
+            color: var(--error-red); 
+            margin-left: 2px; 
+            font-size: 0.9rem; 
+        }
+        .form-label .badge-wajib {
+            background: var(--error-red);
+            color: #fff;
+            font-size: 0.6rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
         .form-control-custom {
             width: 100%; border: 2px solid #e2e8f0; border-radius: 14px;
             padding: 14px 18px; font-weight: 600; font-size: 0.9rem;
@@ -423,10 +530,43 @@ if (isset($_POST['update'])) {
         }
         .form-control-custom::placeholder { color: #a0aec0; font-weight: 500; }
         textarea.form-control-custom { min-height: 120px; resize: vertical; }
+        
+        .form-control-custom.is-error {
+            border-color: var(--error-red) !important;
+            background-color: var(--error-bg) !important;
+            box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.08) !important;
+        }
+        .form-control-custom.is-error:focus {
+            border-color: var(--error-red) !important;
+            box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.15) !important;
+        }
 
         .input-hint {
             font-size: 0.75rem; color: var(--text-muted); font-weight: 600;
             margin-top: 6px; display: flex; align-items: center; gap: 4px;
+        }
+        
+        .field-error-msg {
+            display: none;
+            font-size: 0.8rem;
+            color: var(--error-red);
+            font-weight: 700;
+            margin-top: 6px;
+            align-items: center;
+            gap: 4px;
+            animation: shake 0.5s ease-in-out;
+        }
+        .field-error-msg.show {
+            display: flex;
+        }
+        .field-error-msg i {
+            font-size: 0.9rem;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
         }
 
         /* CURRENT FOTO PREVIEW */
@@ -444,7 +584,6 @@ if (isset($_POST['update'])) {
             color: #fff; padding: 12px 16px; font-size: 0.8rem; font-weight: 700;
         }
 
-        /* FILE UPLOAD */
         .file-upload-zone {
             border: 2px dashed #e2e8f0; border-radius: 16px;
             padding: 24px; text-align: center;
@@ -453,6 +592,10 @@ if (isset($_POST['update'])) {
         }
         .file-upload-zone:hover, .file-upload-zone.dragover {
             border-color: var(--p-pink); background: var(--s-pink);
+        }
+        .file-upload-zone.is-error {
+            border-color: var(--error-red) !important;
+            background-color: var(--error-bg) !important;
         }
         .file-upload-zone i { font-size: 2rem; color: #cbd5e1; margin-bottom: 8px; display: block; }
         .file-upload-zone p { font-size: 0.85rem; color: #64748b; font-weight: 600; margin: 0; }
@@ -476,10 +619,14 @@ if (isset($_POST['update'])) {
         }
         #preview-container .remove-preview:hover { background: #dc2626; transform: scale(1.1); }
 
-        /* PAKET CHECKBOX GRID */
         .paket-section {
             background: #f8fafc; border-radius: 16px;
             padding: 24px; border: 2px solid #e2e8f0;
+            transition: var(--transition-3d);
+        }
+        .paket-section.is-error {
+            border-color: var(--error-red) !important;
+            background-color: var(--error-bg) !important;
         }
         .paket-section-title {
             font-weight: 800; font-size: 0.85rem;
@@ -546,7 +693,19 @@ if (isset($_POST['update'])) {
             color: var(--text-muted); font-size: 0.85rem;
         }
 
-        /* STATUS TOGGLE */
+        .paket-section-error {
+            display: none;
+            font-size: 0.8rem;
+            color: var(--error-red);
+            font-weight: 700;
+            margin-top: 8px;
+            align-items: center;
+            gap: 4px;
+        }
+        .paket-section-error.show {
+            display: flex;
+        }
+
         .status-toggle-group {
             display: flex; gap: 12px; margin-top: 8px;
         }
@@ -565,7 +724,6 @@ if (isset($_POST['update'])) {
         .status-option .status-label { font-weight: 700; font-size: 0.85rem; }
         .status-option .status-desc { font-size: 0.7rem; color: var(--text-muted); }
 
-        /* BUTTONS */
         .btn-submit {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
             color: #ffffff; border: none; border-radius: 14px;
@@ -590,7 +748,6 @@ if (isset($_POST['update'])) {
             transform: translateY(-3px);
         }
 
-        /* ALERT */
         .alert-custom {
             background: #fef2f2; border: none;
             border-left: 4px solid #dc2626; border-radius: 12px;
@@ -599,11 +756,44 @@ if (isset($_POST['update'])) {
         }
         .alert-custom i { font-size: 1.1rem; }
 
+        .alert-success-custom {
+            background: #f0fdf4; border: none;
+            border-left: 4px solid #22c55e; border-radius: 12px;
+            color: #166534; font-size: 0.85rem; padding: 14px 18px;
+            margin-bottom: 24px; display: flex; align-items: center; gap: 10px;
+        }
+        .alert-success-custom i { font-size: 1.1rem; }
+
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-10px); }
             to { opacity: 1; transform: translateY(0); }
         }
         .fade-in-up { animation: fadeIn 0.5s ease-out; }
+
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        .loading-overlay.active { display: flex; }
+        .loading-spinner {
+            width: 50px; height: 50px;
+            border: 4px solid var(--light-pink);
+            border-top-color: var(--p-pink);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text {
+            margin-top: 16px;
+            font-weight: 700;
+            color: var(--p-pink);
+        }
 
         @media (max-width: 992px) {
             .main-content { margin-left: 0; padding: 20px; }
@@ -613,7 +803,13 @@ if (isset($_POST['update'])) {
 </head>
 <body>
 
-    <!-- SIDEBAR - TETAP ADA SAMA PERSIS DENGAN LIST -->
+    <!-- LOADING OVERLAY -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Menyimpan perubahan...</div>
+    </div>
+
+    <!-- SIDEBAR -->
     <div class="sidebar">
         <div class="sidebar-menu-wrapper">
             <a href="../../index.php" class="sidebar-brand">
@@ -709,51 +905,105 @@ if (isset($_POST['update'])) {
             </div>
             <div class="form-card-body">
 
-                <?php if ($error != ""): ?>
-                    <div class="alert-custom">
+                <!-- ALERT ERROR GLOBAL -->
+                <?php if (!empty($error)): ?>
+                    <div class="alert-custom" id="alertError">
                         <i class="bi bi-exclamation-triangle-fill"></i>
-                        <span><?= htmlspecialchars($error) ?></span>
+                        <span><?= $error ?></span>
                     </div>
                 <?php endif; ?>
 
-                <form method="POST" enctype="multipart/form-data" id="formRuangan">
+                <!-- ALERT SUCCESS -->
+                <?php if ($success): ?>
+                    <div class="alert-success-custom" id="alertSuccess">
+                        <i class="bi bi-check-circle-fill"></i>
+                        <span>Data ruangan berhasil diperbarui!</span>
+                    </div>
+                <?php endif; ?>
+
+                <!-- 🔥 GUIDE BOX - PANDUAN WAJIB DIISI -->
+                <div class="guide-box">
+                    <div class="guide-box-icon">
+                        <i class="bi bi-lightbulb-fill"></i>
+                    </div>
+                    <div class="guide-box-content">
+                        <h5><i class="bi bi-info-circle-fill me-1"></i> Petunjuk Pengisian</h5>
+                        <p>Field yang bertanda <span style="color: #dc2626; font-weight: 800;">*</span> (merah) wajib diisi. Foto bersifat opsional jika tidak ingin mengganti.</p>
+                        <div>
+                            <span class="guide-item"><i class="bi bi-check2"></i> Nama Ruangan</span>
+                            <span class="guide-item"><i class="bi bi-check2"></i> Kapasitas</span>
+                            <span class="guide-item"><i class="bi bi-check2"></i> Deskripsi</span>
+                            <span class="guide-item"><i class="bi bi-check2"></i> Paket Foto</span>
+                            <span class="guide-item"><i class="bi bi-dash"></i> Foto (Opsional)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <form method="POST" enctype="multipart/form-data" id="formRuangan" action="">
                     <div class="row">
                         <!-- Nama Ruangan -->
                         <div class="col-md-8 mb-4">
-                            <label class="form-label">Nama Ruangan <span class="required">*</span></label>
-                            <input type="text" name="nama_ruangan" class="form-control-custom" required 
+                            <label class="form-label">
+                                <i class="bi bi-type"></i> Nama Ruangan 
+                                <span class="required">*</span>
+                                <span class="badge-wajib">Wajib</span>
+                            </label>
+                            <input type="text" name="nama_ruangan" id="nama_ruangan" class="form-control-custom <?= isset($field_errors['nama_ruangan']) ? 'is-error' : '' ?>" required 
                                    maxlength="100" placeholder="Contoh: Studio A Minimalis"
                                    value="<?= htmlspecialchars($ruangan['Nama_Ruangan']) ?>">
                             <div class="input-hint">
                                 <i class="bi bi-info-circle"></i> Maksimal 100 karakter, nama harus unik
                             </div>
+                            <div class="field-error-msg <?= isset($field_errors['nama_ruangan']) ? 'show' : '' ?>" id="error-nama_ruangan">
+                                <i class="bi bi-exclamation-circle-fill"></i>
+                                <span><?= $field_errors['nama_ruangan'] ?? '' ?></span>
+                            </div>
                         </div>
 
                         <!-- Kapasitas -->
                         <div class="col-md-4 mb-4">
-                            <label class="form-label">Kapasitas (Orang) <span class="required">*</span></label>
-                            <input type="number" name="kapasitas" class="form-control-custom" required 
+                            <label class="form-label">
+                                <i class="bi bi-people"></i> Kapasitas (Orang) 
+                                <span class="required">*</span>
+                                <span class="badge-wajib">Wajib</span>
+                            </label>
+                            <input type="number" name="kapasitas" id="kapasitas" class="form-control-custom <?= isset($field_errors['kapasitas']) ? 'is-error' : '' ?>" required 
                                    min="1" max="100" placeholder="4"
                                    value="<?= (int)$ruangan['Kapasitas_Ruangan'] ?>">
                             <div class="input-hint">
                                 <i class="bi bi-info-circle"></i> Minimal 1, maksimal 100 orang
+                            </div>
+                            <div class="field-error-msg <?= isset($field_errors['kapasitas']) ? 'show' : '' ?>" id="error-kapasitas">
+                                <i class="bi bi-exclamation-circle-fill"></i>
+                                <span><?= $field_errors['kapasitas'] ?? '' ?></span>
                             </div>
                         </div>
                     </div>
 
                     <!-- Deskripsi -->
                     <div class="mb-4">
-                        <label class="form-label">Deskripsi Ruangan <span class="required">*</span></label>
-                        <textarea name="deskripsi" class="form-control-custom" required 
+                        <label class="form-label">
+                            <i class="bi bi-card-text"></i> Deskripsi Ruangan 
+                            <span class="required">*</span>
+                            <span class="badge-wajib">Wajib</span>
+                        </label>
+                        <textarea name="deskripsi" id="deskripsi" class="form-control-custom <?= isset($field_errors['deskripsi']) ? 'is-error' : '' ?>" required 
                                   maxlength="255" placeholder="Deskripsikan suasana, konsep, dan keunggulan ruangan ini..."><?= htmlspecialchars($ruangan['Deskripsi'] ?? '') ?></textarea>
                         <div class="input-hint">
                             <i class="bi bi-info-circle"></i> Maksimal 255 karakter, akan ditampilkan ke pelanggan
+                        </div>
+                        <div class="field-error-msg <?= isset($field_errors['deskripsi']) ? 'show' : '' ?>" id="error-deskripsi">
+                            <i class="bi bi-exclamation-circle-fill"></i>
+                            <span><?= $field_errors['deskripsi'] ?? '' ?></span>
                         </div>
                     </div>
 
                     <!-- Foto Ruangan -->
                     <div class="mb-4">
-                        <label class="form-label">Foto Ruangan</label>
+                        <label class="form-label">
+                            <i class="bi bi-image"></i> Foto Ruangan 
+                            <span class="badge-wajib" style="background: #718096;">Opsional</span>
+                        </label>
 
                         <!-- Foto Saat Ini -->
                         <?php 
@@ -774,7 +1024,7 @@ if (isset($_POST['update'])) {
                         <?php endif; ?>
 
                         <!-- Upload Foto Baru -->
-                        <div class="file-upload-zone" id="dropzone" onclick="document.getElementById('foto-input').click()">
+                        <div class="file-upload-zone <?= isset($field_errors['foto']) ? 'is-error' : '' ?>" id="dropzone" onclick="document.getElementById('foto-input').click()">
                             <input type="file" name="foto" id="foto-input" 
                                    accept="image/jpeg,image/jpg,image/png,image/webp" onchange="handleFileSelect(event)">
                             <i class="bi bi-camera-fill" id="upload-icon"></i>
@@ -787,16 +1037,24 @@ if (isset($_POST['update'])) {
                                 <i class="bi bi-x-lg"></i>
                             </button>
                         </div>
+                        <div class="field-error-msg <?= isset($field_errors['foto']) ? 'show' : '' ?>" id="error-foto">
+                            <i class="bi bi-exclamation-circle-fill"></i>
+                            <span><?= $field_errors['foto'] ?? '' ?></span>
+                        </div>
                     </div>
 
                     <!-- PILIH PAKET FOTO -->
                     <div class="mb-4">
-                        <label class="form-label">Pilih Paket Foto <span class="required">*</span></label>
+                        <label class="form-label">
+                            <i class="bi bi-camera"></i> Pilih Paket Foto 
+                            <span class="required">*</span>
+                            <span class="badge-wajib">Wajib</span>
+                        </label>
                         <div class="input-hint mb-3">
                             <i class="bi bi-info-circle"></i> Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini
                         </div>
 
-                        <div class="paket-section">
+                        <div class="paket-section <?= isset($field_errors['paket']) ? 'is-error' : '' ?>" id="paket-section">
                             <div class="paket-section-title">
                                 <i class="bi bi-camera-fill text-danger"></i>
                                 Paket Foto Tersedia
@@ -843,6 +1101,11 @@ if (isset($_POST['update'])) {
                             <?php endif; ?>
                         </div>
 
+                        <div class="paket-section-error <?= isset($field_errors['paket']) ? 'show' : '' ?>" id="error-paket">
+                            <i class="bi bi-exclamation-circle-fill"></i>
+                            <span><?= $field_errors['paket'] ?? '' ?></span>
+                        </div>
+
                         <div class="input-hint mt-2" id="paket-count-hint">
                             <i class="bi bi-check-circle"></i> <span id="paket-count"><?= count($paket_terhubung_ids) ?></span> paket terpilih
                         </div>
@@ -850,7 +1113,9 @@ if (isset($_POST['update'])) {
 
                     <!-- Status -->
                     <div class="mb-4">
-                        <label class="form-label">Status Ruangan</label>
+                        <label class="form-label">
+                            <i class="bi bi-toggle-on"></i> Status Ruangan
+                        </label>
                         <div class="status-toggle-group">
                             <label class="status-option <?= ($ruangan['Status'] == 1) ? 'active' : '' ?>" onclick="selectStatus(this, 1)">
                                 <input type="radio" name="status" value="1" <?= ($ruangan['Status'] == 1) ? 'checked' : '' ?>>
@@ -869,7 +1134,7 @@ if (isset($_POST['update'])) {
 
                     <!-- Buttons -->
                     <div class="d-flex gap-3 mt-4">
-                        <button type="submit" name="update" class="btn-submit">
+                        <button type="submit" name="update" class="btn-submit" id="btnUpdate">
                             <i class="bi bi-check2-all"></i> Simpan Perubahan
                         </button>
                         <a href="list.php" class="btn-batal">
@@ -922,6 +1187,7 @@ if (isset($_POST['update'])) {
                 el.classList.remove('selected');
             }
             updatePaketCount();
+            clearFieldError('paket');
         }
 
         function updatePaketCount() {
@@ -969,6 +1235,7 @@ if (isset($_POST['update'])) {
                     uploadText.textContent = 'Foto baru: ' + file.name;
                 };
                 reader.readAsDataURL(file);
+                clearFieldError('foto');
             }
         }
 
@@ -1028,32 +1295,73 @@ if (isset($_POST['update'])) {
         }
         setInterval(updateLiveClock, 1000); updateLiveClock();
 
-        // Form validation
+        // Real-Time Validation
+        function clearFieldError(fieldName) {
+            const field = document.getElementById(fieldName);
+            const errorMsg = document.getElementById('error-' + fieldName);
+            
+            if (field) field.classList.remove('is-error');
+            if (errorMsg) errorMsg.classList.remove('show');
+            
+            if (fieldName === 'paket') {
+                const section = document.getElementById('paket-section');
+                if (section) section.classList.remove('is-error');
+            }
+            if (fieldName === 'foto') {
+                const dropzone = document.getElementById('dropzone');
+                if (dropzone) dropzone.classList.remove('is-error');
+            }
+        }
+
+        document.getElementById('nama_ruangan').addEventListener('input', function() {
+            if (this.value.trim()) clearFieldError('nama_ruangan');
+        });
+        document.getElementById('kapasitas').addEventListener('input', function() {
+            if (this.value > 0) clearFieldError('kapasitas');
+        });
+        document.getElementById('deskripsi').addEventListener('input', function() {
+            if (this.value.trim()) clearFieldError('deskripsi');
+        });
+
+        // Form Submit
         document.getElementById('formRuangan').addEventListener('submit', function(e) {
             const paketChecked = document.querySelectorAll('input[name="paket[]"]:checked').length;
             if (paketChecked === 0) {
                 e.preventDefault();
                 Swal.fire({
-                    icon: 'warning', title: 'Paket Belum Dipilih',
+                    icon: 'warning', 
+                    title: 'Paket Belum Dipilih',
                     text: 'Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini!',
                     confirmButtonColor: '#D53D66'
                 });
                 return false;
             }
+            document.getElementById('loadingOverlay').classList.add('active');
+            return true;
         });
 
-        // Init paket count
         updatePaketCount();
-    </script>
 
-    <?php if ($success): ?>
-    <script>
+        <?php if (!empty($error)): ?>
         Swal.fire({
-            icon: 'success', title: 'Berhasil!',
+            icon: 'error',
+            title: 'Gagal Menyimpan!',
+            html: '<?= addslashes($error) ?>',
+            confirmButtonColor: '#D53D66'
+        });
+        <?php endif; ?>
+
+        <?php if ($success): ?>
+        Swal.fire({
+            icon: 'success',
+            title: 'Berhasil!',
             text: 'Data ruangan dan relasi paket foto telah diperbarui.',
             confirmButtonColor: '#D53D66'
-        }).then(() => window.location = 'list.php?status_sukses=edit');
+        }).then(() => {
+            window.location.href = 'list.php?status_sukses=edit';
+        });
+        <?php endif; ?>
     </script>
-    <?php endif; ?>
+
 </body>
 </html>

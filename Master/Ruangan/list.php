@@ -75,6 +75,8 @@ $offset = ($halaman - 1) * $limit;
 $cari = isset($_GET['cari']) ? trim($_GET['cari']) : "";
 $status_filter = isset($_GET['status']) ? trim($_GET['status']) : "";
 $sort = isset($_GET['sort']) ? trim($_GET['sort']) : "nama_asc";
+// 🔥 TAMBAH: Filter untuk melihat data terhapus
+$filter_terhapus = isset($_GET['terhapus']) ? (int)$_GET['terhapus'] : 0;
 
 // =====================================================
 // QUERY STATISTIK
@@ -82,10 +84,11 @@ $sort = isset($_GET['sort']) ? trim($_GET['sort']) : "nama_asc";
 $stats = safe_sqlsrv_fetch($conn, 
     "SELECT 
         COUNT(*) as total,
-        SUM(CASE WHEN Status = 1 THEN 1 ELSE 0 END) as aktif,
-        SUM(CASE WHEN Status = 0 THEN 1 ELSE 0 END) as nonaktif
-    FROM Ruangan WHERE Is_Deleted = 0"
-) ?? ['total' => 0, 'aktif' => 0, 'nonaktif' => 0];
+        SUM(CASE WHEN Status = 1 AND Is_Deleted = 0 THEN 1 ELSE 0 END) as aktif,
+        SUM(CASE WHEN Status = 0 AND Is_Deleted = 0 THEN 1 ELSE 0 END) as nonaktif,
+        SUM(CASE WHEN Is_Deleted = 1 THEN 1 ELSE 0 END) as terhapus
+    FROM Ruangan"
+) ?? ['total' => 0, 'aktif' => 0, 'nonaktif' => 0, 'terhapus' => 0];
 
 // Ruangan terpopuler (dari Order)
 $top_ruangan = safe_sqlsrv_fetch($conn,
@@ -100,18 +103,27 @@ $top_ruangan = safe_sqlsrv_fetch($conn,
 // =====================================================
 // QUERY LIST DATA DENGAN FILTER & RELASI
 // =====================================================
-$conditions = ["r.Is_Deleted = 0"];
+$conditions = [];
 $params = [];
+
+// 🔥 PERBAIKAN: Filter berdasarkan status hapus
+if ($filter_terhapus == 1) {
+    $conditions[] = "r.Is_Deleted = 1";
+} else {
+    $conditions[] = "r.Is_Deleted = 0";
+    if ($status_filter !== "") {
+        $conditions[] = "r.Status = ?";
+        $params[] = (int)$status_filter;
+    }
+}
 
 if (!empty($cari)) {
     $conditions[] = "(r.Nama_Ruangan LIKE ? OR r.Deskripsi LIKE ?)";
     $params[] = "%$cari%"; 
     $params[] = "%$cari%";
 }
-if ($status_filter !== "") {
-    $conditions[] = "r.Status = ?";
-    $params[] = (int)$status_filter;
-}
+
+$where_sql = !empty($conditions) ? "WHERE " . implode(" AND ", $conditions) : "";
 
 $order_clause = "r.Nama_Ruangan ASC";
 if ($sort == "nama_desc") { $order_clause = "r.Nama_Ruangan DESC"; }
@@ -121,7 +133,7 @@ elseif ($sort == "paket_asc") { $order_clause = "total_paket ASC"; }
 elseif ($sort == "paket_desc") { $order_clause = "total_paket DESC"; }
 
 // Hitung total untuk pagination
-$count_sql = "SELECT COUNT(*) AS total FROM Ruangan r WHERE " . implode(" AND ", $conditions);
+$count_sql = "SELECT COUNT(*) AS total FROM Ruangan r {$where_sql}";
 $total_records = safe_sqlsrv_count($conn, $count_sql, $params);
 $total_halaman = ceil($total_records / $limit);
 
@@ -133,12 +145,13 @@ $list_sql = "SELECT
     r.Deskripsi,
     r.Foto_Ruangan,
     r.Status,
+    r.Is_Deleted,
     (SELECT COUNT(*) FROM Paket_Ruangan pr WHERE pr.ID_Ruangan = r.ID_Ruangan) as total_paket,
     (SELECT COUNT(*) FROM Properti p WHERE p.ID_Ruangan = r.ID_Ruangan AND p.Status = 1 AND p.Is_Deleted = 0) as total_properti,
     (SELECT COUNT(*) FROM Ruangan_Tema rt WHERE rt.ID_Ruangan = r.ID_Ruangan) as total_tema
 FROM Ruangan r
-WHERE " . implode(" AND ", $conditions) . "
-ORDER BY " . $order_clause . "
+{$where_sql}
+ORDER BY {$order_clause}
 OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
 
 $params_list = $params;
@@ -298,6 +311,7 @@ if (!empty($ruangan_list)) {
         .stat-icon-green { background: linear-gradient(135deg, #ecfdf5, #d1fae5); color: #059669; }
         .stat-icon-orange { background: linear-gradient(135deg, #fff7ed, #fed7aa); color: #ea580c; }
         .stat-icon-blue { background: linear-gradient(135deg, #eff6ff, #dbeafe); color: #2563eb; }
+        .stat-icon-red { background: linear-gradient(135deg, #fef2f2, #fee2e2); color: #dc2626; }
         .stat-content { flex: 1; min-width: 0; overflow: hidden; }
         .stat-val { font-size: 1.5rem; font-weight: 800; color: var(--text-dark); margin-bottom: 2px; line-height: 1.2; }
         .stat-title { font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
@@ -368,6 +382,46 @@ if (!empty($ruangan_list)) {
             box-shadow: 0 12px 25px rgba(213, 61, 102, 0.4) !important;
         }
 
+        /* 🔥 TAB FILTER STATUS */
+        .status-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .status-tab {
+            padding: 10px 20px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            text-decoration: none;
+            color: #64748b;
+            background: #ffffff;
+            border: 2px solid #e2e8f0;
+            transition: var(--transition-3d);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .status-tab:hover {
+            border-color: var(--p-pink);
+            color: var(--p-pink);
+        }
+        .status-tab.active {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #ffffff;
+            border-color: var(--p-pink);
+            box-shadow: 0 4px 12px rgba(213, 61, 102, 0.2);
+        }
+        .status-tab .tab-count {
+            background: rgba(255,255,255,0.3);
+            color: inherit;
+            padding: 2px 8px;
+            border-radius: 50px;
+            font-size: 0.7rem;
+            font-weight: 800;
+        }
+
         /* TABEL */
         .table-scroll-wrapper {
             width: 100%; overflow-x: auto; overflow-y: hidden;
@@ -398,6 +452,14 @@ if (!empty($ruangan_list)) {
         .data-table tbody tr:nth-child(even) { background-color: #FFF8F0; }
         .data-table tbody tr:nth-child(odd) { background-color: #ffffff; }
         .data-table tbody tr:hover { background-color: #FFEDD5 !important; transform: scale(1.002); }
+        /* 🔥 BARIS TERHAPUS */
+        .data-table tbody tr.row-deleted {
+            background-color: #fef2f2 !important;
+            opacity: 0.85;
+        }
+        .data-table tbody tr.row-deleted:hover {
+            background-color: #fee2e2 !important;
+        }
 
         .ruangan-preview {
             width: 70px; height: 70px; object-fit: cover;
@@ -417,9 +479,11 @@ if (!empty($ruangan_list)) {
         }
         .badge-aktif { background: #ecfdf5; color: #059669; }
         .badge-nonaktif { background: #fef2f2; color: #dc2626; }
+        .badge-terhapus { background: #fee2e2; color: #991b1b; }
         .badge-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
         .badge-aktif .badge-dot { background: #059669; }
         .badge-nonaktif .badge-dot { background: #dc2626; }
+        .badge-terhapus .badge-dot { background: #991b1b; }
 
         .badge-paket {
             font-size: 0.65rem; font-weight: 700; padding: 3px 10px;
@@ -439,8 +503,16 @@ if (!empty($ruangan_list)) {
         .btn-action-detail:hover { background: #D53D66; color: #ffffff; transform: translateY(-2px); }
         .btn-action-edit { color: var(--p-pink); border-color: #FFE4E9; }
         .btn-action-edit:hover { background: var(--p-pink); color: #ffffff; transform: translateY(-2px); }
-        .btn-action-delete { color: #dc2626; border-color: #fee2e2; }
-        .btn-action-delete:hover { background: #dc2626; color: #ffffff; transform: translateY(-2px); }
+        .btn-action-toggle { color: #059669; border-color: #d1fae5; }
+        .btn-action-toggle:hover { background: #059669; color: #ffffff; transform: translateY(-2px); }
+        .btn-action-toggle-off { color: #718096; border-color: #e2e8f0; }
+        .btn-action-toggle-off:hover { background: #718096; color: #ffffff; transform: translateY(-2px); }
+        .btn-action-soft-delete { color: #dc2626; border-color: #fee2e2; }
+        .btn-action-soft-delete:hover { background: #dc2626; color: #ffffff; transform: translateY(-2px); }
+        .btn-action-restore { color: #059669; border-color: #d1fae5; }
+        .btn-action-restore:hover { background: #059669; color: #ffffff; transform: translateY(-2px); }
+        .btn-action-hard-delete { color: #7c2d12; border-color: #fed7aa; }
+        .btn-action-hard-delete:hover { background: #7c2d12; color: #ffffff; transform: translateY(-2px); }
 
         /* PAGINATION */
         .pagination-wrapper {
@@ -602,6 +674,19 @@ if (!empty($ruangan_list)) {
                         </div>
                     </div>
                 </div>
+                <!-- 🔥 STAT CARD TERHAPUS -->
+                <div class="stat-card-item">
+                    <div class="card-3d">
+                        <div class="stat-card">
+                            <div class="stat-icon stat-icon-red"><i class="bi bi-trash-fill"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-title">Ruangan Terhapus</div>
+                                <div class="stat-val"><?= $stats['terhapus'] ?? 0 ?> Ruangan</div>
+                                <div class="stat-subtitle">Bisa dikembalikan</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="stat-card-item">
                     <div class="card-3d">
                         <div class="stat-card">
@@ -617,11 +702,36 @@ if (!empty($ruangan_list)) {
             </div>
         </div>
 
+        <!-- 🔥 TAB FILTER STATUS -->
+        <div class="status-tabs">
+            <a href="list.php<?= !empty($cari) ? '?cari=' . urlencode($cari) . '&' : '?' ?>sort=<?= $sort ?>" 
+               class="status-tab <?= $filter_terhapus == 0 && $status_filter === '' ? 'active' : '' ?>">
+                <i class="bi bi-grid"></i> Semua
+                <span class="tab-count"><?= ($stats['aktif'] ?? 0) + ($stats['nonaktif'] ?? 0) ?></span>
+            </a>
+            <a href="list.php?status=1<?= !empty($cari) ? '&cari=' . urlencode($cari) : '' ?>&sort=<?= $sort ?>" 
+               class="status-tab <?= $filter_terhapus == 0 && $status_filter === '1' ? 'active' : '' ?>">
+                <i class="bi bi-check-circle"></i> Aktif
+                <span class="tab-count"><?= $stats['aktif'] ?? 0 ?></span>
+            </a>
+            <a href="list.php?status=0<?= !empty($cari) ? '&cari=' . urlencode($cari) : '' ?>&sort=<?= $sort ?>" 
+               class="status-tab <?= $filter_terhapus == 0 && $status_filter === '0' ? 'active' : '' ?>">
+                <i class="bi bi-x-circle"></i> Nonaktif
+                <span class="tab-count"><?= $stats['nonaktif'] ?? 0 ?></span>
+            </a>
+            <a href="list.php?terhapus=1<?= !empty($cari) ? '&cari=' . urlencode($cari) : '' ?>&sort=<?= $sort ?>" 
+               class="status-tab <?= $filter_terhapus == 1 ? 'active' : '' ?>">
+                <i class="bi bi-trash"></i> Terhapus
+                <span class="tab-count"><?= $stats['terhapus'] ?? 0 ?></span>
+            </a>
+        </div>
+
         <!-- SEARCH & FILTER -->
         <div class="search-filter-bar">
             <form method="GET" class="search-form-flex" id="mainSearchForm">
                 <input type="hidden" name="status" id="hiddenStatus" value="<?= htmlspecialchars($status_filter) ?>">
                 <input type="hidden" name="sort" id="hiddenSort" value="<?= htmlspecialchars($sort) ?>">
+                <input type="hidden" name="terhapus" id="hiddenTerhapus" value="<?= $filter_terhapus ?>">
                 <div class="search-input-wrapper">
                     <i class="bi bi-search search-icon"></i>
                     <input type="text" name="cari" class="search-input-main" placeholder="Cari nama ruangan atau deskripsi..." value="<?= htmlspecialchars($cari) ?>">
@@ -634,18 +744,24 @@ if (!empty($ruangan_list)) {
                     <i class="bi bi-search"></i>
                 </button>
             </form>
-            <a href="add.php" class="btn-reg-header text-decoration-none">
-                <i class="bi bi-plus-circle-fill me-2"></i>Tambah Ruangan
-            </a>
+            <?php if ($filter_terhapus == 0): ?>
+                <a href="add.php" class="btn-reg-header text-decoration-none">
+                    <i class="bi bi-plus-circle-fill me-2"></i>Tambah Ruangan
+                </a>
+            <?php endif; ?>
         </div>
 
         <!-- INFO TEXT -->
         <div class="alert alert-light border-2 border-dashed mb-3" style="border-color: #e2e8f0; border-radius: 14px; background: #f8fafc;">
             <i class="bi bi-info-circle-fill me-2 text-info"></i>
             <span class="small fw-bold text-muted">
-                <strong>Info:</strong> Properti & Tema muncul otomatis berdasarkan ruangan yang dipilih. 
-                Admin mengelola Properti di menu <a href="../Properti/list.php" style="color: var(--p-pink);">Properti</a> 
-                dan Tema di menu <a href="../Tema Foto/list.php" style="color: var(--p-pink);">Tema Foto</a>.
+                <?php if ($filter_terhapus == 1): ?>
+                    <strong>Info:</strong> Ruangan yang dihapus bisa dikembalikan dengan tombol "Kembalikan" atau dihapus permanen dengan tombol "Hapus Permanen".
+                <?php else: ?>
+                    <strong>Info:</strong> Properti & Tema muncul otomatis berdasarkan ruangan yang dipilih. 
+                    Admin mengelola Properti di menu <a href="../Properti/list.php" style="color: var(--p-pink);">Properti</a> 
+                    dan Tema di menu <a href="../Tema Foto/list.php" style="color: var(--p-pink);">Tema Foto</a>.
+                <?php endif; ?>
             </span>
         </div>
 
@@ -674,12 +790,12 @@ if (!empty($ruangan_list)) {
                                     ? $path_img 
                                     : $default_svg_avatar;
 
-                                $badge_status = ($row['Status'] == 1) ? "badge-aktif" : "badge-nonaktif";
-                                $text_status = ($row['Status'] == 1) ? "Aktif" : "Nonaktif";
+                                $is_deleted = ($row['Is_Deleted'] ?? 0) == 1;
+                                $status = (int)($row['Status'] ?? 1);
 
                                 $paket_list = $paket_per_ruangan[$row['ID_Ruangan']] ?? [];
                         ?>
-                            <tr class="fade-in-up">
+                            <tr class="fade-in-up <?= $is_deleted ? 'row-deleted' : '' ?>">
                                 <td>
                                     <div class="d-flex align-items-center gap-3">
                                         <img src="<?= $img_src ?>" class="ruangan-preview" alt="<?= htmlspecialchars($row['Nama_Ruangan']) ?>">
@@ -711,24 +827,75 @@ if (!empty($ruangan_list)) {
                                     <i class="bi bi-palette me-1 text-info"></i><?= $row['total_tema'] ?? 0 ?> tema
                                 </td>
                                 <td>
-                                    <span class="badge-status <?= $badge_status ?>">
-                                        <span class="badge-dot"></span>
-                                        <?= $text_status ?>
-                                    </span>
+                                    <?php if ($is_deleted): ?>
+                                        <span class="badge-status badge-terhapus">
+                                            <span class="badge-dot"></span>
+                                            Terhapus
+                                        </span>
+                                    <?php elseif ($status == 1): ?>
+                                        <span class="badge-status badge-aktif">
+                                            <span class="badge-dot"></span>
+                                            Aktif
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="badge-status badge-nonaktif">
+                                            <span class="badge-dot"></span>
+                                            Nonaktif
+                                        </span>
+                                    <?php endif; ?>
                                 </td>
                                 <td>
-                                    <a href="detail.php?id=<?= $row['ID_Ruangan'] ?>" class="btn-action-circle btn-action-detail" title="Lihat Detail">
-                                        <i class="bi bi-eye"></i>
-                                    </a>
-                                    <a href="edit.php?id=<?= $row['ID_Ruangan'] ?>" class="btn-action-circle btn-action-edit" title="Edit Ruangan">
-                                        <i class="bi bi-pencil"></i>
-                                    </a>
-                                    <button class="btn-action-circle btn-action-delete" onclick="toggleStatus(<?= $row['ID_Ruangan'] ?>, <?= $row['Status'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" title="Toggle Status">
-                                        <i class="bi bi-toggle-<?= $row['Status'] == 1 ? 'on' : 'off' ?>"></i>
-                                    </button>
-                                    <button class="btn-action-circle btn-action-delete" onclick="hardDelete(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" title="Hapus Permanen">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
+                                    <?php if (!$is_deleted): ?>
+                                        <!-- 🔥 AKSI UNTUK RUANGAN AKTIF/NONAKTIF -->
+                                        
+                                        <!-- Detail -->
+                                        <a href="detail.php?id=<?= $row['ID_Ruangan'] ?>" class="btn-action-circle btn-action-detail" title="Lihat Detail">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                        
+                                        <!-- Edit -->
+                                        <a href="edit.php?id=<?= $row['ID_Ruangan'] ?>" class="btn-action-circle btn-action-edit" title="Edit Ruangan">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        
+                                        <!-- Toggle Status -->
+                                        <?php if ($status == 1): ?>
+                                            <button class="btn-action-circle btn-action-toggle" 
+                                                    onclick="softDeleteConfirm(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" 
+                                                    title="Nonaktifkan & Hapus (Soft Delete)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        <?php else: ?>
+                                            <button class="btn-action-circle btn-action-toggle-off" 
+                                                    onclick="toggleStatus(<?= $row['ID_Ruangan'] ?>, 0, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" 
+                                                    title="Aktifkan Ruangan">
+                                                <i class="bi bi-toggle-off"></i>
+                                            </button>
+                                            <button class="btn-action-circle btn-action-soft-delete" 
+                                                    onclick="softDeleteConfirm(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" 
+                                                    title="Hapus (Soft Delete)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        <?php endif; ?>
+                                        
+                                    <?php else: ?>
+                                        <!-- 🔥 AKSI UNTUK RUANGAN TERHAPUS -->
+                                        
+                                        <!-- Restore -->
+                                        <button class="btn-action-circle btn-action-restore" 
+                                                onclick="restoreConfirm(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" 
+                                                title="Kembalikan Ruangan">
+                                            <i class="bi bi-arrow-counterclockwise"></i>
+                                        </button>
+                                        
+                                        <!-- Hard Delete -->
+                                        <button class="btn-action-circle btn-action-hard-delete" 
+                                                onclick="hardDeleteConfirm(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" 
+                                                title="Hapus Permanen">
+                                            <i class="bi bi-trash-fill"></i>
+                                        </button>
+                                        
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php 
@@ -739,7 +906,13 @@ if (!empty($ruangan_list)) {
                                 <td colspan="7" class="text-center text-muted py-5">
                                     <i class="bi bi-inbox fs-1 mb-3 d-block" style="color: #cbd5e1;"></i>
                                     <p class="fw-bold">Tidak ada data ruangan yang sesuai.</p>
-                                    <p class="small">Coba ubah filter atau tambah ruangan baru.</p>
+                                    <p class="small">
+                                        <?php if ($filter_terhapus == 1): ?>
+                                            Belum ada ruangan yang dihapus.
+                                        <?php else: ?>
+                                            Coba ubah filter atau <a href="add.php" style="color: var(--p-pink);">tambah ruangan baru</a>.
+                                        <?php endif; ?>
+                                    </p>
                                 </td>
                             </tr>
                         <?php endif; ?>
@@ -755,7 +928,7 @@ if (!empty($ruangan_list)) {
                 </div>
                 <nav class="pagination-nav">
                     <?php if ($halaman > 1): ?>
-                        <a class="page-link-pag" href="list.php?halaman=<?= $halaman - 1 ?>&cari=<?= urlencode($cari) ?>&status=<?= $status_filter ?>&sort=<?= $sort ?>" title="Sebelumnya">
+                        <a class="page-link-pag" href="list.php?halaman=<?= $halaman - 1 ?>&cari=<?= urlencode($cari) ?>&status=<?= $status_filter ?>&sort=<?= $sort ?>&terhapus=<?= $filter_terhapus ?>" title="Sebelumnya">
                             <i class="bi bi-chevron-left"></i>
                         </a>
                     <?php else: ?>
@@ -767,25 +940,25 @@ if (!empty($ruangan_list)) {
                     $end_page = min($total_halaman, $halaman + 2);
 
                     if ($start_page > 1) {
-                        echo '<a class="page-link-pag" href="list.php?halaman=1&cari=' . urlencode($cari) . '&status=' . $status_filter . '&sort=' . $sort . '">1</a>';
+                        echo '<a class="page-link-pag" href="list.php?halaman=1&cari=' . urlencode($cari) . '&status=' . $status_filter . '&sort=' . $sort . '&terhapus=' . $filter_terhapus . '">1</a>';
                         if ($start_page > 2) echo '<span class="page-link-pag disabled">...</span>';
                     }
 
                     for ($i = $start_page; $i <= $end_page; $i++): 
                     ?>
-                        <a class="page-link-pag <?= ($halaman == $i) ? 'active-pag' : '' ?>" href="list.php?halaman=<?= $i ?>&cari=<?= urlencode($cari) ?>&status=<?= $status_filter ?>&sort=<?= $sort ?>">
+                        <a class="page-link-pag <?= ($halaman == $i) ? 'active-pag' : '' ?>" href="list.php?halaman=<?= $i ?>&cari=<?= urlencode($cari) ?>&status=<?= $status_filter ?>&sort=<?= $sort ?>&terhapus=<?= $filter_terhapus ?>">
                             <?= $i ?>
                         </a>
                     <?php endfor; 
 
                     if ($end_page < $total_halaman) {
                         if ($end_page < $total_halaman - 1) echo '<span class="page-link-pag disabled">...</span>';
-                        echo '<a class="page-link-pag" href="list.php?halaman=' . $total_halaman . '&cari=' . urlencode($cari) . '&status=' . $status_filter . '&sort=' . $sort . '">' . $total_halaman . '</a>';
+                        echo '<a class="page-link-pag" href="list.php?halaman=' . $total_halaman . '&cari=' . urlencode($cari) . '&status=' . $status_filter . '&sort=' . $sort . '&terhapus=' . $filter_terhapus . '">' . $total_halaman . '</a>';
                     }
                     ?>
 
                     <?php if ($halaman < $total_halaman): ?>
-                        <a class="page-link-pag" href="list.php?halaman=<?= $halaman + 1 ?>&cari=<?= urlencode($cari) ?>&status=<?= $status_filter ?>&sort=<?= $sort ?>" title="Selanjutnya">
+                        <a class="page-link-pag" href="list.php?halaman=<?= $halaman + 1 ?>&cari=<?= urlencode($cari) ?>&status=<?= $status_filter ?>&sort=<?= $sort ?>&terhapus=<?= $filter_terhapus ?>" title="Selanjutnya">
                             <i class="bi bi-chevron-right"></i>
                         </a>
                     <?php else: ?>
@@ -824,6 +997,7 @@ if (!empty($ruangan_list)) {
                             <option value="paket_desc" <?= $sort == 'paket_desc' ? 'selected' : '' ?>>Paket Terhubung (Banyak)</option>
                         </select>
                     </div>
+                    <?php if ($filter_terhapus == 0): ?>
                     <div>
                         <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">STATUS</label>
                         <select class="form-select" id="modalStatus" style="border: 2px solid #e2e8f0; border-radius: 14px; padding: 14px 18px; font-weight: 600;">
@@ -832,6 +1006,7 @@ if (!empty($ruangan_list)) {
                             <option value="0" <?= $status_filter === '0' ? 'selected' : '' ?>>Nonaktif</option>
                         </select>
                     </div>
+                    <?php endif; ?>
                 </div>
                 <div class="modal-footer" style="border: none; padding: 0 24px 24px; background: #ffffff; display: flex; gap: 12px;">
                     <button type="button" class="btn btn-secondary" style="flex: 1; background: #f1f5f9; color: #475569; border: none; border-radius: 14px; padding: 14px 20px; font-weight: 700;" onclick="resetFilter()">
@@ -875,48 +1050,90 @@ if (!empty($ruangan_list)) {
         }
         function applyFilter() {
             document.getElementById('hiddenSort').value = document.getElementById('modalSort').value;
+            <?php if ($filter_terhapus == 0): ?>
             document.getElementById('hiddenStatus').value = document.getElementById('modalStatus').value;
+            <?php endif; ?>
             document.getElementById('mainSearchForm').submit();
         }
         function resetFilter() {
             document.getElementById('modalSort').value = 'nama_asc';
+            <?php if ($filter_terhapus == 0): ?>
             document.getElementById('modalStatus').value = '';
-            document.getElementById('hiddenSort').value = 'nama_asc';
             document.getElementById('hiddenStatus').value = '';
+            <?php endif; ?>
+            document.getElementById('hiddenSort').value = 'nama_asc';
             document.getElementById('mainSearchForm').submit();
         }
 
-        // Toggle Status
+        // 🔥 TOGGLE STATUS (Aktif/Nonaktif)
         function toggleStatus(id, currentStatus, nama) {
             const newStatus = currentStatus === 1 ? 0 : 1;
             const actionText = currentStatus === 1 ? 'menonaktifkan' : 'mengaktifkan';
+            const icon = currentStatus === 1 ? 'warning' : 'question';
+            const confirmText = currentStatus === 1 ? 'Ya, Nonaktifkan' : 'Ya, Aktifkan';
 
             Swal.fire({
                 title: 'Ubah Status Ruangan?',
                 text: 'Anda akan ' + actionText + ' ruangan "' + nama + '"',
-                icon: 'warning',
+                icon: icon,
                 showCancelButton: true,
                 confirmButtonColor: '#D53D66',
                 cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Ubah',
+                confirmButtonText: confirmText,
                 cancelButtonText: 'Batal'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    window.location.href = 'action_ruangan.php?aksi=toggle_status&id=' + id + '&status=' + newStatus;
+                    window.location.href = 'action_ruangan.php?aksi=toggle_status&id=' + id;
                 }
             });
         }
 
-        // Hard Delete
-        function hardDelete(id, nama) {
+        // 🔥 SOFT DELETE (Hapus - bisa dikembalikan)
+        function softDeleteConfirm(id, nama) {
             Swal.fire({
-                title: 'HAPUS PERMANEN?',
-                text: 'Ruangan "' + nama + '" akan dihapus PERMANEN dari database!',
-                icon: 'error',
+                title: 'Hapus Ruangan?',
+                html: 'Ruangan <b>"' + nama + '"</b> akan dihapus.<br><br><span style="color: #059669;"><i class="bi bi-info-circle-fill"></i> Data bisa dikembalikan nanti.</span>',
+                icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#dc2626',
                 cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Hapus',
+                confirmButtonText: '<i class="bi bi-trash"></i> Ya, Hapus',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = 'action_ruangan.php?aksi=soft_delete&id=' + id;
+                }
+            });
+        }
+
+        // 🔥 RESTORE (Kembalikan ruangan yang dihapus)
+        function restoreConfirm(id, nama) {
+            Swal.fire({
+                title: 'Kembalikan Ruangan?',
+                html: 'Ruangan <b>"' + nama + '"</b> akan dikembalikan ke daftar aktif.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#059669',
+                cancelButtonColor: '#718096',
+                confirmButtonText: '<i class="bi bi-arrow-counterclockwise"></i> Ya, Kembalikan',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = 'action_ruangan.php?aksi=restore&id=' + id;
+                }
+            });
+        }
+
+        // 🔥 HARD DELETE (Hapus permanen)
+        function hardDeleteConfirm(id, nama) {
+            Swal.fire({
+                title: 'HAPUS PERMANEN?',
+                html: 'Ruangan <b>"' + nama + '"</b> akan dihapus <span style="color: #dc2626; font-weight: 800;">PERMANEN</span> dari database!<br><br><i class="bi bi-exclamation-triangle-fill" style="color: #dc2626;"></i> Data tidak bisa dikembalikan!',
+                icon: 'error',
+                showCancelButton: true,
+                confirmButtonColor: '#7c2d12',
+                cancelButtonColor: '#718096',
+                confirmButtonText: '<i class="bi bi-trash-fill"></i> Ya, Hapus Permanen',
                 cancelButtonText: 'Batal'
             }).then((result) => {
                 if (result.isConfirmed) {
@@ -983,14 +1200,16 @@ if (!empty($ruangan_list)) {
         updateLiveClock();
     </script>
 
-    <!-- Notifikasi -->
+    <!-- 🔥 NOTIFIKASI DARI ACTION_RUANGAN.PHP -->
     <?php if(isset($_GET['status_sukses'])): ?>
     <script>
         let msg = "";
         let t_icon = "success";
         let t_title = "Berhasil!";
 
-        if ("<?= $_GET['status_sukses'] ?>" == 'tambah') msg = "Ruangan baru berhasil ditambahkan!";
+        if ("<?= $_GET['status_sukses'] ?>" == 'tambah') { 
+            msg = "Ruangan baru berhasil ditambahkan!"; 
+        }
         else if ("<?= $_GET['status_sukses'] ?>" == 'edit') msg = "Data ruangan berhasil diperbarui!";
         else if ("<?= $_GET['status_sukses'] ?>" == 'toggle_status') { msg = "Status ruangan berhasil diubah!"; t_title = "Status Diubah"; }
         else if ("<?= $_GET['status_sukses'] ?>" == 'hard_delete') { msg = "Ruangan berhasil dihapus permanen!"; t_title = "Hard Delete Berhasil"; }
