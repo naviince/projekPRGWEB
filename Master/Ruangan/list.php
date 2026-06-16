@@ -858,19 +858,30 @@ if (!empty($ruangan_list)) {
                                             <i class="bi bi-pencil"></i>
                                         </a>
                                         
-                                        <!-- Toggle Status -->
+                                        <!-- 🔥 PERBAIKAN: Toggle Status (Aktifkan/Nonaktifkan) -->
                                         <?php if ($status == 1): ?>
+                                            <!-- Ruangan Aktif → Bisa Nonaktifkan -->
                                             <button class="btn-action-circle btn-action-toggle" 
+                                                    onclick="toggleStatus(<?= $row['ID_Ruangan'] ?>, 1, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" 
+                                                    title="Nonaktifkan Ruangan">
+                                                <i class="bi bi-toggle-on"></i>
+                                            </button>
+                                            
+                                            <!-- Soft Delete -->
+                                            <button class="btn-action-circle btn-action-soft-delete" 
                                                     onclick="softDeleteConfirm(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" 
-                                                    title="Nonaktifkan & Hapus (Soft Delete)">
+                                                    title="Hapus (Soft Delete)">
                                                 <i class="bi bi-trash"></i>
                                             </button>
                                         <?php else: ?>
+                                            <!-- Ruangan Nonaktif → Bisa Aktifkan -->
                                             <button class="btn-action-circle btn-action-toggle-off" 
                                                     onclick="toggleStatus(<?= $row['ID_Ruangan'] ?>, 0, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" 
                                                     title="Aktifkan Ruangan">
                                                 <i class="bi bi-toggle-off"></i>
                                             </button>
+                                            
+                                            <!-- Soft Delete -->
                                             <button class="btn-action-circle btn-action-soft-delete" 
                                                     onclick="softDeleteConfirm(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" 
                                                     title="Hapus (Soft Delete)">
@@ -1067,10 +1078,10 @@ if (!empty($ruangan_list)) {
 
         // 🔥 TOGGLE STATUS (Aktif/Nonaktif)
         function toggleStatus(id, currentStatus, nama) {
-            const newStatus = currentStatus === 1 ? 0 : 1;
             const actionText = currentStatus === 1 ? 'menonaktifkan' : 'mengaktifkan';
             const icon = currentStatus === 1 ? 'warning' : 'question';
             const confirmText = currentStatus === 1 ? 'Ya, Nonaktifkan' : 'Ya, Aktifkan';
+            const successMsg = currentStatus === 1 ? 'Ruangan berhasil dinonaktifkan!' : 'Ruangan berhasil diaktifkan!';
 
             Swal.fire({
                 title: 'Ubah Status Ruangan?',
@@ -1212,6 +1223,8 @@ if (!empty($ruangan_list)) {
         }
         else if ("<?= $_GET['status_sukses'] ?>" == 'edit') msg = "Data ruangan berhasil diperbarui!";
         else if ("<?= $_GET['status_sukses'] ?>" == 'toggle_status') { msg = "Status ruangan berhasil diubah!"; t_title = "Status Diubah"; }
+        else if ("<?= $_GET['status_sukses'] ?>" == 'soft_delete') { msg = "Ruangan berhasil dihapus! Data bisa dikembalikan."; t_title = "Soft Delete Berhasil"; }
+        else if ("<?= $_GET['status_sukses'] ?>" == 'restore') { msg = "Ruangan berhasil dikembalikan!"; t_title = "Restore Berhasil"; }
         else if ("<?= $_GET['status_sukses'] ?>" == 'hard_delete') { msg = "Ruangan berhasil dihapus permanen!"; t_title = "Hard Delete Berhasil"; }
         else if ("<?= $_GET['status_sukses'] ?>" == 'error') { msg = "<?= $_GET['message'] ?? 'Terjadi kesalahan!' ?>"; t_icon = "error"; t_title = "Gagal!"; }
 
