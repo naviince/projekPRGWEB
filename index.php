@@ -33,22 +33,18 @@ $sql_paket = "SELECT * FROM Paket_Foto WHERE Status = 1 AND Is_Deleted = 0 ORDER
 $query_paket = sqlsrv_query($conn, $sql_paket);
 
 // =====================================================
-// QUERY RUANGAN TERSEDIA HARI INI
+// QUERY RUANGAN TERSEDIA HARI INI (UNTUK INTERNAL, TIDAK DITAMPILKAN DI LANDING)
 // =====================================================
 $tanggal_hari_ini = date('Y-m-d');
 $hari_indo = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
 $bulan_indo = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 $timestamp = strtotime($tanggal_hari_ini);
 $tanggal_display = $hari_indo[date('w', $timestamp)] . ', ' . date('d', $timestamp) . ' ' . $bulan_indo[date('n', $timestamp)-1] . ' ' . date('Y', $timestamp);
-$sql_ruangan = "SELECT r.ID_Ruangan, r.Nama_Ruangan, r.Kapasitas_Ruangan, r.Harga_Sewa, r.Deskripsi,
-                COUNT(j.ID_Jadwal) as total_jadwal,
-                SUM(CASE WHEN j.Status = 1 AND j.Tanggal_Jadwal = ? THEN 1 ELSE 0 END) as jadwal_tersedia
-                FROM Ruangan r
-                LEFT JOIN Jadwal_Studio j ON r.ID_Ruangan = j.ID_Ruangan
-                WHERE r.Status = 1 AND r.Is_Deleted = 0
-                GROUP BY r.ID_Ruangan, r.Nama_Ruangan, r.Kapasitas_Ruangan, r.Harga_Sewa, r.Deskripsi
-                ORDER BY r.ID_Ruangan ASC";
-$query_ruangan = sqlsrv_query($conn, $sql_ruangan, array($tanggal_hari_ini));
+
+// JAM OPERASIONAL STUDIO
+$jam_buka = "08:00";
+$jam_tutup = "20:00";
+$jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB";
 ?>
 
 <!DOCTYPE html>
@@ -160,22 +156,34 @@ $query_ruangan = sqlsrv_query($conn, $sql_ruangan, array($tanggal_hari_ini));
     .btn-pilih { background: var(--pink-gradient); color: #ffffff; width: 100%; padding: 14px; border-radius: 14px; border: none; font-weight: 700; text-align: center; text-decoration: none; display: block; transition: var(--transition-3d); box-shadow: 0 4px 15px rgba(216, 63, 103, 0.15); }
     .btn-pilih:hover { background: var(--pink-gradient-hover); color: #ffffff; transform: translateY(-3px); box-shadow: 0 8px 22px rgba(216, 63, 103, 0.3); }
 
-    /* RUANGAN SLIDER - Horizontal Scroll */
-    .ruangan-slider-container { display: flex; overflow-x: auto; gap: 24px; padding: 20px 10px 40px 10px; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-    .ruangan-slider-container::-webkit-scrollbar { display: none; }
-    .ruangan-item { flex: 0 0 320px; scroll-snap-align: start; }
-    @media (max-width: 576px) { .ruangan-item { flex: 0 0 85%; } }
-    .ruangan-card { background: #ffffff; border-radius: 24px; padding: 28px; border: 1px solid rgba(255, 236, 239, 0.8); box-shadow: 0 8px 24px rgba(0,0,0,0.03); transition: var(--transition-3d); height: 100%; display: flex; flex-direction: column; }
-    .ruangan-card:hover { transform: translateY(-8px) scale(1.02); box-shadow: 0 20px 40px rgba(216, 63, 103, 0.12); border-color: var(--primary-pink); }
-    .ruangan-icon-box { width: 56px; height: 56px; background: linear-gradient(135deg, #FFF0F3, #FFE4E9); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; color: #D53D66; margin-bottom: 16px; transition: var(--transition-3d); }
-    .ruangan-card:hover .ruangan-icon-box { transform: scale(1.1) rotate(5deg); }
-    .ruangan-status { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 50px; font-size: 0.75rem; font-weight: 700; }
-    .ruangan-status.tersedia { background: #ecfdf5; color: #059669; }
-    .ruangan-status.tersedia::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #10b981; }
-    .ruangan-status.penuh { background: #fef2f2; color: #dc2626; }
-    .ruangan-status.penuh::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; }
-    .jadwal-slot { display: inline-block; padding: 4px 10px; background: #f1f5f9; border-radius: 8px; font-size: 0.75rem; font-weight: 600; color: #4a5568; margin: 2px; }
-    .jadwal-slot.tersedia { background: #ecfdf5; color: #059669; }
+    /* JAM OPERASIONAL BADGE */
+    .jam-operasional-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #fff5f6, #ffecef);
+      border-radius: 50px;
+      border: 2px solid rgba(216, 63, 103, 0.15);
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: var(--primary-pink);
+      transition: var(--transition-3d);
+      box-shadow: 0 4px 15px rgba(216, 63, 103, 0.08);
+    }
+    .jam-operasional-badge:hover {
+      transform: translateY(-3px) scale(1.03);
+      box-shadow: 0 8px 25px rgba(216, 63, 103, 0.15);
+      border-color: var(--primary-pink);
+    }
+    .jam-operasional-badge i {
+      font-size: 1.2rem;
+      animation: pulse-clock 2s ease-in-out infinite;
+    }
+    @keyframes pulse-clock {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.15); }
+    }
 
     /* PORTFOLIO */
     .portfolio-deck { position: relative; width: 100%; height: 480px; display: flex; justify-content: center; align-items: center; margin: 40px auto; perspective: 1200px; }
@@ -223,6 +231,27 @@ $query_ruangan = sqlsrv_query($conn, $sql_ruangan, array($tanggal_hari_ini));
     .footer-social-links a { width: 42px; height: 42px; background: #1e2227; color: var(--primary-pink) !important; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; margin-right: 12px; transition: var(--transition-3d); text-decoration: none; }
     .footer-social-links a:hover { background: var(--primary-pink); color: #ffffff !important; transform: translateY(-5px); }
     .border-top-custom { border-top: 1px solid #232830 !important; }
+
+    /* FOOTER JAM OPERASIONAL */
+    .footer-jam-operasional {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 15px;
+      padding: 10px 18px;
+      background: rgba(216, 63, 103, 0.1);
+      border-radius: 12px;
+      border: 1px solid rgba(216, 63, 103, 0.2);
+    }
+    .footer-jam-operasional i {
+      color: var(--primary-pink);
+      font-size: 1.1rem;
+    }
+    .footer-jam-operasional span {
+      color: #a0aec0;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
   </style>
 </head>
 
@@ -241,7 +270,7 @@ $query_ruangan = sqlsrv_query($conn, $sql_ruangan, array($tanggal_hari_ini));
           <li><a href="#about">Tentang</a></li>
           <li><a href="#services">Layanan</a></li>
           <li><a href="#pricing">Paket</a></li>
-          <li><a href="#ruangan">Ruangan</a></li>
+          <!-- RUANGAN DIHAPUS DARI NAVBAR — sesuai alur bisnis: transaksi dimulai dari Paket Foto -->
           <li><a href="#portfolio">Galeri</a></li>
           <li><a href="#testimonials">Testimoni</a></li>
 
@@ -285,6 +314,15 @@ $query_ruangan = sqlsrv_query($conn, $sql_ruangan, array($tanggal_hari_ini));
             <span class="hero-script d-block mb-2">Abadikan setiap momen, ♡</span>
             <h1>Buat Kenanganmu<br>Jadi <span>Lebih Berarti</span></h1>
             <p class="mt-4 text-muted" style="font-size: 1.1rem; line-height: 1.6;">SpotLight Studio Foto siap membantumu mengabadikan momen berharga dengan hasil profesional dan pengalaman yang menyenangkan.</p>
+
+            <!-- JAM OPERASIONAL BADGE -->
+            <div class="mt-3 mb-4">
+              <span class="jam-operasional-badge">
+                <i class="bi bi-clock-fill"></i>
+                <?= $jam_operasional; ?>
+              </span>
+            </div>
+
             <div class="d-flex gap-3 mt-4 mb-5">
               <a href="#pricing" class="btn btn-daftar px-4 py-3" style="border-radius: 15px;"><i class="bi bi-calendar-event me-2"></i>Pesan Sekarang</a>
               <a href="#portfolio" class="btn btn-masuk border px-4 py-3" style="border-radius: 15px; border-color: var(--primary-pink) !important;"><i class="bi bi-images me-2"></i>Lihat Galeri</a>
@@ -348,6 +386,7 @@ $query_ruangan = sqlsrv_query($conn, $sql_ruangan, array($tanggal_hari_ini));
         <div>
           <span class="text-uppercase small fw-bold" style="color: var(--primary-pink); letter-spacing: 1px;">Paket Pilihan</span>
           <h2 class="fw-bold mb-0" style="font-size: 2.5rem;">Paket Populer ♡</h2>
+          <p class="text-muted mt-2 mb-0">Pilih paket sesuai kebutuhanmu, ruangan akan ditampilkan setelah memilih paket.</p>
         </div>
         <a href="#pricing" class="btn border px-4 py-2" style="border-radius: 12px; color: var(--primary-pink); border-color: var(--primary-pink) !important; font-weight: 700;">Lihat Semua Paket</a>
       </div>
@@ -386,72 +425,9 @@ $query_ruangan = sqlsrv_query($conn, $sql_ruangan, array($tanggal_hari_ini));
       </div>
     </section>
 
-    <!-- RUANGAN STUDIO - SCROLL HORIZONTAL -->
-    <section id="ruangan" class="py-5" style="background: linear-gradient(180deg, var(--light-pink) 0%, #ffffff 100%);">
-      <div class="container">
-        <div class="d-flex justify-content-between align-items-end mb-5" data-aos="fade-up">
-          <div>
-            <span class="text-uppercase small fw-bold" style="color: var(--primary-pink); letter-spacing: 1px;">Studio Kami</span>
-            <h2 class="fw-bold mb-0" style="font-size: 2.5rem;">Ruangan Tersedia Hari Ini ♡</h2>
-            <p class="text-muted mt-2"><?= $tanggal_display; ?></p>
-          </div>
-        </div>
-
-        <div class="ruangan-slider-container" data-aos="fade-up">
-          <?php
-          if ($query_ruangan && sqlsrv_has_rows($query_ruangan)):
-              while($r = sqlsrv_fetch_array($query_ruangan, SQLSRV_FETCH_ASSOC)):
-                  $status_ruangan = ($r['jadwal_tersedia'] > 0) ? 'tersedia' : 'penuh';
-                  $text_status = ($r['jadwal_tersedia'] > 0) ? 'Tersedia' : 'Penuh';
-          ?>
-          <div class="ruangan-item">
-            <div class="ruangan-card">
-              <div class="d-flex justify-content-between align-items-start">
-                <div class="ruangan-icon-box">
-                  <i class="bi bi-door-open"></i>
-                </div>
-                <span class="ruangan-status <?= $status_ruangan ?>"><?= $text_status ?></span>
-              </div>
-              <h4 class="fw-bold mb-2"><?= htmlspecialchars($r['Nama_Ruangan']); ?></h4>
-              <p class="text-muted small mb-3"><?= htmlspecialchars($r['Deskripsi'] ?? 'Ruangan studio untuk sesi foto'); ?></p>
-
-              <div class="d-flex gap-4 mb-3">
-                <div><i class="bi bi-people-fill text-danger me-1"></i><strong><?= $r['Kapasitas_Ruangan']; ?></strong> orang</div>
-                <div><i class="bi bi-cash text-danger me-1"></i>Rp <?= number_format($r['Harga_Sewa'], 0, ',', '.'); ?>/sesi</div>
-              </div>
-
-              <?php if ($r['jadwal_tersedia'] > 0): ?>
-              <div class="mb-3">
-                <small class="text-muted fw-bold">Jadwal Tersedia:</small>
-                <div class="mt-2">
-                  <?php
-                  $sql_jadwal_r = "SELECT Jam_Mulai, Jam_Selesai FROM Jadwal_Studio 
-                                   WHERE ID_Ruangan = ? AND Tanggal_Jadwal = ? AND Status = 1 AND Is_Deleted = 0
-                                   ORDER BY Jam_Mulai ASC";
-                  $query_jadwal_r = sqlsrv_query($conn, $sql_jadwal_r, array($r['ID_Ruangan'], $tanggal_hari_ini));
-                  while($j = sqlsrv_fetch_array($query_jadwal_r, SQLSRV_FETCH_ASSOC)):
-                  ?>
-                    <span class="jadwal-slot tersedia"><?= $j['Jam_Mulai']->format('H:i'); ?> - <?= $j['Jam_Selesai']->format('H:i'); ?></span>
-                  <?php endwhile; ?>
-                </div>
-              </div>
-              <?php endif; ?>
-
-              <a href="<?= isset($_SESSION['status']) ? 'Transaksi/booking.php?ruangan=' . $r['ID_Ruangan'] : 'login.php'; ?>" class="btn-pilih mt-auto">Pesan Ruangan</a>
-            </div>
-          </div>
-          <?php 
-              endwhile;
-          else:
-          ?>
-          <div class="col-12 text-center py-5">
-            <i class="bi bi-building fs-1 text-muted mb-3 d-block"></i>
-            <p class="text-muted">Belum ada ruangan yang tersedia hari ini.</p>
-          </div>
-          <?php endif; ?>
-        </div>
-      </div>
-    </section>
+    <!-- RUANGAN STUDIO - DIHAPUS DARI LANDING PAGE -->
+    <!-- Ruangan akan ditampilkan setelah user memilih Paket Foto di halaman booking -->
+    <!-- Sesuai alur bisnis: Landing Page → Pilih Paket → Pilih Ruangan (validasi Paket_Ruangan) -->
 
     <!-- PORTFOLIO -->
     <section id="portfolio" class="container py-5 overflow-hidden">
@@ -538,6 +514,13 @@ $query_ruangan = sqlsrv_query($conn, $sql_ruangan, array($tanggal_hari_ini));
         <div class="col-lg-4 col-md-12">
           <a href="index.php" class="d-inline-block"><img src="assets/img/logo.png" class="footer-logo" alt="SpotLight Studio Foto"></a>
           <p class="mt-3 text-muted" style="line-height: 1.7; font-size: 0.85rem; color: #a0aec0 !important;">Abadikan momen berhargamu dengan pencahayaan sinematik dan sentuhan fotografer profesional. Kami hadir untuk menceritakan kisah Anda di Cikarang.</p>
+
+          <!-- JAM OPERASIONAL DI FOOTER -->
+          <div class="footer-jam-operasional">
+            <i class="bi bi-clock-fill"></i>
+            <span><?= $jam_operasional; ?></span>
+          </div>
+
           <div class="footer-social-links d-flex mt-4">
             <a href="https://www.instagram.com/stynndka" target="_blank"><i class="bi bi-instagram"></i></a>
             <a href="https://www.tiktok.com/@satyaaaxieee" target="_blank"><i class="bi bi-tiktok"></i></a>

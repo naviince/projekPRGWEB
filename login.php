@@ -884,7 +884,7 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
                         <div class="col-md-6">
                             <div class="input-group-custom">
                                 <label class="input-label">Nama Lengkap <span class="required">*</span></label>
-                                <input type="text" name="nama" id="inputNama" class="input-field <?= $error_nama ? 'is-invalid' : '' ?>" placeholder="Nama sesuai KTP" value="<?= htmlspecialchars(@$_POST['nama'] ?? '') ?>" required>
+                                <input type="text" name="nama" id="inputNama" class="input-field <?= $error_nama ? 'is-invalid' : '' ?>" placeholder="Nama Lengkap Anda" value="<?= htmlspecialchars(@$_POST['nama'] ?? '') ?>" required>
                                 <?php if($error_nama): ?><div class="error-msg"><i class="bi bi-x-circle-fill"></i> <?= $error_nama ?></div><?php endif; ?>
                             </div>
                         </div>
