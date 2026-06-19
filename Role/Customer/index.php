@@ -2,21 +2,152 @@
 session_start();
 include '../../koneksi.php';
 
-// --- PROTEKSI KEAMANAN HAK AKSES CUSTOMER ---
+// =====================================================
+// KONSTANTA STATUS - SESUAI DATABASE & PROSES BISNIS
+// =====================================================
+// Status Order (Status_Order)
+define('STATUS_ORDER_MENUNGGU_DP', 0);
+define('STATUS_ORDER_DP_TERVERIFIKASI', 1);
+define('STATUS_ORDER_SELESAI', 2);
+define('STATUS_ORDER_LUNAS', 3);
+define('STATUS_ORDER_DIBATALKAN', 4);
+
+// Status Jadwal (Status_Jadwal)
+define('STATUS_JADWAL_TERSEDIA', 0);
+define('STATUS_JADWAL_TERPESAN', 1);
+define('STATUS_JADWAL_SELESAI', 2);
+
+// Status Sesi (Status_Sesi)
+define('STATUS_SESI_MENUNGGU', 0);
+define('STATUS_SESI_BERLANGSUNG', 1);
+define('STATUS_SESI_SELESAI', 2);
+
+// Status Data (Status master table)
+define('STATUS_DATA_NONAKTIF', 0);
+define('STATUS_DATA_AKTIF', 1);
+
+// Status Pembayaran (Status_Pembayaran)
+define('STATUS_PEMBAYARAN_MENUNGGU', 0);
+define('STATUS_PEMBAYARAN_VALID', 1);
+define('STATUS_PEMBAYARAN_DITOLAK', 2);
+
+// Status Penjualan (Status_Penjualan)
+define('STATUS_PENJUALAN_PROSES', 0);
+define('STATUS_PENJUALAN_SELESAI', 1);
+
+// =====================================================
+// HELPER FUNCTIONS - STATUS MAPPING
+// =====================================================
+function getOrderStatusLabel($status) {
+    $labels = [
+        STATUS_ORDER_MENUNGGU_DP => 'Menunggu DP',
+        STATUS_ORDER_DP_TERVERIFIKASI => 'DP Terverifikasi',
+        STATUS_ORDER_SELESAI => 'Selesai',
+        STATUS_ORDER_LUNAS => 'Lunas',
+        STATUS_ORDER_DIBATALKAN => 'Dibatalkan'
+    ];
+    return $labels[$status] ?? 'Unknown';
+}
+
+function getOrderStatusBadgeClass($status) {
+    $classes = [
+        STATUS_ORDER_MENUNGGU_DP => 'badge-menunggu',
+        STATUS_ORDER_DP_TERVERIFIKASI => 'badge-dp',
+        STATUS_ORDER_SELESAI => 'badge-pelunasan',
+        STATUS_ORDER_LUNAS => 'badge-lunas',
+        STATUS_ORDER_DIBATALKAN => 'badge-batal'
+    ];
+    return $classes[$status] ?? 'badge-menunggu';
+}
+
+function getOrderStatusIconBg($status) {
+    $styles = [
+        STATUS_ORDER_MENUNGGU_DP => 'background: #fffbeb; color: #d97706;',
+        STATUS_ORDER_DP_TERVERIFIKASI => 'background: #dbeafe; color: #2563eb;',
+        STATUS_ORDER_SELESAI => 'background: #e0e7ff; color: #4f46e5;',
+        STATUS_ORDER_LUNAS => 'background: #ecfdf5; color: #059669;',
+        STATUS_ORDER_DIBATALKAN => 'background: #fef2f2; color: #dc2626;'
+    ];
+    return $styles[$status] ?? 'background: #fffbeb; color: #d97706;';
+}
+
+function getOrderStatusAction($status, $order_id, $has_rating) {
+    switch ($status) {
+        case STATUS_ORDER_MENUNGGU_DP:
+            return '<a href="../../Booking/Pembayaran/index.php?id=' . (int)$order_id . '" class="btn-action" style="padding: 5px 12px; font-size: 0.7rem;"><i class="bi bi-credit-card"></i> Bayar DP</a>';
+        case STATUS_ORDER_SELESAI:
+            return '<a href="../../Booking/Pembayaran/index.php?id=' . (int)$order_id . '" class="btn-action" style="padding: 5px 12px; font-size: 0.7rem;"><i class="bi bi-cash-stack"></i> Pelunasan</a>';
+        case STATUS_ORDER_LUNAS:
+            if (empty($has_rating)) {
+                return '<a href="../../Booking/Rating/index.php?id=' . (int)$order_id . '" class="btn-action" style="padding: 5px 12px; font-size: 0.7rem;"><i class="bi bi-star-fill"></i> Rating</a>';
+            }
+            return '<a href="../../Booking/Hasil/index.php?id=' . (int)$order_id . '" class="btn-action" style="padding: 5px 12px; font-size: 0.7rem;"><i class="bi bi-download"></i> Download</a>';
+        default:
+            return '';
+    }
+}
+
+// =====================================================
+// PROTEKSI KEAMANAN HAK AKSES CUSTOMER
+// =====================================================
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Customer') {
     header("Location: ../../login.php");
     exit();
 }
 
+// Regenerate session ID untuk keamanan
+if (!isset($_SESSION['last_regenerate']) || (time() - $_SESSION['last_regenerate']) > 1800) {
+    session_regenerate_id(true);
+    $_SESSION['last_regenerate'] = time();
+}
+
+// Validasi session timeout (30 menit)
+if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) > 1800) {
+    session_unset();
+    session_destroy();
+    header("Location: ../../login.php?timeout=1");
+    exit();
+}
+$_SESSION['last_activity'] = time();
+
 $id_customer = $_SESSION['id_user'];
+
+// Validasi ID customer adalah integer
+if (!is_numeric($id_customer) || $id_customer <= 0) {
+    session_unset();
+    session_destroy();
+    header("Location: ../../login.php");
+    exit();
+}
 
 // Definisi Fallback SVG Avatar
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23d83f67'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
-// Ambil Profil Customer
-$q_profile = sqlsrv_query($conn, "SELECT * FROM Pelanggan WHERE ID_Pelanggan = ?", array($id_customer));
+// =====================================================
+// AMBIL PROFIL CUSTOMER - DENGAN VALIDASI
+// =====================================================
+$q_profile = sqlsrv_query($conn, 
+    "SELECT * FROM Pelanggan WHERE ID_Pelanggan = ? AND Is_Deleted = 0 AND Status = ?", 
+    array($id_customer, STATUS_DATA_AKTIF)
+);
+
+if ($q_profile === false) {
+    // Database error - redirect ke login
+    header("Location: ../../login.php?error=db");
+    exit();
+}
+
 $d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
-if ($d_profile) { $d_profile = array_change_key_case($d_profile, CASE_LOWER); }
+
+// Validasi: Pastikan customer ada dan aktif
+if (!$d_profile) {
+    session_unset();
+    session_destroy();
+    header("Location: ../../login.php?error=invalid_user");
+    exit();
+}
+
+$d_profile = array_change_key_case($d_profile, CASE_LOWER);
 
 $nama_customer = $d_profile['nama_pelanggan'] ?? 'Customer';
 $username_customer = $d_profile['username_pelanggan'] ?? 'customer';
@@ -34,212 +165,371 @@ $error_profile = "";
 $success_profile = false;
 
 // =====================================================
-// PROSES PEMBARUAN PROFIL CUSTOMER
+// PROSES PEMBARUAN PROFIL CUSTOMER - DENGAN VALIDASI KUAT
 // =====================================================
 if (isset($_POST['update_profil'])) {
-    $nama_input     = trim($_POST['nama']);
-    $username_input = trim($_POST['username']);
-    $email_input    = trim($_POST['email']);
-    $no_hp_input    = trim($_POST['no_hp']);
-    $alamat_input   = trim($_POST['alamat']);
-    $pass_baru      = $_POST['password'];
-    $confirm_pass   = $_POST['confirm_password'];
-    
-    $hp_bersih_input = str_replace(['+', ' '], '', $no_hp_input);
-
-    // Validasi
-    if (empty($nama_input) || !preg_match("/^[a-zA-Z ]*$/", $nama_input)) {
-        $error_profile = "Nama lengkap hanya boleh berisi huruf!";
-    } elseif (empty($username_input) || !preg_match("/^[a-zA-Z0-9_]*$/", $username_input)) {
-        $error_profile = "Nama pengguna tidak valid!";
-    } elseif (empty($email_input) || !filter_var($email_input, FILTER_VALIDATE_EMAIL)) {
-        $error_profile = "Email tidak valid!";
-    } elseif (empty($no_hp_input) || !ctype_digit($hp_bersih_input) || strlen($hp_bersih_input) < 10) {
-        $error_profile = "Nomor telepon tidak valid!";
-    } elseif (empty($alamat_input) || strlen($alamat_input) < 10) {
-        $error_profile = "Alamat lengkap minimal harus 10 karakter!";
+    // CSRF Token Validation
+    if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token']) || 
+        $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        $error_profile = "Sesi tidak valid. Silakan refresh halaman dan coba lagi.";
     } else {
-        $sandi_final = $d_profile['password_pelanggan']; 
-        if (!empty($pass_baru)) {
-            if (strlen($pass_baru) < 8 || !preg_match("/[A-Za-z]/", $pass_baru) || !preg_match("/[0-9]/", $pass_baru) || !preg_match("/[^A-Za-z0-9]/", $pass_baru)) {
-                $error_profile = "Sandi baru minimal 8 karakter (kombinasi huruf, angka, simbol)!";
-            } elseif ($pass_baru !== $confirm_pass) {
-                $error_profile = "Konfirmasi kata sandi tidak cocok!";
-            } else {
-                $sandi_final = $pass_baru; 
-            }
+        $nama_input     = trim($_POST['nama'] ?? '');
+        $username_input = trim($_POST['username'] ?? '');
+        $email_input    = trim($_POST['email'] ?? '');
+        $no_hp_input    = trim($_POST['no_hp'] ?? '');
+        $alamat_input   = trim($_POST['alamat'] ?? '');
+        $pass_baru      = $_POST['password'] ?? '';
+        $confirm_pass   = $_POST['confirm_password'] ?? '';
+
+        // Validasi Nama
+        if (empty($nama_input)) {
+            $error_profile = "Nama lengkap wajib diisi!";
+        } elseif (strlen($nama_input) < 3) {
+            $error_profile = "Nama lengkap minimal 3 karakter!";
+        } elseif (!preg_match("/^[a-zA-Z ]*$/", $nama_input)) {
+            $error_profile = "Nama lengkap hanya boleh berisi huruf dan spasi!";
+        } elseif (strlen($nama_input) > 100) {
+            $error_profile = "Nama lengkap maksimal 100 karakter!";
         }
 
-        if ($error_profile == "") {
-            $sql_cek = "SELECT Email_Pelanggan, Username_Pelanggan, No_Hp FROM Pelanggan WHERE (Email_Pelanggan = ? OR Username_Pelanggan = ? OR No_Hp = ?) AND ID_Pelanggan != ?";
-            $stmt_cek = sqlsrv_query($conn, $sql_cek, array($email_input, $username_input, $no_hp_input, $id_customer));
-
-            if ($stmt_cek && sqlsrv_has_rows($stmt_cek)) {
-                while ($row_cek = sqlsrv_fetch_array($stmt_cek, SQLSRV_FETCH_ASSOC)) {
-                    $row_cek = array_change_key_case($row_cek, CASE_LOWER);
-                    if (strtolower($row_cek['email_pelanggan']) == strtolower($email_input)) { $error_profile = "Email sudah digunakan!"; } 
-                    if (strtolower($row_cek['username_pelanggan']) == strtolower($username_input)) { $error_profile = "Username sudah digunakan!"; }
-                    if ($row_cek['no_hp'] == $no_hp_input) { $error_profile = "Nomor telepon sudah digunakan!"; }
+        // Validasi Username
+        if (empty($error_profile)) {
+            if (empty($username_input)) {
+                $error_profile = "Username wajib diisi!";
+            } elseif (strlen($username_input) < 5) {
+                $error_profile = "Username minimal 5 karakter!";
+            } elseif (strlen($username_input) > 50) {
+                $error_profile = "Username maksimal 50 karakter!";
+            } elseif (!preg_match("/^[a-zA-Z0-9_]*$/", $username_input)) {
+                $error_profile = "Username hanya boleh huruf, angka, dan underscore!";
+            } elseif (strtolower($username_input) !== strtolower($username_customer)) {
+                // Cek username unik hanya jika berubah
+                $cek_user = sqlsrv_query($conn, 
+                    "SELECT 1 FROM Pelanggan WHERE LOWER(Username_Pelanggan) = LOWER(?) AND ID_Pelanggan != ? AND Is_Deleted = 0", 
+                    array($username_input, $id_customer)
+                );
+                if ($cek_user && sqlsrv_has_rows($cek_user)) {
+                    $error_profile = "Username sudah digunakan oleh pengguna lain!";
                 }
             }
         }
 
-        if ($error_profile == "") {
+        // Validasi Email
+        if (empty($error_profile)) {
+            if (empty($email_input)) {
+                $error_profile = "Email wajib diisi!";
+            } elseif (!filter_var($email_input, FILTER_VALIDATE_EMAIL)) {
+                $error_profile = "Format email tidak valid!";
+            } elseif (strlen($email_input) > 100) {
+                $error_profile = "Email maksimal 100 karakter!";
+            } elseif (strtolower($email_input) !== strtolower($email_customer)) {
+                // Cek email unik hanya jika berubah
+                $cek_email = sqlsrv_query($conn, 
+                    "SELECT 1 FROM Pelanggan WHERE LOWER(Email_Pelanggan) = LOWER(?) AND ID_Pelanggan != ? AND Is_Deleted = 0", 
+                    array($email_input, $id_customer)
+                );
+                if ($cek_email && sqlsrv_has_rows($cek_email)) {
+                    $error_profile = "Email sudah digunakan oleh pengguna lain!";
+                }
+            }
+        }
+
+        // Validasi No HP - Format +62
+        if (empty($error_profile)) {
+            $hp_bersih_input = str_replace(['+', ' ', '-', '(', ')'], '', $no_hp_input);
+
+            if (empty($no_hp_input)) {
+                $error_profile = "Nomor telepon wajib diisi!";
+            } elseif (!ctype_digit($hp_bersih_input)) {
+                $error_profile = "Nomor telepon hanya boleh berisi angka!";
+            } elseif (strlen($hp_bersih_input) < 10) {
+                $error_profile = "Nomor telepon minimal 10 digit!";
+            } elseif (strlen($hp_bersih_input) > 15) {
+                $error_profile = "Nomor telepon maksimal 15 digit!";
+            } elseif (!str_starts_with($hp_bersih_input, '62')) {
+                $error_profile = "Nomor telepon harus diawali dengan +62!";
+            } else {
+                $no_hp_input = '+62' . substr($hp_bersih_input, 2);
+            }
+        }
+
+        // Validasi Alamat
+        if (empty($error_profile)) {
+            if (empty($alamat_input)) {
+                $error_profile = "Alamat wajib diisi!";
+            } elseif (strlen($alamat_input) < 10) {
+                $error_profile = "Alamat lengkap minimal 10 karakter!";
+            } elseif (strlen($alamat_input) > 255) {
+                $error_profile = "Alamat maksimal 255 karakter!";
+            }
+        }
+
+        // Validasi Password (opsional)
+        $sandi_final = $d_profile['password_pelanggan'];
+        if (empty($error_profile) && !empty($pass_baru)) {
+            if (strlen($pass_baru) < 8) {
+                $error_profile = "Sandi baru minimal 8 karakter!";
+            } elseif (!preg_match("/[A-Za-z]/", $pass_baru)) {
+                $error_profile = "Sandi baru harus mengandung huruf!";
+            } elseif (!preg_match("/[0-9]/", $pass_baru)) {
+                $error_profile = "Sandi baru harus mengandung angka!";
+            } elseif (!preg_match("/[^A-Za-z0-9]/", $pass_baru)) {
+                $error_profile = "Sandi baru harus mengandung simbol!";
+            } elseif ($pass_baru !== $confirm_pass) {
+                $error_profile = "Konfirmasi kata sandi tidak cocok!";
+            } else {
+                $sandi_final = password_hash($pass_baru, PASSWORD_BCRYPT);
+            }
+        }
+
+        // Proses Upload Foto
+        if (empty($error_profile)) {
             $foto_baru = $foto_customer;
             if (isset($_FILES['foto_profil']) && $_FILES['foto_profil']['error'] === UPLOAD_ERR_OK) {
                 $file_name = $_FILES['foto_profil']['name'];
                 $file_size = $_FILES['foto_profil']['size'];
                 $file_tmp  = $_FILES['foto_profil']['tmp_name'];
                 $file_ext  = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
-                
+
                 $allowed_ext = ['jpg', 'jpeg', 'png'];
-                
+
                 if (!in_array($file_ext, $allowed_ext)) {
                     $error_profile = "Format foto profil harus JPG, JPEG, atau PNG!";
                 } elseif ($file_size > 2097152) { 
                     $error_profile = "Ukuran foto profil maksimal 2MB!";
+                } elseif (!getimagesize($file_tmp)) {
+                    $error_profile = "File yang diupload bukan gambar valid!";
                 } else {
                     $foto_baru = "customer_" . time() . "_" . uniqid() . "." . $file_ext;
                     $target_dir = "../../assets/img/pelanggan/";
-                    
+
                     if (!is_dir($target_dir)) { mkdir($target_dir, 0777, true); }
-                    
+
                     if (move_uploaded_file($file_tmp, $target_dir . $foto_baru)) {
-                        if ($foto_customer != 'default.jpg' && file_exists($target_dir . $foto_customer)) { unlink($target_dir . $foto_customer); }
+                        // Hapus foto lama jika bukan default
+                        if ($foto_customer != 'default.jpg' && file_exists($target_dir . $foto_customer)) { 
+                            unlink($target_dir . $foto_customer); 
+                        }
                     } else {
                         $error_profile = "Gagal mengunggah foto profil!";
                     }
                 }
             }
-            
-            if ($error_profile == "") {
-                $sql_upd = "UPDATE Pelanggan SET Nama_Pelanggan = ?, Username_Pelanggan = ?, Email_Pelanggan = ?, Password_Pelanggan = ?, No_Hp = ?, Alamat = ?, Foto_Profil = ?, Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Pelanggan = ?";
-                $stmt_upd = sqlsrv_query($conn, $sql_upd, array($nama_input, $username_input, $email_input, $sandi_final, $no_hp_input, $alamat_input, $foto_baru, $username_customer, $id_customer));
-                
-                if ($stmt_upd) {
-                    $success_profile = true;
-                    $nama_customer = $nama_input;
-                    $username_customer = $username_input;
-                    $email_customer = $email_input;
-                    $foto_customer = $foto_baru;
-                    $foto_customer_src = ($foto_customer != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_customer)) 
-                        ? "../../assets/img/pelanggan/" . $foto_customer 
-                        : $default_svg_avatar;
-                    $d_profile['no_hp'] = $no_hp_input;
-                    $d_profile['alamat'] = $alamat_input;
-                } else {
-                    $error_profile = "Gagal memperbarui data di database!";
-                }
+        }
+
+        // Update Database
+        if (empty($error_profile)) {
+            $sql_upd = "UPDATE Pelanggan SET 
+                Nama_Pelanggan = ?, 
+                Username_Pelanggan = ?, 
+                Email_Pelanggan = ?, 
+                Password_Pelanggan = ?, 
+                No_Hp = ?, 
+                Alamat = ?, 
+                Foto_Profil = ?, 
+                Modified_By = ?, 
+                Modified_Date = GETDATE() 
+                WHERE ID_Pelanggan = ? AND Is_Deleted = 0 AND Status = ?";
+
+            $stmt_upd = sqlsrv_query($conn, $sql_upd, array(
+                $nama_input, 
+                $username_input, 
+                $email_input, 
+                $sandi_final, 
+                $no_hp_input, 
+                $alamat_input, 
+                $foto_baru, 
+                $username_customer, 
+                $id_customer,
+                STATUS_DATA_AKTIF
+            ));
+
+            if ($stmt_upd) {
+                $success_profile = true;
+                // Update session data
+                $_SESSION['nama'] = $nama_input;
+
+                // Refresh profile data
+                $nama_customer = $nama_input;
+                $username_customer = $username_input;
+                $email_customer = $email_input;
+                $foto_customer = $foto_baru;
+                $foto_customer_src = ($foto_customer != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_customer)) 
+                    ? "../../assets/img/pelanggan/" . $foto_customer 
+                    : $default_svg_avatar;
+                $d_profile['no_hp'] = $no_hp_input;
+                $d_profile['alamat'] = $alamat_input;
+            } else {
+                $error_profile = "Gagal memperbarui data di database!";
             }
         }
     }
 }
 
+// Generate CSRF Token untuk form
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
+
 // =====================================================
-// QUERY STATISTIK DASHBOARD CUSTOMER
+// QUERY STATISTIK DASHBOARD CUSTOMER - VALIDASI KUAT
 // =====================================================
 
-// 1. Total Booking Saya
-$q_my_booking = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM [Order] WHERE ID_Pelanggan = ?", array($id_customer));
+// 1. Total Booking Saya (tidak termasuk yang dibatalkan)
+$q_my_booking = sqlsrv_query($conn, 
+    "SELECT COUNT(*) AS total FROM [Order] 
+     WHERE ID_Pelanggan = ? AND Status = ? AND Status_Order != ?", 
+    array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_DIBATALKAN)
+);
 $d_my_booking = sqlsrv_fetch_array($q_my_booking, SQLSRV_FETCH_ASSOC);
 $my_booking = $d_my_booking['total'] ?? 0;
 
-// 2. Booking Menunggu DP
-$q_wait_dp = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM [Order] WHERE ID_Pelanggan = ? AND Status = 0", array($id_customer));
+// 2. Booking Menunggu DP (Status_Order = 0)
+$q_wait_dp = sqlsrv_query($conn, 
+    "SELECT COUNT(*) AS total FROM [Order] 
+     WHERE ID_Pelanggan = ? AND Status = ? AND Status_Order = ?", 
+    array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_MENUNGGU_DP)
+);
 $d_wait_dp = sqlsrv_fetch_array($q_wait_dp, SQLSRV_FETCH_ASSOC);
 $wait_dp = $d_wait_dp['total'] ?? 0;
 
-// 3. Booking Aktif (DP Terverifikasi + Menunggu Pelunasan)
-$q_booking_aktif = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM [Order] WHERE ID_Pelanggan = ? AND Status IN (1, 2)", array($id_customer));
+// 3. Booking Aktif (DP Terverifikasi + Selesai = Status_Order 1 dan 2)
+$q_booking_aktif = sqlsrv_query($conn, 
+    "SELECT COUNT(*) AS total FROM [Order] 
+     WHERE ID_Pelanggan = ? AND Status = ? AND Status_Order IN (?, ?)", 
+    array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_DP_TERVERIFIKASI, STATUS_ORDER_SELESAI)
+);
 $d_booking_aktif = sqlsrv_fetch_array($q_booking_aktif, SQLSRV_FETCH_ASSOC);
 $booking_aktif = $d_booking_aktif['total'] ?? 0;
 
-// 4. Booking Lunas (bisa download hasil)
-$q_booking_lunas = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM [Order] WHERE ID_Pelanggan = ? AND Status = 3", array($id_customer));
+// 4. Booking Lunas (Status_Order = 3)
+$q_booking_lunas = sqlsrv_query($conn, 
+    "SELECT COUNT(*) AS total FROM [Order] 
+     WHERE ID_Pelanggan = ? AND Status = ? AND Status_Order = ?", 
+    array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_LUNAS)
+);
 $d_booking_lunas = sqlsrv_fetch_array($q_booking_lunas, SQLSRV_FETCH_ASSOC);
 $booking_lunas = $d_booking_lunas['total'] ?? 0;
 
-// 5. Sesi Foto Selesai
-$q_sesi_selesai = sqlsrv_query($conn, "
-    SELECT COUNT(*) AS total 
-    FROM Sesi_Foto S 
-    JOIN [Order] O ON S.ID_Order = O.ID_Order 
-    WHERE O.ID_Pelanggan = ? AND S.Status = 1", array($id_customer));
+// 5. Sesi Foto Selesai (Status_Sesi = 2, bukan Status = 1)
+$q_sesi_selesai = sqlsrv_query($conn, 
+    "SELECT COUNT(*) AS total 
+     FROM Sesi_Foto S 
+     INNER JOIN [Order] O ON S.ID_Order = O.ID_Order 
+     WHERE O.ID_Pelanggan = ? AND S.Status = ? AND S.Status_Sesi = ? AND O.Status = ?", 
+    array($id_customer, STATUS_DATA_AKTIF, STATUS_SESI_SELESAI, STATUS_DATA_AKTIF)
+);
 $d_sesi_selesai = sqlsrv_fetch_array($q_sesi_selesai, SQLSRV_FETCH_ASSOC);
 $sesi_selesai = $d_sesi_selesai['total'] ?? 0;
 
-// 6. Total Pesanan Barang Cetak
-$q_pesanan_cetak = sqlsrv_query($conn, "
-    SELECT COUNT(*) AS total 
-    FROM Penjualan P 
-    JOIN [Order] O ON P.ID_Order = O.ID_Order 
-    WHERE O.ID_Pelanggan = ?", array($id_customer));
+// 6. Total Pesanan Barang Cetak (semua status)
+$q_pesanan_cetak = sqlsrv_query($conn, 
+    "SELECT COUNT(*) AS total 
+     FROM Penjualan P 
+     INNER JOIN [Order] O ON P.ID_Order = O.ID_Order 
+     WHERE O.ID_Pelanggan = ? AND P.Status = ? AND O.Status = ?", 
+    array($id_customer, STATUS_DATA_AKTIF, STATUS_DATA_AKTIF)
+);
 $d_pesanan_cetak = sqlsrv_fetch_array($q_pesanan_cetak, SQLSRV_FETCH_ASSOC);
 $pesanan_cetak = $d_pesanan_cetak['total'] ?? 0;
 
 // 7. Rating yang sudah diberikan
-$q_my_rating = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM [Order] WHERE ID_Pelanggan = ? AND Rating IS NOT NULL", array($id_customer));
+$q_my_rating = sqlsrv_query($conn, 
+    "SELECT COUNT(*) AS total FROM [Order] 
+     WHERE ID_Pelanggan = ? AND Status = ? AND Rating IS NOT NULL AND Status_Order = ?", 
+    array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_LUNAS)
+);
 $d_my_rating = sqlsrv_fetch_array($q_my_rating, SQLSRV_FETCH_ASSOC);
 $my_rating = $d_my_rating['total'] ?? 0;
 
-// 8. Booking Dibatalkan
-$q_booking_batal = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM [Order] WHERE ID_Pelanggan = ? AND Status = 4", array($id_customer));
+// 8. Booking Dibatalkan (Status_Order = 4)
+$q_booking_batal = sqlsrv_query($conn, 
+    "SELECT COUNT(*) AS total FROM [Order] 
+     WHERE ID_Pelanggan = ? AND Status = ? AND Status_Order = ?", 
+    array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_DIBATALKAN)
+);
 $d_booking_batal = sqlsrv_fetch_array($q_booking_batal, SQLSRV_FETCH_ASSOC);
 $booking_batal = $d_booking_batal['total'] ?? 0;
 
 // =====================================================
-// QUERY DATA TAMPILAN
+// QUERY DATA TAMPILAN - DENGAN VALIDASI DATABASE
 // =====================================================
 
-// Paket Foto Populer (Top 3)
-$q_paket_populer = sqlsrv_query($conn, "
-    SELECT TOP 3 p.ID_Paket, p.Nama_Paket, p.Harga_Paket, p.Durasi_Waktu, p.Kapasitas_Orang, p.Foto_Paket,
-           COUNT(o.ID_Order) AS total_booking
+// Paket Foto Populer (Top 3) - Hanya yang aktif dan tidak terhapus
+$q_paket_populer = sqlsrv_query($conn, 
+    "SELECT TOP 3 
+        p.ID_Paket, 
+        p.Nama_Paket, 
+        p.Harga_Paket, 
+        p.Durasi_Waktu, 
+        p.Kapasitas_Orang, 
+        p.Foto_Paket,
+        COUNT(o.ID_Order) AS total_booking
     FROM Paket_Foto p
-    LEFT JOIN [Order] o ON p.ID_Paket = o.ID_Paket
-    WHERE p.Is_Deleted = 0 AND p.Status = 1
+    LEFT JOIN [Order] o ON p.ID_Paket = o.ID_Paket AND o.Status = ? AND o.Status_Order != ?
+    WHERE p.Is_Deleted = 0 AND p.Status = ?
     GROUP BY p.ID_Paket, p.Nama_Paket, p.Harga_Paket, p.Durasi_Waktu, p.Kapasitas_Orang, p.Foto_Paket
-    ORDER BY total_booking DESC
-");
+    ORDER BY total_booking DESC",
+    array(STATUS_DATA_AKTIF, STATUS_ORDER_DIBATALKAN, STATUS_DATA_AKTIF)
+);
 
-// Booking Saya Terbaru (Top 3)
-$q_booking_saya = sqlsrv_query($conn, "
-    SELECT TOP 3 
+// Booking Saya Terbaru (Top 3) - Semua status kecuali dibatalkan
+$q_booking_saya = sqlsrv_query($conn, 
+    "SELECT TOP 3 
         o.ID_Order,
+        o.ID_Paket,
         pk.Nama_Paket,
         r.Nama_Ruangan,
         o.Tanggal_Booking,
         o.Total_Harga,
-        o.Status,
+        o.Status_Order,
         o.Rating
     FROM [Order] o
-    JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket
-    JOIN Ruangan r ON o.ID_Ruangan = r.ID_Ruangan
-    WHERE o.ID_Pelanggan = ?
-    ORDER BY o.Created_Date DESC
-", array($id_customer));
+    INNER JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket AND pk.Is_Deleted = 0 AND pk.Status = ?
+    INNER JOIN Ruangan r ON o.ID_Ruangan = r.ID_Ruangan AND r.Is_Deleted = 0 AND r.Status = ?
+    WHERE o.ID_Pelanggan = ? AND o.Status = ? AND o.Status_Order != ?
+    ORDER BY o.Created_Date DESC",
+    array(STATUS_DATA_AKTIF, STATUS_DATA_AKTIF, $id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_DIBATALKAN)
+);
 
-// Jadwal Tersedia Hari Ini
-$q_jadwal_hari_ini = sqlsrv_query($conn, "
-    SELECT TOP 3 
+// Jadwal Tersedia Hari Ini - Hanya yang tersedia (Status_Jadwal = 0) dan jam belum lewat
+$current_time = date('H:i:s');
+$q_jadwal_hari_ini = sqlsrv_query($conn, 
+    "SELECT TOP 3 
         j.ID_Jadwal,
+        j.ID_Ruangan,
         r.Nama_Ruangan,
         j.Jam_Mulai,
         j.Jam_Selesai,
         j.Keterangan
     FROM Jadwal_Studio j
-    JOIN Ruangan r ON j.ID_Ruangan = r.ID_Ruangan
-    WHERE j.Status = 1 AND j.Tanggal_Jadwal = CAST(GETDATE() AS DATE) AND j.Is_Deleted = 0
-    ORDER BY j.Jam_Mulai ASC
-");
+    INNER JOIN Ruangan r ON j.ID_Ruangan = r.ID_Ruangan AND r.Is_Deleted = 0 AND r.Status = ?
+    WHERE j.Status = ? 
+      AND j.Status_Jadwal = ? 
+      AND j.Tanggal_Jadwal = CAST(GETDATE() AS DATE) 
+      AND j.Is_Deleted = 0
+      AND j.Jam_Mulai >= ?
+    ORDER BY j.Jam_Mulai ASC",
+    array(STATUS_DATA_AKTIF, STATUS_DATA_AKTIF, STATUS_JADWAL_TERSEDIA, $current_time)
+);
 
-// Barang Cetak Populer (Top 3)
-$q_barang_populer = sqlsrv_query($conn, "
-    SELECT TOP 3 b.ID_Barang, b.Nama_Barang, b.Harga_Barang, b.Stok_Barang, b.Foto_Barang
+// Barang Cetak Populer (Top 3) - Hanya yang aktif, tidak terhapus, dan stok > 0
+$q_barang_populer = sqlsrv_query($conn, 
+    "SELECT TOP 3 
+        b.ID_Barang, 
+        b.Nama_Barang, 
+        b.Harga_Barang, 
+        b.Stok_Barang, 
+        b.Stok_Minimum,
+        b.Foto_Barang
     FROM Barang_Cetak b
-    WHERE b.Is_Deleted = 0 AND b.Status = 1 AND b.Stok_Barang > 0
-    ORDER BY b.Stok_Barang DESC
-");
+    WHERE b.Is_Deleted = 0 
+      AND b.Status = ? 
+      AND b.Stok_Barang > 0
+    ORDER BY b.Stok_Barang DESC",
+    array(STATUS_DATA_AKTIF)
+);
 ?>
 
 <!DOCTYPE html>
@@ -1047,13 +1337,9 @@ $q_barang_populer = sqlsrv_query($conn, "
                             $status_class = '';
                             $status_text = '';
                             $icon_bg = '';
-                            switch ($row['Status']) {
-                                case 0: $status_class = 'badge-menunggu'; $status_text = 'Menunggu DP'; $icon_bg = 'background: #fffbeb; color: #d97706;'; break;
-                                case 1: $status_class = 'badge-dp'; $status_text = 'DP Terverifikasi'; $icon_bg = 'background: #dbeafe; color: #2563eb;'; break;
-                                case 2: $status_class = 'badge-pelunasan'; $status_text = 'Menunggu Pelunasan'; $icon_bg = 'background: #e0e7ff; color: #4f46e5;'; break;
-                                case 3: $status_class = 'badge-lunas'; $status_text = 'Lunas'; $icon_bg = 'background: #ecfdf5; color: #059669;'; break;
-                                case 4: $status_class = 'badge-batal'; $status_text = 'Dibatalkan'; $icon_bg = 'background: #fef2f2; color: #dc2626;'; break;
-                            }
+                            $status_class = getOrderStatusBadgeClass($row['Status_Order']);
+                            $status_text = getOrderStatusLabel($row['Status_Order']);
+                            $icon_bg = getOrderStatusIconBg($row['Status_Order']);
                     ?>
                         <div class="booking-item">
                             <div class="booking-icon" style="<?= $icon_bg ?>">
@@ -1069,19 +1355,7 @@ $q_barang_populer = sqlsrv_query($conn, "
                                 </div>
                                 <div class="d-flex justify-content-between align-items-center mt-2">
                                     <span class="fw-bold" style="font-size: 0.85rem; color: var(--p-pink);">Rp<?= number_format($row['Total_Harga'], 0, ',', '.') ?></span>
-                                    <?php if ($row['Status'] == 0): ?>
-                                        <a href="../../Booking/Pembayaran/index.php?id=<?= $row['ID_Order'] ?>" class="btn-action" style="padding: 5px 12px; font-size: 0.7rem;">
-                                            <i class="bi bi-credit-card"></i> Bayar DP
-                                        </a>
-                                    <?php elseif ($row['Status'] == 2): ?>
-                                        <a href="../../Booking/Pembayaran/index.php?id=<?= $row['ID_Order'] ?>" class="btn-action" style="padding: 5px 12px; font-size: 0.7rem;">
-                                            <i class="bi bi-cash-stack"></i> Pelunasan
-                                        </a>
-                                    <?php elseif ($row['Status'] == 3 && empty($row['Rating'])): ?>
-                                        <a href="../../Booking/Rating/index.php?id=<?= $row['ID_Order'] ?>" class="btn-action" style="padding: 5px 12px; font-size: 0.7rem;">
-                                            <i class="bi bi-star-fill"></i> Rating
-                                        </a>
-                                    <?php endif; ?>
+                                    <?= getOrderStatusAction($row['Status_Order'], $row['ID_Order'], $row['Rating']) ?>
                                 </div>
                             </div>
                         </div>

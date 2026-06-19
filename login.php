@@ -27,6 +27,14 @@ if (isset($_GET['aksi']) && $_GET['aksi'] == 'daftar') {
     $panel_aktif = "ke-daftar";
 }
 
+// Simpan redirect parameter untuk digunakan saat switch panel
+$redirect_param = $_GET['redirect'] ?? '';
+$id_paket_param = $_GET['id_paket'] ?? '';
+$redirect_query = '';
+if (!empty($redirect_param) && !empty($id_paket_param)) {
+    $redirect_query = '&redirect=' . urlencode($redirect_param) . '&id_paket=' . urlencode($id_paket_param);
+}
+
 // =====================================================
 // LOGIN MULTI-ROLE
 // =====================================================
@@ -54,6 +62,17 @@ if (isset($_POST['login'])) {
                         'nama' => $user['Nama_Pelanggan']
                     ]);
                     session_write_close();
+
+                    // === REDIRECT LOGIC: Kalau dari index.php klik "Pilih Paket" ===
+                    $redirect = $_GET['redirect'] ?? '';
+                    $id_paket_redirect = $_GET['id_paket'] ?? '';
+
+                    if ($redirect == 'booking' && !empty($id_paket_redirect) && is_numeric($id_paket_redirect)) {
+                        header("Location: Transaksi/booking.php?id_paket=" . (int)$id_paket_redirect);
+                        exit();
+                    }
+                    // === AKHIR REDIRECT LOGIC ===
+
                     header("Location: Role/Customer/index.php");
                     exit();
                 } else {
@@ -200,6 +219,32 @@ if (isset($_POST['register'])) {
                 $success_register = true;
                 $registered_email = $email;
                 $registered_password = $pass;
+
+                // === AUTO-LOGIN SETELAH REGISTER + REDIRECT ===
+                // Ambil data user yang baru dibuat untuk auto-login
+                $sql_new = "SELECT * FROM Pelanggan WHERE Email_Pelanggan = ? AND Is_Deleted = 0 AND Status = 1";
+                $stmt_new = sqlsrv_query($conn, $sql_new, [$email]);
+                $user_new = ($stmt_new !== false) ? sqlsrv_fetch_array($stmt_new, SQLSRV_FETCH_ASSOC) : null;
+
+                if ($user_new) {
+                    $_SESSION = array_merge($_SESSION, [
+                        'status' => 'login',
+                        'id_user' => $user_new['ID_Pelanggan'],
+                        'email' => $user_new['Email_Pelanggan'],
+                        'role' => 'Customer',
+                        'nama' => $user_new['Nama_Pelanggan']
+                    ]);
+
+                    // Cek redirect parameter dari index.php
+                    $redirect_reg = $_GET['redirect'] ?? '';
+                    $id_paket_reg = $_GET['id_paket'] ?? '';
+
+                    if ($redirect_reg == 'booking' && !empty($id_paket_reg) && is_numeric($id_paket_reg)) {
+                        header("Location: Transaksi/booking.php?id_paket=" . (int)$id_paket_reg);
+                        exit();
+                    }
+                }
+                // === AKHIR AUTO-LOGIN ===
             } else {
                 $err = sqlsrv_errors();
                 $error_email_reg = "Database error: " . ($err[0]['message'] ?? 'Unknown');
@@ -840,7 +885,7 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
                 <h2 class="form-title">Halo Kak, Welcome Back! 👋✨</h2>
                 <p class="form-subtitle">Masukkan akun terdaftar Anda untuk melanjutkan kisah indah bersama SpotLight Studio! 📸💖</p>
 
-                <form method="POST" id="formLogin">
+                <form method="POST" id="formLogin" action="login.php<?= !empty($redirect_query) ? '?' . ltrim($redirect_query, '&') : '' ?>">
                     <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
 
                     <div class="input-group-custom">
@@ -876,7 +921,7 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
                 <h2 class="form-title">Mari Mulai Kisah Indah! 🌟📷</h2>
                 <p class="form-subtitle">Ciptakan akun dalam sekejap untuk akses penuh ke seluruh layanan studio terbaik kami! ✨🎈</p>
 
-                <form method="POST" enctype="multipart/form-data" id="formRegister">
+                <form method="POST" enctype="multipart/form-data" id="formRegister" action="login.php?aksi=daftar<?= $redirect_query ?>">
                     <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
                     <input type="hidden" name="existing_foto_profil" id="existingFoto" value="<?= htmlspecialchars($foto_profil ?? 'default.jpg') ?>">
 

@@ -846,7 +846,13 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
                         <li class="fw-normal text-muted fst-italic mt-2"><i class="bi bi-info-circle text-danger me-2"></i><?= htmlspecialchars($row['Deskripsi'] ?? ''); ?></li>
                       </ul>
                     </div>
-                    <a href="<?= isset($_SESSION['status']) ? 'Transaksi/booking.php' : 'login.php'; ?>" class="btn-pilih">Pilih Paket</a>
+                    <?php if (isset($_SESSION['status']) && $_SESSION['status'] == "login" && isset($_SESSION['role']) && $_SESSION['role'] == 'Customer'): ?>
+                    <a href="Transaksi/booking.php?id_paket=<?= (int)$row['ID_Paket'] ?>" class="btn-pilih">Pilih Paket</a>
+                  <?php elseif (isset($_SESSION['status']) && $_SESSION['status'] == "login"): ?>
+                    <a href="<?= $dashboard_link ?>" class="btn-pilih" onclick="alert('Silakan login sebagai Customer untuk melakukan booking.'); return false;">Pilih Paket</a>
+                  <?php else: ?>
+                    <a href="login.php?redirect=booking&id_paket=<?= (int)$row['ID_Paket'] ?>" class="btn-pilih">Pilih Paket</a>
+                  <?php endif; ?>
                   </div>
                 </div>
               </div>
