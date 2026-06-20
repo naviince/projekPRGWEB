@@ -3,1389 +3,804 @@ session_start();
 include '../../koneksi.php';
 
 // =====================================================
-// KONSTANTA STATUS - SESUAI DATABASE & PROSES BISNIS
+// KONSTANTA STATUS
 // =====================================================
 define('STATUS_ORDER_MENUNGGU_DP', 0);
 define('STATUS_ORDER_DP_TERVERIFIKASI', 1);
 define('STATUS_ORDER_SELESAI', 2);
 define('STATUS_ORDER_LUNAS', 3);
 define('STATUS_ORDER_DIBATALKAN', 4);
-
 define('STATUS_JADWAL_TERSEDIA', 0);
-define('STATUS_JADWAL_TERPESAN', 1);
-define('STATUS_JADWAL_SELESAI', 2);
-
-define('STATUS_SESI_MENUNGGU', 0);
-define('STATUS_SESI_BERLANGSUNG', 1);
-define('STATUS_SESI_SELESAI', 2);
-
-define('STATUS_DATA_NONAKTIF', 0);
 define('STATUS_DATA_AKTIF', 1);
-
-define('STATUS_PEMBAYARAN_MENUNGGU', 0);
-define('STATUS_PEMBAYARAN_VALID', 1);
-define('STATUS_PEMBAYARAN_DITOLAK', 2);
-
-define('STATUS_PENJUALAN_PROSES', 0);
-define('STATUS_PENJUALAN_SELESAI', 1);
-
-function getOrderStatusLabel($status) {
-    $labels = [
-        STATUS_ORDER_MENUNGGU_DP => 'Menunggu DP',
-        STATUS_ORDER_DP_TERVERIFIKASI => 'DP Terverifikasi',
-        STATUS_ORDER_SELESAI => 'Selesai',
-        STATUS_ORDER_LUNAS => 'Lunas',
-        STATUS_ORDER_DIBATALKAN => 'Dibatalkan'
-    ];
-    return $labels[$status] ?? 'Unknown';
-}
-
-function getOrderStatusBadgeClass($status) {
-    $classes = [
-        STATUS_ORDER_MENUNGGU_DP => 'badge-menunggu',
-        STATUS_ORDER_DP_TERVERIFIKASI => 'badge-dp',
-        STATUS_ORDER_SELESAI => 'badge-pelunasan',
-        STATUS_ORDER_LUNAS => 'badge-lunas',
-        STATUS_ORDER_DIBATALKAN => 'badge-batal'
-    ];
-    return $classes[$status] ?? 'badge-menunggu';
-}
-
-function getOrderStatusIconBg($status) {
-    $styles = [
-        STATUS_ORDER_MENUNGGU_DP => 'background: #fffbeb; color: #d97706;',
-        STATUS_ORDER_DP_TERVERIFIKASI => 'background: #dbeafe; color: #2563eb;',
-        STATUS_ORDER_SELESAI => 'background: #e0e7ff; color: #4f46e5;',
-        STATUS_ORDER_LUNAS => 'background: #ecfdf5; color: #059669;',
-        STATUS_ORDER_DIBATALKAN => 'background: #fef2f2; color: #dc2626;'
-    ];
-    return $styles[$status] ?? 'background: #fffbeb; color: #d97706;';
-}
-
-function getOrderStatusAction($status, $order_id, $has_rating) {
-    switch ($status) {
-        case STATUS_ORDER_MENUNGGU_DP:
-            return '<a href="../Booking/Pembayaran/index.php?id=' . (int)$order_id . '" class="btn-action" style="padding: 5px 12px; font-size: 0.7rem;"><i class="bi bi-credit-card"></i> Bayar DP</a>';
-        case STATUS_ORDER_SELESAI:
-            return '<a href="../Booking/Pembayaran/index.php?id=' . (int)$order_id . '" class="btn-action" style="padding: 5px 12px; font-size: 0.7rem;"><i class="bi bi-cash-stack"></i> Pelunasan</a>';
-        case STATUS_ORDER_LUNAS:
-            if (empty($has_rating)) {
-                return '<a href="../Booking/Rating/index.php?id=' . (int)$order_id . '" class="btn-action" style="padding: 5px 12px; font-size: 0.7rem;"><i class="bi bi-star-fill"></i> Rating</a>';
-            }
-            return '<a href="../Booking/Hasil/index.php?id=' . (int)$order_id . '" class="btn-action" style="padding: 5px 12px; font-size: 0.7rem;"><i class="bi bi-download"></i> Download</a>';
-        default:
-            return '';
-    }
-}
 
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Customer') {
     header("Location: ../../login.php");
     exit();
 }
 
-if (!isset($_SESSION['last_regenerate']) || (time() - $_SESSION['last_regenerate']) > 1800) {
-    session_regenerate_id(true);
-    $_SESSION['last_regenerate'] = time();
-}
-
-if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) > 1800) {
-    session_unset();
-    session_destroy();
-    header("Location: ../../login.php?timeout=1");
-    exit();
-}
-$_SESSION['last_activity'] = time();
-
 $id_customer = $_SESSION['id_user'];
 
-if (!is_numeric($id_customer) || $id_customer <= 0) {
-    session_unset();
-    session_destroy();
-    header("Location: ../../login.php");
-    exit();
-}
-
+// --- Profil ---
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23d83f67'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
 $q_profile = sqlsrv_query($conn, 
-    "SELECT * FROM Pelanggan WHERE ID_Pelanggan = ? AND Is_Deleted = 0 AND Status = ?", 
+    "SELECT Nama_Pelanggan, Foto_Profil FROM Pelanggan WHERE ID_Pelanggan = ? AND Is_Deleted = 0 AND Status = ?", 
     array($id_customer, STATUS_DATA_AKTIF)
 );
-
-if ($q_profile === false) {
-    header("Location: ../../login.php?error=db");
-    exit();
-}
-
 $d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
-
-if (!$d_profile) {
-    session_unset();
-    session_destroy();
-    header("Location: ../../login.php?error=invalid_user");
-    exit();
-}
-
-$d_profile = array_change_key_case($d_profile, CASE_LOWER);
-
-$nama_customer = $d_profile['nama_pelanggan'] ?? 'Customer';
-$username_customer = $d_profile['username_pelanggan'] ?? 'customer';
-$email_customer = $d_profile['email_pelanggan'] ?? 'customer@email.com';
-$foto_customer = $d_profile['foto_profil'] ?? 'default.jpg';
-
+$nama_customer = $d_profile['Nama_Pelanggan'] ?? 'Customer';
+$foto_customer = $d_profile['Foto_Profil'] ?? 'default.jpg';
 $foto_customer_src = ($foto_customer != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_customer)) 
     ? "../../assets/img/pelanggan/" . $foto_customer 
     : $default_svg_avatar;
 
-$error_profile = "";
-$success_profile = false;
-
-if (isset($_POST['update_profil'])) {
-    if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token']) || 
-        $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
-        $error_profile = "Sesi tidak valid. Silakan refresh halaman dan coba lagi.";
-    } else {
-        $nama_input     = trim($_POST['nama'] ?? '');
-        $username_input = trim($_POST['username'] ?? '');
-        $email_input    = trim($_POST['email'] ?? '');
-        $no_hp_input    = trim($_POST['no_hp'] ?? '');
-        $alamat_input   = trim($_POST['alamat'] ?? '');
-        $pass_baru      = $_POST['password'] ?? '';
-        $confirm_pass   = $_POST['confirm_password'] ?? '';
-
-        if (empty($nama_input)) {
-            $error_profile = "Nama lengkap wajib diisi!";
-        } elseif (strlen($nama_input) < 3) {
-            $error_profile = "Nama lengkap minimal 3 karakter!";
-        } elseif (!preg_match("/^[a-zA-Z ]*$/", $nama_input)) {
-            $error_profile = "Nama lengkap hanya boleh berisi huruf dan spasi!";
-        } elseif (strlen($nama_input) > 100) {
-            $error_profile = "Nama lengkap maksimal 100 karakter!";
-        }
-
-        if (empty($error_profile)) {
-            if (empty($username_input)) {
-                $error_profile = "Username wajib diisi!";
-            } elseif (strlen($username_input) < 5) {
-                $error_profile = "Username minimal 5 karakter!";
-            } elseif (strlen($username_input) > 50) {
-                $error_profile = "Username maksimal 50 karakter!";
-            } elseif (!preg_match("/^[a-zA-Z0-9_]*$/", $username_input)) {
-                $error_profile = "Username hanya boleh huruf, angka, dan underscore!";
-            } elseif (strtolower($username_input) !== strtolower($username_customer)) {
-                $cek_user = sqlsrv_query($conn, 
-                    "SELECT 1 FROM Pelanggan WHERE LOWER(Username_Pelanggan) = LOWER(?) AND ID_Pelanggan != ? AND Is_Deleted = 0", 
-                    array($username_input, $id_customer)
-                );
-                if ($cek_user && sqlsrv_has_rows($cek_user)) {
-                    $error_profile = "Username sudah digunakan oleh pengguna lain!";
-                }
-            }
-        }
-
-        if (empty($error_profile)) {
-            if (empty($email_input)) {
-                $error_profile = "Email wajib diisi!";
-            } elseif (!filter_var($email_input, FILTER_VALIDATE_EMAIL)) {
-                $error_profile = "Format email tidak valid!";
-            } elseif (strlen($email_input) > 100) {
-                $error_profile = "Email maksimal 100 karakter!";
-            } elseif (strtolower($email_input) !== strtolower($email_customer)) {
-                $cek_email = sqlsrv_query($conn, 
-                    "SELECT 1 FROM Pelanggan WHERE LOWER(Email_Pelanggan) = LOWER(?) AND ID_Pelanggan != ? AND Is_Deleted = 0", 
-                    array($email_input, $id_customer)
-                );
-                if ($cek_email && sqlsrv_has_rows($cek_email)) {
-                    $error_profile = "Email sudah digunakan oleh pengguna lain!";
-                }
-            }
-        }
-
-        if (empty($error_profile)) {
-            $hp_bersih_input = str_replace(['+', ' ', '-', '(', ')'], '', $no_hp_input);
-
-            if (empty($no_hp_input)) {
-                $error_profile = "Nomor telepon wajib diisi!";
-            } elseif (!ctype_digit($hp_bersih_input)) {
-                $error_profile = "Nomor telepon hanya boleh berisi angka!";
-            } elseif (strlen($hp_bersih_input) < 10) {
-                $error_profile = "Nomor telepon minimal 10 digit!";
-            } elseif (strlen($hp_bersih_input) > 15) {
-                $error_profile = "Nomor telepon maksimal 15 digit!";
-            } elseif (!str_starts_with($hp_bersih_input, '62')) {
-                $error_profile = "Nomor telepon harus diawali dengan +62!";
-            } else {
-                $no_hp_input = '+62' . substr($hp_bersih_input, 2);
-            }
-        }
-
-        if (empty($error_profile)) {
-            if (empty($alamat_input)) {
-                $error_profile = "Alamat wajib diisi!";
-            } elseif (strlen($alamat_input) < 10) {
-                $error_profile = "Alamat lengkap minimal 10 karakter!";
-            } elseif (strlen($alamat_input) > 255) {
-                $error_profile = "Alamat maksimal 255 karakter!";
-            }
-        }
-
-        $sandi_final = $d_profile['password_pelanggan'];
-        if (empty($error_profile) && !empty($pass_baru)) {
-            if (strlen($pass_baru) < 8) {
-                $error_profile = "Sandi baru minimal 8 karakter!";
-            } elseif (!preg_match("/[A-Za-z]/", $pass_baru)) {
-                $error_profile = "Sandi baru harus mengandung huruf!";
-            } elseif (!preg_match("/[0-9]/", $pass_baru)) {
-                $error_profile = "Sandi baru harus mengandung angka!";
-            } elseif (!preg_match("/[^A-Za-z0-9]/", $pass_baru)) {
-                $error_profile = "Sandi baru harus mengandung simbol!";
-            } elseif ($pass_baru !== $confirm_pass) {
-                $error_profile = "Konfirmasi kata sandi tidak cocok!";
-            } else {
-                $sandi_final = password_hash($pass_baru, PASSWORD_BCRYPT);
-            }
-        }
-
-        if (empty($error_profile)) {
-            $foto_baru = $foto_customer;
-            if (isset($_FILES['foto_profil']) && $_FILES['foto_profil']['error'] === UPLOAD_ERR_OK) {
-                $file_name = $_FILES['foto_profil']['name'];
-                $file_size = $_FILES['foto_profil']['size'];
-                $file_tmp  = $_FILES['foto_profil']['tmp_name'];
-                $file_ext  = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
-
-                $allowed_ext = ['jpg', 'jpeg', 'png'];
-
-                if (!in_array($file_ext, $allowed_ext)) {
-                    $error_profile = "Format foto profil harus JPG, JPEG, atau PNG!";
-                } elseif ($file_size > 2097152) { 
-                    $error_profile = "Ukuran foto profil maksimal 2MB!";
-                } elseif (!getimagesize($file_tmp)) {
-                    $error_profile = "File yang diupload bukan gambar valid!";
-                } else {
-                    $foto_baru = "customer_" . time() . "_" . uniqid() . "." . $file_ext;
-                    $target_dir = "../../assets/img/pelanggan/";
-
-                    if (!is_dir($target_dir)) { mkdir($target_dir, 0777, true); }
-
-                    if (move_uploaded_file($file_tmp, $target_dir . $foto_baru)) {
-                        if ($foto_customer != 'default.jpg' && file_exists($target_dir . $foto_customer)) { 
-                            unlink($target_dir . $foto_customer); 
-                        }
-                    } else {
-                        $error_profile = "Gagal mengunggah foto profil!";
-                    }
-                }
-            }
-        }
-
-        if (empty($error_profile)) {
-            $sql_upd = "UPDATE Pelanggan SET 
-                Nama_Pelanggan = ?, 
-                Username_Pelanggan = ?, 
-                Email_Pelanggan = ?, 
-                Password_Pelanggan = ?, 
-                No_Hp = ?, 
-                Alamat = ?, 
-                Foto_Profil = ?, 
-                Modified_By = ?, 
-                Modified_Date = GETDATE() 
-                WHERE ID_Pelanggan = ? AND Is_Deleted = 0 AND Status = ?";
-
-            $stmt_upd = sqlsrv_query($conn, $sql_upd, array(
-                $nama_input, 
-                $username_input, 
-                $email_input, 
-                $sandi_final, 
-                $no_hp_input, 
-                $alamat_input, 
-                $foto_baru, 
-                $username_customer, 
-                $id_customer,
-                STATUS_DATA_AKTIF
-            ));
-
-            if ($stmt_upd) {
-                $success_profile = true;
-                $_SESSION['nama'] = $nama_input;
-                $nama_customer = $nama_input;
-                $username_customer = $username_input;
-                $email_customer = $email_input;
-                $foto_customer = $foto_baru;
-                $foto_customer_src = ($foto_customer != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_customer)) 
-                    ? "../../assets/img/pelanggan/" . $foto_customer 
-                    : $default_svg_avatar;
-                $d_profile['no_hp'] = $no_hp_input;
-                $d_profile['alamat'] = $alamat_input;
-            } else {
-                $error_profile = "Gagal memperbarui data di database!";
-            }
-        }
-    }
-}
-
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$csrf_token = $_SESSION['csrf_token'];
-
-$q_my_booking = sqlsrv_query($conn, 
-    "SELECT COUNT(*) AS total FROM [Order] 
-     WHERE ID_Pelanggan = ? AND Status = ? AND Status_Order != ?", 
-    array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_DIBATALKAN)
-);
-$d_my_booking = sqlsrv_fetch_array($q_my_booking, SQLSRV_FETCH_ASSOC);
-$my_booking = $d_my_booking['total'] ?? 0;
-
-$q_wait_dp = sqlsrv_query($conn, 
-    "SELECT COUNT(*) AS total FROM [Order] 
-     WHERE ID_Pelanggan = ? AND Status = ? AND Status_Order = ?", 
-    array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_MENUNGGU_DP)
-);
-$d_wait_dp = sqlsrv_fetch_array($q_wait_dp, SQLSRV_FETCH_ASSOC);
-$wait_dp = $d_wait_dp['total'] ?? 0;
-
-$q_booking_aktif = sqlsrv_query($conn, 
-    "SELECT COUNT(*) AS total FROM [Order] 
-     WHERE ID_Pelanggan = ? AND Status = ? AND Status_Order IN (?, ?)", 
-    array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_DP_TERVERIFIKASI, STATUS_ORDER_SELESAI)
-);
-$d_booking_aktif = sqlsrv_fetch_array($q_booking_aktif, SQLSRV_FETCH_ASSOC);
-$booking_aktif = $d_booking_aktif['total'] ?? 0;
-
-$q_booking_lunas = sqlsrv_query($conn, 
-    "SELECT COUNT(*) AS total FROM [Order] 
-     WHERE ID_Pelanggan = ? AND Status = ? AND Status_Order = ?", 
-    array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_LUNAS)
-);
-$d_booking_lunas = sqlsrv_fetch_array($q_booking_lunas, SQLSRV_FETCH_ASSOC);
-$booking_lunas = $d_booking_lunas['total'] ?? 0;
-
-$q_sesi_selesai = sqlsrv_query($conn, 
-    "SELECT COUNT(*) AS total 
-     FROM Sesi_Foto S 
-     INNER JOIN [Order] O ON S.ID_Order = O.ID_Order 
-     WHERE O.ID_Pelanggan = ? AND S.Status = ? AND S.Status_Sesi = ? AND O.Status = ?", 
-    array($id_customer, STATUS_DATA_AKTIF, STATUS_SESI_SELESAI, STATUS_DATA_AKTIF)
-);
-$d_sesi_selesai = sqlsrv_fetch_array($q_sesi_selesai, SQLSRV_FETCH_ASSOC);
-$sesi_selesai = $d_sesi_selesai['total'] ?? 0;
-
-$q_pesanan_cetak = sqlsrv_query($conn, 
-    "SELECT COUNT(*) AS total 
-     FROM Penjualan P 
-     INNER JOIN [Order] O ON P.ID_Order = O.ID_Order 
-     WHERE O.ID_Pelanggan = ? AND P.Status = ? AND O.Status = ?", 
-    array($id_customer, STATUS_DATA_AKTIF, STATUS_DATA_AKTIF)
-);
-$d_pesanan_cetak = sqlsrv_fetch_array($q_pesanan_cetak, SQLSRV_FETCH_ASSOC);
-$pesanan_cetak = $d_pesanan_cetak['total'] ?? 0;
-
-$q_my_rating = sqlsrv_query($conn, 
-    "SELECT COUNT(*) AS total FROM [Order] 
-     WHERE ID_Pelanggan = ? AND Status = ? AND Rating IS NOT NULL AND Status_Order = ?", 
-    array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_LUNAS)
-);
-$d_my_rating = sqlsrv_fetch_array($q_my_rating, SQLSRV_FETCH_ASSOC);
-$my_rating = $d_my_rating['total'] ?? 0;
-
-$q_booking_batal = sqlsrv_query($conn, 
-    "SELECT COUNT(*) AS total FROM [Order] 
-     WHERE ID_Pelanggan = ? AND Status = ? AND Status_Order = ?", 
-    array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_DIBATALKAN)
-);
-$d_booking_batal = sqlsrv_fetch_array($q_booking_batal, SQLSRV_FETCH_ASSOC);
-$booking_batal = $d_booking_batal['total'] ?? 0;
-
-$q_paket_populer = sqlsrv_query($conn, 
-    "SELECT TOP 3 
-        p.ID_Paket, 
-        p.Nama_Paket, 
-        p.Harga_Paket, 
-        p.Durasi_Waktu, 
-        p.Kapasitas_Orang, 
-        p.Foto_Paket,
-        COUNT(o.ID_Order) AS total_booking
-    FROM Paket_Foto p
-    LEFT JOIN [Order] o ON p.ID_Paket = o.ID_Paket AND o.Status = ? AND o.Status_Order != ?
-    WHERE p.Is_Deleted = 0 AND p.Status = ?
-    GROUP BY p.ID_Paket, p.Nama_Paket, p.Harga_Paket, p.Durasi_Waktu, p.Kapasitas_Orang, p.Foto_Paket
-    ORDER BY total_booking DESC",
-    array(STATUS_DATA_AKTIF, STATUS_ORDER_DIBATALKAN, STATUS_DATA_AKTIF)
-);
-
-$q_booking_saya = sqlsrv_query($conn, 
-    "SELECT TOP 3 
-        o.ID_Order,
-        o.ID_Paket,
-        pk.Nama_Paket,
-        r.Nama_Ruangan,
-        o.Tanggal_Booking,
-        o.Total_Harga,
-        o.Status_Order,
-        o.Rating
-    FROM [Order] o
-    INNER JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket AND pk.Is_Deleted = 0 AND pk.Status = ?
-    INNER JOIN Ruangan r ON o.ID_Ruangan = r.ID_Ruangan AND r.Is_Deleted = 0 AND r.Status = ?
-    WHERE o.ID_Pelanggan = ? AND o.Status = ? AND o.Status_Order != ?
-    ORDER BY o.Created_Date DESC",
-    array(STATUS_DATA_AKTIF, STATUS_DATA_AKTIF, $id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_DIBATALKAN)
-);
-
-$current_time = date('H:i:s');
-$q_jadwal_hari_ini = sqlsrv_query($conn, 
-    "SELECT TOP 3 
-        j.ID_Jadwal,
-        j.ID_Ruangan,
-        r.Nama_Ruangan,
-        j.Jam_Mulai,
-        j.Jam_Selesai,
-        j.Keterangan
-    FROM Jadwal_Studio j
-    INNER JOIN Ruangan r ON j.ID_Ruangan = r.ID_Ruangan AND r.Is_Deleted = 0 AND r.Status = ?
-    WHERE j.Status = ? 
-      AND j.Status_Jadwal = ? 
-      AND j.Tanggal_Jadwal = CAST(GETDATE() AS DATE) 
-      AND j.Is_Deleted = 0
-      AND j.Jam_Mulai >= ?
-    ORDER BY j.Jam_Mulai ASC",
-    array(STATUS_DATA_AKTIF, STATUS_DATA_AKTIF, STATUS_JADWAL_TERSEDIA, $current_time)
-);
-
-$q_barang_populer = sqlsrv_query($conn, 
-    "SELECT TOP 3 
-        b.ID_Barang, 
-        b.Nama_Barang, 
-        b.Harga_Barang, 
-        b.Stok_Barang, 
-        b.Stok_Minimum,
-        b.Foto_Barang
-    FROM Barang_Cetak b
-    WHERE b.Is_Deleted = 0 
-      AND b.Status = ? 
-      AND b.Stok_Barang > 0
-    ORDER BY b.Stok_Barang DESC",
+// --- Paket Foto ---
+$q_paket = sqlsrv_query($conn, 
+    "SELECT ID_Paket, Nama_Paket, Harga_Paket, Durasi_Waktu, Kapasitas_Orang, Deskripsi, Foto_Paket 
+     FROM Paket_Foto WHERE Is_Deleted = 0 AND Status = ? ORDER BY Harga_Paket ASC",
     array(STATUS_DATA_AKTIF)
 );
+
+// --- Jadwal Hari Ini ---
+$today = date('Y-m-d');
+$q_jadwal = sqlsrv_query($conn, 
+    "SELECT TOP 4 j.ID_Jadwal, r.Nama_Ruangan, j.Jam_Mulai, j.Jam_Selesai, j.Keterangan
+     FROM Jadwal_Studio j
+     INNER JOIN Ruangan r ON j.ID_Ruangan = r.ID_Ruangan
+     WHERE j.Tanggal_Jadwal = ? AND j.Status_Jadwal = ? AND j.Status = ? AND j.Is_Deleted = 0
+     ORDER BY j.Jam_Mulai ASC",
+    array($today, STATUS_JADWAL_TERSEDIA, STATUS_DATA_AKTIF)
+);
+
+// --- Barang Cetak Populer ---
+$q_barang = sqlsrv_query($conn, 
+    "SELECT TOP 4 ID_Barang, Nama_Barang, Harga_Barang, Foto_Barang 
+     FROM Barang_Cetak WHERE Is_Deleted = 0 AND Status = ? AND Stok_Barang > 0
+     ORDER BY Stok_Barang DESC",
+    array(STATUS_DATA_AKTIF)
+);
+
+// --- Stats ---
+$q_stats = sqlsrv_query($conn, 
+    "SELECT 
+        (SELECT COUNT(*) FROM [Order] WHERE ID_Pelanggan = ? AND Status = ? AND Status_Order != ?) as total_booking,
+        (SELECT COUNT(*) FROM [Order] WHERE ID_Pelanggan = ? AND Status = ? AND Status_Order = ?) as menunggu_dp",
+    array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_DIBATALKAN, $id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_MENUNGGU_DP)
+);
+$d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SpotLight Studio - Customer Dashboard</title>
-
+    <title>SpotLight Studio - Booking Studio Foto Online</title>
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
     <style>
-        :root { 
-            --p-pink: #d83f67; 
-            --d-pink: #c73165; 
-            --s-pink: #fff5f6; 
+        :root {
+            --p-pink: #d83f67;
+            --d-pink: #c73165;
+            --s-pink: #fff5f6;
             --light-pink: #ffe4e9;
             --accent-pink: #ff6694;
             --text-dark: #1e1e24;
             --text-muted: #718096;
-            --sidebar-bg: #ffffff;
             --body-bg: #f8fafc;
-            --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
-        body { 
-            font-family: 'Plus Jakarta Sans', sans-serif; 
-            background-color: var(--body-bg);
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: var(--body-bg);
             color: var(--text-dark);
-            overflow-x: hidden;
         }
 
-        .sidebar {
-            width: 260px;
-            height: 100vh;
-            background: var(--sidebar-bg);
-            position: fixed;
-            top: 0;
-            left: 0;
-            border-right: 1px solid rgba(255, 236, 239, 0.8);
+        /* ===== NAVBAR ATAS ===== */
+        .top-navbar {
+            background: #ffffff;
+            padding: 16px 40px;
             display: flex;
-            flex-direction: column;
+            align-items: center;
             justify-content: space-between;
-            padding: 30px 20px;
-            z-index: 100;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.06);
         }
-        .sidebar-brand {
-            font-weight: 800;
-            font-size: 1.5rem;
+        .nav-logo {
+            font-weight: 900;
+            font-size: 1.8rem;
             color: var(--p-pink);
             text-decoration: none;
-            letter-spacing: -1px;
-            margin-bottom: 40px;
-            display: block;
+            letter-spacing: -1.5px;
         }
-        .sidebar-brand span {
-            color: var(--text-dark);
-            font-size: 0.85rem;
-            font-weight: 600;
+        .nav-logo span { color: var(--text-dark); font-weight: 700; font-size: 0.9rem; }
+        .nav-menu-center {
+            display: flex;
+            gap: 32px;
+            align-items: center;
         }
-        .sidebar-menu-wrapper {
-            flex-grow: 1;
-            overflow-y: auto;
-            margin-bottom: 20px;
-            scrollbar-width: none;
+        .nav-link-item {
+            color: #4a5568;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+            padding: 8px 0;
+            position: relative;
         }
-        .sidebar-menu-wrapper::-webkit-scrollbar { display: none; }
-        .nav-menu { list-style: none; padding: 0; margin: 0; }
-        .nav-item { margin-bottom: 8px; }
-        .nav-link-custom {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 12px 18px; color: #4a5568; font-weight: 700;
-            text-decoration: none; border-radius: 12px; font-size: 0.9rem;
-            transition: var(--transition-3d);
-        }
-        .nav-link-custom:hover, .nav-link-custom.active {
-            background-color: var(--light-pink); color: var(--p-pink);
-            transform: translateX(4px);
-        }
-        .submenu {
-            list-style: none; padding-left: 20px; margin-top: 5px;
-            display: none; transition: var(--transition-3d);
-        }
-        .submenu.show { display: block !important; }
-        .submenu-link {
-            display: flex; align-items: center; padding: 8px 18px;
-            color: #718096; font-weight: 600; font-size: 0.85rem;
-            text-decoration: none; border-radius: 10px; transition: 0.3s;
-        }
-        .submenu-link:hover, .submenu-link.active {
+        .nav-link-item:hover, .nav-link-item.active {
             color: var(--p-pink);
-            background-color: rgba(216, 63, 103, 0.03);
-            padding-left: 22px;
         }
-        .btn-logout {
+        .nav-link-item.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: var(--p-pink);
+            border-radius: 3px;
+        }
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .nav-btn-booking {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            color: #ffffff; border: none; width: 100%; padding: 12px;
-            border-radius: 12px; font-weight: 800; font-size: 0.85rem;
-            transition: var(--transition-3d);
+            color: #fff;
+            padding: 10px 24px;
+            border-radius: 12px;
+            font-weight: 800;
+            font-size: 0.85rem;
+            text-decoration: none;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(216, 63, 103, 0.25);
         }
-        .btn-logout:hover {
+        .nav-btn-booking:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(216, 63, 103, 0.2);
+            box-shadow: 0 8px 25px rgba(216, 63, 103, 0.35);
+            color: #fff;
+        }
+        .nav-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--light-pink);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .nav-avatar:hover {
+            transform: scale(1.1);
+            border-color: var(--p-pink);
         }
 
-        .main-content {
-            margin-left: 260px; padding: 40px; min-height: 100vh;
+        /* ===== HERO BANNER ===== */
+        .hero-banner {
+            background: linear-gradient(135deg, var(--p-pink) 0%, var(--d-pink) 50%, #b82e52 100%);
+            padding: 80px 40px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
         }
-        .dashboard-header {
-            display: flex; justify-content: space-between;
-            align-items: center; margin-bottom: 35px;
+        .hero-banner::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
+            animation: rotate 20s linear infinite;
+        }
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .hero-content {
+            position: relative;
+            z-index: 2;
+        }
+        .hero-title {
+            font-size: 3rem;
+            font-weight: 900;
+            color: #ffffff;
+            margin-bottom: 16px;
+            text-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            letter-spacing: -1px;
+        }
+        .hero-subtitle {
+            font-size: 1.1rem;
+            color: rgba(255,255,255,0.85);
+            margin-bottom: 32px;
+            font-weight: 500;
+        }
+        .hero-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: #ffffff;
+            color: var(--p-pink);
+            padding: 16px 40px;
+            border-radius: 50px;
+            font-weight: 800;
+            font-size: 1rem;
+            text-decoration: none;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .hero-btn:hover {
+            transform: translateY(-4px) scale(1.05);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            color: var(--d-pink);
         }
 
-        .profile-header-btn {
-            width: 44px; height: 44px; border-radius: 50%;
-            overflow: hidden; border: 2px solid #ffffff;
-            cursor: pointer; transition: var(--transition-3d);
+        /* ===== SEARCH BAR ===== */
+        .search-section {
+            background: #ffffff;
+            padding: 30px 40px;
+            border-bottom: 1px solid #eef2f6;
+        }
+        .search-bar {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .search-input-group {
+            flex: 1;
+            position: relative;
+        }
+        .search-input-group i {
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+        .search-input {
+            width: 100%;
+            padding: 14px 18px 14px 48px;
+            border: 2px solid #eef2f6;
+            border-radius: 14px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-dark);
+            transition: all 0.3s;
+            background: #f8fafc;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: var(--p-pink);
+            background: #ffffff;
+            box-shadow: 0 4px 15px rgba(216, 63, 103, 0.1);
+        }
+        .search-select {
+            padding: 14px 18px;
+            border: 2px solid #eef2f6;
+            border-radius: 14px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-dark);
+            background: #f8fafc;
+            cursor: pointer;
+            transition: all 0.3s;
+            min-width: 160px;
+        }
+        .search-select:focus {
+            outline: none;
+            border-color: var(--p-pink);
             background: #ffffff;
         }
-        .profile-header-btn:hover {
-            transform: scale(1.08) translateY(-2px);
-            box-shadow: 0 8px 20px rgba(216, 63, 103, 0.15);
-            border-color: var(--p-pink);
-        }
-        .profile-header-btn img { width: 100%; height: 100%; object-fit: cover; }
-
-        .stats-scroll-wrapper {
-            width: 100%; overflow-x: auto; overflow-y: hidden;
-            padding-bottom: 10px; margin-bottom: 10px;
-            scrollbar-width: thin; scrollbar-color: var(--p-pink) #f1f5f9;
-        }
-        .stats-scroll-wrapper::-webkit-scrollbar { height: 6px; }
-        .stats-scroll-wrapper::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
-        .stats-scroll-wrapper::-webkit-scrollbar-thumb { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); border-radius: 10px; }
-        .stats-row { display: flex; gap: 16px; min-width: max-content; }
-        .stat-card-item { min-width: 220px; max-width: 280px; flex: 0 0 auto; }
-
-        .card-3d {
-            background: #ffffff; border-radius: 22px;
-            border: 1px solid rgba(255, 236, 239, 0.8);
-            box-shadow: 0 8px 24px rgba(216, 63, 103, 0.03);
-            transition: var(--transition-3d); padding: 20px;
-            height: 100%; position: relative; overflow: hidden;
-        }
-        .card-3d::before {
-            content: ''; position: absolute; top: 0; left: 0;
-            width: 100%; height: 4px;
-            background: linear-gradient(90deg, var(--p-pink), var(--accent-pink));
-            opacity: 0; transition: opacity 0.3s ease;
-        }
-        .card-3d:hover {
-            transform: translateY(-8px) scale(1.01);
-            box-shadow: 0 22px 45px rgba(216, 63, 103, 0.14); 
-            border-color: var(--p-pink);
-        }
-        .card-3d:hover::before { opacity: 1; }
-
-        .stat-card { display: flex; align-items: center; gap: 14px; }
-        .stat-icon {
-            width: 48px; height: 48px; border-radius: 14px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 1.4rem; transition: var(--transition-3d); flex-shrink: 0;
-        }
-        .card-3d:hover .stat-icon { transform: scale(1.1) rotate(5deg); }
-        .stat-icon-pink { background: linear-gradient(135deg, #fff5f6, #ffe4e9); color: var(--p-pink); }
-        .stat-icon-blue { background: linear-gradient(135deg, #eff6ff, #dbeafe); color: #2563eb; }
-        .stat-icon-green { background: linear-gradient(135deg, #ecfdf5, #d1fae5); color: #059669; }
-        .stat-icon-orange { background: linear-gradient(135deg, #fffbeb, #fef3c7); color: #d97706; }
-        .stat-icon-red { background: linear-gradient(135deg, #fef2f2, #fee2e2); color: #dc2626; }
-        .stat-icon-purple { background: linear-gradient(135deg, #f5f3ff, #ede9fe); color: #7c3aed; }
-        .stat-icon-cyan { background: linear-gradient(135deg, #ecfeff, #cffafe); color: #0891b2; }
-        .stat-icon-yellow { background: linear-gradient(135deg, #fefce8, #fef9c3); color: #ca8a04; }
-
-        .stat-content { flex: 1; min-width: 0; overflow: hidden; }
-        .stat-val {
-            font-size: 1.5rem; font-weight: 800; color: var(--text-dark);
-            margin-bottom: 2px; line-height: 1.2;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
-        .stat-title {
-            font-size: 0.7rem; color: var(--text-muted); font-weight: 700;
-            text-transform: uppercase; letter-spacing: 0.8px;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
-        .stat-subtitle {
-            font-size: 0.68rem; color: #a0aec0; font-weight: 600; margin-top: 2px;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
-
-        .content-card {
-            background: #ffffff; border-radius: 22px;
-            border: 1px solid rgba(255, 236, 239, 0.8);
-            box-shadow: 0 8px 24px rgba(216, 63, 103, 0.03);
-            transition: var(--transition-3d); padding: 25px; height: 100%;
-        }
-        .content-card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 20px 40px rgba(216, 63, 103, 0.1);
-        }
-        .content-header {
-            display: flex; justify-content: space-between;
-            align-items: center; margin-bottom: 20px;
-        }
-        .content-title { font-weight: 700; font-size: 1rem; color: var(--text-dark); }
-        .content-badge {
+        .search-btn {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            color: #ffffff; padding: 6px 14px; border-radius: 8px;
-            font-size: 0.75rem; font-weight: 700;
+            color: #ffffff;
+            border: none;
+            padding: 14px 32px;
+            border-radius: 14px;
+            font-weight: 800;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+        .search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(216, 63, 103, 0.3);
         }
 
+        /* ===== MAIN CONTENT ===== */
+        .main-container {
+            padding: 40px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .section-title {
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: var(--text-dark);
+        }
+        .section-title span {
+            color: var(--p-pink);
+        }
+        .section-count {
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .section-count strong {
+            color: var(--text-dark);
+        }
+
+        /* ===== PAKET GRID ===== */
+        .paket-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 24px;
+            margin-bottom: 50px;
+        }
         .paket-card {
-            background: linear-gradient(135deg, #ffffff, #fff5f6);
-            border-radius: 16px; border: 1px solid rgba(255, 236, 239, 0.8);
-            padding: 20px; transition: var(--transition-3d);
-            cursor: pointer; text-decoration: none; color: inherit; display: block;
+            background: #ffffff;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 1px solid #f1f5f9;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            text-decoration: none;
+            color: inherit;
+            display: block;
         }
         .paket-card:hover {
-            transform: translateY(-6px) scale(1.02);
-            box-shadow: 0 15px 35px rgba(216, 63, 103, 0.12);
-            border-color: var(--p-pink);
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 20px 40px rgba(216, 63, 103, 0.12);
+            border-color: var(--light-pink);
         }
-        .paket-img { width: 100%; height: 120px; border-radius: 12px; object-fit: cover; margin-bottom: 12px; }
-        .paket-harga { font-size: 1.1rem; font-weight: 800; color: var(--p-pink); }
-        .paket-nama { font-weight: 700; font-size: 0.9rem; color: var(--text-dark); margin-bottom: 4px; }
-        .paket-info { font-size: 0.75rem; color: var(--text-muted); }
-
-        .booking-item {
-            display: flex; align-items: center; gap: 14px; padding: 14px;
-            background: #f8fafc; border-radius: 14px; margin-bottom: 10px;
-            transition: var(--transition-3d); border: 1px solid transparent;
+        .paket-img-wrapper {
+            position: relative;
+            height: 200px;
+            overflow: hidden;
         }
-        .booking-item:hover {
-            transform: translateX(6px); border-color: var(--p-pink);
-            box-shadow: 0 6px 15px rgba(216, 63, 103, 0.08);
+        .paket-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.5s;
         }
-        .booking-icon {
-            width: 44px; height: 44px; border-radius: 12px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 1.2rem; flex-shrink: 0;
+        .paket-card:hover .paket-img {
+            transform: scale(1.1);
         }
-
-        .badge-status {
-            padding: 5px 12px; border-radius: 50px; font-size: 0.7rem;
-            font-weight: 700; display: inline-block;
+        .paket-badge {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            padding: 6px 14px;
+            border-radius: 50px;
+            font-size: 0.75rem;
+            font-weight: 800;
+            color: var(--p-pink);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
-        .badge-menunggu { background: #fffbeb; color: #d97706; }
-        .badge-dp { background: #dbeafe; color: #2563eb; }
-        .badge-pelunasan { background: #e0e7ff; color: #4f46e5; }
-        .badge-lunas { background: #ecfdf5; color: #059669; }
-        .badge-batal { background: #fef2f2; color: #dc2626; }
-
-        .required-star { color: #ef4444; font-weight: bold; margin-left: 2px; }
-        .form-label { font-weight: 800; font-size: 11px; color: #8a99a8; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 8px; }
-        .form-control, .form-select { 
-            border-radius: 14px; padding: 12px 18px; border: 2px solid #eef2f6; 
-            background: #f8fafc; font-size: 14px; font-weight: 600; 
-            transition: var(--transition-3d); color: var(--text-dark); 
+        .paket-body {
+            padding: 20px;
         }
-        .form-control:focus, .form-select:focus { 
-            border-color: var(--p-pink); background: #ffffff; 
-            transform: translateY(-3px) scale(1.01); 
-            box-shadow: 0 12px 25px rgba(216, 63, 103, 0.15); outline: none;
+        .paket-nama {
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: var(--text-dark);
+            margin-bottom: 6px;
         }
-        .profile-preview-box {
-            width: 90px; height: 90px; border-radius: 50%; overflow: hidden;
-            border: 2.5px solid #eef2f6; background: #f8fafc; display: flex;
-            align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);
-            transition: var(--transition-3d);
+        .paket-desc {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+            line-height: 1.5;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
-        .profile-preview-box img { width: 100%; height: 100%; object-fit: cover; }
-        .btn-pilih-foto {
-            background: #ffffff; border: 1.5px solid var(--p-pink); color: var(--p-pink);
-            font-weight: 700; border-radius: 10px; padding: 8px 18px; font-size: 0.85rem;
-            transition: var(--transition-3d);
+        .paket-meta {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
         }
-        .btn-pilih-foto:hover {
-            background: var(--p-pink); color: #ffffff; transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(216, 63, 103, 0.15);
+        .paket-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 600;
         }
-        .btn-reg { 
-            background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: white; 
-            border-radius: 16px; padding: 16px; font-weight: 800; border: none; 
-            width: 100%; transition: var(--transition-3d); margin-top: 15px; 
-            font-size: 15px; box-shadow: 0 10px 25px rgba(216, 63, 103, 0.25); 
+        .paket-meta-item i { color: var(--p-pink); }
+        .paket-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 16px;
+            border-top: 1px solid #f1f5f9;
         }
-        .btn-reg:hover { 
-            transform: translateY(-4px) scale(1.02); 
-            box-shadow: 0 15px 35px rgba(216, 63, 103, 0.35); 
+        .paket-harga {
+            font-size: 1.2rem;
+            font-weight: 900;
+            color: var(--p-pink);
         }
-        .btn-action {
+        .paket-btn {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            color: #ffffff; border: none; border-radius: 10px;
-            padding: 8px 16px; font-weight: 700; font-size: 0.8rem;
-            transition: var(--transition-3d); text-decoration: none;
-            display: inline-flex; align-items: center; gap: 6px;
+            color: #ffffff;
+            padding: 10px 24px;
+            border-radius: 12px;
+            font-weight: 800;
+            font-size: 0.85rem;
+            text-decoration: none;
+            transition: all 0.3s;
+            border: none;
+            cursor: pointer;
         }
-        .btn-action:hover {
+        .paket-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 15px rgba(216, 63, 103, 0.25);
-            color: #ffffff;
+            color: #fff;
         }
 
-        .password-group { position: relative; transition: var(--transition-3d); border-radius: 14px;}
-        .password-group:focus-within { transform: translateY(-3px) scale(1.01); box-shadow: 0 12px 25px rgba(216, 63, 103, 0.15); }
-        .password-group .form-control { transition: border-color 0.3s ease, background-color 0.3s ease; }
-        .password-group .form-control:focus { transform: none !important; box-shadow: none !important; background: #ffffff; border-color: var(--p-pink); }
-        .toggle-password { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #94a3b8; font-size: 18px; z-index: 10; transition: 0.3s; }
-        .toggle-password:hover { color: var(--p-pink); }
-
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+        /* ===== INFO SECTION (Jadwal + Barang) ===== */
+        .info-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-top: 40px;
         }
-        .animate-fade-in { animation: fadeInUp 0.6s ease-out forwards; }
-        .delay-1 { animation-delay: 0.1s; }
-        .delay-2 { animation-delay: 0.2s; }
-        .delay-3 { animation-delay: 0.3s; }
+        .info-card {
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 24px;
+            border: 1px solid #f1f5f9;
+        }
+        .info-card-title {
+            font-size: 1.1rem;
+            font-weight: 800;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .info-card-title i { color: var(--p-pink); }
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #f8fafc;
+        }
+        .info-item:last-child { border-bottom: none; }
+        .info-item-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .info-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: var(--s-pink);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--p-pink);
+            font-size: 1rem;
+        }
+        .info-text {
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: var(--text-dark);
+        }
+        .info-sub {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        .info-btn {
+            background: var(--s-pink);
+            color: var(--p-pink);
+            padding: 6px 16px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 0.75rem;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+        .info-btn:hover {
+            background: var(--p-pink);
+            color: #fff;
+        }
 
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); border-radius: 10px; }
+        /* ===== QUICK STATS BAR ===== */
+        .stats-bar {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 32px;
+            overflow-x: auto;
+            padding-bottom: 8px;
+        }
+        .stats-bar::-webkit-scrollbar { height: 4px; }
+        .stats-bar::-webkit-scrollbar-thumb { background: var(--p-pink); border-radius: 4px; }
+        .stat-chip {
+            background: #ffffff;
+            border: 1px solid #f1f5f9;
+            padding: 12px 20px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: max-content;
+            transition: all 0.3s;
+        }
+        .stat-chip:hover {
+            border-color: var(--light-pink);
+            transform: translateY(-2px);
+        }
+        .stat-chip-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: var(--s-pink);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--p-pink);
+            font-size: 1rem;
+        }
+        .stat-chip-text {
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: var(--text-dark);
+        }
+        .stat-chip-sub {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
 
-        @media (max-width: 1200px) { .main-content { padding: 20px; } }
-        @media (max-width: 992px) { .main-content { margin-left: 0; padding: 15px; } .sidebar { transform: translateX(-100%); } }
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 992px) {
+            .hero-title { font-size: 2rem; }
+            .search-bar { flex-wrap: wrap; }
+            .info-section { grid-template-columns: 1fr; }
+            .nav-menu-center { display: none; }
+            .main-container { padding: 20px; }
+            .top-navbar { padding: 16px 20px; }
+        }
     </style>
 </head>
 <body>
 
-    <!-- SIDEBAR -->
-    <div class="sidebar">
-        <div class="sidebar-menu-wrapper">
-            <a href="../../index.php" class="sidebar-brand">
-                SpotLight.<br>
-                <span>Studio Foto</span>
-            </a>
-
-            <ul class="nav-menu">
-                <li class="nav-item">
-                    <a href="index.php" class="nav-link-custom active">
-                        <span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span>
-                    </a>
-                </li>
-
-                <!-- LAYANAN STUDIO: Alur Transaksi Booking -->
-                <li class="nav-item">
-                    <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuLayanan">
-                        <span><i class="bi bi-camera-fill me-2"></i> Layanan Studio</span>
-                        <i class="bi bi-chevron-down small icon-chevron"></i>
-                    </a>
-                    <div class="submenu" id="submenuLayanan">
-                        <ul class="list-unstyled">
-                            <!-- Step 1: Pilih Paket (Mulai alur transaksi) -->
-                            <li><a href="Layanan/Paket/pilih_paket.php" class="submenu-link"><i class="bi bi-collection-fill me-2"></i>Paket Foto</a></li>
-                            <!-- Step 2: Pilih Ruangan (Hanya bisa diakses setelah pilih paket) -->
-                            <li><a href="Layanan/Ruangan/pilih_ruangan.php" class="submenu-link"><i class="bi bi-door-open-fill me-2"></i>Ruangan Studio</a></li>
-                            <!-- Step 3: Pilih Tema (Hanya bisa diakses setelah pilih ruangan) -->
-                            <li><a href="Layanan/Tema/pilih_tema.php" class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>                            
-                            <!-- Step 4: Pilih Jadwal (Hanya bisa diakses setelah pilih tema) -->
-                            <li><a href="Layanan/Jadwal/pilih_jadwal.php" class="submenu-link"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Tersedia</a></li>
-                            <li><a href="Layanan/Portofolio/lihat_portofolio.php" class="submenu-link"><i class="bi bi-images me-2"></i>Portofolio</a></li>
-                        </ul>
-                    </div>
-                </li>
-
-                <!-- BOOKING SAYA -->
-                <li class="nav-item">
-                    <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuBooking">
-                        <span><i class="bi bi-calendar-check-fill me-2"></i> Booking Saya</span>
-                        <i class="bi bi-chevron-down small icon-chevron"></i>
-                    </a>
-                    <div class="submenu" id="submenuBooking">
-                        <ul class="list-unstyled">
-                            <li><a href="../Booking/Baru/index.php" class="submenu-link"><i class="bi bi-plus-circle-fill me-2"></i>Booking Baru</a></li>
-                            <li><a href="../Booking/Riwayat/index.php" class="submenu-link"><i class="bi bi-clock-history me-2"></i>Riwayat Booking</a></li>
-                            <li><a href="../Booking/Pembayaran/index.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Pembayaran</a></li>
-                            <li><a href="../Booking/Hasil/index.php" class="submenu-link"><i class="bi bi-download me-2"></i>Download Hasil</a></li>
-                        </ul>
-                    </div>
-                </li>
-
-                <!-- BARANG CETAK -->
-                <li class="nav-item">
-                    <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuCetak">
-                        <span><i class="bi bi-printer-fill me-2"></i> Barang Cetak</span>
-                        <i class="bi bi-chevron-down small icon-chevron"></i>
-                    </a>
-                    <div class="submenu" id="submenuCetak">
-                        <ul class="list-unstyled">
-                            <li><a href="../Cetak/Katalog/index.php" class="submenu-link"><i class="bi bi-shop me-2"></i>Katalog Barang</a></li>
-                            <li><a href="../Cetak/Pesanan/index.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Pesanan Saya</a></li>
-                        </ul>
-                    </div>
-                </li>
-
-                <li class="nav-item">
-                    <a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)">
-                        <span><i class="bi bi-house-door-fill me-2"></i> Beranda</span>
-                    </a>
-                </li>
-            </ul>
+    <!-- NAVBAR ATAS -->
+    <nav class="top-navbar">
+        <a href="index.php" class="nav-logo">
+            SpotLight.<span>StudioFoto</span>
+        </a>
+        <div class="nav-menu-center">
+            <a href="index.php" class="nav-link-item active">Dashboard</a>
+            <a href="Layanan/Paket/detail_paket.php" class="nav-link-item">Booking Baru</a>
+            <a href="Booking/Riwayat/index.php" class="nav-link-item">Riwayat</a>
+            <a href="Cetak/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
         </div>
+        <div class="nav-right">
+            <a href="Layanan/Paket/detail_paket.php" class="nav-btn-booking">
+                <i class="bi bi-plus-lg"></i> Booking
+            </a>
+            <img src="<?= $foto_customer_src ?>" class="nav-avatar" alt="Profil" onclick="location.href='#'">
+        </div>
+    </nav>
 
-        <div>
-            <button onclick="confirmLogout(event)" class="btn btn-logout text-center d-block w-100">
-                <i class="bi bi-box-arrow-right me-2"></i> Keluar
+    <!-- HERO BANNER -->
+    <section class="hero-banner">
+        <div class="hero-content">
+            <h1 class="hero-title">BOOKING STUDIO FOTO TERBAIK</h1>
+            <p class="hero-subtitle">Pesan sesi foto profesional dengan mudah, cepat, dan terjangkau</p>
+            <a href="Layanan/Paket/detail_paket.php" class="hero-btn">
+                <i class="bi bi-calendar-plus-fill"></i>
+                Booking Sekarang
+            </a>
+        </div>
+    </section>
+
+    <!-- SEARCH BAR -->
+    <section class="search-section">
+        <div class="search-bar">
+            <div class="search-input-group">
+                <i class="bi bi-search"></i>
+                <input type="text" class="search-input" placeholder="Cari nama paket foto...">
+            </div>
+            <select class="search-select">
+                <option value="">Semua Kategori</option>
+                <option value="personal">Personal</option>
+                <option value="couple">Couple</option>
+                <option value="family">Family</option>
+                <option value="wisuda">Wisuda</option>
+                <option value="corporate">Corporate</option>
+            </select>
+            <select class="search-select">
+                <option value="">Semua Durasi</option>
+                <option value="30">30 Menit</option>
+                <option value="60">60 Menit</option>
+                <option value="90">90 Menit</option>
+                <option value="120">120 Menit</option>
+            </select>
+            <button class="search-btn">
+                <i class="bi bi-search me-2"></i>Cari Paket
             </button>
         </div>
-    </div>
+    </section>
 
     <!-- MAIN CONTENT -->
-    <div class="main-content">
+    <main class="main-container">
 
-        <!-- BANNER -->
-        <div class="alert border-0 d-flex align-items-center gap-3 mb-4 shadow-sm animate-fade-in" style="border-radius: 16px; background: linear-gradient(135deg, rgba(216, 63, 103, 0.05), rgba(255, 236, 239, 0.15)); border: 1px solid rgba(216, 63, 103, 0.15) !important; padding: 15px 25px;">
-            <div class="stat-icon" style="width: 40px; height: 40px; background: var(--p-pink); color: #ffffff; font-size: 1.1rem; border-radius: 10px;">
-                <i class="bi bi-camera-fill"></i>
-            </div>
-            <div>
-                <h6 class="fw-bold mb-0" style="font-size: 0.9rem; color: var(--p-pink);">Selamat Datang di SpotLight Studio</h6>
-                <small class="text-muted" style="font-size: 0.8rem; font-weight: 600;">Pesan studio foto profesional dengan mudah dan cepat.</small>
-            </div>
-        </div>
-
-        <!-- HEADER -->
-        <div class="dashboard-header animate-fade-in delay-1">
-            <div>
-                <h3 class="fw-bold mb-1">Halo, <?= htmlspecialchars($nama_customer) ?>!</h3>
-                <p class="text-muted small mb-0">Lihat paket menarik dan kelola booking foto Anda.</p>
-            </div>
-            <div class="d-flex align-items-center gap-3">
-                <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
-                    <i class="bi bi-clock-history me-1 text-danger"></i> <span id="live-clock">Memuat waktu...</span>
-                </span>
-                <div class="profile-header-btn shadow-sm" onclick="bukaModalBiodata()" title="Klik untuk melihat Biodata Anda">
-                    <img src="<?= $foto_customer_src ?>" alt="Customer Profil">
+        <!-- QUICK STATS -->
+        <div class="stats-bar">
+            <div class="stat-chip">
+                <div class="stat-chip-icon"><i class="bi bi-calendar-check-fill"></i></div>
+                <div>
+                    <div class="stat-chip-text"><?= $d_stats['total_booking'] ?? 0 ?> Booking</div>
+                    <div class="stat-chip-sub">Total pemesanan</div>
                 </div>
             </div>
-        </div>
-
-        <!-- STAT CARDS -->
-        <div class="stats-scroll-wrapper animate-fade-in delay-2">
-            <div class="stats-row">
-                <div class="stat-card-item">
-                    <div class="card-3d">
-                        <div class="stat-card">
-                            <div class="stat-icon stat-icon-pink"><i class="bi bi-calendar-check-fill"></i></div>
-                            <div class="stat-content">
-                                <div class="stat-title">Total Booking</div>
-                                <div class="stat-val"><?= $my_booking ?>x</div>
-                                <div class="stat-subtitle">Semua pemesanan</div>
-                            </div>
-                        </div>
-                    </div>
+            <div class="stat-chip">
+                <div class="stat-chip-icon" style="background: #fffbeb; color: #d97706;"><i class="bi bi-hourglass-split"></i></div>
+                <div>
+                    <div class="stat-chip-text"><?= $d_stats['menunggu_dp'] ?? 0 ?> Menunggu</div>
+                    <div class="stat-chip-sub">Segera bayar DP</div>
                 </div>
-                <div class="stat-card-item">
-                    <div class="card-3d">
-                        <div class="stat-card">
-                            <div class="stat-icon stat-icon-orange"><i class="bi bi-hourglass-split"></i></div>
-                            <div class="stat-content">
-                                <div class="stat-title">Menunggu DP</div>
-                                <div class="stat-val"><?= $wait_dp ?> Booking</div>
-                                <div class="stat-subtitle">Segera bayar DP</div>
-                            </div>
-                        </div>
-                    </div>
+            </div>
+            <div class="stat-chip">
+                <div class="stat-chip-icon" style="background: #ecfdf5; color: #059669;"><i class="bi bi-check-circle-fill"></i></div>
+                <div>
+                    <div class="stat-chip-text">Lunas</div>
+                    <div class="stat-chip-sub">Booking selesai</div>
                 </div>
-                <div class="stat-card-item">
-                    <div class="card-3d">
-                        <div class="stat-card">
-                            <div class="stat-icon stat-icon-blue"><i class="bi bi-camera-reels-fill"></i></div>
-                            <div class="stat-content">
-                                <div class="stat-title">Booking Aktif</div>
-                                <div class="stat-val"><?= $booking_aktif ?> Sesi</div>
-                                <div class="stat-subtitle">Siap dipotret</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="stat-card-item">
-                    <div class="card-3d">
-                        <div class="stat-card">
-                            <div class="stat-icon stat-icon-green"><i class="bi bi-check-circle-fill"></i></div>
-                            <div class="stat-content">
-                                <div class="stat-title">Lunas</div>
-                                <div class="stat-val"><?= $booking_lunas ?> Order</div>
-                                <div class="stat-subtitle">Bisa download hasil</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="stat-card-item">
-                    <div class="card-3d">
-                        <div class="stat-card">
-                            <div class="stat-icon stat-icon-purple"><i class="bi bi-image-fill"></i></div>
-                            <div class="stat-content">
-                                <div class="stat-title">Sesi Selesai</div>
-                                <div class="stat-val"><?= $sesi_selesai ?>x</div>
-                                <div class="stat-subtitle">Foto sudah diambil</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="stat-card-item">
-                    <div class="card-3d">
-                        <div class="stat-card">
-                            <div class="stat-icon stat-icon-cyan"><i class="bi bi-printer-fill"></i></div>
-                            <div class="stat-content">
-                                <div class="stat-title">Pesanan Cetak</div>
-                                <div class="stat-val"><?= $pesanan_cetak ?> Item</div>
-                                <div class="stat-subtitle">Barang cetak dipesan</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="stat-card-item">
-                    <div class="card-3d">
-                        <div class="stat-card">
-                            <div class="stat-icon stat-icon-yellow"><i class="bi bi-star-fill"></i></div>
-                            <div class="stat-content">
-                                <div class="stat-title">Rating Saya</div>
-                                <div class="stat-val"><?= $my_rating ?>x</div>
-                                <div class="stat-subtitle">Review diberikan</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="stat-card-item">
-                    <div class="card-3d">
-                        <div class="stat-card">
-                            <div class="stat-icon stat-icon-red"><i class="bi bi-x-circle-fill"></i></div>
-                            <div class="stat-content">
-                                <div class="stat-title">Dibatalkan</div>
-                                <div class="stat-val"><?= $booking_batal ?>x</div>
-                                <div class="stat-subtitle">Booking batal</div>
-                            </div>
-                        </div>
-                    </div>
+            </div>
+            <div class="stat-chip">
+                <div class="stat-chip-icon" style="background: #dbeafe; color: #2563eb;"><i class="bi bi-camera-fill"></i></div>
+                <div>
+                    <div class="stat-chip-text">Studio Aktif</div>
+                    <div class="stat-chip-sub">5 ruangan tersedia</div>
                 </div>
             </div>
         </div>
 
-        <!-- BARIS 2: PAKET POPULER & BOOKING SAYA -->
-        <div class="row g-4 mb-4">
-            <!-- Paket Populer -->
-            <div class="col-lg-7 animate-fade-in delay-1">
-                <div class="content-card">
-                    <div class="content-header">
-                        <h5 class="content-title"><i class="bi bi-fire text-danger me-2"></i>Paket Foto Populer</h5>
-                        <a href="Layanan/Paket/pilih_paket.php" class="btn btn-sm" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; border-radius: 8px; font-size: 0.75rem; text-decoration: none;">Lihat Semua</a>
-                    </div>
-                    <div class="row g-3">
-                        <?php
-                        if ($q_paket_populer && sqlsrv_has_rows($q_paket_populer)):
-                            while ($row = sqlsrv_fetch_array($q_paket_populer, SQLSRV_FETCH_ASSOC)):
-                                $foto_paket = ($row['Foto_Paket'] != 'default_paket.jpg' && file_exists("../../assets/img/paket/" . $row['Foto_Paket'])) 
-                                    ? "../../assets/img/paket/" . $row['Foto_Paket'] 
-                                    : $default_svg_avatar;
-                        ?>
-                            <div class="col-md-4">
-                                <a href="Layanan/Paket/pilih_paket.php" class="paket-card">
-                                    <img src="<?= $foto_paket ?>" alt="<?= htmlspecialchars($row['Nama_Paket']) ?>" class="paket-img">
-                                    <div class="paket-nama"><?= htmlspecialchars($row['Nama_Paket']) ?></div>
-                                    <div class="paket-harga">Rp<?= number_format($row['Harga_Paket'], 0, ',', '.') ?></div>
-                                    <div class="paket-info">
-                                        <i class="bi bi-clock me-1"></i><?= $row['Durasi_Waktu'] ?> menit | 
-                                        <i class="bi bi-people me-1"></i><?= $row['Kapasitas_Orang'] ?> orang
-                                    </div>
-                                </a>
-                            </div>
-                        <?php endwhile; else: ?>
-                            <div class="col-12 text-center py-4">
-                                <i class="bi bi-inbox fs-1 mb-2" style="color: #cbd5e1;"></i>
-                                <p class="text-muted">Belum ada paket tersedia.</p>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
+        <!-- PAKET FOTO -->
+        <div class="section-header">
+            <div class="section-title">
+                <i class="bi bi-fire text-danger me-2"></i>
+                Paket Foto <span>Populer</span>
             </div>
-
-            <!-- Booking Saya Terbaru -->
-            <div class="col-lg-5 animate-fade-in delay-2">
-                <div class="content-card">
-                    <div class="content-header">
-                        <h5 class="content-title"><i class="bi bi-calendar-event-fill text-danger me-2"></i>Booking Terbaru</h5>
-                        <a href="../Booking/Riwayat/index.php" class="btn btn-sm" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; border-radius: 8px; font-size: 0.75rem; text-decoration: none;">Riwayat</a>
-                    </div>
-                    <?php
-                    if ($q_booking_saya && sqlsrv_has_rows($q_booking_saya)):
-                        while ($row = sqlsrv_fetch_array($q_booking_saya, SQLSRV_FETCH_ASSOC)):
-                            $status_class = getOrderStatusBadgeClass($row['Status_Order']);
-                            $status_text = getOrderStatusLabel($row['Status_Order']);
-                            $icon_bg = getOrderStatusIconBg($row['Status_Order']);
-                    ?>
-                        <div class="booking-item">
-                            <div class="booking-icon" style="<?= $icon_bg ?>">
-                                <i class="bi bi-camera-fill"></i>
-                            </div>
-                            <div class="flex-grow-1">
-                                <div class="d-flex justify-content-between align-items-start">
-                                    <div>
-                                        <div class="fw-bold" style="font-size: 0.9rem;"><?= htmlspecialchars($row['Nama_Paket']) ?></div>
-                                        <div class="text-muted" style="font-size: 0.75rem;"><?= htmlspecialchars($row['Nama_Ruangan']) ?> &bull; <?= $row['Tanggal_Booking']->format('d M Y') ?></div>
-                                    </div>
-                                    <span class="badge-status <?= $status_class ?>"><?= $status_text ?></span>
-                                </div>
-                                <div class="d-flex justify-content-between align-items-center mt-2">
-                                    <span class="fw-bold" style="font-size: 0.85rem; color: var(--p-pink);">Rp<?= number_format($row['Total_Harga'], 0, ',', '.') ?></span>
-                                    <?= getOrderStatusAction($row['Status_Order'], $row['ID_Order'], $row['Rating']) ?>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endwhile; else: ?>
-                        <div class="text-center py-4">
-                            <i class="bi bi-calendar-x fs-1 mb-2" style="color: #cbd5e1;"></i>
-                            <p class="text-muted">Belum ada booking. <a href="Layanan/Paket/pilih_paket.php" style="color: var(--p-pink); font-weight: 700;">Booking sekarang!</a></p>
-                        </div>
-                    <?php endif; ?>
-                </div>
+            <div class="section-count">
+                Menampilkan <strong><?= sqlsrv_num_rows($q_paket) ?></strong> paket tersedia
             </div>
         </div>
 
-        <!-- BARIS 3: JADWAL HARI INI & BARANG CETAK -->
-        <div class="row g-4 mb-4">
-            <!-- Jadwal Tersedia Hari Ini -->
-            <div class="col-lg-6 animate-fade-in delay-1">
-                <div class="content-card">
-                    <div class="content-header">
-                        <h5 class="content-title"><i class="bi bi-calendar-day-fill text-danger me-2"></i>Jadwal Tersedia Hari Ini</h5>
-                        <a href="Layanan/Jadwal/pilih_jadwal.php" class="btn btn-sm" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; border-radius: 8px; font-size: 0.75rem; text-decoration: none;">Lihat Semua</a>
+        <div class="paket-grid">
+            <?php
+            if ($q_paket && sqlsrv_has_rows($q_paket)):
+                while ($row = sqlsrv_fetch_array($q_paket, SQLSRV_FETCH_ASSOC)):
+                    $foto_paket = ($row['Foto_Paket'] != 'default_paket.jpg' && file_exists("../../assets/img/paket/" . $row['Foto_Paket'])) 
+                        ? "../../assets/img/paket/" . $row['Foto_Paket'] 
+                        : "../../assets/img/paket/default_paket.jpg";
+                    $harga = number_format($row['Harga_Paket'], 0, ',', '.');
+            ?>
+                <!-- ===== FIX: LINK KE DETAIL PAKET (BUKAN pilih_paket.php) ===== -->
+                <a href="Layanan/Paket/detail_paket.php?id_paket=<?= $row['ID_Paket'] ?>" class="paket-card">
+                    <div class="paket-img-wrapper">
+                        <img src="<?= $foto_paket ?>" class="paket-img" alt="<?= htmlspecialchars($row['Nama_Paket']) ?>">
+                        <div class="paket-badge"><?= htmlspecialchars($row['Nama_Paket']) ?></div>
                     </div>
-                    <?php
-                    if ($q_jadwal_hari_ini && sqlsrv_has_rows($q_jadwal_hari_ini)):
-                        while ($row = sqlsrv_fetch_array($q_jadwal_hari_ini, SQLSRV_FETCH_ASSOC)):
-                    ?>
-                        <div class="booking-item">
-                            <div class="booking-icon" style="background: linear-gradient(135deg, #fff5f6, #ffe4e9); color: var(--p-pink);">
-                                <i class="bi bi-clock-fill"></i>
+                    <div class="paket-body">
+                        <div class="paket-nama"><?= htmlspecialchars($row['Nama_Paket']) ?></div>
+                        <div class="paket-desc"><?= htmlspecialchars($row['Deskripsi'] ?? 'Paket foto ' . $row['Nama_Paket'] . ' untuk sesi foto terbaik Anda.') ?></div>
+                        <div class="paket-meta">
+                            <div class="paket-meta-item">
+                                <i class="bi bi-clock"></i> <?= $row['Durasi_Waktu'] ?> menit
                             </div>
-                            <div class="flex-grow-1 d-flex justify-content-between align-items-center">
-                                <div>
-                                    <div class="fw-bold" style="font-size: 0.9rem;"><?= htmlspecialchars($row['Nama_Ruangan']) ?></div>
-                                    <div class="text-muted" style="font-size: 0.75rem;"><?= htmlspecialchars($row['Keterangan']) ?></div>
-                                </div>
-                                <div class="text-end">
-                                    <div class="fw-bold" style="font-size: 0.9rem; color: var(--p-pink);"><?= $row['Jam_Mulai']->format('H:i') ?> - <?= $row['Jam_Selesai']->format('H:i') ?></div>
-                                    <a href="../Booking/Baru/index.php?jadwal=<?= $row['ID_Jadwal'] ?>" class="btn-action" style="padding: 4px 10px; font-size: 0.7rem; margin-top: 4px;">
-                                        <i class="bi bi-plus-lg"></i> Booking
-                                    </a>
-                                </div>
+                            <div class="paket-meta-item">
+                                <i class="bi bi-people"></i> Max <?= $row['Kapasitas_Orang'] ?> orang
                             </div>
                         </div>
-                    <?php endwhile; else: ?>
-                        <div class="text-center py-4">
-                            <i class="bi bi-calendar-x fs-1 mb-2" style="color: #cbd5e1;"></i>
-                            <p class="text-muted">Tidak ada jadwal tersedia hari ini.</p>
+                        <div class="paket-footer">
+                            <div class="paket-harga">Rp<?= $harga ?></div>
+                            <span class="paket-btn">Pilih <i class="bi bi-arrow-right ms-1"></i></span>
                         </div>
-                    <?php endif; ?>
+                    </div>
+                </a>
+            <?php 
+                endwhile; 
+            else:
+            ?>
+                <div class="text-center py-5" style="grid-column: 1 / -1;">
+                    <i class="bi bi-inbox fs-1 mb-3" style="color: #cbd5e1;"></i>
+                    <p class="text-muted">Belum ada paket foto tersedia.</p>
                 </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- INFO SECTION: Jadwal + Barang -->
+        <div class="info-section">
+            <!-- Jadwal Hari Ini -->
+            <div class="info-card">
+                <div class="info-card-title">
+                    <i class="bi bi-calendar-day-fill"></i>
+                    Jadwal Tersedia Hari Ini
+                </div>
+                <?php
+                if ($q_jadwal && sqlsrv_has_rows($q_jadwal)):
+                    while ($row = sqlsrv_fetch_array($q_jadwal, SQLSRV_FETCH_ASSOC)):
+                ?>
+                    <div class="info-item">
+                        <div class="info-item-left">
+                            <div class="info-icon"><i class="bi bi-clock-fill"></i></div>
+                            <div>
+                                <div class="info-text"><?= htmlspecialchars($row['Nama_Ruangan']) ?></div>
+                                <div class="info-sub"><?= $row['Jam_Mulai']->format('H:i') ?> - <?= $row['Jam_Selesai']->format('H:i') ?></div>
+                            </div>
+                        </div>
+                        <a href="Layanan/Paket/detail_paket.php" class="info-btn">Booking</a>
+                    </div>
+                <?php endwhile; else: ?>
+                    <div class="text-center py-4">
+                        <i class="bi bi-calendar-x fs-2 mb-2" style="color: #cbd5e1;"></i>
+                        <p class="text-muted small">Tidak ada jadwal tersedia hari ini.</p>
+                    </div>
+                <?php endif; ?>
             </div>
 
-            <!-- Barang Cetak Populer -->
-            <div class="col-lg-6 animate-fade-in delay-2">
-                <div class="content-card">
-                    <div class="content-header">
-                        <h5 class="content-title"><i class="bi bi-bag-heart-fill text-danger me-2"></i>Barang Cetak Populer</h5>
-                        <a href="../Cetak/Katalog/index.php" class="btn btn-sm" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; border-radius: 8px; font-size: 0.75rem; text-decoration: none;">Katalog</a>
-                    </div>
-                    <div class="row g-3">
-                        <?php
-                        if ($q_barang_populer && sqlsrv_has_rows($q_barang_populer)):
-                            while ($row = sqlsrv_fetch_array($q_barang_populer, SQLSRV_FETCH_ASSOC)):
-                        ?>
-                            <div class="col-md-4">
-                                <a href="../Cetak/Katalog/index.php?id=<?= $row['ID_Barang'] ?>" class="paket-card text-center">
-                                    <div class="stat-icon stat-icon-pink mx-auto mb-2" style="width: 50px; height: 50px;">
-                                        <i class="bi bi-printer-fill"></i>
-                                    </div>
-                                    <div class="paket-nama"><?= htmlspecialchars($row['Nama_Barang']) ?></div>
-                                    <div class="paket-harga">Rp<?= number_format($row['Harga_Barang'], 0, ',', '.') ?></div>
-                                    <div class="paket-info">Stok: <?= $row['Stok_Barang'] ?></div>
-                                </a>
-                            </div>
-                        <?php endwhile; else: ?>
-                            <div class="col-12 text-center py-4">
-                                <i class="bi bi-inbox fs-1 mb-2" style="color: #cbd5e1;"></i>
-                                <p class="text-muted">Belum ada barang cetak tersedia.</p>
-                            </div>
-                        <?php endif; ?>
-                    </div>
+            <!-- Barang Cetak -->
+            <div class="info-card">
+                <div class="info-card-title">
+                    <i class="bi bi-bag-heart-fill"></i>
+                    Barang Cetak Populer
                 </div>
+                <?php
+                if ($q_barang && sqlsrv_has_rows($q_barang)):
+                    while ($row = sqlsrv_fetch_array($q_barang, SQLSRV_FETCH_ASSOC)):
+                        $harga_barang = number_format($row['Harga_Barang'], 0, ',', '.');
+                ?>
+                    <div class="info-item">
+                        <div class="info-item-left">
+                            <div class="info-icon" style="background: #dbeafe; color: #2563eb;"><i class="bi bi-printer-fill"></i></div>
+                            <div>
+                                <div class="info-text"><?= htmlspecialchars($row['Nama_Barang']) ?></div>
+                                <div class="info-sub">Rp<?= $harga_barang ?></div>
+                            </div>
+                        </div>
+                        <a href="Cetak/Katalog/index.php" class="info-btn">Lihat</a>
+                    </div>
+                <?php endwhile; else: ?>
+                    <div class="text-center py-4">
+                        <i class="bi bi-inbox fs-2 mb-2" style="color: #cbd5e1;"></i>
+                        <p class="text-muted small">Belum ada barang cetak tersedia.</p>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
 
-        <!-- BARIS 4: QUICK ACTION -->
-        <div class="row g-4">
-            <div class="col-12 animate-fade-in delay-1">
-                <div class="content-card">
-                    <div class="content-header">
-                        <h5 class="content-title"><i class="bi bi-lightning-charge-fill text-warning me-2"></i>Aksi Cepat</h5>
-                    </div>
-                    <div class="row g-3">
-                        <div class="col-lg-3 col-md-6">
-                            <a href="Layanan/Paket/pilih_paket.php" class="text-decoration-none">
-                                <div class="card-3d text-center p-3">
-                                    <div class="stat-icon stat-icon-pink mx-auto mb-2" style="width: 50px; height: 50px;"><i class="bi bi-calendar-plus-fill"></i></div>
-                                    <div class="fw-bold" style="font-size: 0.9rem; color: var(--text-dark);">Booking Baru</div>
-                                    <div class="text-muted" style="font-size: 0.75rem;">Pesan sesi foto</div>
-                                </div>
-                            </a>
-                        </div>
-                        <div class="col-lg-3 col-md-6">
-                            <a href="../Booking/Pembayaran/index.php" class="text-decoration-none">
-                                <div class="card-3d text-center p-3">
-                                    <div class="stat-icon stat-icon-green mx-auto mb-2" style="width: 50px; height: 50px;"><i class="bi bi-credit-card-fill"></i></div>
-                                    <div class="fw-bold" style="font-size: 0.9rem; color: var(--text-dark);">Bayar Booking</div>
-                                    <div class="text-muted" style="font-size: 0.75rem;">Upload bukti transfer</div>
-                                </div>
-                            </a>
-                        </div>
-                        <div class="col-lg-3 col-md-6">
-                            <a href="../Booking/Hasil/index.php" class="text-decoration-none">
-                                <div class="card-3d text-center p-3">
-                                    <div class="stat-icon stat-icon-blue mx-auto mb-2" style="width: 50px; height: 50px;"><i class="bi bi-download"></i></div>
-                                    <div class="fw-bold" style="font-size: 0.9rem; color: var(--text-dark);">Download Hasil</div>
-                                    <div class="text-muted" style="font-size: 0.75rem;">Foto sesi selesai</div>
-                                </div>
-                            </a>
-                        </div>
-                        <div class="col-lg-3 col-md-6">
-                            <a href="../Cetak/Katalog/index.php" class="text-decoration-none">
-                                <div class="card-3d text-center p-3">
-                                    <div class="stat-icon stat-icon-purple mx-auto mb-2" style="width: 50px; height: 50px;"><i class="bi bi-bag-plus-fill"></i></div>
-                                    <div class="fw-bold" style="font-size: 0.9rem; color: var(--text-dark);">Pesan Cetak</div>
-                                    <div class="text-muted" style="font-size: 0.75rem;">Cetak foto & bingkai</div>
-                                </div>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    </main>
 
-    </div>
-    <!-- MODAL LIHAT BIODATA -->
-    <div class="modal fade" id="modalLihatBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); background: #ffffff;">
-          <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
-            <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-vcard-fill text-danger me-2"></i>Biodata Saya</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body px-4 pb-4 pt-3">
-            <div class="text-center mb-4">
-              <div class="profile-preview-box mx-auto" style="width: 100px; height: 100px; border: 3px solid var(--s-pink);">
-                <img src="<?= $foto_customer_src ?>" alt="Foto Profil">
-              </div>
-              <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_customer) ?></h5>
-              <span class="badge bg-danger px-3 py-1 text-white text-uppercase" style="font-size: 0.72rem; border-radius: 50px; font-weight: 700;">Customer</span>
-            </div>
-            <div class="card-3d p-3 border-0 mb-4" style="border-radius: 20px; background-color: #f8fafc;">
-              <div class="row g-3">
-                <div class="col-6">
-                  <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Username</small>
-                  <span class="fw-bold text-dark" style="font-size: 0.85rem;">@<?= htmlspecialchars($username_customer) ?></span>
-                </div>
-                <div class="col-6">
-                  <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Email</small>
-                  <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($email_customer) ?></span>
-                </div>
-                <div class="col-6 border-top pt-2">
-                  <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Jenis Kelamin</small>
-                  <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['jenis_kelamin'] ?? '-') ?></span>
-                </div>
-                <div class="col-6 border-top pt-2">
-                  <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">No. HP</small>
-                  <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['no_hp'] ?? '-') ?></span>
-                </div>
-                <div class="col-12 border-top pt-2">
-                  <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Alamat</small>
-                  <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['alamat'] ?? '-') ?></span>
-                </div>
-              </div>
-            </div>
-            <button class="btn btn-reg shadow-sm py-3 mt-0" onclick="bukaModalEditDariBiodata()" style="border-radius: 14px;">Edit Profil Saya</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- MODAL GANTI PROFIL -->
-    <div class="modal fade" id="modalGantiProfil" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 20px 50px rgba(216, 63, 103, 0.25); background: rgba(255, 255, 255, 0.95);">
-          <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
-            <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-gear-fill text-danger me-2"></i>Edit Profil</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body px-4 pb-4 pt-3">
-            <form method="POST" enctype="multipart/form-data">
-              <div class="text-center mb-4">
-                <div class="d-inline-block position-relative">
-                  <div class="profile-preview-box mx-auto">
-                    <img id="profile-preview-modal" src="<?= $foto_customer_src ?>" alt="Foto Profil">
-                  </div>
-                  <input type="file" name="foto_profil" id="inputFotoModal" class="form-control d-none" accept=".jpg,.jpeg,.png">
-                  <button type="button" class="btn btn-pilih-foto btn-sm position-absolute" style="bottom: -10px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 0.75rem; padding: 5px 12px;" onclick="document.getElementById('inputFotoModal').click();">Ganti Foto</button>
-                </div>
-              </div>
-
-              <div class="mb-3">
-                <label class="form-label">Nama Lengkap<span class="required-star">*</span></label>
-                <input type="text" name="nama" id="inputNamaModal" class="form-control" value="<?= htmlspecialchars($nama_customer) ?>" required>
-              </div>
-
-              <div class="mb-3">
-                <label class="form-label">Username<span class="required-star">*</span></label>
-                <input type="text" name="username" id="inputUsernameModal" class="form-control" value="<?= htmlspecialchars($username_customer) ?>" required>
-              </div>
-
-              <div class="mb-3">
-                <label class="form-label">Email<span class="required-star">*</span></label>
-                <input type="email" name="email" class="form-control" value="<?= htmlspecialchars($email_customer) ?>" required>
-              </div>
-
-              <div class="mb-3">
-                <label class="form-label">No. HP<span class="required-star">*</span></label>
-                <input type="text" name="no_hp" id="inputHPModal" class="form-control" value="<?= htmlspecialchars($d_profile['no_hp'] ?? '') ?>" required>
-              </div>
-
-              <div class="mb-3">
-                <label class="form-label">Alamat<span class="required-star">*</span></label>
-                <textarea name="alamat" class="form-control" rows="2" required style="resize: none;"><?= htmlspecialchars($d_profile['alamat'] ?? '') ?></textarea>
-              </div>
-
-              <div class="row">
-                  <div class="col-md-6 mb-3">
-                      <label class="form-label">Sandi Baru (Opsional)</label>
-                      <div class="password-group">
-                          <input type="password" name="password" id="pass_baru_modal" class="form-control" placeholder="Minimal 8 karakter">
-                          <i class="bi bi-eye-slash toggle-password" id="btnToggleBaru"></i>
-                      </div>
-                  </div>
-                  <div class="col-md-6 mb-3">
-                      <label class="form-label">Konfirmasi Sandi</label>
-                      <div class="password-group">
-                          <input type="password" name="confirm_password" id="pass_konf_modal" class="form-control" placeholder="Ulangi sandi baru">
-                          <i class="bi bi-eye-slash toggle-password" id="btnToggleKonf"></i>
-                      </div>
-                  </div>
-              </div>
-
-              <button type="submit" name="update_profil" class="btn btn-reg shadow-sm py-3 mt-2">Simpan Perubahan</button>
-            </form>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Script JS -->
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
-
     <script>
-        // Toggle Submenu
-        document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
-            button.addEventListener('click', function(e) {
-                e.preventDefault();
-                const targetId = this.getAttribute('data-target');
-                const targetEl = document.querySelector(targetId);
-                const chevron = this.querySelector('.icon-chevron');
-
-                if (targetEl) {
-                    const isShown = targetEl.classList.contains('show');
-                    document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
-                    document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
-
-                    if (!isShown) {
-                        targetEl.classList.add('show');
-                        if (chevron) chevron.style.transform = 'rotate(180deg)';
-                    }
-                }
-            });
-        });
-
-        function bukaModalProfil() {
-            var modalProfil = new bootstrap.Modal(document.getElementById('modalGantiProfil'));
-            modalProfil.show();
-        }
-
-        function bukaModalBiodata() {
-            var modalBiodata = new bootstrap.Modal(document.getElementById('modalLihatBiodata'));
-            modalBiodata.show();
-        }
-
-        function bukaModalEditDariBiodata() {
-            var modalBiodata = bootstrap.Modal.getInstance(document.getElementById('modalLihatBiodata'));
-            if (modalBiodata) modalBiodata.hide();
-            setTimeout(bukaModalProfil, 400);
-        }
-
-        function confirmLandingPage(e) {
-            e.preventDefault();
-            Swal.fire({
-                title: 'Kembali ke Beranda?',
-                text: 'Anda akan dialihkan ke halaman utama.',
-                icon: 'info',
-                showCancelButton: true,
-                confirmButtonColor: '#d83f67',
-                cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Kembali',
-                cancelButtonText: 'Batal'
-            }).then((result) => {
-                if (result.isConfirmed) window.location.href = '../../index.php';
-            });
-        }
-
-        function confirmLogout(e) {
-            e.preventDefault();
+        function confirmLogout() {
             Swal.fire({
                 title: 'Keluar?',
                 text: 'Apakah Anda yakin ingin keluar?',
@@ -1399,110 +814,6 @@ $q_barang_populer = sqlsrv_query($conn,
                 if (result.isConfirmed) window.location.href = '../../logout.php';
             });
         }
-
-        // Foto Preview
-        const inputFotoModal = document.getElementById('inputFotoModal');
-        if (inputFotoModal) {
-            inputFotoModal.addEventListener('change', function(e) {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = function(event) {
-                        document.getElementById('profile-preview-modal').src = event.target.result;
-                    };
-                    reader.readAsDataURL(file);
-                }
-            });
-        }
-
-        // Validasi Input
-        const inputNamaModal = document.getElementById('inputNamaModal');
-        if (inputNamaModal) {
-            inputNamaModal.addEventListener('input', function() {
-                this.value = this.value.replace(/[^a-zA-Z ]/g, '');
-            });
-        }
-
-        const inputUsernameModal = document.getElementById('inputUsernameModal');
-        if (inputUsernameModal) {
-            inputUsernameModal.addEventListener('input', function() {
-                this.value = this.value.replace(/[^a-zA-Z0-9_]/g, '');
-            });
-        }
-
-        // Toggle Password
-        function setupPasswordToggle(buttonId, inputId) {
-            const btn = document.getElementById(buttonId);
-            const input = document.getElementById(inputId);
-            if (btn && input) {
-                btn.addEventListener('click', function () {
-                    const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
-                    input.setAttribute('type', type);
-                    this.classList.toggle('bi-eye'); this.classList.toggle('bi-eye-slash');
-                });
-            }
-        }
-        setupPasswordToggle('btnToggleBaru', 'pass_baru_modal');
-        setupPasswordToggle('btnToggleKonf', 'pass_konf_modal');
-
-        // Masking Telepon
-        const inputHPModal = document.getElementById('inputHPModal'), prefix = '+62 ';
-        if (inputHPModal) {
-            inputHPModal.addEventListener('input', function() {
-                if (!this.value.startsWith(prefix)) { this.value = prefix + this.value.replace(/[^0-9]/g, '').substring(2); }
-                let digits = this.value.split(prefix)[1]?.replace(/[^0-9]/g, '') || '';
-                if (digits.length > 13) digits = digits.slice(0, 13);
-                this.value = prefix + digits;
-            });
-        }
-
-        // Jam Real-Time
-        function updateLiveClock() {
-            const now = new Date();
-            const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
-            const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-
-            const dayName = days[now.getDay()];
-            const day = now.getDate();
-            const monthName = months[now.getMonth()];
-            const year = now.getFullYear();
-
-            let hours = now.getHours().toString().padStart(2, '0');
-            let minutes = now.getMinutes().toString().padStart(2, '0');
-            let seconds = now.getSeconds().toString().padStart(2, '0');
-
-            document.getElementById('live-clock').innerText = dayName + ', ' + day + ' ' + monthName + ' ' + year + ' - ' + hours + ':' + minutes + ':' + seconds + ' WIB';
-        }
-        setInterval(updateLiveClock, 1000);
-        updateLiveClock();
     </script>
-
-    <!-- SweetAlert Notifikasi -->
-    <?php if(isset($success_profile) && $success_profile === true): ?>
-    <script>
-        Swal.fire({
-            icon: 'success',
-            title: 'Profil Diperbarui!',
-            text: 'Informasi profil Anda berhasil diperbarui.',
-            confirmButtonColor: '#d83f67',
-            confirmButtonText: 'Selesai'
-        });
-    </script>
-    <?php endif; ?>
-
-    <?php if(isset($error_profile) && $error_profile !== ""): ?>
-    <script>
-        Swal.fire({
-            icon: 'error',
-            title: 'Gagal!',
-            text: '<?= $error_profile ?>',
-            confirmButtonColor: '#d83f67',
-            confirmButtonText: 'Periksa Kembali'
-        }).then(() => {
-            var modalGanti = new bootstrap.Modal(document.getElementById('modalGantiProfil'));
-            modalGanti.show();
-        });
-    </script>
-    <?php endif; ?>
 </body>
 </html>

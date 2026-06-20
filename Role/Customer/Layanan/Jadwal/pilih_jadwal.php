@@ -1,7 +1,17 @@
 <?php
 session_start();
-// Path dari Role/Customer/Layanan/Jadwal/ ke root projekPRGWEB/ = ../../../../koneksi.php
 include '../../../../koneksi.php';
+
+// =====================================================
+// KONSTANTA STATUS
+// =====================================================
+define('STATUS_ORDER_MENUNGGU_DP', 0);
+define('STATUS_ORDER_DP_TERVERIFIKASI', 1);
+define('STATUS_ORDER_SELESAI', 2);
+define('STATUS_ORDER_LUNAS', 3);
+define('STATUS_ORDER_DIBATALKAN', 4);
+define('STATUS_JADWAL_TERSEDIA', 0);
+define('STATUS_DATA_AKTIF', 1);
 
 // --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Customer') {
@@ -12,12 +22,12 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 $id_customer = $_SESSION['id_user'];
 
 // =====================================================
-// AMBIL ID PAKET, ID RUANGAN, ID TEMA DARI STEP SEBELUMNYA (wajib ada)
+// AMBIL ID PAKET, ID RUANGAN, ID TEMA DARI URL (WAJIB ADA)
 // =====================================================
-if (!isset($_GET['id_paket']) || empty($_GET['id_paket']) || 
-    !isset($_GET['id_ruangan']) || empty($_GET['id_ruangan']) || 
+if (!isset($_GET['id_paket']) || empty($_GET['id_paket']) ||
+    !isset($_GET['id_ruangan']) || empty($_GET['id_ruangan']) ||
     !isset($_GET['id_tema']) || empty($_GET['id_tema'])) {
-    header("Location: ../Paket/pilih_paket.php");
+    header("Location: ../../index.php?error=pilih_paket_dulu");
     exit();
 }
 
@@ -29,16 +39,15 @@ $id_tema = (int)$_GET['id_tema'];
 // AMBIL DATA PAKET
 // =====================================================
 $q_paket = sqlsrv_query($conn, 
-    "SELECT Nama_Paket, Harga_Paket, Durasi_Waktu, Kapasitas_Orang, Foto_Paket 
+    "SELECT ID_Paket, Nama_Paket, Durasi_Waktu, Harga_Paket, Deskripsi, Kapasitas_Orang, Foto_Paket 
      FROM Paket_Foto 
-     WHERE ID_Paket = ? AND Status = 1 AND Is_Deleted = 0", 
-    [$id_paket]
+     WHERE ID_Paket = ? AND Status = ? AND Is_Deleted = 0", 
+    array($id_paket, STATUS_DATA_AKTIF)
 );
 $d_paket = sqlsrv_fetch_array($q_paket, SQLSRV_FETCH_ASSOC);
-sqlsrv_free_stmt($q_paket);
 
 if (!$d_paket) {
-    header("Location: ../Paket/pilih_paket.php?error=paket_tidak_ditemukan");
+    header("Location: ../../index.php?error=paket_tidak_ditemukan");
     exit();
 }
 
@@ -46,16 +55,15 @@ if (!$d_paket) {
 // AMBIL DATA RUANGAN
 // =====================================================
 $q_ruangan = sqlsrv_query($conn, 
-    "SELECT Nama_Ruangan, Kapasitas_Ruangan, Foto_Ruangan 
+    "SELECT ID_Ruangan, Nama_Ruangan, Kapasitas_Ruangan, Deskripsi, Foto_Ruangan 
      FROM Ruangan 
      WHERE ID_Ruangan = ? AND Status = 1 AND Is_Deleted = 0", 
-    [$id_ruangan]
+    array($id_ruangan)
 );
 $d_ruangan = sqlsrv_fetch_array($q_ruangan, SQLSRV_FETCH_ASSOC);
-sqlsrv_free_stmt($q_ruangan);
 
 if (!$d_ruangan) {
-    header("Location: ../Ruangan/pilih_ruangan.php?id_paket=$id_paket&error=ruangan_tidak_ditemukan");
+    header("Location: ../Paket/detail_paket.php?id_paket=$id_paket&error=ruangan_tidak_ditemukan");
     exit();
 }
 
@@ -63,13 +71,12 @@ if (!$d_ruangan) {
 // AMBIL DATA TEMA
 // =====================================================
 $q_tema = sqlsrv_query($conn, 
-    "SELECT Nama_Tema, Kategori_Tema, Foto_Tema 
+    "SELECT ID_Tema, Nama_Tema, Kategori_Tema, Deskripsi, Foto_Tema 
      FROM Tema_Foto 
      WHERE ID_Tema = ? AND Status = 1 AND Is_Deleted = 0", 
-    [$id_tema]
+    array($id_tema)
 );
 $d_tema = sqlsrv_fetch_array($q_tema, SQLSRV_FETCH_ASSOC);
-sqlsrv_free_stmt($q_tema);
 
 if (!$d_tema) {
     header("Location: ../Tema/pilih_tema.php?id_paket=$id_paket&id_ruangan=$id_ruangan&error=tema_tidak_ditemukan");
@@ -77,109 +84,134 @@ if (!$d_tema) {
 }
 
 // =====================================================
-// AMBIL SEMUA JADWAL UNTUK RUANGAN INI (7 HARI KE DEPAN)
-// Tampilkan SEMUA jadwal: yang tersedia & yang booked
+// VALIDASI: RUANGAN HARUS TERHUBUNG DENGAN PAKET
 // =====================================================
-$today = date('Y-m-d');
-$seven_days = date('Y-m-d', strtotime('+7 days'));
-
-// Ambil semua jadwal aktif untuk ruangan ini (7 hari ke depan)
-$q_all_jadwal = sqlsrv_query($conn, 
-    "SELECT 
-        j.ID_Jadwal,
-        j.Tanggal_Jadwal,
-        j.Jam_Mulai,
-        j.Jam_Selesai,
-        j.Keterangan,
-        j.Status_Jadwal
-     FROM Jadwal_Studio j
-     WHERE j.ID_Ruangan = ?
-       AND j.Status = 1
-       AND j.Is_Deleted = 0
-       AND j.Tanggal_Jadwal BETWEEN ? AND ?
-     ORDER BY j.Tanggal_Jadwal ASC, j.Jam_Mulai ASC", 
-    [$id_ruangan, $today, $seven_days]
+$q_validasi = sqlsrv_query($conn, 
+    "SELECT COUNT(*) as total FROM Paket_Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ?", 
+    array($id_paket, $id_ruangan)
 );
+$d_validasi = sqlsrv_fetch_array($q_validasi, SQLSRV_FETCH_ASSOC);
 
-$jadwal_per_tanggal = [];
-while ($row = sqlsrv_fetch_array($q_all_jadwal, SQLSRV_FETCH_ASSOC)) {
-    $tgl = $row['Tanggal_Jadwal']->format('Y-m-d');
-    $jadwal_per_tanggal[$tgl][] = $row;
+if ($d_validasi['total'] == 0) {
+    header("Location: ../Paket/detail_paket.php?id_paket=$id_paket&error=ruangan_tidak_valid");
+    exit();
 }
-sqlsrv_free_stmt($q_all_jadwal);
 
-// Cek jadwal mana yang sudah dibooking (order aktif)
-$booked_jadwal = [];
+// =====================================================
+// VALIDASI: TEMA HARUS TERHUBUNG DENGAN RUANGAN
+// =====================================================
+$q_validasi_tema = sqlsrv_query($conn, 
+    "SELECT COUNT(*) as total FROM Ruangan_Tema WHERE ID_Ruangan = ? AND ID_Tema = ?", 
+    array($id_ruangan, $id_tema)
+);
+$d_validasi_tema = sqlsrv_fetch_array($q_validasi_tema, SQLSRV_FETCH_ASSOC);
+
+if ($d_validasi_tema['total'] == 0) {
+    header("Location: ../Tema/pilih_tema.php?id_paket=$id_paket&id_ruangan=$id_ruangan&error=tema_tidak_valid");
+    exit();
+}
+
+// =====================================================
+// GENERATE JADWAL SLOT (7 HARI KE DEPAN, JAM 08:00-20:00)
+// =====================================================
+$hari_indo = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+$bulan_indo = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+
+$today = new DateTime();
+$slots_per_hari = [];
+
+// Ambil semua jadwal yang sudah dibooking untuk ruangan ini (7 hari ke depan)
+$seven_days_later = (new DateTime())->modify('+6 days')->format('Y-m-d');
+$today_str = $today->format('Y-m-d');
+
 $q_booked = sqlsrv_query($conn, 
-    "SELECT ID_Jadwal FROM [Order] 
-     WHERE ID_Ruangan = ?
-       AND Status = 1 
-       AND Status_Order NOT IN (4)
-       AND ID_Jadwal IN (
-           SELECT ID_Jadwal FROM Jadwal_Studio 
-           WHERE ID_Ruangan = ? AND Tanggal_Jadwal BETWEEN ? AND ?
-       )", 
-    [$id_ruangan, $id_ruangan, $today, $seven_days]
+    "SELECT 
+        CAST(j.Tanggal_Jadwal AS DATE) as tanggal,
+        j.Jam_Mulai,
+        j.Jam_Selesai
+     FROM [Order] o
+     INNER JOIN Jadwal_Studio j ON o.ID_Jadwal = j.ID_Jadwal
+     WHERE o.ID_Ruangan = ? 
+       AND o.Status = 1 
+       AND o.Status_Order NOT IN (4)
+       AND j.Tanggal_Jadwal BETWEEN ? AND ?
+       AND j.Is_Deleted = 0",
+    array($id_ruangan, $today_str, $seven_days_later)
 );
+
+$booked_slots = [];
 while ($b = sqlsrv_fetch_array($q_booked, SQLSRV_FETCH_ASSOC)) {
-    $booked_jadwal[] = $b['ID_Jadwal'];
+    $tgl = $b['tanggal']->format('Y-m-d');
+    $jam_mulai = $b['Jam_Mulai']->format('H:i');
+    $booked_slots[$tgl][$jam_mulai] = true;
 }
-sqlsrv_free_stmt($q_booked);
+
+// Generate slot untuk 7 hari ke depan
+for ($i = 0; $i < 7; $i++) {
+    $tanggal = (new DateTime())->modify("+$i days");
+    $tgl_str = $tanggal->format('Y-m-d');
+    $hari_nama = $hari_indo[$tanggal->format('w')];
+    $tgl_format = $tanggal->format('d') . ' ' . $bulan_indo[(int)$tanggal->format('n') - 1] . ' ' . $tanggal->format('Y');
+    $is_today = ($i == 0);
+
+    $slots = [];
+    for ($jam = 8; $jam < 20; $jam++) {
+        $jam_mulai = sprintf("%02d:00", $jam);
+        $jam_selesai = sprintf("%02d:00", $jam + 1);
+
+        // Cek apakah slot sudah lewat (hari ini + jam lewat)
+        $slot_datetime = strtotime($tgl_str . ' ' . $jam_mulai);
+        $is_expired = $slot_datetime < time();
+
+        // Cek apakah slot sudah booked
+        $is_booked = isset($booked_slots[$tgl_str][$jam_mulai]);
+
+        $slots[] = [
+            'jam_mulai' => $jam_mulai,
+            'jam_selesai' => $jam_selesai,
+            'is_booked' => $is_booked,
+            'is_expired' => $is_expired,
+            'is_available' => !$is_booked && !$is_expired
+        ];
+    }
+
+    $slots_per_hari[] = [
+        'tanggal' => $tgl_str,
+        'hari' => $hari_nama,
+        'tgl_format' => $tgl_format,
+        'is_today' => $is_today,
+        'slots' => $slots
+    ];
+}
 
 // =====================================================
 // AMBIL PROFIL CUSTOMER
 // =====================================================
-$q_customer = sqlsrv_query($conn, 
-    "SELECT Nama_Pelanggan, Foto_Profil FROM Pelanggan WHERE ID_Pelanggan = ? AND Status = 1 AND Is_Deleted = 0", 
-    [$id_customer]
-);
-$d_customer = sqlsrv_fetch_array($q_customer, SQLSRV_FETCH_ASSOC);
-sqlsrv_free_stmt($q_customer);
-
-$nama_customer = $d_customer['Nama_Pelanggan'] ?? 'Customer';
-$foto_customer = $d_customer['Foto_Profil'] ?? 'default.jpg';
-
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23d83f67'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
+$q_profile = sqlsrv_query($conn, 
+    "SELECT Nama_Pelanggan, Foto_Profil FROM Pelanggan WHERE ID_Pelanggan = ? AND Is_Deleted = 0 AND Status = ?", 
+    array($id_customer, STATUS_DATA_AKTIF)
+);
+$d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
+$nama_customer = $d_profile['Nama_Pelanggan'] ?? 'Customer';
+$foto_customer = $d_profile['Foto_Profil'] ?? 'default.jpg';
 $foto_customer_src = ($foto_customer != 'default.jpg' && file_exists("../../../../assets/img/pelanggan/" . $foto_customer)) 
     ? "../../../../assets/img/pelanggan/" . $foto_customer 
     : $default_svg_avatar;
 
-// Path foto
-$path_foto_paket = "../../../../assets/img/paket/" . ($d_paket['Foto_Paket'] ?? 'default_paket.jpg');
-$foto_paket_src = (file_exists($path_foto_paket) && $d_paket['Foto_Paket'] != 'default_paket.jpg') 
-    ? $path_foto_paket 
-    : "../../../../assets/img/paket/default_paket.jpg";
-
-$path_foto_ruangan = "../../../../assets/img/ruangan/" . ($d_ruangan['Foto_Ruangan'] ?? 'default_ruangan.jpg');
-$foto_ruangan_src = (file_exists($path_foto_ruangan) && $d_ruangan['Foto_Ruangan'] != 'default_ruangan.jpg') 
-    ? $path_foto_ruangan 
-    : "../../../../assets/img/ruangan/default_ruangan.jpg";
-
-$path_foto_tema = "../../../../assets/img/tema/" . ($d_tema['Foto_Tema'] ?? 'default_tema.jpg');
-$foto_tema_src = (file_exists($path_foto_tema) && $d_tema['Foto_Tema'] != 'default_tema.jpg') 
-    ? $path_foto_tema 
-    : "../../../../assets/img/tema/default_tema.jpg";
-
-$harga_format = number_format($d_paket['Harga_Paket'] ?? 0, 0, ',', '.');
-
-// Nama hari dalam bahasa Indonesia
-$hari_indo = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-$bulan_indo = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+$harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
 ?>
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pilih Jadwal - SpotLight Studio</title>
-
     <link href="../../../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
     <style>
         :root {
             --p-pink: #d83f67;
@@ -189,542 +221,677 @@ $bulan_indo = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep'
             --accent-pink: #ff6694;
             --text-dark: #1e1e24;
             --text-muted: #718096;
-            --sidebar-bg: #ffffff;
             --body-bg: #f8fafc;
-            --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
-            background-color: var(--body-bg);
+            background: var(--body-bg);
             color: var(--text-dark);
-            overflow-x: hidden;
         }
 
-        /* SIDEBAR */
-        .sidebar {
-            width: 260px; height: 100vh; background: var(--sidebar-bg);
-            position: fixed; top: 0; left: 0;
-            border-right: 1px solid rgba(255, 236, 239, 0.8);
-            display: flex; flex-direction: column;
-            justify-content: space-between; padding: 30px 20px; z-index: 100;
+        /* ===== NAVBAR ATAS (SAMA PERSIS) ===== */
+        .top-navbar {
+            background: #ffffff;
+            padding: 16px 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.06);
         }
-        .sidebar-brand {
-            font-weight: 800; font-size: 1.5rem;
-            color: var(--p-pink); text-decoration: none;
-            letter-spacing: -1px; margin-bottom: 40px; display: block;
+        .nav-logo {
+            font-weight: 900;
+            font-size: 1.8rem;
+            color: var(--p-pink);
+            text-decoration: none;
+            letter-spacing: -1.5px;
         }
-        .sidebar-brand span { color: var(--text-dark); font-size: 0.85rem; font-weight: 600; }
-        .sidebar-menu-wrapper { flex-grow: 1; overflow-y: auto; margin-bottom: 20px; scrollbar-width: none; }
-        .sidebar-menu-wrapper::-webkit-scrollbar { display: none; }
-        .nav-menu { list-style: none; padding: 0; margin: 0; }
-        .nav-item { margin-bottom: 8px; }
-        .nav-link-custom {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 12px 18px; color: #4a5568; font-weight: 700;
-            text-decoration: none; border-radius: 12px; font-size: 0.9rem;
-            transition: var(--transition-3d);
+        .nav-logo span { color: var(--text-dark); font-weight: 700; font-size: 0.9rem; }
+        .nav-menu-center {
+            display: flex;
+            gap: 32px;
+            align-items: center;
         }
-        .nav-link-custom:hover, .nav-link-custom.active {
-            background-color: var(--light-pink); color: var(--p-pink);
-            transform: translateX(4px);
+        .nav-link-item {
+            color: #4a5568;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+            padding: 8px 0;
+            position: relative;
         }
-        .submenu { list-style: none; padding-left: 20px; margin-top: 5px; display: none; transition: var(--transition-3d); }
-        .submenu.show { display: block !important; }
-        .submenu-link {
-            display: flex; align-items: center; padding: 8px 18px;
-            color: #718096; font-weight: 600; font-size: 0.85rem;
-            text-decoration: none; border-radius: 10px; transition: 0.3s;
+        .nav-link-item:hover, .nav-link-item.active {
+            color: var(--p-pink);
         }
-        .submenu-link:hover, .submenu-link.active {
-            color: var(--p-pink); background-color: rgba(216, 63, 103, 0.03); padding-left: 22px;
+        .nav-link-item.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: var(--p-pink);
+            border-radius: 3px;
         }
-        .btn-logout {
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .nav-btn-booking {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            color: #ffffff; border: none; width: 100%; padding: 12px;
-            border-radius: 12px; font-weight: 800; font-size: 0.85rem;
-            transition: var(--transition-3d);
+            color: #fff;
+            padding: 10px 24px;
+            border-radius: 12px;
+            font-weight: 800;
+            font-size: 0.85rem;
+            text-decoration: none;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(216, 63, 103, 0.25);
         }
-        .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(216, 63, 103, 0.2); }
-
-        .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
-        .dashboard-header {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 35px;
+        .nav-btn-booking:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(216, 63, 103, 0.35);
+            color: #fff;
         }
-        .profile-header-btn {
-            width: 44px; height: 44px; border-radius: 50%; overflow: hidden;
-            border: 2px solid #ffffff; cursor: pointer; transition: var(--transition-3d); background: #ffffff;
+        .nav-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--light-pink);
+            cursor: pointer;
+            transition: all 0.3s;
         }
-        .profile-header-btn:hover {
-            transform: scale(1.08) translateY(-2px);
-            box-shadow: 0 8px 20px rgba(216, 63, 103, 0.15);
+        .nav-avatar:hover {
+            transform: scale(1.1);
             border-color: var(--p-pink);
         }
-        .profile-header-btn img { width: 100%; height: 100%; object-fit: cover; }
 
-        /* PROGRESS BAR */
-        .booking-progress {
-            display: flex; align-items: center; justify-content: center;
-            margin-bottom: 40px; gap: 0;
+        /* ===== BREADCRUMB BAR ===== */
+        .breadcrumb-bar {
+            background: #ffffff;
+            padding: 16px 40px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .breadcrumb-inner {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .breadcrumb-inner a {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+        .breadcrumb-inner a:hover { color: var(--p-pink); }
+        .breadcrumb-inner .separator {
+            color: #cbd5e1;
+        }
+        .breadcrumb-inner .current {
+            color: var(--p-pink);
+            font-weight: 700;
+        }
+
+        /* ===== MAIN CONTENT ===== */
+        .main-container {
+            padding: 40px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* ===== PROGRESS BAR ===== */
+        .progress-container {
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 24px 30px;
+            margin-bottom: 30px;
+            border: 1px solid #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+            flex-wrap: wrap;
         }
         .progress-step {
-            display: flex; flex-direction: column; align-items: center; gap: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
         }
         .progress-step-circle {
-            width: 44px; height: 44px; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            font-weight: 800; font-size: 0.9rem; transition: var(--transition-3d);
-            border: 3px solid #e2e8f0; background: #ffffff; color: #94a3b8;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 0.9rem;
+            border: 3px solid #e2e8f0;
+            background: #ffffff;
+            color: #94a3b8;
+            transition: all 0.3s;
         }
         .progress-step.active .progress-step-circle {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            border-color: var(--p-pink); color: #ffffff;
+            border-color: var(--p-pink);
+            color: #ffffff;
             box-shadow: 0 4px 15px rgba(216, 63, 103, 0.3);
         }
         .progress-step.completed .progress-step-circle {
-            background: #059669; border-color: #059669; color: #ffffff;
+            background: #059669;
+            border-color: #059669;
+            color: #ffffff;
         }
         .progress-step-label {
-            font-size: 0.75rem; font-weight: 700; color: #94a3b8;
-            text-transform: uppercase; letter-spacing: 0.5px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .progress-step.active .progress-step-label { color: var(--p-pink); }
         .progress-step.completed .progress-step-label { color: #059669; }
         .progress-line {
-            width: 60px; height: 3px; background: #e2e8f0;
-            margin: 0 10px; margin-bottom: 24px;
+            width: 60px;
+            height: 3px;
+            background: #e2e8f0;
+            margin: 0 10px;
+            margin-bottom: 24px;
         }
         .progress-line.completed { background: #059669; }
 
-        /* INFO CARDS */
-        .info-cards-row {
-            display: flex; gap: 16px; margin-bottom: 30px; flex-wrap: wrap;
+        /* ===== RINGKASAN BOOKING (STICKY SIDEBAR) ===== */
+        .booking-summary {
+            position: sticky;
+            top: 90px;
+            height: fit-content;
         }
-        .info-card {
-            background: linear-gradient(135deg, #fff, var(--s-pink));
-            border: 1px solid var(--light-pink);
-            border-radius: 20px; padding: 16px 20px;
-            display: flex; align-items: center; gap: 14px;
-            flex: 1; min-width: 200px;
+        .summary-card {
+            background: #ffffff;
+            border-radius: 24px;
+            padding: 24px;
+            border: 1px solid #f1f5f9;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+            margin-bottom: 20px;
         }
-        .info-card-img {
-            width: 60px; height: 60px; object-fit: cover;
-            border-radius: 14px; border: 2px solid var(--light-pink);
+        .summary-title {
+            font-size: 1rem;
+            font-weight: 800;
+            color: var(--text-dark);
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #f1f5f9;
         }
-        .info-card-detail h5 {
-            font-weight: 700; font-size: 0.95rem; margin-bottom: 2px;
+        .summary-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid #f8fafc;
         }
-        .info-card-detail .info-meta {
-            color: var(--text-muted); font-size: 0.8rem;
+        .summary-item:last-child { border-bottom: none; }
+        .summary-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: var(--s-pink);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--p-pink);
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+        .summary-icon.completed { background: #d1fae5; color: #059669; }
+        .summary-text {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+        .summary-sub {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+        .summary-harga {
+            font-size: 1.3rem;
+            font-weight: 900;
+            color: var(--p-pink);
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 2px solid #f1f5f9;
         }
 
-        /* TANGGAL TABS */
-        .tanggal-tabs {
-            display: flex; gap: 12px; margin-bottom: 30px;
-            overflow-x: auto; padding-bottom: 10px;
-            scrollbar-width: thin;
-        }
-        .tanggal-tabs::-webkit-scrollbar { height: 6px; }
-        .tanggal-tabs::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
-        .tanggal-tabs::-webkit-scrollbar-thumb { background: var(--p-pink); border-radius: 10px; }
-        
-        .tanggal-tab {
-            min-width: 80px; padding: 14px 18px;
-            background: #ffffff; border: 2px solid #e2e8f0;
-            border-radius: 16px; text-align: center;
-            cursor: pointer; transition: var(--transition-3d);
-            text-decoration: none; color: var(--text-dark);
-        }
-        .tanggal-tab:hover {
-            border-color: var(--p-pink); transform: translateY(-2px);
-        }
-        .tanggal-tab.active {
-            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            border-color: var(--p-pink); color: #ffffff;
-            box-shadow: 0 6px 15px rgba(216, 63, 103, 0.25);
-        }
-        .tanggal-tab .tab-hari {
-            font-size: 0.7rem; font-weight: 700;
-            text-transform: uppercase; letter-spacing: 0.5px;
-            margin-bottom: 4px;
-        }
-        .tanggal-tab .tab-tanggal {
-            font-size: 1.3rem; font-weight: 800; line-height: 1;
-        }
-        .tanggal-tab .tab-bulan {
-            font-size: 0.7rem; font-weight: 600; margin-top: 2px;
-        }
-
-        /* JADWAL GRID */
+        /* ===== JADWAL SECTION ===== */
         .jadwal-section {
-            display: none;
-        }
-        .jadwal-section.active {
-            display: block;
-            animation: fadeInUp 0.4s ease-out;
-        }
-        .jadwal-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-            gap: 16px;
+            grid-template-columns: 1fr 380px;
+            gap: 40px;
+            margin-bottom: 40px;
+        }
+        .jadwal-main {
+            background: #ffffff;
+            border-radius: 24px;
+            padding: 30px;
+            border: 1px solid #f1f5f9;
+        }
+        .jadwal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .jadwal-title {
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: var(--text-dark);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .jadwal-title i { color: var(--p-pink); }
+        .jadwal-subtitle {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+        .jadwal-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--s-pink);
+            color: var(--p-pink);
+            border-radius: 50px;
+            font-size: 0.85rem;
+            font-weight: 800;
+        }
+        .jadwal-badge i { font-size: 1.1rem; }
+
+        /* ===== TANGGAL SECTION ===== */
+        .tanggal-section {
+            margin-bottom: 32px;
+        }
+        .tanggal-section:last-child { margin-bottom: 0; }
+        .tanggal-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #f1f5f9;
+        }
+        .tanggal-hari {
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: var(--text-dark);
+        }
+        .tanggal-tanggal {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+        .tanggal-today {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #ffffff;
+            padding: 4px 12px;
+            border-radius: 50px;
+            font-size: 0.75rem;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        /* ===== SLOT GRID ===== */
+        .slot-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 12px;
         }
         .slot-jam {
-            background: #ffffff; border-radius: 16px;
-            border: 2px solid #e2e8f0; padding: 20px 16px;
-            text-align: center; transition: var(--transition-3d);
-            cursor: pointer; position: relative;
-        }
-        .slot-jam:hover:not(.booked) {
-            transform: translateY(-4px); border-color: var(--p-pink);
-            box-shadow: 0 10px 25px rgba(216, 63, 103, 0.12);
-        }
-        .slot-jam.booked {
-            background: #f8fafc; border-color: #e2e8f0;
-            cursor: not-allowed; opacity: 0.7;
+            padding: 16px 12px;
+            border-radius: 16px;
+            text-align: center;
+            transition: all 0.3s;
+            border: 2px solid;
+            cursor: pointer;
         }
         .slot-jam .slot-durasi {
-            font-size: 0.65rem; font-weight: 700; color: var(--text-muted);
-            text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            text-transform: uppercase;
         }
         .slot-jam .slot-waktu {
-            font-size: 1rem; font-weight: 800; color: var(--text-dark);
-            margin-bottom: 8px;
-        }
-        .slot-jam.booked .slot-waktu {
-            color: #94a3b8;
-        }
-        .slot-jam .slot-harga {
-            font-size: 0.85rem; font-weight: 700; color: var(--p-pink);
-        }
-        .slot-jam.booked .slot-harga {
-            color: #94a3b8; font-weight: 600;
+            font-weight: 800;
+            font-size: 0.95rem;
+            margin-bottom: 6px;
         }
         .slot-jam .slot-status {
-            position: absolute; top: 8px; right: 8px;
-            font-size: 0.6rem; font-weight: 800;
-            padding: 3px 8px; border-radius: 50px;
-        }
-        .slot-jam.booked .slot-status {
-            background: #fee2e2; color: #dc2626;
+            font-size: 0.75rem;
+            font-weight: 700;
         }
 
-        /* EMPTY STATE */
-        .empty-state { text-align: center; padding: 60px 20px; }
-        .empty-state i { font-size: 4rem; color: #e2e8f0; margin-bottom: 20px; }
-        .empty-state h4 { font-weight: 800; color: var(--text-dark); margin-bottom: 8px; }
-        .empty-state p { color: var(--text-muted); font-size: 0.9rem; }
+        /* Slot Tersedia */
+        .slot-jam.tersedia {
+            background: #ffffff;
+            border-color: var(--light-pink);
+            color: var(--text-dark);
+        }
+        .slot-jam.tersedia:hover {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            border-color: var(--p-pink);
+            color: #ffffff;
+            transform: translateY(-4px);
+            box-shadow: 0 12px 25px rgba(216, 63, 103, 0.2);
+        }
+        .slot-jam.tersedia:hover .slot-durasi,
+        .slot-jam.tersedia:hover .slot-status {
+            color: rgba(255,255,255,0.9);
+        }
+        .slot-jam.tersedia .slot-durasi { color: var(--p-pink); }
+        .slot-jam.tersedia .slot-waktu { color: var(--text-dark); }
+        .slot-jam.tersedia:hover .slot-waktu { color: #ffffff; }
+        .slot-jam.tersedia .slot-status { color: var(--p-pink); }
+        .slot-jam.tersedia:hover .slot-status { color: #ffffff; }
 
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+        /* Slot Booked */
+        .slot-jam.booked {
+            background: #f8fafc;
+            border-color: #e2e8f0;
+            color: #94a3b8;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        .slot-jam.booked .slot-durasi { color: #cbd5e1; }
+        .slot-jam.booked .slot-waktu { 
+            color: #94a3b8; 
+            text-decoration: line-through;
+        }
+        .slot-jam.booked .slot-status { 
+            color: #94a3b8; 
+            text-transform: uppercase;
         }
 
+        /* Slot Expired */
+        .slot-jam.expired {
+            background: #f8fafc;
+            border-color: #e2e8f0;
+            color: #94a3b8;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        .slot-jam.expired .slot-durasi { color: #cbd5e1; }
+        .slot-jam.expired .slot-waktu { 
+            color: #94a3b8; 
+            text-decoration: line-through;
+        }
+        .slot-jam.expired .slot-status { color: #94a3b8; }
+
+        /* ===== LEGEND ===== */
+        .slot-legend {
+            display: flex;
+            gap: 24px;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid #f1f5f9;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+        .legend-box {
+            width: 20px;
+            height: 20px;
+            border-radius: 6px;
+            border: 2px solid;
+        }
+        .legend-box.tersedia { 
+            background: #ffffff; 
+            border-color: var(--light-pink); 
+        }
+        .legend-box.booked { 
+            background: #f8fafc; 
+            border-color: #e2e8f0; 
+        }
+        .legend-box.expired { 
+            background: #f8fafc; 
+            border-color: #e2e8f0; 
+            opacity: 0.6;
+        }
+
+        /* ===== RESPONSIVE ===== */
         @media (max-width: 992px) {
-            .main-content { margin-left: 0; padding: 20px; }
-            .sidebar { transform: translateX(-100%); }
-            .jadwal-grid { grid-template-columns: repeat(2, 1fr); }
+            .jadwal-section { grid-template-columns: 1fr; }
+            .booking-summary { position: static; }
+            .nav-menu-center { display: none; }
+            .main-container { padding: 20px; }
+            .top-navbar { padding: 16px 20px; }
+            .breadcrumb-bar { padding: 16px 20px; }
+            .slot-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 576px) {
+            .slot-grid { grid-template-columns: repeat(2, 1fr); }
         }
     </style>
 </head>
 <body>
 
-    <!-- SIDEBAR -->
-    <div class="sidebar">
-        <div class="sidebar-menu-wrapper">
-            <a href="../../index.php" class="sidebar-brand">
-                SpotLight.<br><span>Studio Foto</span>
-            </a>
-            <ul class="nav-menu">
-                <li class="nav-item">
-                    <a href="../../index.php" class="nav-link-custom">
-                        <span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuLayanan">
-                        <span><i class="bi bi-camera-fill me-2"></i> Layanan Studio</span>
-                        <i class="bi bi-chevron-up small icon-chevron" style="transform: rotate(180deg);"></i>
-                    </a>
-                    <div class="submenu show" id="submenuLayanan">
-                        <ul class="list-unstyled">
-                            <li><a href="../Paket/pilih_paket.php" class="submenu-link"><i class="bi bi-collection-fill me-2"></i>Paket Foto</a></li>
-                            <li><a href="../Ruangan/pilih_ruangan.php" class="submenu-link"><i class="bi bi-door-open-fill me-2"></i>Ruangan Studio</a></li>
-                            <li><a href="../Tema/pilih_tema.php" class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
-                            <li><a href="pilih_jadwal.php" class="submenu-link active"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Tersedia</a></li>
-                            <li><a href="../Portofolio/index.php" class="submenu-link"><i class="bi bi-images me-2"></i>Portofolio</a></li>
-                        </ul>
-                    </div>
-                </li>
-                <li class="nav-item">
-                    <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuBooking">
-                        <span><i class="bi bi-calendar-check-fill me-2"></i> Booking Saya</span>
-                        <i class="bi bi-chevron-down small icon-chevron"></i>
-                    </a>
-                    <div class="submenu" id="submenuBooking">
-                        <ul class="list-unstyled">
-                            <li><a href="../../../../Booking/Baru/index.php" class="submenu-link"><i class="bi bi-plus-circle-fill me-2"></i>Booking Baru</a></li>
-                            <li><a href="../../../../Booking/Riwayat/index.php" class="submenu-link"><i class="bi bi-clock-history me-2"></i>Riwayat Booking</a></li>
-                            <li><a href="../../../../Booking/Pembayaran/index.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Pembayaran</a></li>
-                            <li><a href="../../../../Booking/Hasil/index.php" class="submenu-link"><i class="bi bi-download me-2"></i>Download Hasil</a></li>
-                        </ul>
-                    </div>
-                </li>
-                <li class="nav-item">
-                    <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuCetak">
-                        <span><i class="bi bi-printer-fill me-2"></i> Barang Cetak</span>
-                        <i class="bi bi-chevron-down small icon-chevron"></i>
-                    </a>
-                    <div class="submenu" id="submenuCetak">
-                        <ul class="list-unstyled">
-                            <li><a href="../../../../Cetak/Katalog/index.php" class="submenu-link"><i class="bi bi-shop me-2"></i>Katalog Barang</a></li>
-                            <li><a href="../../../../Cetak/Pesanan/index.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Pesanan Saya</a></li>
-                        </ul>
-                    </div>
-                </li>
-                <li class="nav-item">
-                    <a href="../../../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)">
-                        <span><i class="bi bi-house-door-fill me-2"></i> Beranda</span>
-                    </a>
-                </li>
-            </ul>
+    <!-- NAVBAR ATAS (SAMA PERSIS) -->
+    <nav class="top-navbar">
+        <a href="../../index.php" class="nav-logo">
+            SpotLight.<span>StudioFoto</span>
+        </a>
+        <div class="nav-menu-center">
+            <a href="../../index.php" class="nav-link-item">Dashboard</a>
+            <a href="../Paket/detail_paket.php" class="nav-link-item active">Booking Baru</a>
+            <a href="../../Booking/Riwayat/index.php" class="nav-link-item">Riwayat</a>
+            <a href="../../Cetak/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
         </div>
-        <div>
-            <button onclick="confirmLogout(event)" class="btn btn-logout text-center d-block w-100">
-                <i class="bi bi-box-arrow-right me-2"></i> Keluar
-            </button>
+        <div class="nav-right">
+            <a href="../Paket/detail_paket.php" class="nav-btn-booking">
+                <i class="bi bi-plus-lg"></i> Booking
+            </a>
+            <img src="<?= $foto_customer_src ?>" class="nav-avatar" alt="Profil" onclick="location.href='#'">
+        </div>
+    </nav>
+
+    <!-- BREADCRUMB -->
+    <div class="breadcrumb-bar">
+        <div class="breadcrumb-inner">
+            <a href="../../index.php">Home</a>
+            <span class="separator"><i class="bi bi-chevron-right"></i></span>
+            <a href="../Paket/detail_paket.php?id_paket=<?= $id_paket ?>"><?= htmlspecialchars($d_paket['Nama_Paket']) ?></a>
+            <span class="separator"><i class="bi bi-chevron-right"></i></span>
+            <a href="../Ruangan/pilih_ruangan.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>"><?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?></a>
+            <span class="separator"><i class="bi bi-chevron-right"></i></span>
+            <a href="../Tema/pilih_tema.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>"><?= htmlspecialchars($d_tema['Nama_Tema']) ?></a>
+            <span class="separator"><i class="bi bi-chevron-right"></i></span>
+            <span class="current">Pilih Jadwal</span>
         </div>
     </div>
 
     <!-- MAIN CONTENT -->
-    <div class="main-content">
-
-        <!-- HEADER -->
-        <div class="dashboard-header">
-            <div>
-                <h3 class="fw-bold mb-1">Pilih Jadwal Studio</h3>
-                <p class="text-muted small mb-0">Langkah 4 dari 4 - Pilih tanggal dan jam yang tersedia untuk sesi foto Anda.</p>
-            </div>
-            <div class="d-flex align-items-center gap-3">
-                <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
-                    <i class="bi bi-person-circle me-1 text-danger"></i> <?= htmlspecialchars($nama_customer) ?>
-                </span>
-                <div class="profile-header-btn shadow-sm" title="Profil Anda">
-                    <img src="<?= $foto_customer_src ?>" alt="Profil">
-                </div>
-            </div>
-        </div>
+    <main class="main-container">
 
         <!-- PROGRESS BAR -->
-        <div class="booking-progress">
+        <div class="progress-container">
             <div class="progress-step completed">
                 <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
-                <div class="progress-step-label">Paket</div>
+                <div class="progress-step-label">Pilih Paket</div>
             </div>
             <div class="progress-line completed"></div>
             <div class="progress-step completed">
                 <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
-                <div class="progress-step-label">Ruangan</div>
+                <div class="progress-step-label">Detail Paket</div>
             </div>
             <div class="progress-line completed"></div>
             <div class="progress-step completed">
                 <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
-                <div class="progress-step-label">Tema</div>
+                <div class="progress-step-label">Pilih Ruangan</div>
+            </div>
+            <div class="progress-line completed"></div>
+            <div class="progress-step completed">
+                <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
+                <div class="progress-step-label">Pilih Tema</div>
             </div>
             <div class="progress-line completed"></div>
             <div class="progress-step active">
-                <div class="progress-step-circle">4</div>
+                <div class="progress-step-circle">5</div>
                 <div class="progress-step-label">Jadwal</div>
             </div>
         </div>
 
-        <!-- INFO CARDS -->
-        <div class="info-cards-row">
-            <div class="info-card">
-                <img src="<?= $foto_paket_src ?>" class="info-card-img" alt="<?= htmlspecialchars($d_paket['Nama_Paket']) ?>">
-                <div class="info-card-detail">
-                    <h5><?= htmlspecialchars($d_paket['Nama_Paket']) ?></h5>
-                    <div class="info-meta">Rp <?= $harga_format ?></div>
+        <!-- JADWAL SECTION + SIDEBAR -->
+        <div class="jadwal-section">
+            <!-- Left: Grid Slot Jam -->
+            <div class="jadwal-main">
+                <div class="jadwal-header">
+                    <div>
+                        <div class="jadwal-title">
+                            <i class="bi bi-calendar-week-fill"></i>
+                            Pilih Jadwal Sesi Foto
+                        </div>
+                        <div class="jadwal-subtitle">Jam operasional: 08:00 - 20:00 WIB</div>
+                    </div>
+                    <div class="jadwal-badge">
+                        <i class="bi bi-geo-alt-fill"></i>
+                        <?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?>
+                    </div>
+                </div>
+
+                <?php foreach ($slots_per_hari as $hari_data): ?>
+                    <div class="tanggal-section">
+                        <div class="tanggal-header">
+                            <span class="tanggal-hari"><?= $hari_data['hari'] ?></span>
+                            <span class="tanggal-tanggal"><?= $hari_data['tgl_format'] ?></span>
+                            <?php if ($hari_data['is_today']): ?>
+                                <span class="tanggal-today">Hari Ini</span>
+                            <?php endif; ?>
+                        </div>
+                        <div class="slot-grid">
+                            <?php foreach ($hari_data['slots'] as $slot): 
+                                if ($slot['is_booked']):
+                                    $class = 'slot-jam booked';
+                                    $status_text = 'Booked';
+                                    $onclick = '';
+                                elseif ($slot['is_expired']):
+                                    $class = 'slot-jam expired';
+                                    $status_text = 'Lewat';
+                                    $onclick = '';
+                                else:
+                                    $class = 'slot-jam tersedia';
+                                    $status_text = 'Rp ' . $harga_format;
+                                    $onclick = 'onclick="pilihJadwal(\'' . $hari_data['tanggal'] . '\', \'' . $slot['jam_mulai'] . '\', \'' . $slot['jam_selesai'] . '\', \'' . $hari_data['hari'] . '\', \'' . $hari_data['tgl_format'] . '\')"';
+                                endif;
+                            ?>
+                                <div class="<?= $class ?>" <?= $onclick ?>>
+                                    <div class="slot-durasi"><?= $d_paket['Durasi_Waktu'] ?> Menit</div>
+                                    <div class="slot-waktu"><?= $slot['jam_mulai'] ?> - <?= $slot['jam_selesai'] ?></div>
+                                    <div class="slot-status"><?= $status_text ?></div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+
+                <!-- LEGEND -->
+                <div class="slot-legend">
+                    <div class="legend-item">
+                        <div class="legend-box tersedia"></div>
+                        <span>Tersedia</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-box booked"></div>
+                        <span>Sudah Dibooking</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-box expired"></div>
+                        <span>Sudah Lewat</span>
+                    </div>
                 </div>
             </div>
-            <div class="info-card">
-                <img src="<?= $foto_ruangan_src ?>" class="info-card-img" alt="<?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?>">
-                <div class="info-card-detail">
-                    <h5><?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?></h5>
-                    <div class="info-meta"><?= $d_ruangan['Kapasitas_Ruangan'] ?> orang</div>
-                </div>
-            </div>
-            <div class="info-card">
-                <img src="<?= $foto_tema_src ?>" class="info-card-img" alt="<?= htmlspecialchars($d_tema['Nama_Tema']) ?>">
-                <div class="info-card-detail">
-                    <h5><?= htmlspecialchars($d_tema['Nama_Tema']) ?></h5>
-                    <div class="info-meta"><?= htmlspecialchars($d_tema['Kategori_Tema'] ?? 'Tema Foto') ?></div>
+
+            <!-- Right: Sidebar Ringkasan -->
+            <div class="booking-summary">
+                <div class="summary-card">
+                    <div class="summary-title">Ringkasan Booking</div>
+                    <div class="summary-item">
+                        <div class="summary-icon completed"><i class="bi bi-check-lg"></i></div>
+                        <div>
+                            <div class="summary-text">Paket</div>
+                            <div class="summary-sub"><?= htmlspecialchars($d_paket['Nama_Paket']) ?></div>
+                        </div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-icon completed"><i class="bi bi-check-lg"></i></div>
+                        <div>
+                            <div class="summary-text">Ruangan</div>
+                            <div class="summary-sub"><?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?></div>
+                        </div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-icon completed"><i class="bi bi-check-lg"></i></div>
+                        <div>
+                            <div class="summary-text">Tema</div>
+                            <div class="summary-sub"><?= htmlspecialchars($d_tema['Nama_Tema']) ?></div>
+                        </div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-icon"><i class="bi bi-calendar"></i></div>
+                        <div>
+                            <div class="summary-text">Jadwal</div>
+                            <div class="summary-sub">Belum dipilih</div>
+                        </div>
+                    </div>
+                    <div class="summary-harga">Rp <?= $harga_format ?></div>
                 </div>
             </div>
         </div>
 
-        <!-- PILIH TANGGAL -->
-        <?php if (!empty($jadwal_per_tanggal)): ?>
-            <h5 class="fw-bold mb-3"><i class="bi bi-calendar3 text-danger me-2"></i>Pilih Tanggal</h5>
-            <div class="tanggal-tabs">
-                <?php 
-                $first = true;
-                foreach ($jadwal_per_tanggal as $tgl => $jadwal_list_hari): 
-                    $date_obj = new DateTime($tgl);
-                    $hari_nama = $hari_indo[(int)$date_obj->format('w')];
-                    $tanggal_num = $date_obj->format('d');
-                    $bulan_nama = $bulan_indo[(int)$date_obj->format('n')];
-                ?>
-                    <div class="tanggal-tab <?= $first ? 'active' : '' ?>" onclick="pilihTanggal('<?= $tgl ?>', this)">
-                        <div class="tab-hari"><?= $hari_nama ?></div>
-                        <div class="tab-tanggal"><?= $tanggal_num ?></div>
-                        <div class="tab-bulan"><?= $bulan_nama ?></div>
-                    </div>
-                <?php 
-                    $first = false;
-                endforeach; 
-                ?>
-            </div>
-
-            <!-- JADWAL PER TANGGAL -->
-            <?php 
-            $first_section = true;
-            foreach ($jadwal_per_tanggal as $tgl => $jadwal_list_hari): 
-            ?>
-                <div class="jadwal-section <?= $first_section ? 'active' : '' ?>" id="section-<?= $tgl ?>">
-                    <h5 class="fw-bold mb-3">
-                        <i class="bi bi-clock-history text-danger me-2"></i>
-                        Jadwal Tersedia - <?= $hari_indo[(int)(new DateTime($tgl))->format('w')] ?>, <?= (new DateTime($tgl))->format('d') ?> <?= $bulan_indo[(int)(new DateTime($tgl))->format('n')] ?> <?= (new DateTime($tgl))->format('Y') ?>
-                    </h5>
-                    <div class="jadwal-grid">
-                        <?php foreach ($jadwal_list_hari as $j): 
-                            $jam_mulai = $j['Jam_Mulai']->format('H:i');
-                            $jam_selesai = $j['Jam_Selesai']->format('H:i');
-                            $is_booked = in_array($j['ID_Jadwal'], $booked_jadwal);
-                            $durasi = $d_paket['Durasi_Waktu'] ?? 60;
-                        ?>
-                            <?php if ($is_booked): ?>
-                                <!-- SLOT BOOKED -->
-                                <div class="slot-jam booked">
-                                    <span class="slot-status">Booked</span>
-                                    <div class="slot-durasi"><?= $durasi ?> Menit</div>
-                                    <div class="slot-waktu"><?= $jam_mulai ?> - <?= $jam_selesai ?></div>
-                                    <div class="slot-harga">Rp <?= $harga_format ?></div>
-                                </div>
-                            <?php else: ?>
-                                <!-- SLOT TERSEDIA -->
-                                <div class="slot-jam" onclick="pilihJadwal(<?= $j['ID_Jadwal'] ?>, '<?= $jam_mulai ?> - <?= $jam_selesai ?>', '<?= $tgl ?>')">
-                                    <div class="slot-durasi"><?= $durasi ?> Menit</div>
-                                    <div class="slot-waktu"><?= $jam_mulai ?> - <?= $jam_selesai ?></div>
-                                    <div class="slot-harga">Rp <?= $harga_format ?></div>
-                                </div>
-                            <?php endif; ?>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-            <?php 
-                $first_section = false;
-            endforeach; 
-            ?>
-
-        <?php else: ?>
-            <div class="empty-state">
-                <i class="bi bi-calendar-x"></i>
-                <h4>Tidak Ada Jadwal Tersedia</h4>
-                <p>Maaf, tidak ada jadwal yang tersedia untuk ruangan <strong><?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?></strong> dalam 7 hari ke depan.</p>
-                <a href="../Tema/pilih_tema.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>" class="btn btn-danger mt-3" style="background: var(--p-pink); border: none; border-radius: 14px; padding: 12px 30px; font-weight: 700;">
-                    <i class="bi bi-arrow-left me-2"></i>Kembali ke Pilih Tema
-                </a>
-            </div>
-        <?php endif; ?>
-
-    </div>
+    </main>
 
     <script src="../../../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
-
     <script>
-        // Toggle Submenu
-        document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
-            button.addEventListener('click', function(e) {
-                e.preventDefault();
-                const targetId = this.getAttribute('data-target');
-                const targetEl = document.querySelector(targetId);
-                const chevron = this.querySelector('.icon-chevron');
-                if (targetEl) {
-                    const isShown = targetEl.classList.contains('show');
-                    document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
-                    document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
-                    if (!isShown) {
-                        targetEl.classList.add('show');
-                        if (chevron) chevron.style.transform = 'rotate(180deg)';
-                    }
-                }
-            });
-        });
-
-        // Pilih Tanggal Tab
-        function pilihTanggal(tanggal, el) {
-            // Hapus active dari semua tab
-            document.querySelectorAll('.tanggal-tab').forEach(t => t.classList.remove('active'));
-            // Tambah active ke tab yang diklik
-            el.classList.add('active');
-            
-            // Sembunyikan semua section
-            document.querySelectorAll('.jadwal-section').forEach(s => s.classList.remove('active'));
-            // Tampilkan section yang dipilih
-            document.getElementById('section-' + tanggal).classList.add('active');
-        }
-
-        // Pilih Jadwal
-        function pilihJadwal(idJadwal, waktu, tanggal) {
+        function pilihJadwal(tanggal, jamMulai, jamSelesai, hari, tglFormat) {
             Swal.fire({
                 title: 'Konfirmasi Jadwal',
-                html: 'Anda akan memilih jadwal:<br><strong>' + tanggal + '</strong><br><strong>' + waktu + '</strong>',
+                html: '<div style="text-align:left">' +
+                      '<p><strong>Hari:</strong> ' + hari + ', ' + tglFormat + '</p>' +
+                      '<p><strong>Jam:</strong> ' + jamMulai + ' - ' + jamSelesai + '</p>' +
+                      '<p><strong>Ruangan:</strong> <?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?>\</p>' +
+                      '<p><strong>Tema:</strong> <?= htmlspecialchars($d_tema['Nama_Tema']) ?>\</p>' +
+                      '</div>',
                 icon: 'question',
                 showCancelButton: true,
                 confirmButtonColor: '#d83f67',
                 cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Pilih & Booking',
+                confirmButtonText: 'Ya, Pilih Jadwal Ini',
                 cancelButtonText: 'Batal'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    window.location.href = 'proses_order.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&id_jadwal=' + idJadwal;
-                }
-            });
-        }
-
-        function confirmLogout(e) {
-            e.preventDefault();
-            Swal.fire({
-                title: 'Keluar?',
-                text: 'Apakah Anda yakin ingin keluar dari akun?',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#d83f67',
-                cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Keluar',
-                cancelButtonText: 'Batal'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    window.location.href = '../../../../logout.php';
-                }
-            });
-        }
-
-        function confirmLandingPage(e) {
-            e.preventDefault();
-            Swal.fire({
-                title: 'Kembali ke Beranda?',
-                text: 'Anda akan dialihkan ke halaman utama.',
-                icon: 'info',
-                showCancelButton: true,
-                confirmButtonColor: '#d83f67',
-                cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Kembali',
-                cancelButtonText: 'Batal'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    window.location.href = '../../../../index.php';
+                    // Kirim ke proses_order.php
+                    window.location.href = 'proses_order.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&tanggal=' + tanggal + '&jam_mulai=' + jamMulai + '&jam_selesai=' + jamSelesai;
                 }
             });
         }
