@@ -812,7 +812,7 @@ $q_barang_populer = sqlsrv_query($conn,
                     </a>
                 </li>
 
-                <!-- LAYANAN STUDIO -->
+                <!-- LAYANAN STUDIO: Alur Transaksi Booking -->
                 <li class="nav-item">
                     <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuLayanan">
                         <span><i class="bi bi-camera-fill me-2"></i> Layanan Studio</span>
@@ -820,16 +820,20 @@ $q_barang_populer = sqlsrv_query($conn,
                     </a>
                     <div class="submenu" id="submenuLayanan">
                         <ul class="list-unstyled">
+                            <!-- Step 1: Pilih Paket (Mulai alur transaksi) -->
                             <li><a href="Layanan/Paket/pilih_paket.php" class="submenu-link"><i class="bi bi-collection-fill me-2"></i>Paket Foto</a></li>
+                            <!-- Step 2: Pilih Ruangan (Hanya bisa diakses setelah pilih paket) -->
                             <li><a href="Layanan/Ruangan/pilih_ruangan.php" class="submenu-link"><i class="bi bi-door-open-fill me-2"></i>Ruangan Studio</a></li>
+                            <!-- Step 3: Pilih Tema (Hanya bisa diakses setelah pilih ruangan) -->
                             <li><a href="Layanan/Tema/pilih_tema.php" class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>                            
+                            <!-- Step 4: Pilih Jadwal (Hanya bisa diakses setelah pilih tema) -->
                             <li><a href="Layanan/Jadwal/pilih_jadwal.php" class="submenu-link"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Tersedia</a></li>
-                            <li><a href="Layanan/Portofolio/index.php" class="submenu-link"><i class="bi bi-images me-2"></i>Portofolio</a></li>
+                            <li><a href="Layanan/Portofolio/lihat_portofolio.php" class="submenu-link"><i class="bi bi-images me-2"></i>Portofolio</a></li>
                         </ul>
                     </div>
                 </li>
 
-                <!-- BOOKING & TRANSAKSI -->
+                <!-- BOOKING SAYA -->
                 <li class="nav-item">
                     <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuBooking">
                         <span><i class="bi bi-calendar-check-fill me-2"></i> Booking Saya</span>
@@ -1167,7 +1171,7 @@ $q_barang_populer = sqlsrv_query($conn,
                     </div>
                     <div class="row g-3">
                         <div class="col-lg-3 col-md-6">
-                            <a href="../Booking/Baru/index.php" class="text-decoration-none">
+                            <a href="Layanan/Paket/pilih_paket.php" class="text-decoration-none">
                                 <div class="card-3d text-center p-3">
                                     <div class="stat-icon stat-icon-pink mx-auto mb-2" style="width: 50px; height: 50px;"><i class="bi bi-calendar-plus-fill"></i></div>
                                     <div class="fw-bold" style="font-size: 0.9rem; color: var(--text-dark);">Booking Baru</div>
