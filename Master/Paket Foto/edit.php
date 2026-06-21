@@ -73,7 +73,7 @@ if (isset($_POST['update'])) {
         }
     }
 
-    // --- VALIDASI DURASI ---
+    // --- VALIDASI DURASI (BEBAS, 15-300 menit) ---
     if (empty($durasi)) {
         $errors['durasi'] = "Durasi wajib diisi!";
     } elseif (!ctype_digit($durasi)) {
@@ -153,38 +153,40 @@ if (isset($_POST['update'])) {
         }
 
         if (empty($errors)) {
-            sqlsrv_query($conn, "BEGIN TRAN");
-
-            $sql_update = "UPDATE Paket_Foto SET 
-                Nama_Paket = ?, Durasi_Waktu = ?, Harga_Paket = ?, 
-                Deskripsi = ?, Kapasitas_Orang = ?, Foto_Paket = ?,
-                Modified_By = ?, Modified_Date = GETDATE()
-                WHERE ID_Paket = ?";
-
-            $params_update = [
-                $nama, (int)$durasi, (float)$harga, 
-                $deskripsi, (int)$kapasitas, $new_filename,
-                $nama_admin, $id
-            ];
-
-            $stmt_update = sqlsrv_query($conn, $sql_update, $params_update);
-
-            if ($stmt_update) {
-                sqlsrv_query($conn, "COMMIT");
-                $success = true;
-                // Update data untuk tampilan
-                $data['Nama_Paket'] = $nama;
-                $data['Durasi_Waktu'] = $durasi;
-                $data['Harga_Paket'] = $harga;
-                $data['Deskripsi'] = $deskripsi;
-                $data['Kapasitas_Orang'] = $kapasitas;
-                $data['Foto_Paket'] = $new_filename;
+            if (!sqlsrv_begin_transaction($conn)) {
+                $errors['general'] = "Gagal memulai transaksi database!";
             } else {
-                sqlsrv_query($conn, "ROLLBACK");
-                $errors['general'] = "Gagal memperbarui data. Silakan coba lagi!";
-                // Restore foto lama kalau upload baru gagal
-                if ($foto_changed && file_exists($upload_path)) {
-                    unlink($upload_path);
+                $sql_update = "UPDATE Paket_Foto SET 
+                    Nama_Paket = ?, Durasi_Waktu = ?, Harga_Paket = ?, 
+                    Deskripsi = ?, Kapasitas_Orang = ?, Foto_Paket = ?,
+                    Modified_By = ?, Modified_Date = GETDATE()
+                    WHERE ID_Paket = ?";
+
+                $params_update = [
+                    $nama, (int)$durasi, (float)$harga, 
+                    $deskripsi, (int)$kapasitas, $new_filename,
+                    $nama_admin, $id
+                ];
+
+                $stmt_update = sqlsrv_query($conn, $sql_update, $params_update);
+
+                if ($stmt_update) {
+                    sqlsrv_commit($conn);
+                    $success = true;
+                    // Update data untuk tampilan
+                    $data['Nama_Paket'] = $nama;
+                    $data['Durasi_Waktu'] = $durasi;
+                    $data['Harga_Paket'] = $harga;
+                    $data['Deskripsi'] = $deskripsi;
+                    $data['Kapasitas_Orang'] = $kapasitas;
+                    $data['Foto_Paket'] = $new_filename;
+                } else {
+                    sqlsrv_rollback($conn);
+                    $errors['general'] = "Gagal memperbarui data. Silakan coba lagi!";
+                    // Restore foto lama kalau upload baru gagal
+                    if ($foto_changed && file_exists($upload_path)) {
+                        unlink($upload_path);
+                    }
                 }
             }
         }
@@ -404,6 +406,20 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
             color: #dc2626;
         }
 
+        /* Helper Text */
+        .helper-text {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            font-weight: 600;
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .helper-text i {
+            color: var(--p-pink);
+        }
+
         /* Foto Upload Area */
         .upload-area {
             width: 100%;
@@ -539,6 +555,31 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
             gap: 20px;
         }
 
+        /* Info Card */
+        .info-card {
+            background: linear-gradient(135deg, #FFF0F3, #FFF8F0);
+            border-radius: 16px;
+            padding: 16px 20px;
+            margin-bottom: 25px;
+            border: 1px solid rgba(255, 228, 233, 0.8);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .info-card i {
+            font-size: 1.5rem;
+            color: var(--p-pink);
+        }
+        .info-card .info-text {
+            font-size: 0.85rem;
+            color: #4a5568;
+            font-weight: 600;
+            line-height: 1.5;
+        }
+        .info-card .info-text strong {
+            color: var(--p-pink);
+        }
+
         @media (max-width: 992px) {
             .main-content { margin-left: 0; padding: 20px; }
             .sidebar { transform: translateX(-100%); }
@@ -637,6 +678,15 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
         <!-- FORM CARD -->
         <div class="form-card fade-in-up">
 
+            <!-- Info Card -->
+            <div class="info-card">
+                <i class="bi bi-info-circle-fill"></i>
+                <div class="info-text">
+                    <strong>Perhatian:</strong> Durasi paket menentukan panjang slot di <strong>Jadwal Studio</strong>. 
+                    Contoh: Durasi 60 menit = slot 08:00-09:00, 09:00-10:00, dst.
+                </div>
+            </div>
+
             <?php if(isset($errors['general'])): ?>
                 <div class="alert-error">
                     <i class="bi bi-exclamation-octagon-fill"></i>
@@ -678,6 +728,10 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
                         <?php if(isset($errors['durasi'])): ?>
                             <span class="error-text"><?= $errors['durasi'] ?></span>
                         <?php endif; ?>
+                        <div class="helper-text">
+                            <i class="bi bi-clock-history"></i>
+                            Durasi menentukan panjang slot di Jadwal Studio.
+                        </div>
                     </div>
                     <div>
                         <label class="form-label-custom">Harga (Rp) <span class="text-danger">*</span></label>

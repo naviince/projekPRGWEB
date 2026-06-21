@@ -360,6 +360,25 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         .td-durasi { font-size: 0.8rem; color: #718096; font-weight: 600; }
         .td-kapasitas { font-size: 0.85rem; color: #4a5568; font-weight: 600; }
 
+        /* Slot Jadwal Badge */
+        .slot-badge {
+            background: linear-gradient(135deg, #FFF0F3, #FFE4E9);
+            color: var(--p-pink);
+            padding: 6px 12px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 0.8rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .slot-count {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
         .badge-status {
             font-size: 0.72rem; font-weight: 700; padding: 6px 14px;
             border-radius: 50px; display: inline-flex; align-items: center; gap: 6px;
@@ -590,6 +609,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                             <th>Preview</th>
                             <th>Katalog Layanan</th>
                             <th>Harga & Durasi</th>
+                            <th>Slot Jadwal</th>
                             <th>Kapasitas</th>
                             <th>Status</th>
                             <th class="text-center">Aksi</th>
@@ -608,6 +628,10 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                                 // Status: 1 = Aktif, 0 = Nonaktif
                                 $badge_status = ($row['Status'] == 1) ? "badge-aktif" : "badge-nonaktif";
                                 $text_status = ($row['Status'] == 1) ? "Aktif" : "Nonaktif";
+
+                                // Hitung slot per hari (12 jam = 720 menit)
+                                $durasi = (int)($row['Durasi_Waktu'] ?? 30);
+                                $slot_per_hari = floor(720 / $durasi);
                         ?>
                             <tr class="fade-in-up">
                                 <td>
@@ -620,6 +644,15 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                                 <td>
                                     <div class="td-harga">Rp <?= number_format($row['Harga_Paket'] ?? 0, 0, ',', '.') ?></div>
                                     <div class="td-durasi"><i class="bi bi-stopwatch me-1"></i><?= $row['Durasi_Waktu'] ?? 0 ?> menit</div>
+                                </td>
+                                <td>
+                                    <span class="slot-badge">
+                                        <i class="bi bi-clock"></i>
+                                        <?= $durasi ?> menit
+                                    </span>
+                                    <div class="slot-count">
+                                        <?= $slot_per_hari ?> slot/hari
+                                    </div>
                                 </td>
                                 <td class="td-kapasitas">
                                     <i class="bi bi-people-fill me-1 text-danger"></i><?= $row['Kapasitas_Orang'] ?? 0 ?> orang
@@ -647,7 +680,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                         else:
                         ?>
                             <tr>
-                                <td colspan="6" class="text-center text-muted py-5">
+                                <td colspan="7" class="text-center text-muted py-5">
                                     <i class="bi bi-inbox fs-1 mb-3 d-block" style="color: #cbd5e1;"></i>
                                     <p class="fw-bold">Tidak ada data paket foto yang sesuai.</p>
                                 </td>

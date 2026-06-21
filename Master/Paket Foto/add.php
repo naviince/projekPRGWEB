@@ -3,6 +3,14 @@ ob_start();
 session_start();
 include '../../koneksi.php';
 
+// =====================================================
+// KONSTANTA STATUS
+// =====================================================
+define('STATUS_JADWAL_TERSEDIA', 0);
+define('STATUS_JADWAL_BOOKED', 1);
+define('STATUS_JADWAL_MAINTENANCE', 2);
+define('STATUS_DATA_AKTIF', 1);
+
 // --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Admin') {
     header("Location: ../../login.php");
@@ -24,155 +32,283 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
     ? "../../assets/img/pelanggan/" . $foto_admin 
     : $default_svg_avatar;
 
-// Inisialisasi
+// =====================================================
+// HELPER FUNCTIONS
+// =====================================================
+function safe_sqlsrv_fetch($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) {
+        error_log("[safe_sqlsrv_fetch] SQL Error: " . json_encode(sqlsrv_errors()));
+        return null;
+    }
+    $result = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $result;
+}
+
+function safe_sqlsrv_fetch_all($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) {
+        error_log("[safe_sqlsrv_fetch_all] SQL Error: " . json_encode(sqlsrv_errors()));
+        return [];
+    }
+    $results = [];
+    while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+        $results[] = $row;
+    }
+    sqlsrv_free_stmt($stmt);
+    return $results;
+}
+
+function safe_sqlsrv_count($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) {
+        error_log("[safe_sqlsrv_count] SQL Error: " . json_encode(sqlsrv_errors()));
+        return 0;
+    }
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $row['total'] ?? 0;
+}
+
+// =====================================================
+// AMBIL DATA MASTER
+// =====================================================
+$ruangan_list = safe_sqlsrv_fetch_all($conn,
+    "SELECT ID_Ruangan, Nama_Ruangan, Deskripsi, Foto_Ruangan 
+     FROM Ruangan 
+     WHERE Status = ? AND Is_Deleted = 0 
+     ORDER BY Nama_Ruangan",
+    [STATUS_DATA_AKTIF]
+);
+
+$paket_list = safe_sqlsrv_fetch_all($conn,
+    "SELECT ID_Paket, Nama_Paket, Durasi_Waktu, Harga_Paket, Kapasitas_Orang, Foto_Paket 
+     FROM Paket_Foto 
+     WHERE Status = ? AND Is_Deleted = 0 
+     ORDER BY Nama_Paket",
+    [STATUS_DATA_AKTIF]
+);
+
+// =====================================================
+// AMBIL DATA PAKET-RUANGAN (JUNCTION TABLE)
+// =====================================================
+$paket_ruangan_list = safe_sqlsrv_fetch_all($conn,
+    "SELECT pr.ID_Paket, pr.ID_Ruangan, r.Nama_Ruangan
+     FROM Paket_Ruangan pr
+     INNER JOIN Ruangan r ON pr.ID_Ruangan = r.ID_Ruangan
+     WHERE r.Status = ? AND r.Is_Deleted = 0
+     ORDER BY pr.ID_Paket, r.Nama_Ruangan",
+    [STATUS_DATA_AKTIF]
+);
+
+// Mapping: ID_Paket -> array ID_Ruangan yang valid
+$paket_ruangan_map = [];
+foreach ($paket_ruangan_list as $pr) {
+    $pid = (int)$pr['ID_Paket'];
+    if (!isset($paket_ruangan_map[$pid])) { $paket_ruangan_map[$pid] = []; }
+    $paket_ruangan_map[$pid][] = (int)$pr['ID_Ruangan'];
+}
+
+// Mapping: ID_Paket -> detail paket untuk JS
+$paket_detail_map = [];
+foreach ($paket_list as $p) {
+    $paket_detail_map[(int)$p['ID_Paket']] = [
+        'nama' => $p['Nama_Paket'],
+        'durasi' => (int)$p['Durasi_Waktu'],
+        'harga' => $p['Harga_Paket']
+    ];
+}
+
+// =====================================================
+// PROSES SUBMIT
+// =====================================================
 $errors = [];
 $old_values = $_POST ?? [];
 $success = false;
 
-// =====================================================
-// PROSES SIMPAN
-// =====================================================
 if (isset($_POST['simpan'])) {
-    $nama      = trim($_POST['nama'] ?? '');
-    $durasi    = trim($_POST['durasi'] ?? '');
-    $harga     = trim($_POST['harga'] ?? '');
-    $kapasitas = trim($_POST['kapasitas'] ?? '');
-    $deskripsi = trim($_POST['deskripsi'] ?? '');
+    $id_ruangan = isset($_POST['id_ruangan']) ? (int)$_POST['id_ruangan'] : 0;
+    $id_paket = isset($_POST['id_paket']) ? (int)$_POST['id_paket'] : 0;
+    $tanggal_jadwal = isset($_POST['tanggal_jadwal']) ? trim($_POST['tanggal_jadwal']) : '';
+    $jam_mulai = isset($_POST['jam_mulai']) ? trim($_POST['jam_mulai']) : '';
+    $status_jadwal = isset($_POST['status_jadwal']) ? (int)$_POST['status_jadwal'] : STATUS_JADWAL_TERSEDIA;
+    $keterangan = isset($_POST['keterangan']) ? trim($_POST['keterangan']) : '';
 
-    // --- VALIDASI NAMA PAKET ---
-    if (empty($nama)) {
-        $errors['nama'] = "Nama paket wajib diisi!";
-    } elseif (strlen($nama) < 3) {
-        $errors['nama'] = "Nama paket minimal 3 karakter!";
-    } elseif (strlen($nama) > 100) {
-        $errors['nama'] = "Nama paket maksimal 100 karakter!";
-    } elseif (!preg_match('/^[a-zA-Z0-9\s\-&]+$/', $nama)) {
-        $errors['nama'] = "Nama paket hanya boleh huruf, angka, spasi, -, &!";
+    // --- VALIDASI ID PAKET ---
+    $durasi_waktu = 0;
+    $nama_paket = '';
+    if ($id_paket <= 0) {
+        $errors['id_paket'] = "Paket Foto harus dipilih!";
     } else {
-        $sql_cek = "SELECT ID_Paket FROM Paket_Foto WHERE Nama_Paket = ? AND Is_Deleted = 0";
-        $stmt_cek = sqlsrv_query($conn, $sql_cek, [$nama]);
-        if ($stmt_cek && sqlsrv_has_rows($stmt_cek)) {
-            $errors['nama'] = "Nama paket sudah ada! Gunakan nama lain.";
+        $paket = safe_sqlsrv_fetch($conn,
+            "SELECT Nama_Paket, Durasi_Waktu FROM Paket_Foto WHERE ID_Paket = ? AND Status = ? AND Is_Deleted = 0",
+            [$id_paket, STATUS_DATA_AKTIF]
+        );
+        if (!$paket) {
+            $errors['id_paket'] = "Paket Foto tidak valid atau tidak aktif!";
+        } else {
+            $durasi_waktu = (int)$paket['Durasi_Waktu'];
+            $nama_paket = $paket['Nama_Paket'];
         }
     }
 
-    // --- VALIDASI DURASI ---
-    if (empty($durasi)) {
-        $errors['durasi'] = "Durasi wajib diisi!";
-    } elseif (!ctype_digit($durasi)) {
-        $errors['durasi'] = "Durasi hanya boleh angka!";
-    } elseif ((int)$durasi < 15) {
-        $errors['durasi'] = "Durasi minimal 15 menit!";
-    } elseif ((int)$durasi > 300) {
-        $errors['durasi'] = "Durasi maksimal 300 menit!";
-    }
-
-    // --- VALIDASI HARGA ---
-    if (empty($harga)) {
-        $errors['harga'] = "Harga wajib diisi!";
-    } elseif (!is_numeric($harga)) {
-        $errors['harga'] = "Harga hanya boleh angka!";
-    } elseif ((float)$harga < 10000) {
-        $errors['harga'] = "Harga minimal Rp 10.000!";
-    } elseif ((float)$harga > 99999999) {
-        $errors['harga'] = "Harga maksimal Rp 99.999.999!";
-    }
-
-    // --- VALIDASI KAPASITAS ---
-    if (empty($kapasitas)) {
-        $errors['kapasitas'] = "Kapasitas wajib diisi!";
-    } elseif (!ctype_digit($kapasitas)) {
-        $errors['kapasitas'] = "Kapasitas hanya boleh angka!";
-    } elseif ((int)$kapasitas < 1) {
-        $errors['kapasitas'] = "Kapasitas minimal 1 orang!";
-    } elseif ((int)$kapasitas > 50) {
-        $errors['kapasitas'] = "Kapasitas maksimal 50 orang!";
-    }
-
-    // --- VALIDASI DESKRIPSI ---
-    if (empty($deskripsi)) {
-        $errors['deskripsi'] = "Deskripsi wajib diisi!";
-    } elseif (strlen($deskripsi) < 20) {
-        $errors['deskripsi'] = "Deskripsi minimal 20 karakter!";
-    } elseif (strlen($deskripsi) > 255) {
-        $errors['deskripsi'] = "Deskripsi maksimal 255 karakter!";
-    }
-
-    // --- VALIDASI FOTO ---
-    $foto_name = $_FILES['foto']['name'] ?? '';
-    $foto_tmp  = $_FILES['foto']['tmp_name'] ?? '';
-    $foto_size = $_FILES['foto']['size'] ?? 0;
-    $foto_error = $_FILES['foto']['error'] ?? 0;
-
-    if (empty($foto_name)) {
-        $errors['foto'] = "Foto sampul paket wajib diupload!";
-    } elseif ($foto_error != 0) {
-        $errors['foto'] = "Terjadi kesalahan saat upload foto!";
+    // --- VALIDASI ID RUANGAN ---
+    $nama_ruangan = '';
+    if ($id_ruangan <= 0) {
+        $errors['id_ruangan'] = "Ruangan harus dipilih!";
     } else {
-        $ext = strtolower(pathinfo($foto_name, PATHINFO_EXTENSION));
-        $allowed = ['jpg', 'jpeg', 'png'];
-
-        if (!in_array($ext, $allowed)) {
-            $errors['foto'] = "Format foto harus JPG, JPEG, atau PNG!";
-        } elseif ($foto_size > 2097152) {
-            $errors['foto'] = "Ukuran foto maksimal 2MB!";
+        $cek_ruangan = safe_sqlsrv_fetch($conn,
+            "SELECT ID_Ruangan, Nama_Ruangan FROM Ruangan WHERE ID_Ruangan = ? AND Status = ? AND Is_Deleted = 0",
+            [$id_ruangan, STATUS_DATA_AKTIF]
+        );
+        if (!$cek_ruangan) {
+            $errors['id_ruangan'] = "Ruangan tidak valid atau tidak aktif!";
+        } else {
+            $nama_ruangan = $cek_ruangan['Nama_Ruangan'];
         }
     }
 
-    // --- SIMPAN KE DATABASE ---
+    // --- VALIDASI PAKET-RUANGAN (JUNCTION TABLE) ---
+    if ($id_ruangan > 0 && $id_paket > 0 && empty($errors['id_ruangan']) && empty($errors['id_paket'])) {
+        $cek_paket_ruangan = safe_sqlsrv_fetch($conn,
+            "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ?",
+            [$id_paket, $id_ruangan]
+        );
+        if (!$cek_paket_ruangan) {
+            $errors['id_ruangan'] = "Ruangan yang dipilih tidak tersedia untuk paket foto ini!";
+        }
+    }
+
+    // --- VALIDASI TANGGAL ---
+    if (empty($tanggal_jadwal)) {
+        $errors['tanggal_jadwal'] = "Tanggal jadwal wajib diisi!";
+    } else {
+        $tgl_obj = DateTime::createFromFormat('Y-m-d', $tanggal_jadwal);
+        if (!$tgl_obj || $tgl_obj->format('Y-m-d') !== $tanggal_jadwal) {
+            $errors['tanggal_jadwal'] = "Format tanggal tidak valid (YYYY-MM-DD)!";
+        }
+    }
+
+    // --- VALIDASI JAM MULAI ---
+    if (empty($jam_mulai)) {
+        $errors['jam_mulai'] = "Jam mulai wajib diisi!";
+    } elseif (!preg_match('/^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$/', $jam_mulai)) {
+        $errors['jam_mulai'] = "Format jam mulai tidak valid (HH:MM)!";
+    }
+
+    // --- VALIDASI STATUS JADWAL ---
+    if (!in_array($status_jadwal, [STATUS_JADWAL_TERSEDIA, STATUS_JADWAL_MAINTENANCE])) {
+        $errors['status_jadwal'] = "Status jadwal tidak valid!";
+    }
+
+    // =====================================================
+    // HITUNG JAM SELESAI BERDASARKAN DURASI PAKET
+    // =====================================================
+    $jam_selesai = '';
+    if (empty($errors) && $durasi_waktu > 0 && !empty($jam_mulai)) {
+        $mulai_obj = DateTime::createFromFormat('H:i', $jam_mulai);
+        if ($mulai_obj) {
+            $mulai_obj->modify("+{$durasi_waktu} minutes");
+            $jam_selesai = $mulai_obj->format('H:i');
+
+            $jam_mulai_obj = DateTime::createFromFormat('H:i', $jam_mulai);
+            $buka = DateTime::createFromFormat('H:i', '08:00');
+            if ($jam_mulai_obj < $buka) {
+                $errors['jam_mulai'] = "Jam mulai minimal 08:00 (jam operasional)!";
+            }
+
+            $tutup = DateTime::createFromFormat('H:i', '20:00');
+            if ($mulai_obj > $tutup) {
+                $errors['jam_mulai'] = "Jam selesai ({$jam_selesai}) melebihi jam tutup (20:00). Paket {$nama_paket} membutuhkan {$durasi_waktu} menit. Pilih jam mulai lebih awal!";
+            }
+        } else {
+            $errors['jam_mulai'] = "Gagal menghitung jam selesai!";
+        }
+    }
+
+    // =====================================================
+    // VALIDASI OVERLAP
+    // =====================================================
+    if (empty($errors) && $id_ruangan > 0 && !empty($tanggal_jadwal) && !empty($jam_selesai)) {
+        $cek_overlap = safe_sqlsrv_count($conn,
+            "SELECT COUNT(*) as total FROM Jadwal_Studio 
+             WHERE ID_Ruangan = ? 
+               AND Tanggal_Jadwal = ? 
+               AND Is_Deleted = 0
+               AND Status = 1
+               AND (
+                   (Jam_Mulai < ? AND Jam_Selesai > ?) OR
+                   (Jam_Mulai >= ? AND Jam_Mulai < ?) OR
+                   (Jam_Selesai > ? AND Jam_Selesai <= ?)
+               )",
+            [$id_ruangan, $tanggal_jadwal, 
+             $jam_selesai . ':00', $jam_mulai . ':00',
+             $jam_mulai . ':00', $jam_selesai . ':00',
+             $jam_mulai . ':00', $jam_selesai . ':00']
+        );
+
+        if ($cek_overlap > 0) {
+            $errors['jam_mulai'] = "Jadwal bertabrakan dengan {$cek_overlap} slot existing. Pilih jam atau tanggal lain!";
+        }
+    }
+
+    // =====================================================
+    // INSERT DATA (TANPA ID_PAKET - tabel tidak punya kolom ini)
+    // =====================================================
     if (empty($errors)) {
-        $upload_dir = "../../assets/img/paket/";
-        if (!is_dir($upload_dir)) {
-            mkdir($upload_dir, 0777, true);
+        if (empty($keterangan)) {
+            $keterangan = "Slot {$nama_paket} {$nama_ruangan}";
         }
 
-        $new_filename = "paket_" . time() . "_" . rand(1000, 9999) . "." . $ext;
-        $upload_path = $upload_dir . $new_filename;
-
-        if (move_uploaded_file($foto_tmp, $upload_path)) {
-            sqlsrv_query($conn, "BEGIN TRAN");
-
-            $sql = "INSERT INTO Paket_Foto (
-                Nama_Paket, Durasi_Waktu, Harga_Paket, Deskripsi, 
-                Kapasitas_Orang, Foto_Paket, Status, 
-                Created_By, Created_Date
-            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, GETDATE())";
+        if (!sqlsrv_begin_transaction($conn)) {
+            $errors['general'] = "Gagal memulai transaksi database!";
+        } else {
+            $sql = "INSERT INTO Jadwal_Studio 
+                    (ID_Ruangan, Tanggal_Jadwal, Jam_Mulai, Jam_Selesai, Keterangan, Status_Jadwal, Status, Created_By, Created_Date) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, GETDATE())";
 
             $params = [
-                $nama, 
-                (int)$durasi, 
-                (float)$harga, 
-                $deskripsi, 
-                (int)$kapasitas, 
-                $new_filename,
+                $id_ruangan,
+                $tanggal_jadwal,
+                $jam_mulai . ':00',
+                $jam_selesai . ':00',
+                $keterangan,
+                $status_jadwal,
+                STATUS_DATA_AKTIF,
                 $nama_admin
             ];
 
             $stmt = sqlsrv_query($conn, $sql, $params);
 
             if ($stmt) {
-                sqlsrv_query($conn, "COMMIT");
+                sqlsrv_commit($conn);
                 $success = true;
             } else {
-                sqlsrv_query($conn, "ROLLBACK");
-                if (file_exists($upload_path)) {
-                    unlink($upload_path);
-                }
-                $errors['general'] = "Gagal menyimpan ke database. Silakan coba lagi!";
+                sqlsrv_rollback($conn);
+                $errors['general'] = "Gagal menyimpan jadwal. Silakan coba lagi!";
             }
-        } else {
-            $errors['general'] = "Gagal mengupload foto ke server. Cek permission folder!";
         }
     }
 }
-?>
 
+$tomorrow = date('Y-m-d', strtotime('+1 day'));
+
+// Determine selected paket for postback
+$selected_paket_id = isset($old_values['id_paket']) ? (int)$old_values['id_paket'] : 0;
+$selected_paket_durasi = 0;
+$selected_paket_nama = '';
+if ($selected_paket_id > 0 && isset($paket_detail_map[$selected_paket_id])) {
+    $selected_paket_durasi = $paket_detail_map[$selected_paket_id]['durasi'];
+    $selected_paket_nama = $paket_detail_map[$selected_paket_id]['nama'];
+}
+?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tambah Paket Foto – SpotLight Studio</title>
+    <title>Tambah Jadwal Studio – SpotLight Studio</title>
 
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
@@ -202,7 +338,6 @@ if (isset($_POST['simpan'])) {
             overflow-x: hidden;
         }
 
-        /* SIDEBAR */
         .sidebar {
             width: 260px;
             height: 100vh;
@@ -254,10 +389,8 @@ if (isset($_POST['simpan'])) {
         }
         .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
 
-        /* MAIN CONTENT */
         .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
 
-        /* HEADER */
         .dashboard-header {
             display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 35px;
@@ -273,18 +406,16 @@ if (isset($_POST['simpan'])) {
         }
         .profile-header-btn img { width: 100%; height: 100%; object-fit: cover; }
 
-        /* FORM CARD */
         .form-card {
             background: #ffffff;
             border-radius: 24px;
             border: 1px solid rgba(255, 228, 233, 0.8);
             box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03);
             padding: 40px;
-            max-width: 800px;
+            max-width: 900px;
             margin: 0 auto;
         }
 
-        /* Section Title */
         .section-title {
             font-weight: 800;
             font-size: 1rem;
@@ -294,12 +425,8 @@ if (isset($_POST['simpan'])) {
             align-items: center;
             gap: 10px;
         }
-        .section-title i {
-            color: var(--p-pink);
-            font-size: 1.2rem;
-        }
+        .section-title i { color: var(--p-pink); font-size: 1.2rem; }
 
-        /* Form Label */
         .form-label-custom {
             font-weight: 800;
             font-size: 0.75rem;
@@ -310,7 +437,6 @@ if (isset($_POST['simpan'])) {
             display: block;
         }
 
-        /* Form Input */
         .form-input-custom {
             width: 100%;
             border-radius: 14px;
@@ -321,16 +447,13 @@ if (isset($_POST['simpan'])) {
             font-size: 0.9rem;
             color: var(--text-dark);
             transition: var(--transition-3d);
+            font-family: 'Plus Jakarta Sans', sans-serif;
         }
         .form-input-custom:focus {
             outline: none;
             border-color: var(--p-pink);
             background: #ffffff;
             box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08);
-        }
-        .form-input-custom::placeholder {
-            color: #cbd5e1;
-            font-weight: 500;
         }
         .form-input-custom.is-invalid {
             border-color: #ef4444;
@@ -340,12 +463,15 @@ if (isset($_POST['simpan'])) {
             box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.08);
         }
 
-        textarea.form-input-custom {
-            resize: vertical;
-            min-height: 100px;
+        select.form-input-custom {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 18px center;
+            padding-right: 44px;
         }
 
-        /* Error Text */
         .error-text {
             color: #ef4444;
             font-size: 0.8rem;
@@ -356,7 +482,6 @@ if (isset($_POST['simpan'])) {
             gap: 5px;
         }
 
-        /* General Error Alert */
         .alert-error {
             background: #fef2f2;
             border: 2px solid #fecaca;
@@ -370,63 +495,220 @@ if (isset($_POST['simpan'])) {
             align-items: center;
             gap: 10px;
         }
-        .alert-error i {
-            font-size: 1.2rem;
-            color: #dc2626;
-        }
+        .alert-error i { font-size: 1.2rem; color: #dc2626; }
 
-        /* Foto Upload */
-        .upload-area {
-            width: 100%;
-            height: 220px;
-            border-radius: 20px;
-            border: 3px dashed #e2e8f0;
+        .helper-text {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            font-weight: 600;
+            margin-top: 6px;
             display: flex;
             align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            background: #f8fafc;
-            position: relative;
-            transition: var(--transition-3d);
+            gap: 5px;
+        }
+        .helper-text i { color: var(--p-pink); }
+
+        .paket-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 8px;
+        }
+        .paket-card {
+            border: 2px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 20px;
             cursor: pointer;
-        }
-        .upload-area:hover {
-            border-color: var(--p-pink);
-            background: var(--s-pink);
-        }
-        .upload-area.has-image {
-            border-style: solid;
-            border-color: var(--p-pink);
+            transition: var(--transition-3d);
+            text-align: center;
             background: #ffffff;
         }
-        .upload-preview {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: none;
+        .paket-card:hover { border-color: var(--light-pink); transform: translateY(-4px) scale(1.02); }
+        .paket-card.selected {
+            border-color: var(--p-pink);
+            background: var(--s-pink);
+            box-shadow: 0 4px 15px rgba(213, 61, 102, 0.15);
         }
-        .upload-placeholder {
-            text-align: center;
-            color: #94a3b8;
-        }
-        .upload-placeholder i {
-            font-size: 3rem;
-            margin-bottom: 12px;
-            display: block;
-            color: #cbd5e1;
-        }
-        .upload-placeholder .main-text {
-            font-weight: 700;
-            font-size: 1rem;
+        .paket-card .paket-nama {
+            font-weight: 800;
+            font-size: 0.95rem;
             color: var(--text-dark);
-            margin-bottom: 4px;
+            margin-bottom: 6px;
         }
-        .upload-placeholder .sub-text {
+        .paket-card .paket-durasi {
             font-size: 0.8rem;
-            color: #94a3b8;
+            color: var(--p-pink);
+            font-weight: 700;
+            background: var(--light-pink);
+            padding: 4px 12px;
+            border-radius: 50px;
+            display: inline-block;
+        }
+        .paket-card .paket-harga {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-top: 8px;
+        }
+        .paket-card.selected .paket-nama { color: var(--p-pink); }
+
+        .ruangan-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 8px;
+        }
+        .ruangan-card {
+            border: 2px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 16px;
+            cursor: pointer;
+            transition: var(--transition-3d);
+            text-align: center;
+            background: #ffffff;
+        }
+        .ruangan-card:hover { border-color: var(--light-pink); transform: translateY(-4px) scale(1.02); }
+        .ruangan-card.selected {
+            border-color: var(--p-pink);
+            background: var(--s-pink);
+            box-shadow: 0 4px 15px rgba(213, 61, 102, 0.15);
+        }
+        .ruangan-card .ruangan-nama {
+            font-weight: 800;
+            font-size: 0.9rem;
+            color: var(--text-dark);
+        }
+        .ruangan-card.selected .ruangan-nama { color: var(--p-pink); }
+
+        .ruangan-card.disabled {
+            opacity: 0.35;
+            pointer-events: none;
+            filter: grayscale(1);
+            cursor: not-allowed;
+            border-color: #e2e8f0 !important;
+            background: #f8fafc !important;
+        }
+        .ruangan-card.disabled .ruangan-nama { color: #94a3b8 !important; }
+        .ruangan-card.disabled:hover {
+            transform: none;
+            border-color: #e2e8f0 !important;
         }
 
-        /* Buttons */
+        .ruangan-filter-notice {
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            font-size: 0.85rem;
+            color: #92400e;
+            font-weight: 600;
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+        .ruangan-filter-notice.show { display: flex; }
+        .ruangan-filter-notice i { color: #f59e0b; font-size: 1.1rem; }
+
+        .durasi-info {
+            background: linear-gradient(135deg, var(--s-pink), var(--light-pink));
+            border: 2px solid var(--light-pink);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 24px;
+            display: none;
+        }
+        .durasi-info.active { display: block; }
+        .durasi-info .durasi-title {
+            font-weight: 800;
+            font-size: 1rem;
+            color: var(--p-pink);
+            margin-bottom: 8px;
+        }
+        .durasi-info .durasi-detail {
+            font-size: 0.9rem;
+            color: var(--text-dark);
+            font-weight: 600;
+        }
+        .durasi-info .durasi-hint {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px dashed var(--light-pink);
+        }
+
+        .jam-preview {
+            background: #f8fafc;
+            border-radius: 14px;
+            padding: 16px 20px;
+            display: none;
+            align-items: center;
+            gap: 16px;
+            margin-top: 12px;
+            border: 2px solid #e2e8f0;
+        }
+        .jam-preview.active { display: flex; }
+        .jam-preview-item { text-align: center; }
+        .jam-preview-item .jam-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .jam-preview-item .jam-value {
+            font-size: 1.3rem;
+            font-weight: 900;
+            color: var(--p-pink);
+        }
+        .jam-preview-arrow {
+            color: var(--text-muted);
+            font-size: 1.5rem;
+        }
+        .jam-preview-durasi {
+            margin-left: auto;
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 50px;
+            font-weight: 800;
+            font-size: 0.85rem;
+        }
+
+        .operating-hours {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: #ecfdf5;
+            color: #059669;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+        .operating-hours i { font-size: 1rem; }
+
+        .info-card {
+            background: linear-gradient(135deg, #FFF0F3, #FFF8F0);
+            border-radius: 16px;
+            padding: 16px 20px;
+            margin-bottom: 25px;
+            border: 1px solid rgba(255, 228, 233, 0.8);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .info-card i { font-size: 1.5rem; color: var(--p-pink); }
+        .info-card .info-text {
+            font-size: 0.85rem;
+            color: #4a5568;
+            font-weight: 600;
+            line-height: 1.5;
+        }
+        .info-card .info-text strong { color: var(--p-pink); }
+
         .btn-simpan {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
             color: #ffffff;
@@ -477,29 +759,16 @@ if (isset($_POST['simpan'])) {
             border-top: 2px solid #f1f5f9;
         }
 
-        /* Char Counter */
-        .char-counter {
-            font-size: 0.75rem;
-            color: #94a3b8;
-            text-align: right;
-            margin-top: 4px;
-            font-weight: 600;
-        }
-
-        /* Grid */
-        .form-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
+        input[type="radio"].card-radio { display: none; }
 
         @media (max-width: 992px) {
             .main-content { margin-left: 0; padding: 20px; }
             .sidebar { transform: translateX(-100%); }
-            .form-grid { grid-template-columns: 1fr; }
             .form-card { padding: 25px; }
             .btn-group-bottom { flex-direction: column; }
             .btn-simpan, .btn-kembali { width: 100%; justify-content: center; }
+            .paket-grid { grid-template-columns: repeat(2, 1fr); }
+            .ruangan-grid { grid-template-columns: repeat(2, 1fr); }
         }
 
         @keyframes fadeIn {
@@ -531,11 +800,11 @@ if (isset($_POST['simpan'])) {
                     <div class="submenu show" id="submenuMaster">
                         <ul class="list-unstyled">
                             <li><a href="../Pelanggan/list.php" class="submenu-link"><i class="bi bi-people-fill me-2"></i>Pelanggan</a></li>
-                            <li><a href="./list.php" class="submenu-link active"><i class="bi bi-camera-fill me-2"></i>Paket Foto</a></li>
+                            <li><a href="../Paket/list.php" class="submenu-link"><i class="bi bi-camera-fill me-2"></i>Paket Foto</a></li>
                             <li><a href="../Ruangan/list.php" class="submenu-link"><i class="bi bi-door-open-fill me-2"></i>Ruangan</a></li>
                             <li><a href="../Properti/list.php" class="submenu-link"><i class="bi bi-box-seam-fill me-2"></i>Properti</a></li>
                             <li><a href="../Tema Foto/list.php" class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
-                            <li><a href="../Jadwal Studio/list.php" class="submenu-link"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Studio</a></li>
+                            <li><a href="./list.php" class="submenu-link active"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Studio</a></li>
                             <li><a href="../Barang Cetak/list.php" class="submenu-link"><i class="bi bi-printer-fill me-2"></i>Barang Cetak</a></li>
                         </ul>
                     </div>
@@ -575,8 +844,8 @@ if (isset($_POST['simpan'])) {
         <!-- HEADER -->
         <div class="dashboard-header fade-in-up">
             <div>
-                <h3 class="fw-bold mb-1">Tambah Paket Foto</h3>
-                <p class="text-muted small mb-0">Lengkapi data layanan foto studio dengan akurat.</p>
+                <h3 class="fw-bold mb-1">Tambah Jadwal Studio</h3>
+                <p class="text-muted small mb-0">Buat slot jadwal baru dengan validasi paket & ruangan.</p>
             </div>
             <div class="d-flex align-items-center gap-3">
                 <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
@@ -591,6 +860,16 @@ if (isset($_POST['simpan'])) {
         <!-- FORM CARD -->
         <div class="form-card fade-in-up">
 
+            <!-- Info Card -->
+            <div class="info-card">
+                <i class="bi bi-info-circle-fill"></i>
+                <div class="info-text">
+                    <strong>Perhatian:</strong> Pilih <strong>Paket Foto</strong> terlebih dahulu. 
+                    Ruangan akan disesuaikan otomatis dengan paket yang dipilih. 
+                    Jam operasional: <strong>08:00 - 20:00</strong>.
+                </div>
+            </div>
+
             <?php if(isset($errors['general'])): ?>
                 <div class="alert-error">
                     <i class="bi bi-exclamation-octagon-fill"></i>
@@ -598,103 +877,160 @@ if (isset($_POST['simpan'])) {
                 </div>
             <?php endif; ?>
 
-            <form method="POST" enctype="multipart/form-data" id="formPaket">
+            <form method="POST" id="formJadwal">
 
-                <!-- Info Paket -->
+                <!-- STEP 1: PILIH PAKET FOTO -->
                 <div class="section-title">
-                    <i class="bi bi-info-circle-fill"></i>
-                    Informasi Paket
+                    <i class="bi bi-1-circle-fill"></i>
+                    Pilih Paket Foto <span class="text-danger">*</span>
+                </div>
+                <div class="paket-grid">
+                    <?php foreach ($paket_list as $paket): 
+                        $is_selected = (isset($_POST['id_paket']) && $_POST['id_paket'] == $paket['ID_Paket']);
+                    ?>
+                        <label class="paket-card <?= $is_selected ? 'selected' : '' ?>" 
+                               onclick="selectPaket(this, <?= $paket['ID_Paket'] ?>, <?= $paket['Durasi_Waktu'] ?>, '<?= htmlspecialchars($paket['Nama_Paket']) ?>', <?= $paket['Harga_Paket'] ?>)">
+                            <input type="radio" name="id_paket" value="<?= $paket['ID_Paket'] ?>" class="card-radio" <?= $is_selected ? 'checked' : '' ?>>
+                            <div class="paket-nama"><?= htmlspecialchars($paket['Nama_Paket']) ?></div>
+                            <div class="paket-durasi"><?= $paket['Durasi_Waktu'] ?> Menit</div>
+                            <div class="paket-harga">Rp <?= number_format($paket['Harga_Paket'], 0, ',', '.') ?></div>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <?php if(isset($errors['id_paket'])): ?>
+                    <span class="error-text"><?= $errors['id_paket'] ?></span>
+                <?php endif; ?>
+
+                <!-- Durasi Info Box -->
+                <div class="durasi-info" id="durasiInfo">
+                    <div class="durasi-title"><i class="bi bi-info-circle-fill"></i> Informasi Durasi</div>
+                    <div class="durasi-detail" id="durasiDetail"></div>
+                    <div class="durasi-hint" id="durasiHint"></div>
                 </div>
 
-                <!-- Nama Paket -->
-                <div class="mb-3">
-                    <label class="form-label-custom">Nama Paket <span class="text-danger">*</span></label>
-                    <input type="text" name="nama" id="inputNama" 
-                           class="form-input-custom <?= isset($errors['nama']) ? 'is-invalid' : '' ?>" 
-                           placeholder="Contoh: Premium Graduation" 
-                           value="<?= htmlspecialchars($old_values['nama'] ?? '') ?>" 
-                           maxlength="100" required>
-                    <?php if(isset($errors['nama'])): ?>
-                        <span class="error-text"><?= $errors['nama'] ?></span>
-                    <?php endif; ?>
-                    <div class="char-counter"><span id="countNama">0</span>/100</div>
+                <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 32px 0;">
+
+                <!-- STEP 2: PILIH RUANGAN -->
+                <div class="section-title">
+                    <i class="bi bi-2-circle-fill"></i>
+                    Pilih Ruangan <span class="text-danger">*</span>
                 </div>
 
-                <!-- Grid: Durasi & Harga -->
+                <!-- Filter Notice -->
+                <div class="ruangan-filter-notice" id="ruanganFilterNotice">
+                    <i class="bi bi-funnel-fill"></i>
+                    <span id="ruanganFilterText">Pilih paket foto terlebih dahulu untuk melihat ruangan yang tersedia.</span>
+                </div>
+
+                <div class="ruangan-grid" id="ruanganGrid">
+                    <?php foreach ($ruangan_list as $ruangan): 
+                        $is_selected = (isset($_POST['id_ruangan']) && $_POST['id_ruangan'] == $ruangan['ID_Ruangan']);
+                        $current_paket_id = isset($_POST['id_paket']) ? (int)$_POST['id_paket'] : 0;
+                        $valid_for_paket = true;
+                        if ($current_paket_id > 0) {
+                            $valid_for_paket = in_array((int)$ruangan['ID_Ruangan'], $paket_ruangan_map[$current_paket_id] ?? []);
+                        }
+                    ?>
+                        <label class="ruangan-card <?= $is_selected ? 'selected' : '' ?> <?= !$valid_for_paket ? 'disabled' : '' ?>" 
+                               data-ruangan-id="<?= $ruangan['ID_Ruangan'] ?>"
+                               onclick="selectRuangan(this, <?= $ruangan['ID_Ruangan'] ?>, '<?= htmlspecialchars($ruangan['Nama_Ruangan']) ?>')">
+                            <input type="radio" name="id_ruangan" value="<?= $ruangan['ID_Ruangan'] ?>" class="card-radio" <?= $is_selected ? 'checked' : '' ?>>
+                            <div class="ruangan-nama"><?= htmlspecialchars($ruangan['Nama_Ruangan']) ?></div>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <?php if(isset($errors['id_ruangan'])): ?>
+                    <span class="error-text"><?= $errors['id_ruangan'] ?></span>
+                <?php endif; ?>
+
+                <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 32px 0;">
+
+                <!-- STEP 3: TANGGAL & JAM -->
+                <div class="section-title">
+                    <i class="bi bi-3-circle-fill"></i>
+                    Tanggal & Waktu <span class="text-danger">*</span>
+                </div>
+
+                <div class="operating-hours">
+                    <i class="bi bi-clock"></i>
+                    Jam Operasional: 08:00 - 20:00 WIB
+                </div>
+
                 <div class="form-grid mb-3">
                     <div>
-                        <label class="form-label-custom">Durasi (Menit) <span class="text-danger">*</span></label>
-                        <input type="number" name="durasi" 
-                               class="form-input-custom <?= isset($errors['durasi']) ? 'is-invalid' : '' ?>" 
-                               placeholder="60" 
-                               value="<?= htmlspecialchars($old_values['durasi'] ?? '') ?>" 
-                               min="15" max="300" required>
-                        <?php if(isset($errors['durasi'])): ?>
-                            <span class="error-text"><?= $errors['durasi'] ?></span>
+                        <label class="form-label-custom">Tanggal Jadwal <span class="text-danger">*</span></label>
+                        <input type="date" name="tanggal_jadwal" 
+                               class="form-input-custom <?= isset($errors['tanggal_jadwal']) ? 'is-invalid' : '' ?>" 
+                               value="<?= htmlspecialchars($old_values['tanggal_jadwal'] ?? $tomorrow) ?>" 
+                               min="<?= date('Y-m-d') ?>" required>
+                        <?php if(isset($errors['tanggal_jadwal'])): ?>
+                            <span class="error-text"><?= $errors['tanggal_jadwal'] ?></span>
                         <?php endif; ?>
                     </div>
                     <div>
-                        <label class="form-label-custom">Harga (Rp) <span class="text-danger">*</span></label>
-                        <input type="number" name="harga" 
-                               class="form-input-custom <?= isset($errors['harga']) ? 'is-invalid' : '' ?>" 
-                               placeholder="450000" 
-                               value="<?= htmlspecialchars($old_values['harga'] ?? '') ?>" 
-                               min="10000" required>
-                        <?php if(isset($errors['harga'])): ?>
-                            <span class="error-text"><?= $errors['harga'] ?></span>
+                        <label class="form-label-custom">Jam Mulai <span class="text-danger">*</span></label>
+                        <input type="time" name="jam_mulai" 
+                               class="form-input-custom <?= isset($errors['jam_mulai']) ? 'is-invalid' : '' ?>" 
+                               value="<?= htmlspecialchars($old_values['jam_mulai'] ?? '09:00') ?>" 
+                               min="08:00" max="19:30" step="1800" required
+                               onchange="updateJamPreview()">
+                        <?php if(isset($errors['jam_mulai'])): ?>
+                            <span class="error-text"><?= $errors['jam_mulai'] ?></span>
                         <?php endif; ?>
-                    </div>
-                </div>
-
-                <!-- Kapasitas -->
-                <div class="mb-3">
-                    <label class="form-label-custom">Kapasitas Maksimal (Orang) <span class="text-danger">*</span></label>
-                    <input type="number" name="kapasitas" 
-                           class="form-input-custom <?= isset($errors['kapasitas']) ? 'is-invalid' : '' ?>" 
-                           placeholder="5" 
-                           value="<?= htmlspecialchars($old_values['kapasitas'] ?? '') ?>" 
-                           min="1" max="50" required>
-                    <?php if(isset($errors['kapasitas'])): ?>
-                        <span class="error-text"><?= $errors['kapasitas'] ?></span>
-                    <?php endif; ?>
-                </div>
-
-                <!-- Deskripsi -->
-                <div class="mb-4">
-                    <label class="form-label-custom">Deskripsi Layanan <span class="text-danger">*</span></label>
-                    <textarea name="deskripsi" id="inputDeskripsi" 
-                              class="form-input-custom <?= isset($errors['deskripsi']) ? 'is-invalid' : '' ?>" 
-                              rows="3" 
-                              placeholder="Jelaskan apa saja yang didapat pelanggan..." 
-                              maxlength="255" required><?= htmlspecialchars($old_values['deskripsi'] ?? '') ?></textarea>
-                    <?php if(isset($errors['deskripsi'])): ?>
-                        <span class="error-text"><?= $errors['deskripsi'] ?></span>
-                    <?php endif; ?>
-                    <div class="char-counter"><span id="countDeskripsi">0</span>/255</div>
-                </div>
-
-                <!-- Foto -->
-                <div class="section-title">
-                    <i class="bi bi-image-fill"></i>
-                    Foto Sampul Paket
-                </div>
-
-                <div class="mb-3">
-                    <div class="upload-area" id="uploadArea" onclick="document.getElementById('fotoInput').click()">
-                        <img id="previewImg" class="upload-preview" alt="Preview">
-                        <div class="upload-placeholder" id="placeholderText">
-                            <i class="bi bi-cloud-upload"></i>
-                            <div class="main-text">Klik untuk Upload Foto</div>
-                            <div class="sub-text">JPG, JPEG, PNG (Maksimal 2MB)</div>
+                        <div class="helper-text">
+                            <i class="bi bi-info-circle"></i>
+                            Pilih jam mulai, sistem akan menghitung jam selesai otomatis berdasarkan durasi paket.
                         </div>
                     </div>
-                    <input type="file" name="foto" id="fotoInput" 
-                           class="d-none" 
-                           accept="image/jpeg,image/jpg,image/png" 
-                           required>
-                    <?php if(isset($errors['foto'])): ?>
-                        <span class="error-text"><?= $errors['foto'] ?></span>
-                    <?php endif; ?>
+                </div>
+
+                <!-- Jam Preview -->
+                <div class="jam-preview" id="jamPreview">
+                    <div class="jam-preview-item">
+                        <div class="jam-label">Mulai</div>
+                        <div class="jam-value" id="previewMulai">--:--</div>
+                    </div>
+                    <div class="jam-preview-arrow"><i class="bi bi-arrow-right"></i></div>
+                    <div class="jam-preview-item">
+                        <div class="jam-label">Selesai</div>
+                        <div class="jam-value" id="previewSelesai">--:--</div>
+                    </div>
+                    <div class="jam-preview-durasi" id="previewDurasi">-- Menit</div>
+                </div>
+
+                <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 32px 0;">
+
+                <!-- STEP 4: STATUS & KETERANGAN -->
+                <div class="section-title">
+                    <i class="bi bi-4-circle-fill"></i>
+                    Status & Keterangan
+                </div>
+                <div class="form-grid mb-3">
+                    <div>
+                        <label class="form-label-custom">Status Jadwal</label>
+                        <select name="status_jadwal" class="form-input-custom">
+                            <option value="<?= STATUS_JADWAL_TERSEDIA ?>" <?= (!isset($old_values['status_jadwal']) || $old_values['status_jadwal'] == STATUS_JADWAL_TERSEDIA) ? 'selected' : '' ?>>
+                                🟢 Tersedia
+                            </option>
+                            <option value="<?= STATUS_JADWAL_MAINTENANCE ?>" <?= (isset($old_values['status_jadwal']) && $old_values['status_jadwal'] == STATUS_JADWAL_MAINTENANCE) ? 'selected' : '' ?>>
+                                🟠 Maintenance
+                            </option>
+                        </select>
+                        <div class="helper-text">
+                            <i class="bi bi-info-circle"></i>
+                            Status "Booked" akan otomatis saat ada order.
+                        </div>
+                    </div>
+                    <div>
+                        <label class="form-label-custom">Keterangan <span style="color: #94a3b8; font-weight: 500;">(opsional)</span></label>
+                        <input type="text" name="keterangan" class="form-input-custom" 
+                               value="<?= htmlspecialchars($old_values['keterangan'] ?? '') ?>"
+                               placeholder="Contoh: Slot Basic Studio A">
+                        <div class="helper-text">
+                            <i class="bi bi-magic"></i>
+                            Akan di-generate otomatis: "Slot [Paket] [Ruangan]"
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Buttons -->
@@ -703,7 +1039,7 @@ if (isset($_POST['simpan'])) {
                         <i class="bi bi-arrow-left"></i>Kembali
                     </a>
                     <button type="submit" name="simpan" class="btn-simpan">
-                        <i class="bi bi-check-circle-fill"></i>Simpan Paket
+                        <i class="bi bi-check-circle-fill"></i>Simpan Jadwal
                     </button>
                 </div>
 
@@ -714,7 +1050,21 @@ if (isset($_POST['simpan'])) {
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
     <script>
-        // Toggle Submenu
+        // =====================================================
+        // DATA MAPPING DARI PHP KE JAVASCRIPT
+        // =====================================================
+        const paketRuanganMap = <?= json_encode($paket_ruangan_map) ?>;
+        const paketDetailMap = <?= json_encode($paket_detail_map) ?>;
+
+        let selectedPaketId = <?= $selected_paket_id > 0 ? $selected_paket_id : 'null' ?>;
+        let selectedDurasi = <?= $selected_paket_durasi > 0 ? $selected_paket_durasi : 'null' ?>;
+        let selectedPaketNama = '<?= addslashes($selected_paket_nama) ?>';
+        let selectedRuanganId = <?= isset($old_values['id_ruangan']) ? (int)$old_values['id_ruangan'] : 'null' ?>;
+        let selectedRuanganNama = '';
+
+        // =====================================================
+        // TOGGLE SUBMENU
+        // =====================================================
         document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
             button.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -733,66 +1083,218 @@ if (isset($_POST['simpan'])) {
             });
         });
 
-        // Preview Foto
-        const fotoInput = document.getElementById('fotoInput');
-        const previewImg = document.getElementById('previewImg');
-        const placeholderText = document.getElementById('placeholderText');
-        const uploadArea = document.getElementById('uploadArea');
+        // =====================================================
+        // SELECT PAKET → FILTER RUANGAN
+        // =====================================================
+        function selectPaket(card, id, durasi, nama, harga) {
+            document.querySelectorAll('.paket-card').forEach(c => c.classList.remove('selected'));
+            document.querySelectorAll('.paket-card input').forEach(i => i.checked = false);
 
-        fotoInput.addEventListener('change', function() {
-            const [file] = this.files;
-            if (file) {
-                previewImg.src = URL.createObjectURL(file);
-                previewImg.style.display = 'block';
-                placeholderText.style.display = 'none';
-                uploadArea.classList.add('has-image');
+            card.classList.add('selected');
+            card.querySelector('input').checked = true;
+
+            selectedPaketId = id;
+            selectedDurasi = durasi;
+            selectedPaketNama = nama;
+
+            const durasiInfo = document.getElementById('durasiInfo');
+            const durasiDetail = document.getElementById('durasiDetail');
+            const durasiHint = document.getElementById('durasiHint');
+
+            durasiInfo.classList.add('active');
+            durasiDetail.innerHTML = 'Paket <strong>' + nama + '</strong> membutuhkan durasi <strong>' + durasi + ' menit</strong> per sesi.';
+
+            const maxStart = new Date();
+            maxStart.setHours(20, 0, 0, 0);
+            maxStart.setMinutes(maxStart.getMinutes() - durasi);
+            const maxStartStr = maxStart.toTimeString().slice(0, 5);
+            durasiHint.innerHTML = '<i class="bi bi-clock-history"></i> Jam mulai maksimal: <strong>' + maxStartStr + '</strong> (agar selesai sebelum 20:00)';
+
+            filterRuanganByPaket(id);
+            selectedRuanganId = null;
+            selectedRuanganNama = '';
+            updateJamPreview();
+        }
+
+        // =====================================================
+        // FILTER RUANGAN BERDASARKAN PAKET
+        // =====================================================
+        function filterRuanganByPaket(paketId) {
+            const ruanganGrid = document.getElementById('ruanganGrid');
+            const filterNotice = document.getElementById('ruanganFilterNotice');
+            const filterText = document.getElementById('ruanganFilterText');
+
+            if (!ruanganGrid) return;
+
+            const validRuanganIds = paketRuanganMap[paketId] || [];
+            const ruanganCards = ruanganGrid.querySelectorAll('.ruangan-card');
+
+            let validCount = 0;
+            let totalCount = ruanganCards.length;
+
+            ruanganCards.forEach(card => {
+                const ruanganId = parseInt(card.getAttribute('data-ruangan-id'));
+                const radio = card.querySelector('input[type="radio"]');
+
+                if (validRuanganIds.includes(ruanganId)) {
+                    card.classList.remove('disabled');
+                    card.style.opacity = '1';
+                    card.style.pointerEvents = 'auto';
+                    card.style.filter = 'none';
+                    validCount++;
+                } else {
+                    card.classList.add('disabled');
+                    card.style.opacity = '0.35';
+                    card.style.pointerEvents = 'none';
+                    card.style.filter = 'grayscale(1)';
+
+                    if (radio && radio.checked) {
+                        radio.checked = false;
+                        card.classList.remove('selected');
+                    }
+                }
+            });
+
+            if (filterNotice && filterText) {
+                filterNotice.classList.add('show');
+                if (validCount > 0) {
+                    filterText.innerHTML = 'Menampilkan <strong>' + validCount + ' dari ' + totalCount + '</strong> ruangan yang tersedia untuk paket <strong>' + selectedPaketNama + '</strong>.';
+                } else {
+                    filterText.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Tidak ada ruangan yang tersedia untuk paket <strong>' + selectedPaketNama + '</strong>.';
+                }
+            }
+        }
+
+        // =====================================================
+        // SELECT RUANGAN
+        // =====================================================
+        function selectRuangan(card, id, nama) {
+            if (card.classList.contains('disabled')) {
+                return;
+            }
+
+            document.querySelectorAll('.ruangan-card').forEach(c => c.classList.remove('selected'));
+            document.querySelectorAll('.ruangan-card input').forEach(i => i.checked = false);
+
+            card.classList.add('selected');
+            card.querySelector('input').checked = true;
+
+            selectedRuanganId = id;
+            selectedRuanganNama = nama;
+        }
+
+        // =====================================================
+        // UPDATE JAM PREVIEW
+        // =====================================================
+        function updateJamPreview() {
+            const jamMulai = document.querySelector('input[name="jam_mulai"]').value;
+            const jamPreview = document.getElementById('jamPreview');
+
+            if (!jamMulai || !selectedDurasi) {
+                jamPreview.classList.remove('active');
+                return;
+            }
+
+            const [hours, minutes] = jamMulai.split(':').map(Number);
+            const mulaiDate = new Date();
+            mulaiDate.setHours(hours, minutes, 0, 0);
+
+            const selesaiDate = new Date(mulaiDate.getTime() + selectedDurasi * 60000);
+
+            const mulaiStr = mulaiDate.toTimeString().slice(0, 5);
+            const selesaiStr = selesaiDate.toTimeString().slice(0, 5);
+
+            document.getElementById('previewMulai').textContent = mulaiStr;
+            document.getElementById('previewSelesai').textContent = selesaiStr;
+            document.getElementById('previewDurasi').textContent = selectedDurasi + ' Menit';
+
+            jamPreview.classList.add('active');
+        }
+
+        // =====================================================
+        // FORM VALIDATION BEFORE SUBMIT
+        // =====================================================
+        document.getElementById('formJadwal').addEventListener('submit', function(e) {
+            if (!selectedPaketId) {
+                e.preventDefault();
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Paket Belum Dipilih',
+                    text: 'Silakan pilih Paket Foto terlebih dahulu.',
+                    confirmButtonColor: '#D53D66'
+                });
+                return false;
+            }
+            if (!selectedRuanganId) {
+                e.preventDefault();
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Ruangan Belum Dipilih',
+                    text: 'Silakan pilih Ruangan terlebih dahulu.',
+                    confirmButtonColor: '#D53D66'
+                });
+                return false;
             }
         });
 
-        // Counter Nama
-        const inputNama = document.getElementById('inputNama');
-        const countNama = document.getElementById('countNama');
-        inputNama.addEventListener('input', function() {
-            countNama.textContent = this.value.length;
-        });
-        countNama.textContent = inputNama.value.length;
+        // =====================================================
+        // INITIALIZE ON PAGE LOAD
+        // =====================================================
+        window.addEventListener('load', function() {
+            const filterNotice = document.getElementById('ruanganFilterNotice');
 
-        // Counter Deskripsi
-        const inputDeskripsi = document.getElementById('inputDeskripsi');
-        const countDeskripsi = document.getElementById('countDeskripsi');
-        inputDeskripsi.addEventListener('input', function() {
-            countDeskripsi.textContent = this.value.length;
-        });
-        countDeskripsi.textContent = inputDeskripsi.value.length;
+            if (selectedPaketId && selectedDurasi) {
+                const durasiInfo = document.getElementById('durasiInfo');
+                const durasiDetail = document.getElementById('durasiDetail');
+                const durasiHint = document.getElementById('durasiHint');
+                durasiInfo.classList.add('active');
+                durasiDetail.innerHTML = 'Paket <strong>' + selectedPaketNama + '</strong> membutuhkan durasi <strong>' + selectedDurasi + ' menit</strong> per sesi.';
+                const maxStart = new Date();
+                maxStart.setHours(20, 0, 0, 0);
+                maxStart.setMinutes(maxStart.getMinutes() - selectedDurasi);
+                const maxStartStr = maxStart.toTimeString().slice(0, 5);
+                durasiHint.innerHTML = '<i class="bi bi-clock-history"></i> Jam mulai maksimal: <strong>' + maxStartStr + '</strong> (agar selesai sebelum 20:00)';
 
-        // Validasi Real-time: angka only
-        document.querySelectorAll('input[type="number"]').forEach(function(input) {
-            input.addEventListener('input', function() {
-                this.value = this.value.replace(/[^0-9]/g, '');
-            });
+                filterRuanganByPaket(selectedPaketId);
+            } else {
+                document.querySelectorAll('.ruangan-card').forEach(card => {
+                    card.classList.add('disabled');
+                });
+                if (filterNotice) {
+                    filterNotice.classList.add('show');
+                }
+            }
+
+            updateJamPreview();
         });
 
-        // Jam Real-Time
+        // =====================================================
+        // JAM REAL-TIME
+        // =====================================================
         function updateLiveClock() {
-            const now = new Date();
-            const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
-            const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-            const dayName = days[now.getDay()];
-            const day = now.getDate();
-            const monthName = months[now.getMonth()];
-            const year = now.getFullYear();
-            let hours = now.getHours();
-            let minutes = now.getMinutes();
-            let seconds = now.getSeconds();
+            var clockEl = document.getElementById('live-clock');
+            if (!clockEl) return;
+            var now = new Date();
+            var days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+            var months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+            var dayName = days[now.getDay()];
+            var day = now.getDate();
+            var monthName = months[now.getMonth()];
+            var year = now.getFullYear();
+            var hours = now.getHours();
+            var minutes = now.getMinutes();
+            var seconds = now.getSeconds();
             hours = hours < 10 ? '0' + hours : hours;
             minutes = minutes < 10 ? '0' + minutes : minutes;
             seconds = seconds < 10 ? '0' + seconds : seconds;
-            document.getElementById('live-clock').innerText = `${dayName}, ${day} ${monthName} ${year} - ${hours}:${minutes}:${seconds} WIB`;
+            clockEl.innerText = dayName + ', ' + day + ' ' + monthName + ' ' + year + ' - ' + hours + ':' + minutes + ':' + seconds + ' WIB';
         }
-        setInterval(updateLiveClock, 1000);
         updateLiveClock();
+        setInterval(updateLiveClock, 1000);
 
-        // Konfirmasi Logout
+        // =====================================================
+        // KONFIRMASI LOGOUT
+        // =====================================================
         function confirmLogout(e) {
             e.preventDefault();
             Swal.fire({
@@ -828,6 +1330,15 @@ if (isset($_POST['simpan'])) {
                 }
             });
         }
+
+        function bukaModalBiodata() {
+            Swal.fire({
+                title: '<?= htmlspecialchars($nama_admin) ?>',
+                text: 'Administrator - SpotLight Studio',
+                icon: 'info',
+                confirmButtonColor: '#D53D66'
+            });
+        }
     </script>
 
     <?php if($success): ?>
@@ -835,7 +1346,7 @@ if (isset($_POST['simpan'])) {
         Swal.fire({
             icon: 'success',
             title: 'Berhasil!',
-            text: 'Paket foto baru berhasil ditambahkan.',
+            text: 'Jadwal studio baru berhasil ditambahkan.',
             confirmButtonColor: '#D53D66',
             confirmButtonText: 'Oke'
         }).then(() => {

@@ -32,14 +32,17 @@ if (!$data) {
 }
 
 // =====================================================
-// PROSES TOGGLE STATUS (Soft Delete)
-// Status: 1 = Aktif, 0 = Nonaktif (INT, bukan string)
+// PROSES TOGGLE STATUS (Aktif / Nonaktif)
+// Status: 1 = Aktif, 0 = Nonaktif
 // =====================================================
 if ($aksi == 'toggle_status') {
     $new_status = $data['Status'] == 1 ? 0 : 1;
     $status_text = $new_status == 1 ? 'diaktifkan' : 'dinonaktifkan';
 
-    sqlsrv_query($conn, "BEGIN TRAN");
+    if (!sqlsrv_begin_transaction($conn)) {
+        header("Location: list.php?status_sukses=error&message=Gagal memulai transaksi");
+        exit();
+    }
 
     $sql = "UPDATE Paket_Foto SET 
         Status = ?,
@@ -51,82 +54,67 @@ if ($aksi == 'toggle_status') {
     $stmt = sqlsrv_query($conn, $sql, $params);
 
     if ($stmt) {
-        sqlsrv_query($conn, "COMMIT");
+        sqlsrv_commit($conn);
         header("Location: list.php?status_sukses=toggle_status&message=Paket berhasil " . $status_text);
         exit();
     } else {
-        sqlsrv_query($conn, "ROLLBACK");
+        sqlsrv_rollback($conn);
         header("Location: list.php?status_sukses=error&message=Gagal mengubah status paket");
         exit();
     }
 }
 
 // =====================================================
-// PROSES HARD DELETE (Hapus Permanen)
-// Cek relasi dulu, kalau ada → error (pakai soft delete)
-// Kalau tidak ada → Is_Deleted = 1 (soft delete logis)
+// PROSES HARD DELETE (Hapus Permanen dari Database)
 // =====================================================
 if ($aksi == 'hard_delete') {
     $relasi_found = false;
     $relasi_msg = "";
 
-    // Cek relasi di tabel Order (booking)
-    $sql_relasi1 = "SELECT COUNT(*) as total FROM [Order] WHERE ID_Paket = ?";
+    // Cek relasi ke Paket_Ruangan (junction table)
+    $sql_relasi1 = "SELECT COUNT(*) as total FROM Paket_Ruangan WHERE ID_Paket = ?";
     $stmt_relasi1 = sqlsrv_query($conn, $sql_relasi1, [$id]);
     if ($stmt_relasi1) {
         $relasi1 = sqlsrv_fetch_array($stmt_relasi1, SQLSRV_FETCH_ASSOC);
         if ($relasi1 && $relasi1['total'] > 0) {
             $relasi_found = true;
-            $relasi_msg = "Paket sudah pernah dipesan " . $relasi1['total'] . " kali. Gunakan fitur Nonaktifkan saja agar riwayat transaksi tetap aman.";
+            $relasi_msg = "Paket masih terhubung dengan " . $relasi1['total'] . " ruangan. Hapus relasi di Paket_Ruangan dulu, atau gunakan Nonaktifkan.";
         }
     }
 
-    // Cek relasi di tabel Pembayaran
+    // Cek relasi ke Order (transaksi)
     if (!$relasi_found) {
-        $sql_relasi2 = "SELECT COUNT(*) as total FROM Pembayaran WHERE ID_Paket = ?";
+        $sql_relasi2 = "SELECT COUNT(*) as total FROM [Order] WHERE ID_Paket = ? AND Status = 1 AND Status_Order <> 4";
         $stmt_relasi2 = sqlsrv_query($conn, $sql_relasi2, [$id]);
         if ($stmt_relasi2) {
             $relasi2 = sqlsrv_fetch_array($stmt_relasi2, SQLSRV_FETCH_ASSOC);
             if ($relasi2 && $relasi2['total'] > 0) {
                 $relasi_found = true;
-                $relasi_msg = "Paket sudah ada " . $relasi2['total'] . " pembayaran. Gunakan fitur Nonaktifkan saja.";
+                $relasi_msg = "Paket sudah digunakan dalam " . $relasi2['total'] . " order aktif. Gunakan fitur Nonaktifkan saja agar riwayat transaksi tetap aman.";
             }
         }
     }
 
-    // Cek relasi di tabel Sesi_Foto
+    // Cek relasi ke Jadwal_Studio (master jadwal)
     if (!$relasi_found) {
-        $sql_relasi3 = "SELECT COUNT(*) as total FROM Sesi_Foto WHERE ID_Paket = ?";
+        $sql_relasi3 = "SELECT COUNT(*) as total FROM Jadwal_Studio WHERE ID_Paket = ? AND Is_Deleted = 0";
         $stmt_relasi3 = sqlsrv_query($conn, $sql_relasi3, [$id]);
         if ($stmt_relasi3) {
             $relasi3 = sqlsrv_fetch_array($stmt_relasi3, SQLSRV_FETCH_ASSOC);
             if ($relasi3 && $relasi3['total'] > 0) {
                 $relasi_found = true;
-                $relasi_msg = "Paket sudah ada " . $relasi3['total'] . " sesi foto. Gunakan fitur Nonaktifkan saja.";
+                $relasi_msg = "Paket masih punya " . $relasi3['total'] . " slot jadwal di Jadwal_Studio. Hapus jadwal dulu, atau gunakan Nonaktifkan.";
             }
         }
     }
 
-    // Cek relasi di tabel Penjualan
-    if (!$relasi_found) {
-        $sql_relasi4 = "SELECT COUNT(*) as total FROM Penjualan WHERE ID_Paket = ?";
-        $stmt_relasi4 = sqlsrv_query($conn, $sql_relasi4, [$id]);
-        if ($stmt_relasi4) {
-            $relasi4 = sqlsrv_fetch_array($stmt_relasi4, SQLSRV_FETCH_ASSOC);
-            if ($relasi4 && $relasi4['total'] > 0) {
-                $relasi_found = true;
-                $relasi_msg = "Paket sudah ada " . $relasi4['total'] . " penjualan. Gunakan fitur Nonaktifkan saja.";
-            }
-        }
-    }
-
-    // Kalau ada relasi → error, pakai soft delete
+    // Kalau ada relasi -> tidak bisa hard delete, arahkan ke nonaktifkan
     if ($relasi_found) {
         header("Location: list.php?status_sukses=error&message=" . urlencode($relasi_msg));
         exit();
     }
 
-    // Kalau tidak ada relasi → hapus foto + soft delete (Is_Deleted = 1)
+    // TRUE HARD DELETE - hapus permanen dari database
     $foto_paket = $data['Foto_Paket'] ?? 'default_paket.jpg';
     $upload_dir = "../../assets/img/paket/";
 
@@ -135,26 +123,22 @@ if ($aksi == 'hard_delete') {
         unlink($upload_dir . $foto_paket);
     }
 
-    // Soft delete: update Is_Deleted = 1 (lebih aman daripada DELETE permanen)
-    sqlsrv_query($conn, "BEGIN TRAN");
+    if (!sqlsrv_begin_transaction($conn)) {
+        header("Location: list.php?status_sukses=error&message=Gagal memulai transaksi");
+        exit();
+    }
 
-    $sql = "UPDATE Paket_Foto SET 
-        Is_Deleted = 1,
-        Status = 0,
-        Deleted_By = ?,
-        Deleted_Date = GETDATE()
-        WHERE ID_Paket = ?";
-
-    $params = [$nama_admin, $id];
+    $sql = "DELETE FROM Paket_Foto WHERE ID_Paket = ?";
+    $params = [$id];
     $stmt = sqlsrv_query($conn, $sql, $params);
 
     if ($stmt) {
-        sqlsrv_query($conn, "COMMIT");
-        header("Location: list.php?status_sukses=hard_delete&message=Paket berhasil dihapus permanen");
+        sqlsrv_commit($conn);
+        header("Location: list.php?status_sukses=hard_delete&message=Paket berhasil dihapus PERMANEN dari database");
         exit();
     } else {
-        sqlsrv_query($conn, "ROLLBACK");
-        header("Location: list.php?status_sukses=error&message=Gagal menghapus paket");
+        sqlsrv_rollback($conn);
+        header("Location: list.php?status_sukses=error&message=Gagal menghapus paket permanen");
         exit();
     }
 }

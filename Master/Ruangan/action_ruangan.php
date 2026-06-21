@@ -2,7 +2,6 @@
 session_start();
 include '../../koneksi.php';
 
-// --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Admin') {
     header("Location: ../../login.php");
     exit();
@@ -11,16 +10,9 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 $nama_admin = $_SESSION['nama'] ?? 'Administrator';
 
-// =====================================================
-// HELPER FUNCTIONS
-// =====================================================
 function safe_sqlsrv_fetch($conn, $sql, $params = []) {
     $stmt = sqlsrv_query($conn, $sql, $params);
-    if ($stmt === false) {
-        $errors = sqlsrv_errors();
-        error_log("[safe_sqlsrv_fetch] SQL Error: " . ($errors ? json_encode($errors) : 'Unknown error'));
-        return null;
-    }
+    if ($stmt === false) return null;
     $result = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
     sqlsrv_free_stmt($stmt);
     return $result;
@@ -28,19 +20,12 @@ function safe_sqlsrv_fetch($conn, $sql, $params = []) {
 
 function safe_sqlsrv_count($conn, $sql, $params = []) {
     $stmt = sqlsrv_query($conn, $sql, $params);
-    if ($stmt === false) {
-        $errors = sqlsrv_errors();
-        error_log("[safe_sqlsrv_count] SQL Error: " . ($errors ? json_encode($errors) : 'Unknown error'));
-        return 0;
-    }
+    if ($stmt === false) return 0;
     $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
     sqlsrv_free_stmt($stmt);
     return $row['total'] ?? 0;
 }
 
-// =====================================================
-// AMBIL PARAMETER
-// =====================================================
 $aksi = isset($_GET['aksi']) ? trim($_GET['aksi']) : '';
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
@@ -49,9 +34,6 @@ if ($id <= 0 || empty($aksi)) {
     exit();
 }
 
-// =====================================================
-// AMBIL DATA RUANGAN
-// =====================================================
 $ruangan = safe_sqlsrv_fetch($conn, 
     "SELECT ID_Ruangan, Nama_Ruangan, Foto_Ruangan, Status, Is_Deleted FROM Ruangan WHERE ID_Ruangan = ?", 
     [$id]
@@ -62,21 +44,16 @@ if (!$ruangan) {
     exit();
 }
 
-// =====================================================
-// 1. TOGGLE STATUS (Aktif/Nonaktif)
-// =====================================================
+// 1. TOGGLE STATUS
 if ($aksi == 'toggle_status') {
-    
-    // Kalau sudah soft delete, tidak bisa toggle
     if ($ruangan['Is_Deleted'] == 1) {
-        header("Location: list.php?status_sukses=error&message=Ruangan sudah dihapus, restore dulu untuk mengubah status");
+        header("Location: list.php?status_sukses=error&message=Ruangan sudah dihapus, restore dulu");
         exit();
     }
 
     $current_status = (int)($ruangan['Status'] ?? 1);
     $new_status = $current_status === 1 ? 0 : 1;
 
-    // Cek order aktif sebelum nonaktifkan
     if ($new_status === 0) {
         $cek_order = safe_sqlsrv_count($conn,
             "SELECT COUNT(*) as total FROM [Order] 
@@ -94,7 +71,7 @@ if ($aksi == 'toggle_status') {
     $stmt = sqlsrv_query($conn, $sql, $params);
 
     if ($stmt === false) {
-        header("Location: list.php?status_sukses=error&message=Gagal mengubah status: " . json_encode(sqlsrv_errors()));
+        header("Location: list.php?status_sukses=error&message=Gagal mengubah status");
         exit();
     }
     sqlsrv_free_stmt($stmt);
@@ -104,12 +81,8 @@ if ($aksi == 'toggle_status') {
     exit();
 }
 
-// =====================================================
-// 2. SOFT DELETE (Hapus - bisa di-restore)
-// =====================================================
+// 2. SOFT DELETE
 if ($aksi == 'soft_delete') {
-    
-    // Kalau sudah soft delete, kasih tau user
     if ($ruangan['Is_Deleted'] == 1) {
         header("Location: list.php?status_sukses=error&message=Ruangan sudah dihapus sebelumnya");
         exit();
@@ -117,29 +90,26 @@ if ($aksi == 'soft_delete') {
 
     $error_relasi = [];
 
-    // Cek order aktif (Status_Order: 0=Menunggu DP, 1=DP Terverifikasi, 2=Sesi Foto)
     $cek_order = safe_sqlsrv_count($conn,
         "SELECT COUNT(*) as total FROM [Order] 
          WHERE ID_Ruangan = ? AND Status = 1 AND Status_Order IN (0, 1, 2)",
         [$id]
     );
     if ($cek_order > 0) {
-        $error_relasi[] = "{$cek_order} order aktif (menunggu DP / DP terverifikasi / sesi foto)";
+        $error_relasi[] = "{$cek_order} order aktif";
     }
 
-    // Cek jadwal TERPESAN (Status_Jadwal=2) di masa depan
     $cek_jadwal = safe_sqlsrv_count($conn,
         "SELECT COUNT(*) as total FROM Jadwal_Studio 
          WHERE ID_Ruangan = ? AND Status = 1 AND Is_Deleted = 0 
          AND Tanggal_Jadwal >= CAST(GETDATE() AS DATE) 
-         AND Status_Jadwal = 2",
+         AND Status_Jadwal = 1",
         [$id]
     );
     if ($cek_jadwal > 0) {
-        $error_relasi[] = "{$cek_jadwal} jadwal terpesan di masa depan";
+        $error_relasi[] = "{$cek_jadwal} jadwal booked di masa depan";
     }
 
-    // Cek properti aktif
     $cek_properti = safe_sqlsrv_count($conn,
         "SELECT COUNT(*) as total FROM Properti 
          WHERE ID_Ruangan = ? AND Status = 1 AND Is_Deleted = 0",
@@ -149,15 +119,12 @@ if ($aksi == 'soft_delete') {
         $error_relasi[] = "{$cek_properti} properti aktif";
     }
 
-    // Jika ada relasi aktif
     if (!empty($error_relasi)) {
-        $error_msg = "Ruangan tidak bisa dihapus karena masih memiliki: " . implode(", ", $error_relasi) . ". Selesaikan atau batalkan terlebih dahulu.";
+        $error_msg = "Ruangan tidak bisa dihapus karena masih memiliki: " . implode(", ", $error_relasi);
         header("Location: list.php?status_sukses=error&message=" . urlencode($error_msg));
         exit();
     }
 
-    // Soft delete: hanya flag Is_Deleted = 1
-    // JANGAN hapus relasi, JANGAN hapus foto
     $sql_soft = "UPDATE Ruangan SET 
         Is_Deleted = 1, 
         Status = 0, 
@@ -167,7 +134,7 @@ if ($aksi == 'soft_delete') {
     $stmt = sqlsrv_query($conn, $sql_soft, [$nama_admin, $id]);
 
     if ($stmt === false) {
-        header("Location: list.php?status_sukses=error&message=Gagal menghapus ruangan: " . json_encode(sqlsrv_errors()));
+        header("Location: list.php?status_sukses=error&message=Gagal menghapus ruangan");
         exit();
     }
     sqlsrv_free_stmt($stmt);
@@ -176,14 +143,10 @@ if ($aksi == 'soft_delete') {
     exit();
 }
 
-// =====================================================
-// 3. RESTORE (Kembalikan data yang dihapus)
-// =====================================================
+// 3. RESTORE
 if ($aksi == 'restore') {
-    
-    // Hanya bisa restore kalau sudah soft delete
     if ($ruangan['Is_Deleted'] == 0) {
-        header("Location: list.php?status_sukses=error&message=Ruangan masih aktif, tidak perlu di-restore");
+        header("Location: list.php?status_sukses=error&message=Ruangan masih aktif");
         exit();
     }
 
@@ -198,7 +161,7 @@ if ($aksi == 'restore') {
     $stmt = sqlsrv_query($conn, $sql_restore, [$nama_admin, $id]);
 
     if ($stmt === false) {
-        header("Location: list.php?status_sukses=error&message=Gagal mengembalikan ruangan: " . json_encode(sqlsrv_errors()));
+        header("Location: list.php?status_sukses=error&message=Gagal mengembalikan ruangan");
         exit();
     }
     sqlsrv_free_stmt($stmt);
@@ -207,28 +170,22 @@ if ($aksi == 'restore') {
     exit();
 }
 
-// =====================================================
-// 4. HARD DELETE (Hapus permanen - hanya untuk sudah soft delete)
-// =====================================================
+// 4. HARD DELETE
 if ($aksi == 'hard_delete') {
-    
-    // Hanya bisa hard delete kalau sudah soft delete
     if ($ruangan['Is_Deleted'] == 0) {
-        header("Location: list.php?status_sukses=error&message=Ruangan harus dihapus terlebih dahulu sebelum dihapus permanen");
+        header("Location: list.php?status_sukses=error&message=Ruangan harus dihapus dulu sebelum hapus permanen");
         exit();
     }
 
-    // Double check: masih ada order?
     $cek_order = safe_sqlsrv_count($conn,
         "SELECT COUNT(*) as total FROM [Order] WHERE ID_Ruangan = ? AND Status = 1",
         [$id]
     );
     if ($cek_order > 0) {
-        header("Location: list.php?status_sukses=error&message=Masih ada {$cek_order} order terkait, tidak bisa hapus permanen");
+        header("Location: list.php?status_sukses=error&message=Masih ada {$cek_order} order terkait");
         exit();
     }
 
-    // Begin transaction
     $begin_result = sqlsrv_begin_transaction($conn);
     if ($begin_result === false) {
         header("Location: list.php?status_sukses=error&message=Gagal memulai transaksi");
@@ -236,37 +193,31 @@ if ($aksi == 'hard_delete') {
     }
 
     try {
-        // 1. Hapus relasi Paket_Ruangan
         $sql1 = "DELETE FROM Paket_Ruangan WHERE ID_Ruangan = ?";
         $stmt1 = sqlsrv_query($conn, $sql1, [$id]);
-        if ($stmt1 === false) throw new Exception("Gagal hapus relasi paket: " . json_encode(sqlsrv_errors()));
+        if ($stmt1 === false) throw new Exception("Gagal hapus relasi paket");
         sqlsrv_free_stmt($stmt1);
 
-        // 2. Hapus relasi Ruangan_Tema
         $sql2 = "DELETE FROM Ruangan_Tema WHERE ID_Ruangan = ?";
         $stmt2 = sqlsrv_query($conn, $sql2, [$id]);
-        if ($stmt2 === false) throw new Exception("Gagal hapus relasi tema: " . json_encode(sqlsrv_errors()));
+        if ($stmt2 === false) throw new Exception("Gagal hapus relasi tema");
         sqlsrv_free_stmt($stmt2);
 
-        // 3. Lepas properti dari ruangan (ID_Ruangan = NULL)
-        $sql3 = "UPDATE Properti SET ID_Ruangan = NULL, Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Ruangan = ?";
+        $sql3 = "UPDATE Properti SET Is_Deleted = 1, Status = 0, Deleted_By = ?, Deleted_Date = GETDATE() WHERE ID_Ruangan = ?";
         $stmt3 = sqlsrv_query($conn, $sql3, [$nama_admin, $id]);
-        if ($stmt3 === false) throw new Exception("Gagal update properti: " . json_encode(sqlsrv_errors()));
+        if ($stmt3 === false) throw new Exception("Gagal soft delete properti");
         sqlsrv_free_stmt($stmt3);
 
-        // 4. Hapus jadwal yang belum terpesan
-        $sql4 = "DELETE FROM Jadwal_Studio WHERE ID_Ruangan = ? AND Status_Jadwal <> 2";
+        $sql4 = "DELETE FROM Jadwal_Studio WHERE ID_Ruangan = ? AND Status_Jadwal <> 1";
         $stmt4 = sqlsrv_query($conn, $sql4, [$id]);
-        if ($stmt4 === false) throw new Exception("Gagal hapus jadwal: " . json_encode(sqlsrv_errors()));
+        if ($stmt4 === false) throw new Exception("Gagal hapus jadwal");
         sqlsrv_free_stmt($stmt4);
 
-        // 5. Hard delete ruangan
         $sql5 = "DELETE FROM Ruangan WHERE ID_Ruangan = ?";
         $stmt5 = sqlsrv_query($conn, $sql5, [$id]);
-        if ($stmt5 === false) throw new Exception("Gagal hapus ruangan: " . json_encode(sqlsrv_errors()));
+        if ($stmt5 === false) throw new Exception("Gagal hapus ruangan");
         sqlsrv_free_stmt($stmt5);
 
-        // 6. Hapus foto dari server
         $foto = $ruangan['Foto_Ruangan'] ?? '';
         if (!empty($foto) && $foto != 'default_ruangan.jpg' && $foto != 'default.jpg') {
             $foto_path = "../../assets/img/ruangan/" . $foto;
@@ -275,7 +226,6 @@ if ($aksi == 'hard_delete') {
             }
         }
 
-        // Commit
         $commit_result = sqlsrv_commit($conn);
         if ($commit_result === false) throw new Exception("Gagal commit transaksi");
 
@@ -289,8 +239,5 @@ if ($aksi == 'hard_delete') {
     }
 }
 
-// =====================================================
-// AKSI TIDAK VALID
-// =====================================================
 header("Location: list.php?status_sukses=error&message=Aksi tidak valid");
 exit();
