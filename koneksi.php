@@ -1,5 +1,5 @@
 <?php
-$serverName = "LAPTOP-EEPS0DEJ\ALSQLSERVER";
+$serverName = "SATYAA\SATYASERVER";
 $connectionOptions = array(
     "Database" => "SpotLight",
     "TrustServerCertificate" => true

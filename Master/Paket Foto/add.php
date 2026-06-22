@@ -293,12 +293,12 @@ if (isset($_POST['simpan'])) {
         .section-title i { color: var(--p-pink); font-size: 1.2rem; }
 
         .form-label-custom {
-            font-weight: 800;
+            font-weight: 700;
             font-size: 0.75rem;
-            color: #94a3b8;
+            color: #1a202c;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 8px;
+            letter-spacing: 0.8px;
+            margin-bottom: 10px;
             display: block;
         }
 

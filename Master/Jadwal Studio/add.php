@@ -248,7 +248,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 .form-card{background:#fff;border-radius:24px;border:1px solid rgba(255,228,233,0.8);box-shadow:0 8px 24px rgba(213,61,102,0.03);padding:40px;max-width:900px;margin:0 auto}
 .section-title{font-weight:800;font-size:1rem;color:var(--text-dark);margin-bottom:20px;display:flex;align-items:center;gap:10px}
 .section-title i{color:var(--p-pink);font-size:1.2rem}
-.form-label-custom{font-weight:800;font-size:0.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;display:block}
+.form-label-custom{font-weight:700;font-size:0.75rem;color:#1a202c;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;display:block}
 .form-input-custom{width:100%;border-radius:14px;padding:14px 18px;border:2px solid #e2e8f0;background:#f8fafc;font-weight:600;font-size:0.9rem;color:var(--text-dark);transition:var(--t);font-family:'Plus Jakarta Sans',sans-serif}
 .form-input-custom:focus{outline:none;border-color:var(--p-pink);background:#fff;box-shadow:0 0 0 4px rgba(213,61,102,0.08)}
 .form-input-custom.is-invalid{border-color:#ef4444;background:#fef2f2}
