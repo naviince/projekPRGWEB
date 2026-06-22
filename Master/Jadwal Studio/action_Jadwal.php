@@ -1,13 +1,8 @@
 <?php
-ob_start();
 session_start();
 include '../../koneksi.php';
 
-define('STATUS_JADWAL_TERSEDIA', 0);
-define('STATUS_JADWAL_BOOKED', 1);
-define('STATUS_JADWAL_MAINTENANCE', 2);
-define('STATUS_DATA_AKTIF', 1);
-
+// --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Admin') {
     header("Location: ../../login.php");
     exit();
@@ -16,148 +11,188 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 $nama_admin = $_SESSION['nama'] ?? 'Administrator';
 
-function safe_sqlsrv_fetch($conn, $sql, $params = []) {
-    $stmt = sqlsrv_query($conn, $sql, $params);
-    if ($stmt === false) {
-        error_log("[safe_sqlsrv_fetch] SQL Error: " . json_encode(sqlsrv_errors()));
-        return null;
-    }
-    $result = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
-    sqlsrv_free_stmt($stmt);
-    return $result;
-}
-
-function safe_sqlsrv_count($conn, $sql, $params = []) {
-    $stmt = sqlsrv_query($conn, $sql, $params);
-    if ($stmt === false) {
-        error_log("[safe_sqlsrv_count] SQL Error: " . json_encode(sqlsrv_errors()));
-        return 0;
-    }
-    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
-    sqlsrv_free_stmt($stmt);
-    return $row['total'] ?? 0;
-}
-
-function safe_sqlsrv_execute($conn, $sql, $params = []) {
-    $stmt = sqlsrv_query($conn, $sql, $params);
-    if ($stmt === false) {
-        error_log("[safe_sqlsrv_execute] SQL Error: " . json_encode(sqlsrv_errors()));
-        return false;
-    }
-    sqlsrv_free_stmt($stmt);
-    return true;
-}
-
-$aksi = isset($_GET['aksi']) ? trim($_GET['aksi']) : '';
+$aksi = isset($_GET['aksi']) ? $_GET['aksi'] : '';
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
-if ($id <= 0 || empty($aksi)) {
-    header("Location: list.php?status_sukses=error&message=" . urlencode("Parameter tidak valid"));
+if ($id <= 0) {
+    header("Location: list.php?status_sukses=error&message=ID+tidak+valid");
     exit();
 }
 
-$jadwal = safe_sqlsrv_fetch($conn,
-    "SELECT j.*, r.Nama_Ruangan FROM Jadwal_Studio j INNER JOIN Ruangan r ON j.ID_Ruangan = r.ID_Ruangan WHERE j.ID_Jadwal = ?",
-    [$id]
-);
+// =====================================================
+// TOGGLE SOFT DELETE (Aktif/Nonaktif via Is_Deleted)
+// =====================================================
+if ($aksi === 'toggle_soft_delete') {
+    $new_active = isset($_GET['active']) ? (int)$_GET['active'] : 0;
 
-if (!$jadwal) {
-    header("Location: list.php?status_sukses=error&message=" . urlencode("Jadwal tidak ditemukan"));
+    // Validate: active can only be 0 or 1
+    if (!in_array($new_active, [0, 1])) {
+        header("Location: list.php?status_sukses=error&message=Status+tidak+valid");
+        exit();
+    }
+
+    // Check if jadwal exists
+    $cek_sql = "SELECT ID_Jadwal, Is_Deleted, Status, Status_Jadwal FROM Jadwal_Studio WHERE ID_Jadwal = ?";
+    $cek_stmt = sqlsrv_query($conn, $cek_sql, [$id]);
+
+    if ($cek_stmt === false || !sqlsrv_has_rows($cek_stmt)) {
+        header("Location: list.php?status_sukses=error&message=Jadwal+tidak+ditemukan");
+        exit();
+    }
+
+    $current = sqlsrv_fetch_array($cek_stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($cek_stmt);
+
+    // If trying to activate (set Is_Deleted=0, Status=1)
+    if ($new_active === 1) {
+        // Check for overlap with existing active schedules
+        // Get the schedule details first
+        $detail_sql = "SELECT ID_Ruangan, Tanggal_Jadwal, Jam_Mulai, Jam_Selesai 
+                       FROM Jadwal_Studio WHERE ID_Jadwal = ?";
+        $detail_stmt = sqlsrv_query($conn, $detail_sql, [$id]);
+        $detail = sqlsrv_fetch_array($detail_stmt, SQLSRV_FETCH_ASSOC);
+        sqlsrv_free_stmt($detail_stmt);
+
+        if ($detail) {
+            $tanggal = $detail['Tanggal_Jadwal'];
+            if ($tanggal instanceof DateTime) {
+                $tanggal = $tanggal->format('Y-m-d');
+            }
+            $jam_mulai = $detail['Jam_Mulai'];
+            if ($jam_mulai instanceof DateTime) {
+                $jam_mulai = $jam_mulai->format('H:i:s');
+            }
+            $jam_selesai = $detail['Jam_Selesai'];
+            if ($jam_selesai instanceof DateTime) {
+                $jam_selesai = $jam_selesai->format('H:i:s');
+            }
+
+            // Check overlap with other active schedules in same room
+            $overlap_sql = "SELECT COUNT(*) as total FROM Jadwal_Studio 
+                            WHERE ID_Ruangan = ? 
+                              AND Tanggal_Jadwal = ?
+                              AND ID_Jadwal <> ?
+                              AND Is_Deleted = 0 
+                              AND Status = 1
+                              AND (
+                                  (Jam_Mulai < ? AND Jam_Selesai > ?) OR
+                                  (Jam_Mulai >= ? AND Jam_Mulai < ?) OR
+                                  (Jam_Selesai > ? AND Jam_Selesai <= ?)
+                              )";
+            $overlap_stmt = sqlsrv_query($conn, $overlap_sql, [
+                $detail['ID_Ruangan'], $tanggal, $id,
+                $jam_selesai, $jam_mulai,
+                $jam_mulai, $jam_selesai,
+                $jam_mulai, $jam_selesai
+            ]);
+
+            if ($overlap_stmt !== false) {
+                $overlap_row = sqlsrv_fetch_array($overlap_stmt, SQLSRV_FETCH_ASSOC);
+                if (($overlap_row['total'] ?? 0) > 0) {
+                    sqlsrv_free_stmt($overlap_stmt);
+                    header("Location: list.php?status_sukses=error&message=Jadwal+bertabrakan+dengan+slot+lain");
+                    exit();
+                }
+                sqlsrv_free_stmt($overlap_stmt);
+            }
+        }
+
+        // Activate: set Is_Deleted=0, Status=1
+        $update_sql = "UPDATE Jadwal_Studio 
+                       SET Is_Deleted = 0, 
+                           Status = 1,
+                           Modified_By = ?, 
+                           Modified_Date = GETDATE() 
+                       WHERE ID_Jadwal = ?";
+        $params = [$nama_admin, $id];
+    } else {
+        // Deactivate (soft delete): set Is_Deleted=1, Status=0
+        // But first check if it's currently booked (Status_Jadwal = 1)
+        if ((int)$current['Status_Jadwal'] === 1) {
+            header("Location: list.php?status_sukses=error&message=Jadwal+sudah+dibooking+tidak+bisa+nonaktifkan");
+            exit();
+        }
+
+        $update_sql = "UPDATE Jadwal_Studio 
+                       SET Is_Deleted = 1, 
+                           Status = 0,
+                           Deleted_By = ?, 
+                           Deleted_Date = GETDATE() 
+                       WHERE ID_Jadwal = ?";
+        $params = [$nama_admin, $id];
+    }
+
+    $update_stmt = sqlsrv_query($conn, $update_sql, $params);
+
+    if ($update_stmt) {
+        sqlsrv_free_stmt($update_stmt);
+        header("Location: list.php?status_sukses=toggle_soft_delete");
+        exit();
+    } else {
+        header("Location: list.php?status_sukses=error&message=Gagal+ubah+status");
+        exit();
+    }
+}
+
+// =====================================================
+// HARD DELETE (Permanent - only if already soft deleted)
+// =====================================================
+elseif ($aksi === 'hard_delete') {
+    // Only allow hard delete if already soft deleted
+    $cek_sql = "SELECT Is_Deleted, Status_Jadwal FROM Jadwal_Studio WHERE ID_Jadwal = ?";
+    $cek_stmt = sqlsrv_query($conn, $cek_sql, [$id]);
+
+    if ($cek_stmt === false || !sqlsrv_has_rows($cek_stmt)) {
+        header("Location: list.php?status_sukses=error&message=Jadwal+tidak+ditemukan");
+        exit();
+    }
+
+    $current = sqlsrv_fetch_array($cek_stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($cek_stmt);
+
+    // Prevent hard delete if not soft deleted first
+    if ($current['Is_Deleted'] == 0) {
+        header("Location: list.php?status_sukses=error&message=Nonaktifkan+terlebih+dahulu+sebelum+hapus+permanen");
+        exit();
+    }
+
+    // Prevent hard delete if booked
+    if ((int)$current['Status_Jadwal'] === 1) {
+        header("Location: list.php?status_sukses=error&message=Jadwal+sudah+dibooking+tidak+bisa+dihapus");
+        exit();
+    }
+
+    // Check if referenced by Order table
+    $ref_sql = "SELECT COUNT(*) as total FROM [Order] WHERE ID_Jadwal = ? AND Status = 1 AND Status_Order <> 4";
+    $ref_stmt = sqlsrv_query($conn, $ref_sql, [$id]);
+
+    if ($ref_stmt !== false) {
+        $ref_row = sqlsrv_fetch_array($ref_stmt, SQLSRV_FETCH_ASSOC);
+        if (($ref_row['total'] ?? 0) > 0) {
+            sqlsrv_free_stmt($ref_stmt);
+            header("Location: list.php?status_sukses=error&message=Jadwal+masih+terhubung+dengan+order");
+            exit();
+        }
+        sqlsrv_free_stmt($ref_stmt);
+    }
+
+    // Hard delete
+    $delete_sql = "DELETE FROM Jadwal_Studio WHERE ID_Jadwal = ? AND Is_Deleted = 1";
+    $delete_stmt = sqlsrv_query($conn, $delete_sql, [$id]);
+
+    if ($delete_stmt) {
+        sqlsrv_free_stmt($delete_stmt);
+        header("Location: list.php?status_sukses=hard_delete");
+        exit();
+    } else {
+        header("Location: list.php?status_sukses=error&message=Gagal+hapus+permanen");
+        exit();
+    }
+}
+
+// Invalid action
+else {
+    header("Location: list.php?status_sukses=error&message=Aksi+tidak+valid");
     exit();
 }
-
-// 1. TOGGLE STATUS (Tersedia <-> Maintenance)
-if ($aksi == 'toggle_status') {
-    $current_status = (int)($jadwal['Status_Jadwal'] ?? STATUS_JADWAL_TERSEDIA);
-    if ($current_status == STATUS_JADWAL_BOOKED) {
-        header("Location: list.php?status_sukses=error&message=" . urlencode("Jadwal sedang booked, tidak bisa diubah status. Selesaikan order terlebih dahulu."));
-        exit();
-    }
-    $new_status = ($current_status == STATUS_JADWAL_TERSEDIA) ? STATUS_JADWAL_MAINTENANCE : STATUS_JADWAL_TERSEDIA;
-    $sql = "UPDATE Jadwal_Studio SET Status_Jadwal = ?, Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Jadwal = ?";
-    $params = [$new_status, $nama_admin, $id];
-    if (!safe_sqlsrv_execute($conn, $sql, $params)) {
-        header("Location: list.php?status_sukses=error&message=" . urlencode("Gagal mengubah status jadwal"));
-        exit();
-    }
-    $status_label = ($new_status == STATUS_JADWAL_TERSEDIA) ? 'tersedia' : 'maintenance';
-    header("Location: list.php?status_sukses=toggle_status&message=" . urlencode("Jadwal berhasil diubah menjadi {$status_label}"));
-    exit();
-}
-
-// 2. SOFT DELETE
-if ($aksi == 'soft_delete') {
-    if ($jadwal['Is_Deleted'] == 1) {
-        header("Location: list.php?status_sukses=error&message=" . urlencode("Jadwal sudah dihapus sebelumnya"));
-        exit();
-    }
-    if ((int)$jadwal['Status_Jadwal'] == STATUS_JADWAL_BOOKED) {
-        header("Location: list.php?status_sukses=error&message=" . urlencode("Jadwal sedang booked, tidak bisa dihapus. Selesaikan order terlebih dahulu."));
-        exit();
-    }
-    $cek_order = safe_sqlsrv_count($conn,
-        "SELECT COUNT(*) as total FROM [Order] WHERE ID_Jadwal = ? AND Status = ? AND Status_Order NOT IN (3, 4)",
-        [$id, STATUS_DATA_AKTIF]
-    );
-    if ($cek_order > 0) {
-        header("Location: list.php?status_sukses=error&message=" . urlencode("Jadwal masih terhubung dengan {$cek_order} order aktif"));
-        exit();
-    }
-    $sql = "UPDATE Jadwal_Studio SET Is_Deleted = 1, Status = 0, Status_Jadwal = 0, Deleted_By = ?, Deleted_Date = GETDATE() WHERE ID_Jadwal = ?";
-    if (!safe_sqlsrv_execute($conn, $sql, [$nama_admin, $id])) {
-        header("Location: list.php?status_sukses=error&message=" . urlencode("Gagal menghapus jadwal"));
-        exit();
-    }
-    header("Location: list.php?status_sukses=soft_delete&message=" . urlencode("Jadwal berhasil dihapus (bisa dikembalikan)"));
-    exit();
-}
-
-// 3. RESTORE
-if ($aksi == 'restore') {
-    if ($jadwal['Is_Deleted'] == 0) {
-        header("Location: list.php?status_sukses=error&message=" . urlencode("Jadwal masih aktif, tidak perlu di-restore"));
-        exit();
-    }
-    $sql = "UPDATE Jadwal_Studio SET Is_Deleted = 0, Status = 1, Status_Jadwal = 0, Modified_By = ?, Modified_Date = GETDATE(), Deleted_By = NULL, Deleted_Date = NULL WHERE ID_Jadwal = ?";
-    if (!safe_sqlsrv_execute($conn, $sql, [$nama_admin, $id])) {
-        header("Location: list.php?status_sukses=error&message=" . urlencode("Gagal mengembalikan jadwal"));
-        exit();
-    }
-    header("Location: list.php?status_sukses=restore&message=" . urlencode("Jadwal berhasil dikembalikan"));
-    exit();
-}
-
-// 4. HARD DELETE
-if ($aksi == 'hard_delete') {
-    if ($jadwal['Is_Deleted'] == 0) {
-        header("Location: list.php?status_sukses=error&message=" . urlencode("Jadwal harus dihapus terlebih dahulu sebelum dihapus permanen"));
-        exit();
-    }
-    $cek_order = safe_sqlsrv_count($conn, "SELECT COUNT(*) as total FROM [Order] WHERE ID_Jadwal = ? AND Status = ?", [$id, STATUS_DATA_AKTIF]);
-    if ($cek_order > 0) {
-        header("Location: list.php?status_sukses=error&message=" . urlencode("Masih ada {$cek_order} order terkait, tidak bisa hapus permanen"));
-        exit();
-    }
-    $begin_result = sqlsrv_begin_transaction($conn);
-    if ($begin_result === false) {
-        header("Location: list.php?status_sukses=error&message=" . urlencode("Gagal memulai transaksi"));
-        exit();
-    }
-    try {
-        $sql = "DELETE FROM Jadwal_Studio WHERE ID_Jadwal = ?";
-        $stmt = sqlsrv_query($conn, $sql, [$id]);
-        if ($stmt === false) throw new Exception("Gagal hapus jadwal: " . json_encode(sqlsrv_errors()));
-        sqlsrv_free_stmt($stmt);
-        sqlsrv_commit($conn);
-        header("Location: list.php?status_sukses=hard_delete&message=" . urlencode("Jadwal berhasil dihapus permanen"));
-        exit();
-    } catch (Exception $e) {
-        sqlsrv_rollback($conn);
-        header("Location: list.php?status_sukses=error&message=" . urlencode($e->getMessage()));
-        exit();
-    }
-}
-
-header("Location: list.php?status_sukses=error&message=" . urlencode("Aksi tidak valid"));
-exit();
 ?>
