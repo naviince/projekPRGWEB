@@ -11,6 +11,8 @@ define('STATUS_ORDER_SELESAI', 2);
 define('STATUS_ORDER_LUNAS', 3);
 define('STATUS_ORDER_DIBATALKAN', 4);
 define('STATUS_JADWAL_TERSEDIA', 0);
+define('STATUS_JADWAL_BOOKED', 1);
+define('STATUS_JADWAL_MAINTENANCE', 2);
 define('STATUS_DATA_AKTIF', 1);
 
 // --- PROTEKSI HALAMAN ---
@@ -44,6 +46,9 @@ $q_paket = sqlsrv_query($conn,
      WHERE ID_Paket = ? AND Status = ? AND Is_Deleted = 0", 
     array($id_paket, STATUS_DATA_AKTIF)
 );
+if ($q_paket === false) {
+    die("Error query Paket: " . print_r(sqlsrv_errors(), true));
+}
 $d_paket = sqlsrv_fetch_array($q_paket, SQLSRV_FETCH_ASSOC);
 
 if (!$d_paket) {
@@ -55,15 +60,18 @@ if (!$d_paket) {
 // AMBIL DATA RUANGAN
 // =====================================================
 $q_ruangan = sqlsrv_query($conn, 
-    "SELECT ID_Ruangan, Nama_Ruangan, Kapasitas_Ruangan, Deskripsi, Foto_Ruangan 
+    "SELECT ID_Ruangan, Nama_Ruangan, Deskripsi, Foto_Ruangan 
      FROM Ruangan 
      WHERE ID_Ruangan = ? AND Status = 1 AND Is_Deleted = 0", 
     array($id_ruangan)
 );
+if ($q_ruangan === false) {
+    die("Error query Ruangan: " . print_r(sqlsrv_errors(), true));
+}
 $d_ruangan = sqlsrv_fetch_array($q_ruangan, SQLSRV_FETCH_ASSOC);
 
 if (!$d_ruangan) {
-    header("Location: ../Paket/detail_paket.php?id_paket=$id_paket&error=ruangan_tidak_ditemukan");
+    header("Location: ../Paket/pilih_paket.php?id_paket=$id_paket&error=ruangan_tidak_ditemukan");
     exit();
 }
 
@@ -76,6 +84,9 @@ $q_tema = sqlsrv_query($conn,
      WHERE ID_Tema = ? AND Status = 1 AND Is_Deleted = 0", 
     array($id_tema)
 );
+if ($q_tema === false) {
+    die("Error query Tema: " . print_r(sqlsrv_errors(), true));
+}
 $d_tema = sqlsrv_fetch_array($q_tema, SQLSRV_FETCH_ASSOC);
 
 if (!$d_tema) {
@@ -90,10 +101,13 @@ $q_validasi = sqlsrv_query($conn,
     "SELECT COUNT(*) as total FROM Paket_Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ?", 
     array($id_paket, $id_ruangan)
 );
+if ($q_validasi === false) {
+    die("Error query Validasi Paket-Ruangan: " . print_r(sqlsrv_errors(), true));
+}
 $d_validasi = sqlsrv_fetch_array($q_validasi, SQLSRV_FETCH_ASSOC);
 
 if ($d_validasi['total'] == 0) {
-    header("Location: ../Paket/detail_paket.php?id_paket=$id_paket&error=ruangan_tidak_valid");
+    header("Location: ../Paket/pilih_paket.php?id_paket=$id_paket&error=ruangan_tidak_valid");
     exit();
 }
 
@@ -104,6 +118,9 @@ $q_validasi_tema = sqlsrv_query($conn,
     "SELECT COUNT(*) as total FROM Ruangan_Tema WHERE ID_Ruangan = ? AND ID_Tema = ?", 
     array($id_ruangan, $id_tema)
 );
+if ($q_validasi_tema === false) {
+    die("Error query Validasi Ruangan-Tema: " . print_r(sqlsrv_errors(), true));
+}
 $d_validasi_tema = sqlsrv_fetch_array($q_validasi_tema, SQLSRV_FETCH_ASSOC);
 
 if ($d_validasi_tema['total'] == 0) {
@@ -112,75 +129,139 @@ if ($d_validasi_tema['total'] == 0) {
 }
 
 // =====================================================
-// GENERATE JADWAL SLOT (7 HARI KE DEPAN, JAM 08:00-20:00)
+// AMBIL JADWAL DARI MASTER Jadwal_Studio
+// Filter: ID_Ruangan + ID_Paket + Tanggal >= hari ini + Status_Jadwal = 0 + Status = 1 + Is_Deleted = 0
+// Urutkan berdasarkan Tanggal dan Jam
+// =====================================================
+$today = date('Y-m-d');
+$now_time = date('H:i:s');
+
+$q_jadwal = sqlsrv_query($conn, 
+    "SELECT 
+        j.ID_Jadwal,
+        j.Tanggal_Jadwal,
+        j.Jam_Mulai,
+        j.Jam_Selesai,
+        j.Keterangan,
+        j.Status_Jadwal
+     FROM Jadwal_Studio j
+     WHERE j.ID_Ruangan = ?
+       AND j.ID_Paket = ?
+       AND j.Tanggal_Jadwal >= ?
+       AND j.Status_Jadwal = ?
+       AND j.Status = ?
+       AND j.Is_Deleted = 0
+     ORDER BY j.Tanggal_Jadwal ASC, j.Jam_Mulai ASC",
+    array($id_ruangan, $id_paket, $today, STATUS_JADWAL_TERSEDIA, STATUS_DATA_AKTIF)
+);
+if ($q_jadwal === false) {
+    die("Error query Jadwal: " . print_r(sqlsrv_errors(), true));
+}
+
+// =====================================================
+// CEK JADWAL YANG SUDAH DIBOOKING (dari tabel [Order])
+// Cek semua order aktif yang belum dibatalkan/selesai
+// =====================================================
+$q_booked = sqlsrv_query($conn, 
+    "SELECT DISTINCT o.ID_Jadwal
+     FROM [Order] o
+     WHERE o.ID_Ruangan = ?
+       AND o.ID_Paket = ?
+       AND o.ID_Jadwal IS NOT NULL
+       AND o.Status = 1
+       AND o.Status_Order NOT IN (?, ?)",
+    array($id_ruangan, $id_paket, STATUS_ORDER_DIBATALKAN, STATUS_ORDER_SELESAI)
+);
+if ($q_booked === false) {
+    die("Error query Booked: " . print_r(sqlsrv_errors(), true));
+}
+
+$booked_ids = [];
+while ($b = sqlsrv_fetch_array($q_booked, SQLSRV_FETCH_ASSOC)) {
+    $booked_ids[] = (int)$b['ID_Jadwal'];
+}
+
+// =====================================================
+// PROSES DATA JADWAL
+// Group by tanggal, cek status (tersedia/booked/lewat)
 // =====================================================
 $hari_indo = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
 $bulan_indo = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
 
-$today = new DateTime();
-$slots_per_hari = [];
+$jadwal_per_hari = [];
 
-// Ambil semua jadwal yang sudah dibooking untuk ruangan ini (7 hari ke depan)
-$seven_days_later = (new DateTime())->modify('+6 days')->format('Y-m-d');
-$today_str = $today->format('Y-m-d');
+while ($j = sqlsrv_fetch_array($q_jadwal, SQLSRV_FETCH_ASSOC)) {
+    // Format tanggal
+    $tgl_obj = $j['Tanggal_Jadwal'];
+    if (is_object($tgl_obj) && method_exists($tgl_obj, 'format')) {
+        $tgl_str = $tgl_obj->format('Y-m-d');
+        $hari_idx = (int)$tgl_obj->format('w');
+        $tgl_num = $tgl_obj->format('d');
+        $bln_idx = (int)$tgl_obj->format('n') - 1;
+        $thn = $tgl_obj->format('Y');
+    } else {
+        $tgl_str = $tgl_obj;
+        $ts = strtotime($tgl_str);
+        $hari_idx = date('w', $ts);
+        $tgl_num = date('d', $ts);
+        $bln_idx = (int)date('n', $ts) - 1;
+        $thn = date('Y', $ts);
+    }
 
-$q_booked = sqlsrv_query($conn, 
-    "SELECT 
-        CAST(j.Tanggal_Jadwal AS DATE) as tanggal,
-        j.Jam_Mulai,
-        j.Jam_Selesai
-     FROM [Order] o
-     INNER JOIN Jadwal_Studio j ON o.ID_Jadwal = j.ID_Jadwal
-     WHERE o.ID_Ruangan = ? 
-       AND o.Status = 1 
-       AND o.Status_Order NOT IN (4)
-       AND j.Tanggal_Jadwal BETWEEN ? AND ?
-       AND j.Is_Deleted = 0",
-    array($id_ruangan, $today_str, $seven_days_later)
-);
+    // Format jam
+    $jam_mulai_obj = $j['Jam_Mulai'];
+    if (is_object($jam_mulai_obj) && method_exists($jam_mulai_obj, 'format')) {
+        $jam_mulai_str = $jam_mulai_obj->format('H:i');
+    } else {
+        $jam_mulai_str = substr($jam_mulai_obj, 0, 5);
+    }
 
-$booked_slots = [];
-while ($b = sqlsrv_fetch_array($q_booked, SQLSRV_FETCH_ASSOC)) {
-    $tgl = $b['tanggal']->format('Y-m-d');
-    $jam_mulai = $b['Jam_Mulai']->format('H:i');
-    $booked_slots[$tgl][$jam_mulai] = true;
-}
+    $jam_selesai_obj = $j['Jam_Selesai'];
+    if (is_object($jam_selesai_obj) && method_exists($jam_selesai_obj, 'format')) {
+        $jam_selesai_str = $jam_selesai_obj->format('H:i');
+    } else {
+        $jam_selesai_str = substr($jam_selesai_obj, 0, 5);
+    }
 
-// Generate slot untuk 7 hari ke depan
-for ($i = 0; $i < 7; $i++) {
-    $tanggal = (new DateTime())->modify("+$i days");
-    $tgl_str = $tanggal->format('Y-m-d');
-    $hari_nama = $hari_indo[$tanggal->format('w')];
-    $tgl_format = $tanggal->format('d') . ' ' . $bulan_indo[(int)$tanggal->format('n') - 1] . ' ' . $tanggal->format('Y');
-    $is_today = ($i == 0);
+    // Cek apakah slot sudah lewat (hari ini + jam < sekarang)
+    $is_expired = false;
+    if ($tgl_str == $today) {
+        $slot_time = strtotime($tgl_str . ' ' . $jam_mulai_str . ':00');
+        $current_time = time();
+        if ($slot_time < $current_time) {
+            $is_expired = true;
+        }
+    }
 
-    $slots = [];
-    for ($jam = 8; $jam < 20; $jam++) {
-        $jam_mulai = sprintf("%02d:00", $jam);
-        $jam_selesai = sprintf("%02d:00", $jam + 1);
+    // Cek apakah slot sudah dibooking (berdasarkan ID_Jadwal)
+    $is_booked = in_array((int)$j['ID_Jadwal'], $booked_ids);
 
-        // Cek apakah slot sudah lewat (hari ini + jam lewat)
-        $slot_datetime = strtotime($tgl_str . ' ' . $jam_mulai);
-        $is_expired = $slot_datetime < time();
+    // Status akhir: tersedia / booked / expired
+    if ($is_expired) {
+        $status = 'expired';
+    } elseif ($is_booked) {
+        $status = 'booked';
+    } else {
+        $status = 'tersedia';
+    }
 
-        // Cek apakah slot sudah booked
-        $is_booked = isset($booked_slots[$tgl_str][$jam_mulai]);
-
-        $slots[] = [
-            'jam_mulai' => $jam_mulai,
-            'jam_selesai' => $jam_selesai,
-            'is_booked' => $is_booked,
-            'is_expired' => $is_expired,
-            'is_available' => !$is_booked && !$is_expired
+    // Group by tanggal
+    if (!isset($jadwal_per_hari[$tgl_str])) {
+        $jadwal_per_hari[$tgl_str] = [
+            'tanggal' => $tgl_str,
+            'hari' => $hari_indo[$hari_idx],
+            'tgl_format' => $tgl_num . ' ' . $bulan_indo[$bln_idx] . ' ' . $thn,
+            'is_today' => ($tgl_str == $today),
+            'slots' => []
         ];
     }
 
-    $slots_per_hari[] = [
-        'tanggal' => $tgl_str,
-        'hari' => $hari_nama,
-        'tgl_format' => $tgl_format,
-        'is_today' => $is_today,
-        'slots' => $slots
+    $jadwal_per_hari[$tgl_str]['slots'][] = [
+        'id_jadwal' => (int)$j['ID_Jadwal'],
+        'jam_mulai' => $jam_mulai_str,
+        'jam_selesai' => $jam_selesai_str,
+        'keterangan' => $j['Keterangan'] ?? '',
+        'status' => $status
     ];
 }
 
@@ -193,6 +274,9 @@ $q_profile = sqlsrv_query($conn,
     "SELECT Nama_Pelanggan, Foto_Profil FROM Pelanggan WHERE ID_Pelanggan = ? AND Is_Deleted = 0 AND Status = ?", 
     array($id_customer, STATUS_DATA_AKTIF)
 );
+if ($q_profile === false) {
+    die("Error query Profil: " . print_r(sqlsrv_errors(), true));
+}
 $d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
 $nama_customer = $d_profile['Nama_Pelanggan'] ?? 'Customer';
 $foto_customer = $d_profile['Foto_Profil'] ?? 'default.jpg';
@@ -201,6 +285,22 @@ $foto_customer_src = ($foto_customer != 'default.jpg' && file_exists("../../../.
     : $default_svg_avatar;
 
 $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
+
+// Hitung jumlah slot tersedia
+$total_tersedia = 0;
+foreach ($jadwal_per_hari as $hari) {
+    foreach ($hari['slots'] as $slot) {
+        if ($slot['status'] == 'tersedia') {
+            $total_tersedia++;
+        }
+    }
+}
+
+// Data untuk JS (escape dengan json_encode)
+$ruangan_nama_js = htmlspecialchars($d_ruangan['Nama_Ruangan'], ENT_QUOTES, 'UTF-8');
+$tema_nama_js = htmlspecialchars($d_tema['Nama_Tema'], ENT_QUOTES, 'UTF-8');
+$paket_nama_js = htmlspecialchars($d_paket['Nama_Paket'], ENT_QUOTES, 'UTF-8');
+$durasi_js = (int)$d_paket['Durasi_Waktu'];
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -232,7 +332,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             color: var(--text-dark);
         }
 
-        /* ===== NAVBAR ATAS (SAMA PERSIS) ===== */
+        /* ===== NAVBAR ATAS ===== */
         .top-navbar {
             background: #ffffff;
             padding: 16px 40px;
@@ -300,6 +400,9 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             box-shadow: 0 8px 25px rgba(216, 63, 103, 0.35);
             color: #fff;
         }
+        .nav-avatar-wrapper {
+            position: relative;
+        }
         .nav-avatar {
             width: 40px;
             height: 40px;
@@ -312,6 +415,65 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
         .nav-avatar:hover {
             transform: scale(1.1);
             border-color: var(--p-pink);
+        }
+        .nav-dropdown {
+            position: absolute;
+            top: 55px;
+            right: 0;
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+            padding: 12px;
+            min-width: 220px;
+            display: none;
+            z-index: 1001;
+            border: 1px solid #f1f5f9;
+        }
+        .nav-dropdown.show {
+            display: block;
+            animation: fadeIn 0.2s ease;
+        }
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            color: #4a5568;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-decoration: none;
+            transition: all 0.3s;
+            cursor: pointer;
+            border: none;
+            background: none;
+            width: 100%;
+        }
+        .dropdown-item:hover {
+            background: var(--s-pink);
+            color: var(--p-pink);
+        }
+        .dropdown-item i {
+            font-size: 1.1rem;
+            width: 20px;
+            text-align: center;
+        }
+        .dropdown-divider {
+            height: 1px;
+            background: #f1f5f9;
+            margin: 8px 0;
+        }
+        .dropdown-item.logout {
+            color: #dc2626;
+        }
+        .dropdown-item.logout:hover {
+            background: #fef2f2;
+        }
+        .dropdown-header {
+            padding: 8px 16px;
+            font-weight: 800;
+            color: var(--text-dark);
+            font-size: 0.95rem;
         }
 
         /* ===== BREADCRUMB BAR ===== */
@@ -635,6 +797,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             color: #94a3b8;
             cursor: not-allowed;
             opacity: 0.6;
+            display: none; /* Sembunyikan slot yang sudah lewat */
         }
         .slot-jam.expired .slot-durasi { color: #cbd5e1; }
         .slot-jam.expired .slot-waktu { 
@@ -674,10 +837,31 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             background: #f8fafc; 
             border-color: #e2e8f0; 
         }
-        .legend-box.expired { 
-            background: #f8fafc; 
-            border-color: #e2e8f0; 
-            opacity: 0.6;
+
+        /* ===== EMPTY STATE ===== */
+        .empty-jadwal {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        .empty-jadwal i {
+            font-size: 4rem;
+            color: #e2e8f0;
+            margin-bottom: 20px;
+        }
+        .empty-jadwal h3 {
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: var(--text-dark);
+            margin-bottom: 8px;
+        }
+        .empty-jadwal p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         /* ===== RESPONSIVE ===== */
@@ -697,22 +881,35 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
 </head>
 <body>
 
-    <!-- NAVBAR ATAS (SAMA PERSIS) -->
+    <!-- NAVBAR ATAS -->
     <nav class="top-navbar">
         <a href="../../index.php" class="nav-logo">
             SpotLight.<span>StudioFoto</span>
         </a>
         <div class="nav-menu-center">
             <a href="../../index.php" class="nav-link-item">Dashboard</a>
-            <a href="../Paket/detail_paket.php" class="nav-link-item active">Booking Baru</a>
+            <a href="../Paket/pilih_paket.php?id_paket=<?= $id_paket ?>" class="nav-link-item active">Booking Baru</a>
             <a href="../../Booking/Riwayat/index.php" class="nav-link-item">Riwayat</a>
             <a href="../../Cetak/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
         </div>
         <div class="nav-right">
-            <a href="../Paket/detail_paket.php" class="nav-btn-booking">
+            <a href="../Paket/pilih_paket.php?id_paket=<?= $id_paket ?>" class="nav-btn-booking">
                 <i class="bi bi-plus-lg"></i> Booking
             </a>
-            <img src="<?= $foto_customer_src ?>" class="nav-avatar" alt="Profil" onclick="location.href='#'">
+            <div class="nav-avatar-wrapper">
+                <img src="<?= $foto_customer_src ?>" class="nav-avatar" alt="Profil" onclick="toggleDropdown()">
+                <div class="nav-dropdown" id="navDropdown">
+                    <div class="dropdown-header">Halo, <?= htmlspecialchars($nama_customer) ?></div>
+                    <div class="dropdown-divider"></div>
+                    <a href="../../../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
+                        <i class="bi bi-house-door"></i> Kembali ke Beranda
+                    </a>
+                    <div class="dropdown-divider"></div>
+                    <button class="dropdown-item logout" onclick="confirmLogout()">
+                        <i class="bi bi-box-arrow-right"></i> Keluar Sistem
+                    </button>
+                </div>
+            </div>
         </div>
     </nav>
 
@@ -721,7 +918,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
         <div class="breadcrumb-inner">
             <a href="../../index.php">Home</a>
             <span class="separator"><i class="bi bi-chevron-right"></i></span>
-            <a href="../Paket/detail_paket.php?id_paket=<?= $id_paket ?>"><?= htmlspecialchars($d_paket['Nama_Paket']) ?></a>
+            <a href="../Paket/pilih_paket.php?id_paket=<?= $id_paket ?>"><?= htmlspecialchars($d_paket['Nama_Paket']) ?></a>
             <span class="separator"><i class="bi bi-chevron-right"></i></span>
             <a href="../Ruangan/pilih_ruangan.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>"><?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?></a>
             <span class="separator"><i class="bi bi-chevron-right"></i></span>
@@ -734,16 +931,11 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
     <!-- MAIN CONTENT -->
     <main class="main-container">
 
-        <!-- PROGRESS BAR -->
+        <!-- PROGRESS BAR: 1.Paket -> 2.Ruangan -> 3.Tema -> 4.Jadwal -> 5.Konfirmasi -->
         <div class="progress-container">
             <div class="progress-step completed">
                 <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
                 <div class="progress-step-label">Pilih Paket</div>
-            </div>
-            <div class="progress-line completed"></div>
-            <div class="progress-step completed">
-                <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
-                <div class="progress-step-label">Detail Paket</div>
             </div>
             <div class="progress-line completed"></div>
             <div class="progress-step completed">
@@ -757,8 +949,13 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             </div>
             <div class="progress-line completed"></div>
             <div class="progress-step active">
-                <div class="progress-step-circle">5</div>
+                <div class="progress-step-circle">4</div>
                 <div class="progress-step-label">Jadwal</div>
+            </div>
+            <div class="progress-line"></div>
+            <div class="progress-step">
+                <div class="progress-step-circle">5</div>
+                <div class="progress-step-label">Konfirmasi</div>
             </div>
         </div>
 
@@ -772,64 +969,78 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                             <i class="bi bi-calendar-week-fill"></i>
                             Pilih Jadwal Sesi Foto
                         </div>
-                        <div class="jadwal-subtitle">Jam operasional: 08:00 - 20:00 WIB</div>
+                        <div class="jadwal-subtitle"><?= $total_tersedia ?> jadwal tersedia untuk <?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?></div>
                     </div>
                     <div class="jadwal-badge">
-                        <i class="bi bi-geo-alt-fill"></i>
-                        <?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?>
+                        <i class="bi bi-clock-fill"></i>
+                        <?= (int)$d_paket['Durasi_Waktu'] ?> Menit / Sesi
                     </div>
                 </div>
 
-                <?php foreach ($slots_per_hari as $hari_data): ?>
-                    <div class="tanggal-section">
-                        <div class="tanggal-header">
-                            <span class="tanggal-hari"><?= $hari_data['hari'] ?></span>
-                            <span class="tanggal-tanggal"><?= $hari_data['tgl_format'] ?></span>
-                            <?php if ($hari_data['is_today']): ?>
-                                <span class="tanggal-today">Hari Ini</span>
-                            <?php endif; ?>
-                        </div>
-                        <div class="slot-grid">
-                            <?php foreach ($hari_data['slots'] as $slot): 
-                                if ($slot['is_booked']):
-                                    $class = 'slot-jam booked';
-                                    $status_text = 'Booked';
-                                    $onclick = '';
-                                elseif ($slot['is_expired']):
-                                    $class = 'slot-jam expired';
-                                    $status_text = 'Lewat';
-                                    $onclick = '';
-                                else:
-                                    $class = 'slot-jam tersedia';
-                                    $status_text = 'Rp ' . $harga_format;
-                                    $onclick = 'onclick="pilihJadwal(\'' . $hari_data['tanggal'] . '\', \'' . $slot['jam_mulai'] . '\', \'' . $slot['jam_selesai'] . '\', \'' . $hari_data['hari'] . '\', \'' . $hari_data['tgl_format'] . '\')"';
-                                endif;
-                            ?>
-                                <div class="<?= $class ?>" <?= $onclick ?>>
-                                    <div class="slot-durasi"><?= $d_paket['Durasi_Waktu'] ?> Menit</div>
-                                    <div class="slot-waktu"><?= $slot['jam_mulai'] ?> - <?= $slot['jam_selesai'] ?></div>
-                                    <div class="slot-status"><?= $status_text ?></div>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
+                <?php if (empty($jadwal_per_hari)): ?>
+                    <div class="empty-jadwal">
+                        <i class="bi bi-calendar-x"></i>
+                        <h3>Tidak Ada Jadwal Tersedia</h3>
+                        <p>Maaf, belum ada jadwal yang tersedia untuk ruangan dan paket ini.<br>Silakan hubungi admin untuk informasi lebih lanjut.</p>
                     </div>
-                <?php endforeach; ?>
+                <?php else: ?>
+                    <?php foreach ($jadwal_per_hari as $hari_data): 
+                        // Filter: hanya tampilkan slot yang tidak expired
+                        $visible_slots = array_filter($hari_data['slots'], function($s) {
+                            return $s['status'] != 'expired';
+                        });
+                        if (empty($visible_slots)) continue;
+                    ?>
+                        <div class="tanggal-section">
+                            <div class="tanggal-header">
+                                <span class="tanggal-hari"><?= $hari_data['hari'] ?></span>
+                                <span class="tanggal-tanggal"><?= $hari_data['tgl_format'] ?></span>
+                                <?php if ($hari_data['is_today']): ?>
+                                    <span class="tanggal-today">Hari Ini</span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="slot-grid">
+                                <?php foreach ($visible_slots as $slot): 
+                                    if ($slot['status'] == 'booked'):
+                                ?>
+                                    <div class="slot-jam booked">
+                                        <div class="slot-durasi"><?= (int)$d_paket['Durasi_Waktu'] ?> Menit</div>
+                                        <div class="slot-waktu"><?= htmlspecialchars($slot['jam_mulai']) ?> - <?= htmlspecialchars($slot['jam_selesai']) ?></div>
+                                        <div class="slot-status">Booked</div>
+                                    </div>
+                                <?php else: 
+                                    // Build data-attributes for JS instead of inline onclick
+                                    $slot_data = json_encode([
+                                        'id' => $slot['id_jadwal'],
+                                        'tanggal' => $hari_data['tanggal'],
+                                        'jam_mulai' => $slot['jam_mulai'],
+                                        'jam_selesai' => $slot['jam_selesai'],
+                                        'hari' => $hari_data['hari'],
+                                        'tgl_format' => $hari_data['tgl_format']
+                                    ], JSON_UNESCAPED_UNICODE);
+                                ?>
+                                    <div class="slot-jam tersedia" data-slot='<?= $slot_data ?>'>
+                                        <div class="slot-durasi"><?= (int)$d_paket['Durasi_Waktu'] ?> Menit</div>
+                                        <div class="slot-waktu"><?= htmlspecialchars($slot['jam_mulai']) ?> - <?= htmlspecialchars($slot['jam_selesai']) ?></div>
+                                        <div class="slot-status">Rp <?= $harga_format ?></div>
+                                    </div>
+                                <?php endif; endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
 
-                <!-- LEGEND -->
-                <div class="slot-legend">
-                    <div class="legend-item">
-                        <div class="legend-box tersedia"></div>
-                        <span>Tersedia</span>
+                    <!-- LEGEND -->
+                    <div class="slot-legend">
+                        <div class="legend-item">
+                            <div class="legend-box tersedia"></div>
+                            <span>Tersedia</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-box booked"></div>
+                            <span>Sudah Dibooking</span>
+                        </div>
                     </div>
-                    <div class="legend-item">
-                        <div class="legend-box booked"></div>
-                        <span>Sudah Dibooking</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-box expired"></div>
-                        <span>Sudah Lewat</span>
-                    </div>
-                </div>
+                <?php endif; ?>
             </div>
 
             <!-- Right: Sidebar Ringkasan -->
@@ -840,7 +1051,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                         <div class="summary-icon completed"><i class="bi bi-check-lg"></i></div>
                         <div>
                             <div class="summary-text">Paket</div>
-                            <div class="summary-sub"><?= htmlspecialchars($d_paket['Nama_Paket']) ?></div>
+                            <div class="summary-sub"><?= htmlspecialchars($d_paket['Nama_Paket']) ?> (<?= (int)$d_paket['Durasi_Waktu'] ?> menit)</div>
                         </div>
                     </div>
                     <div class="summary-item">
@@ -864,7 +1075,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                             <div class="summary-sub">Belum dipilih</div>
                         </div>
                     </div>
-                    <div class="summary-harga">Rp <?= $harga_format ?></div>
+                    <div class="summary-harga">Rp <?= $harga_format ?> <span style="font-size:0.75rem;color:var(--text-muted);font-weight:600;">/ sesi</span></div>
                 </div>
             </div>
         </div>
@@ -873,14 +1084,84 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
 
     <script src="../../../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
-        function pilihJadwal(tanggal, jamMulai, jamSelesai, hari, tglFormat) {
+        // Toggle dropdown menu
+        function toggleDropdown() {
+            document.getElementById('navDropdown').classList.toggle('show');
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const wrapper = document.querySelector('.nav-avatar-wrapper');
+            if (!wrapper.contains(e.target)) {
+                document.getElementById('navDropdown').classList.remove('show');
+            }
+        });
+
+        function confirmLandingPage(e) {
+            e.preventDefault();
+            Swal.fire({
+                title: 'Kembali ke Beranda?',
+                text: 'Anda akan meninggalkan halaman customer dan kembali ke halaman utama.',
+                icon: 'info',
+                showCancelButton: true,
+                confirmButtonColor: '#d83f67',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Kembali',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = '../../../../index.php';
+                }
+            });
+            return false;
+        }
+
+        function confirmLogout() {
+            Swal.fire({
+                title: 'Keluar Sistem?',
+                text: 'Apakah Anda yakin ingin keluar dari SpotLight Studio?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Keluar',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = '../../../../logout.php';
+                }
+            });
+        }
+
+        // Data dari PHP untuk JS (sudah di-escape)
+        const ruanganNama = <?= json_encode($ruangan_nama_js) ?>;
+        const temaNama = <?= json_encode($tema_nama_js) ?>;
+        const paketNama = <?= json_encode($paket_nama_js) ?>;
+        const durasi = <?= json_encode($durasi_js) ?>;
+        const hargaFormat = <?= json_encode($harga_format) ?>;
+        const idPaket = <?= json_encode((int)$id_paket) ?>;
+        const idRuangan = <?= json_encode((int)$id_ruangan) ?>;
+        const idTema = <?= json_encode((int)$id_tema) ?>;
+
+        // Event listener untuk slot tersedia (gunakan data-attributes, bukan inline onclick)
+        document.querySelectorAll('.slot-jam.tersedia').forEach(function(el) {
+            el.addEventListener('click', function() {
+                const slot = JSON.parse(this.getAttribute('data-slot'));
+                pilihJadwal(slot.id, slot.tanggal, slot.jam_mulai, slot.jam_selesai, slot.hari, slot.tgl_format);
+            });
+        });
+
+        function pilihJadwal(idJadwal, tanggal, jamMulai, jamSelesai, hari, tglFormat) {
             Swal.fire({
                 title: 'Konfirmasi Jadwal',
                 html: '<div style="text-align:left">' +
                       '<p><strong>Hari:</strong> ' + hari + ', ' + tglFormat + '</p>' +
                       '<p><strong>Jam:</strong> ' + jamMulai + ' - ' + jamSelesai + '</p>' +
-                      '<p><strong>Ruangan:</strong> <?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?>\</p>' +
-                      '<p><strong>Tema:</strong> <?= htmlspecialchars($d_tema['Nama_Tema']) ?>\</p>' +
+                      '<p><strong>Ruangan:</strong> ' + ruanganNama + '</p>' +
+                      '<p><strong>Tema:</strong> ' + temaNama + '</p>' +
+                      '<p><strong>Paket:</strong> ' + paketNama + ' (' + durasi + ' menit)</p>' +
+                      '<hr style="margin:12px 0;border-color:#f1f5f9">' +
+                      '<p style="font-size:1.1rem;font-weight:800;color:#d83f67">Rp ' + hargaFormat + '</p>' +
                       '</div>',
                 icon: 'question',
                 showCancelButton: true,
@@ -890,8 +1171,11 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                 cancelButtonText: 'Batal'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    // Kirim ke proses_order.php
-                    window.location.href = 'proses_order.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&tanggal=' + tanggal + '&jam_mulai=' + jamMulai + '&jam_selesai=' + jamSelesai;
+                    // Kirim ke proses_order.php dengan ID_Jadwal dari master
+                    window.location.href = '../Konfirmasi/konfirmasi.php?id_paket=' + idPaket + 
+                                          '&id_ruangan=' + idRuangan + 
+                                          '&id_tema=' + idTema + 
+                                          '&id_jadwal=' + idJadwal;
                 }
             });
         }

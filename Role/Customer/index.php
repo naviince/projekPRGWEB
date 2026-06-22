@@ -13,6 +13,7 @@ define('STATUS_ORDER_DIBATALKAN', 4);
 define('STATUS_JADWAL_TERSEDIA', 0);
 define('STATUS_DATA_AKTIF', 1);
 
+// --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Customer') {
     header("Location: ../../login.php");
     exit();
@@ -34,14 +35,19 @@ $foto_customer_src = ($foto_customer != 'default.jpg' && file_exists("../../asse
     ? "../../assets/img/pelanggan/" . $foto_customer 
     : $default_svg_avatar;
 
-// --- Paket Foto ---
+// --- Paket Foto dengan jumlah ruangan tersedia ---
 $q_paket = sqlsrv_query($conn, 
-    "SELECT ID_Paket, Nama_Paket, Harga_Paket, Durasi_Waktu, Kapasitas_Orang, Deskripsi, Foto_Paket 
-     FROM Paket_Foto WHERE Is_Deleted = 0 AND Status = ? ORDER BY Harga_Paket ASC",
+    "SELECT p.ID_Paket, p.Nama_Paket, p.Harga_Paket, p.Durasi_Waktu, p.Kapasitas_Orang, p.Deskripsi, p.Foto_Paket,
+            COUNT(DISTINCT pr.ID_Ruangan) as jumlah_ruangan
+     FROM Paket_Foto p
+     LEFT JOIN Paket_Ruangan pr ON p.ID_Paket = pr.ID_Paket
+     WHERE p.Is_Deleted = 0 AND p.Status = ?
+     GROUP BY p.ID_Paket, p.Nama_Paket, p.Harga_Paket, p.Durasi_Waktu, p.Kapasitas_Orang, p.Deskripsi, p.Foto_Paket
+     ORDER BY p.Harga_Paket ASC",
     array(STATUS_DATA_AKTIF)
 );
 
-// --- Jadwal Hari Ini ---
+// --- Jadwal Hari Ini (SAFE DateTime) ---
 $today = date('Y-m-d');
 $q_jadwal = sqlsrv_query($conn, 
     "SELECT TOP 4 j.ID_Jadwal, r.Nama_Ruangan, j.Jam_Mulai, j.Jam_Selesai, j.Keterangan
@@ -167,6 +173,9 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             box-shadow: 0 8px 25px rgba(216, 63, 103, 0.35);
             color: #fff;
         }
+        .nav-avatar-wrapper {
+            position: relative;
+        }
         .nav-avatar {
             width: 40px;
             height: 40px;
@@ -180,11 +189,70 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             transform: scale(1.1);
             border-color: var(--p-pink);
         }
+        .nav-dropdown {
+            position: absolute;
+            top: 55px;
+            right: 0;
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+            padding: 12px;
+            min-width: 220px;
+            display: none;
+            z-index: 1001;
+            border: 1px solid #f1f5f9;
+        }
+        .nav-dropdown.show {
+            display: block;
+            animation: fadeIn 0.2s ease;
+        }
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            color: #4a5568;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-decoration: none;
+            transition: all 0.3s;
+            cursor: pointer;
+            border: none;
+            background: none;
+            width: 100%;
+        }
+        .dropdown-item:hover {
+            background: var(--s-pink);
+            color: var(--p-pink);
+        }
+        .dropdown-item i {
+            font-size: 1.1rem;
+            width: 20px;
+            text-align: center;
+        }
+        .dropdown-divider {
+            height: 1px;
+            background: #f1f5f9;
+            margin: 8px 0;
+        }
+        .dropdown-item.logout {
+            color: #dc2626;
+        }
+        .dropdown-item.logout:hover {
+            background: #fef2f2;
+        }
+        .dropdown-header {
+            padding: 8px 16px;
+            font-weight: 800;
+            color: var(--text-dark);
+            font-size: 0.95rem;
+        }
 
         /* ===== HERO BANNER ===== */
         .hero-banner {
             background: linear-gradient(135deg, var(--p-pink) 0%, var(--d-pink) 50%, #b82e52 100%);
-            padding: 80px 40px;
+            padding: 60px 40px;
             text-align: center;
             position: relative;
             overflow: hidden;
@@ -208,17 +276,17 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             z-index: 2;
         }
         .hero-title {
-            font-size: 3rem;
+            font-size: 2.5rem;
             font-weight: 900;
             color: #ffffff;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
             text-shadow: 0 4px 20px rgba(0,0,0,0.15);
             letter-spacing: -1px;
         }
         .hero-subtitle {
-            font-size: 1.1rem;
+            font-size: 1rem;
             color: rgba(255,255,255,0.85);
-            margin-bottom: 32px;
+            margin-bottom: 28px;
             font-weight: 500;
         }
         .hero-btn {
@@ -227,7 +295,7 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             gap: 10px;
             background: #ffffff;
             color: var(--p-pink);
-            padding: 16px 40px;
+            padding: 14px 36px;
             border-radius: 50px;
             font-weight: 800;
             font-size: 1rem;
@@ -241,80 +309,60 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             color: var(--d-pink);
         }
 
-        /* ===== SEARCH BAR ===== */
-        .search-section {
+        /* ===== ALUR BOOKING STEPS ===== */
+        .booking-steps {
             background: #ffffff;
             padding: 30px 40px;
             border-bottom: 1px solid #eef2f6;
         }
-        .search-bar {
-            display: flex;
-            gap: 16px;
-            align-items: center;
-            max-width: 900px;
+        .steps-container {
+            max-width: 1000px;
             margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            gap: 0;
         }
-        .search-input-group {
-            flex: 1;
+        .step-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 20px;
             position: relative;
         }
-        .search-input-group i {
+        .step-item:not(:last-child)::after {
+            content: '';
             position: absolute;
-            left: 18px;
+            right: -20px;
             top: 50%;
             transform: translateY(-50%);
-            color: var(--text-muted);
-            font-size: 1.1rem;
+            width: 40px;
+            height: 2px;
+            background: linear-gradient(90deg, var(--light-pink), #e2e8f0);
         }
-        .search-input {
-            width: 100%;
-            padding: 14px 18px 14px 48px;
-            border: 2px solid #eef2f6;
-            border-radius: 14px;
-            font-size: 0.95rem;
-            font-weight: 600;
-            color: var(--text-dark);
-            transition: all 0.3s;
-            background: #f8fafc;
-        }
-        .search-input:focus {
-            outline: none;
-            border-color: var(--p-pink);
-            background: #ffffff;
-            box-shadow: 0 4px 15px rgba(216, 63, 103, 0.1);
-        }
-        .search-select {
-            padding: 14px 18px;
-            border: 2px solid #eef2f6;
-            border-radius: 14px;
-            font-size: 0.95rem;
-            font-weight: 600;
-            color: var(--text-dark);
-            background: #f8fafc;
-            cursor: pointer;
-            transition: all 0.3s;
-            min-width: 160px;
-        }
-        .search-select:focus {
-            outline: none;
-            border-color: var(--p-pink);
-            background: #ffffff;
-        }
-        .search-btn {
+        .step-number {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
             color: #ffffff;
-            border: none;
-            padding: 14px 32px;
-            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             font-weight: 800;
-            font-size: 0.95rem;
-            cursor: pointer;
-            transition: all 0.3s;
-            white-space: nowrap;
+            font-size: 0.85rem;
+            flex-shrink: 0;
         }
-        .search-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(216, 63, 103, 0.3);
+        .step-number.inactive {
+            background: #e2e8f0;
+            color: #94a3b8;
+        }
+        .step-text {
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: var(--text-dark);
+        }
+        .step-text.inactive {
+            color: #94a3b8;
         }
 
         /* ===== MAIN CONTENT ===== */
@@ -346,10 +394,10 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             color: var(--text-dark);
         }
 
-        /* ===== PAKET GRID ===== */
+        /* ===== PAKET GRID (Referensi AYO Style) ===== */
         .paket-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
             gap: 24px;
             margin-bottom: 50px;
         }
@@ -362,16 +410,18 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             text-decoration: none;
             color: inherit;
             display: block;
+            position: relative;
         }
         .paket-card:hover {
-            transform: translateY(-8px) scale(1.02);
+            transform: translateY(-8px);
             box-shadow: 0 20px 40px rgba(216, 63, 103, 0.12);
             border-color: var(--light-pink);
         }
         .paket-img-wrapper {
             position: relative;
-            height: 200px;
+            height: 220px;
             overflow: hidden;
+            background: linear-gradient(135deg, var(--s-pink), #f8fafc);
         }
         .paket-img {
             width: 100%;
@@ -382,10 +432,19 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
         .paket-card:hover .paket-img {
             transform: scale(1.1);
         }
-        .paket-badge {
+        .paket-img-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--p-pink);
+            font-size: 3rem;
+        }
+        .paket-badge-durasi {
             position: absolute;
             top: 12px;
-            left: 12px;
+            right: 12px;
             background: rgba(255,255,255,0.95);
             backdrop-filter: blur(10px);
             padding: 6px 14px;
@@ -393,14 +452,25 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             font-size: 0.75rem;
             font-weight: 800;
             color: var(--p-pink);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .paket-badge-kapasitas {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            background: rgba(30,30,36,0.8);
+            backdrop-filter: blur(10px);
+            padding: 6px 14px;
+            border-radius: 50px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #ffffff;
         }
         .paket-body {
             padding: 20px;
         }
         .paket-nama {
-            font-size: 1.15rem;
+            font-size: 1.2rem;
             font-weight: 800;
             color: var(--text-dark);
             margin-bottom: 6px;
@@ -417,8 +487,9 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
         }
         .paket-meta {
             display: flex;
-            gap: 16px;
+            gap: 12px;
             margin-bottom: 16px;
+            flex-wrap: wrap;
         }
         .paket-meta-item {
             display: flex;
@@ -427,6 +498,9 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             font-size: 0.8rem;
             color: var(--text-muted);
             font-weight: 600;
+            background: #f8fafc;
+            padding: 6px 12px;
+            border-radius: 8px;
         }
         .paket-meta-item i { color: var(--p-pink); }
         .paket-footer {
@@ -436,22 +510,34 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             padding-top: 16px;
             border-top: 1px solid #f1f5f9;
         }
+        .paket-harga-wrapper {
+            display: flex;
+            flex-direction: column;
+        }
         .paket-harga {
-            font-size: 1.2rem;
+            font-size: 1.3rem;
             font-weight: 900;
             color: var(--p-pink);
+        }
+        .paket-harga-satuan {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
         }
         .paket-btn {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
             color: #ffffff;
-            padding: 10px 24px;
+            padding: 12px 28px;
             border-radius: 12px;
             font-weight: 800;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
             text-decoration: none;
             transition: all 0.3s;
             border: none;
             cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
         .paket-btn:hover {
             transform: translateY(-2px);
@@ -575,6 +661,11 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             color: var(--text-muted);
         }
 
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         /* ===== RESPONSIVE ===== */
         @media (max-width: 992px) {
             .hero-title { font-size: 2rem; }
@@ -583,6 +674,7 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             .nav-menu-center { display: none; }
             .main-container { padding: 20px; }
             .top-navbar { padding: 16px 20px; }
+            .booking-steps { display: none; }
         }
     </style>
 </head>
@@ -595,15 +687,28 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
         </a>
         <div class="nav-menu-center">
             <a href="index.php" class="nav-link-item active">Dashboard</a>
-            <a href="Layanan/Paket/detail_paket.php" class="nav-link-item">Booking Baru</a>
+            <a href="Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
             <a href="Booking/Riwayat/index.php" class="nav-link-item">Riwayat</a>
             <a href="Cetak/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
         </div>
         <div class="nav-right">
-            <a href="Layanan/Paket/detail_paket.php" class="nav-btn-booking">
+            <a href="Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
                 <i class="bi bi-plus-lg"></i> Booking
             </a>
-            <img src="<?= $foto_customer_src ?>" class="nav-avatar" alt="Profil" onclick="location.href='#'">
+            <div class="nav-avatar-wrapper">
+                <img src="<?= $foto_customer_src ?>" class="nav-avatar" alt="Profil" onclick="toggleDropdown()">
+                <div class="nav-dropdown" id="navDropdown">
+                    <div class="dropdown-header">Halo, <?= htmlspecialchars($nama_customer) ?></div>
+                    <div class="dropdown-divider"></div>
+                    <a href="../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
+                        <i class="bi bi-house-door"></i> Kembali ke Beranda
+                    </a>
+                    <div class="dropdown-divider"></div>
+                    <button class="dropdown-item logout" onclick="confirmLogout()">
+                        <i class="bi bi-box-arrow-right"></i> Keluar Sistem
+                    </button>
+                </div>
+            </div>
         </div>
     </nav>
 
@@ -612,38 +717,36 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
         <div class="hero-content">
             <h1 class="hero-title">BOOKING STUDIO FOTO TERBAIK</h1>
             <p class="hero-subtitle">Pesan sesi foto profesional dengan mudah, cepat, dan terjangkau</p>
-            <a href="Layanan/Paket/detail_paket.php" class="hero-btn">
+            <a href="Layanan/Paket/pilih_paket.php" class="hero-btn">
                 <i class="bi bi-calendar-plus-fill"></i>
                 Booking Sekarang
             </a>
         </div>
     </section>
 
-    <!-- SEARCH BAR -->
-    <section class="search-section">
-        <div class="search-bar">
-            <div class="search-input-group">
-                <i class="bi bi-search"></i>
-                <input type="text" class="search-input" placeholder="Cari nama paket foto...">
+    <!-- ALUR BOOKING STEPS -->
+    <section class="booking-steps">
+        <div class="steps-container">
+            <div class="step-item">
+                <div class="step-number">1</div>
+                <div class="step-text">Pilih Paket</div>
             </div>
-            <select class="search-select">
-                <option value="">Semua Kategori</option>
-                <option value="personal">Personal</option>
-                <option value="couple">Couple</option>
-                <option value="family">Family</option>
-                <option value="wisuda">Wisuda</option>
-                <option value="corporate">Corporate</option>
-            </select>
-            <select class="search-select">
-                <option value="">Semua Durasi</option>
-                <option value="30">30 Menit</option>
-                <option value="60">60 Menit</option>
-                <option value="90">90 Menit</option>
-                <option value="120">120 Menit</option>
-            </select>
-            <button class="search-btn">
-                <i class="bi bi-search me-2"></i>Cari Paket
-            </button>
+            <div class="step-item">
+                <div class="step-number inactive">2</div>
+                <div class="step-text inactive">Pilih Ruangan</div>
+            </div>
+            <div class="step-item">
+                <div class="step-number inactive">3</div>
+                <div class="step-text inactive">Pilih Tema</div>
+            </div>
+            <div class="step-item">
+                <div class="step-number inactive">4</div>
+                <div class="step-text inactive">Pilih Jadwal</div>
+            </div>
+            <div class="step-item">
+                <div class="step-number inactive">5</div>
+                <div class="step-text inactive">Konfirmasi</div>
+            </div>
         </div>
     </section>
 
@@ -689,7 +792,7 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
                 Paket Foto <span>Populer</span>
             </div>
             <div class="section-count">
-                Menampilkan <strong><?= sqlsrv_num_rows($q_paket) ?></strong> paket tersedia
+                Harga <strong>per sesi</strong> • <?= sqlsrv_num_rows($q_paket) ?> paket tersedia
             </div>
         </div>
 
@@ -699,29 +802,43 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
                 while ($row = sqlsrv_fetch_array($q_paket, SQLSRV_FETCH_ASSOC)):
                     $foto_paket = ($row['Foto_Paket'] != 'default_paket.jpg' && file_exists("../../assets/img/paket/" . $row['Foto_Paket'])) 
                         ? "../../assets/img/paket/" . $row['Foto_Paket'] 
-                        : "../../assets/img/paket/default_paket.jpg";
+                        : null;
                     $harga = number_format($row['Harga_Paket'], 0, ',', '.');
+                    $jumlah_ruangan = $row['jumlah_ruangan'] ?? 0;
             ?>
-                <!-- ===== FIX: LINK KE DETAIL PAKET (BUKAN pilih_paket.php) ===== -->
-                <a href="Layanan/Paket/detail_paket.php?id_paket=<?= $row['ID_Paket'] ?>" class="paket-card">
+                <a href="Layanan/Paket/pilih_paket.php?id_paket=<?= $row['ID_Paket'] ?>" class="paket-card">
                     <div class="paket-img-wrapper">
-                        <img src="<?= $foto_paket ?>" class="paket-img" alt="<?= htmlspecialchars($row['Nama_Paket']) ?>">
-                        <div class="paket-badge"><?= htmlspecialchars($row['Nama_Paket']) ?></div>
+                        <?php if ($foto_paket): ?>
+                            <img src="<?= $foto_paket ?>" class="paket-img" alt="<?= htmlspecialchars($row['Nama_Paket']) ?>">
+                        <?php else: ?>
+                            <div class="paket-img-placeholder">
+                                <i class="bi bi-camera-fill"></i>
+                            </div>
+                        <?php endif; ?>
+                        <div class="paket-badge-durasi">
+                            <i class="bi bi-clock me-1"></i><?= $row['Durasi_Waktu'] ?> menit
+                        </div>
+                        <div class="paket-badge-kapasitas">
+                            <i class="bi bi-people me-1"></i>Max <?= $row['Kapasitas_Orang'] ?> orang
+                        </div>
                     </div>
                     <div class="paket-body">
                         <div class="paket-nama"><?= htmlspecialchars($row['Nama_Paket']) ?></div>
                         <div class="paket-desc"><?= htmlspecialchars($row['Deskripsi'] ?? 'Paket foto ' . $row['Nama_Paket'] . ' untuk sesi foto terbaik Anda.') ?></div>
                         <div class="paket-meta">
                             <div class="paket-meta-item">
-                                <i class="bi bi-clock"></i> <?= $row['Durasi_Waktu'] ?> menit
+                                <i class="bi bi-door-open"></i> <?= $jumlah_ruangan ?> Ruangan
                             </div>
                             <div class="paket-meta-item">
-                                <i class="bi bi-people"></i> Max <?= $row['Kapasitas_Orang'] ?> orang
+                                <i class="bi bi-star-fill"></i> Paket Populer
                             </div>
                         </div>
                         <div class="paket-footer">
-                            <div class="paket-harga">Rp<?= $harga ?></div>
-                            <span class="paket-btn">Pilih <i class="bi bi-arrow-right ms-1"></i></span>
+                            <div class="paket-harga-wrapper">
+                                <div class="paket-harga">Rp<?= $harga ?></div>
+                                <div class="paket-harga-satuan">/ sesi</div>
+                            </div>
+                            <span class="paket-btn">Pilih <i class="bi bi-arrow-right"></i></span>
                         </div>
                     </div>
                 </a>
@@ -747,16 +864,20 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
                 <?php
                 if ($q_jadwal && sqlsrv_has_rows($q_jadwal)):
                     while ($row = sqlsrv_fetch_array($q_jadwal, SQLSRV_FETCH_ASSOC)):
+                        $jam_mulai = $row['Jam_Mulai'];
+                        $jam_selesai = $row['Jam_Selesai'];
+                        $jam_mulai_str = (is_object($jam_mulai) && method_exists($jam_mulai, 'format')) ? $jam_mulai->format('H:i') : (is_string($jam_mulai) ? substr($jam_mulai, 0, 5) : '-');
+                        $jam_selesai_str = (is_object($jam_selesai) && method_exists($jam_selesai, 'format')) ? $jam_selesai->format('H:i') : (is_string($jam_selesai) ? substr($jam_selesai, 0, 5) : '-');
                 ?>
                     <div class="info-item">
                         <div class="info-item-left">
                             <div class="info-icon"><i class="bi bi-clock-fill"></i></div>
                             <div>
                                 <div class="info-text"><?= htmlspecialchars($row['Nama_Ruangan']) ?></div>
-                                <div class="info-sub"><?= $row['Jam_Mulai']->format('H:i') ?> - <?= $row['Jam_Selesai']->format('H:i') ?></div>
+                                <div class="info-sub"><?= $jam_mulai_str ?> - <?= $jam_selesai_str ?></div>
                             </div>
                         </div>
-                        <a href="Layanan/Paket/detail_paket.php" class="info-btn">Booking</a>
+                        <a href="Layanan/Paket/pilih_paket.php" class="info-btn">Booking</a>
                     </div>
                 <?php endwhile; else: ?>
                     <div class="text-center py-4">
@@ -800,18 +921,52 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
 
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
-        function confirmLogout() {
+        // Toggle dropdown menu
+        function toggleDropdown() {
+            document.getElementById('navDropdown').classList.toggle('show');
+        }
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const wrapper = document.querySelector('.nav-avatar-wrapper');
+            if (!wrapper.contains(e.target)) {
+                document.getElementById('navDropdown').classList.remove('show');
+            }
+        });
+
+        function confirmLandingPage(e) {
+            e.preventDefault();
             Swal.fire({
-                title: 'Keluar?',
-                text: 'Apakah Anda yakin ingin keluar?',
-                icon: 'warning',
+                title: 'Kembali ke Beranda?',
+                text: 'Anda akan meninggalkan halaman customer dan kembali ke halaman utama.',
+                icon: 'info',
                 showCancelButton: true,
                 confirmButtonColor: '#d83f67',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Kembali',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = '../../index.php';
+                }
+            });
+            return false;
+        }
+
+        function confirmLogout() {
+            Swal.fire({
+                title: 'Keluar Sistem?',
+                text: 'Apakah Anda yakin ingin keluar dari SpotLight Studio?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
                 cancelButtonColor: '#718096',
                 confirmButtonText: 'Ya, Keluar',
                 cancelButtonText: 'Batal'
             }).then((result) => {
-                if (result.isConfirmed) window.location.href = '../../logout.php';
+                if (result.isConfirmed) {
+                    window.location.href = '../../logout.php';
+                }
             });
         }
     </script>

@@ -42,6 +42,9 @@ $q_paket = sqlsrv_query($conn,
      WHERE ID_Paket = ? AND Status = ? AND Is_Deleted = 0", 
     array($id_paket, STATUS_DATA_AKTIF)
 );
+if ($q_paket === false) {
+    die("Error query Paket: " . print_r(sqlsrv_errors(), true));
+}
 $d_paket = sqlsrv_fetch_array($q_paket, SQLSRV_FETCH_ASSOC);
 
 if (!$d_paket) {
@@ -53,15 +56,18 @@ if (!$d_paket) {
 // AMBIL DATA RUANGAN
 // =====================================================
 $q_ruangan = sqlsrv_query($conn, 
-    "SELECT ID_Ruangan, Nama_Ruangan, Kapasitas_Ruangan, Deskripsi, Foto_Ruangan 
+    "SELECT ID_Ruangan, Nama_Ruangan, Deskripsi, Foto_Ruangan 
      FROM Ruangan 
      WHERE ID_Ruangan = ? AND Status = 1 AND Is_Deleted = 0", 
     array($id_ruangan)
 );
+if ($q_ruangan === false) {
+    die("Error query Ruangan: " . print_r(sqlsrv_errors(), true));
+}
 $d_ruangan = sqlsrv_fetch_array($q_ruangan, SQLSRV_FETCH_ASSOC);
 
 if (!$d_ruangan) {
-    header("Location: ../Paket/detail_paket.php?id_paket=$id_paket&error=ruangan_tidak_ditemukan");
+    header("Location: ../Paket/pilih_paket.php?id_paket=$id_paket&error=ruangan_tidak_ditemukan");
     exit();
 }
 
@@ -72,10 +78,13 @@ $q_validasi = sqlsrv_query($conn,
     "SELECT COUNT(*) as total FROM Paket_Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ?", 
     array($id_paket, $id_ruangan)
 );
+if ($q_validasi === false) {
+    die("Error query Validasi: " . print_r(sqlsrv_errors(), true));
+}
 $d_validasi = sqlsrv_fetch_array($q_validasi, SQLSRV_FETCH_ASSOC);
 
 if ($d_validasi['total'] == 0) {
-    header("Location: ../Paket/detail_paket.php?id_paket=$id_paket&error=ruangan_tidak_valid");
+    header("Location: ../Paket/pilih_paket.php?id_paket=$id_paket&error=ruangan_tidak_valid");
     exit();
 }
 
@@ -97,6 +106,9 @@ $q_tema = sqlsrv_query($conn,
      ORDER BY t.Nama_Tema ASC", 
     array($id_ruangan)
 );
+if ($q_tema === false) {
+    die("Error query Tema: " . print_r(sqlsrv_errors(), true));
+}
 
 $tema_list = [];
 while ($row = sqlsrv_fetch_array($q_tema, SQLSRV_FETCH_ASSOC)) {
@@ -112,6 +124,9 @@ $q_profile = sqlsrv_query($conn,
     "SELECT Nama_Pelanggan, Foto_Profil FROM Pelanggan WHERE ID_Pelanggan = ? AND Is_Deleted = 0 AND Status = ?", 
     array($id_customer, STATUS_DATA_AKTIF)
 );
+if ($q_profile === false) {
+    die("Error query Profil: " . print_r(sqlsrv_errors(), true));
+}
 $d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
 $nama_customer = $d_profile['Nama_Pelanggan'] ?? 'Customer';
 $foto_customer = $d_profile['Foto_Profil'] ?? 'default.jpg';
@@ -160,7 +175,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             color: var(--text-dark);
         }
 
-        /* ===== NAVBAR ATAS (SAMA PERSIS) ===== */
+        /* ===== NAVBAR ATAS ===== */
         .top-navbar {
             background: #ffffff;
             padding: 16px 40px;
@@ -228,6 +243,9 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             box-shadow: 0 8px 25px rgba(216, 63, 103, 0.35);
             color: #fff;
         }
+        .nav-avatar-wrapper {
+            position: relative;
+        }
         .nav-avatar {
             width: 40px;
             height: 40px;
@@ -240,6 +258,65 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
         .nav-avatar:hover {
             transform: scale(1.1);
             border-color: var(--p-pink);
+        }
+        .nav-dropdown {
+            position: absolute;
+            top: 55px;
+            right: 0;
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+            padding: 12px;
+            min-width: 220px;
+            display: none;
+            z-index: 1001;
+            border: 1px solid #f1f5f9;
+        }
+        .nav-dropdown.show {
+            display: block;
+            animation: fadeIn 0.2s ease;
+        }
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            color: #4a5568;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-decoration: none;
+            transition: all 0.3s;
+            cursor: pointer;
+            border: none;
+            background: none;
+            width: 100%;
+        }
+        .dropdown-item:hover {
+            background: var(--s-pink);
+            color: var(--p-pink);
+        }
+        .dropdown-item i {
+            font-size: 1.1rem;
+            width: 20px;
+            text-align: center;
+        }
+        .dropdown-divider {
+            height: 1px;
+            background: #f1f5f9;
+            margin: 8px 0;
+        }
+        .dropdown-item.logout {
+            color: #dc2626;
+        }
+        .dropdown-item.logout:hover {
+            background: #fef2f2;
+        }
+        .dropdown-header {
+            padding: 8px 16px;
+            font-weight: 800;
+            color: var(--text-dark);
+            font-size: 0.95rem;
         }
 
         /* ===== BREADCRUMB BAR ===== */
@@ -461,6 +538,16 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
         .tema-card:hover .tema-img {
             transform: scale(1.1);
         }
+        .tema-img-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--p-pink);
+            font-size: 3rem;
+            background: linear-gradient(135deg, var(--s-pink), #f8fafc);
+        }
         .tema-badge {
             position: absolute;
             top: 12px;
@@ -528,6 +615,11 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             color: #fff;
         }
 
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         /* ===== RESPONSIVE ===== */
         @media (max-width: 992px) {
             .tema-section { grid-template-columns: 1fr; }
@@ -542,22 +634,35 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
 </head>
 <body>
 
-    <!-- NAVBAR ATAS (SAMA PERSIS) -->
+    <!-- NAVBAR ATAS -->
     <nav class="top-navbar">
         <a href="../../index.php" class="nav-logo">
             SpotLight.<span>StudioFoto</span>
         </a>
         <div class="nav-menu-center">
             <a href="../../index.php" class="nav-link-item">Dashboard</a>
-            <a href="../Paket/detail_paket.php" class="nav-link-item active">Booking Baru</a>
+            <a href="../Paket/pilih_paket.php?id_paket=<?= $id_paket ?>" class="nav-link-item active">Booking Baru</a>
             <a href="../../Booking/Riwayat/index.php" class="nav-link-item">Riwayat</a>
             <a href="../../Cetak/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
         </div>
         <div class="nav-right">
-            <a href="../Paket/detail_paket.php" class="nav-btn-booking">
+            <a href="../Paket/pilih_paket.php?id_paket=<?= $id_paket ?>" class="nav-btn-booking">
                 <i class="bi bi-plus-lg"></i> Booking
             </a>
-            <img src="<?= $foto_customer_src ?>" class="nav-avatar" alt="Profil" onclick="location.href='#'">
+            <div class="nav-avatar-wrapper">
+                <img src="<?= $foto_customer_src ?>" class="nav-avatar" alt="Profil" onclick="toggleDropdown()">
+                <div class="nav-dropdown" id="navDropdown">
+                    <div class="dropdown-header">Halo, <?= htmlspecialchars($nama_customer) ?></div>
+                    <div class="dropdown-divider"></div>
+                    <a href="../../../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
+                        <i class="bi bi-house-door"></i> Kembali ke Beranda
+                    </a>
+                    <div class="dropdown-divider"></div>
+                    <button class="dropdown-item logout" onclick="confirmLogout()">
+                        <i class="bi bi-box-arrow-right"></i> Keluar Sistem
+                    </button>
+                </div>
+            </div>
         </div>
     </nav>
 
@@ -566,7 +671,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
         <div class="breadcrumb-inner">
             <a href="../../index.php">Home</a>
             <span class="separator"><i class="bi bi-chevron-right"></i></span>
-            <a href="../Paket/detail_paket.php?id_paket=<?= $id_paket ?>"><?= htmlspecialchars($d_paket['Nama_Paket']) ?></a>
+            <a href="../Paket/pilih_paket.php?id_paket=<?= $id_paket ?>"><?= htmlspecialchars($d_paket['Nama_Paket']) ?></a>
             <span class="separator"><i class="bi bi-chevron-right"></i></span>
             <a href="../Ruangan/pilih_ruangan.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>"><?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?></a>
             <span class="separator"><i class="bi bi-chevron-right"></i></span>
@@ -577,7 +682,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
     <!-- MAIN CONTENT -->
     <main class="main-container">
 
-        <!-- PROGRESS BAR -->
+        <!-- PROGRESS BAR: 1.Paket -> 2.Ruangan -> 3.Tema -> 4.Jadwal -> 5.Konfirmasi -->
         <div class="progress-container">
             <div class="progress-step completed">
                 <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
@@ -586,22 +691,22 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             <div class="progress-line completed"></div>
             <div class="progress-step completed">
                 <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
-                <div class="progress-step-label">Detail Paket</div>
-            </div>
-            <div class="progress-line completed"></div>
-            <div class="progress-step completed">
-                <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
                 <div class="progress-step-label">Pilih Ruangan</div>
             </div>
             <div class="progress-line completed"></div>
             <div class="progress-step active">
-                <div class="progress-step-circle">4</div>
+                <div class="progress-step-circle">3</div>
                 <div class="progress-step-label">Pilih Tema</div>
             </div>
             <div class="progress-line"></div>
             <div class="progress-step">
-                <div class="progress-step-circle">5</div>
+                <div class="progress-step-circle">4</div>
                 <div class="progress-step-label">Jadwal</div>
+            </div>
+            <div class="progress-line"></div>
+            <div class="progress-step">
+                <div class="progress-step-circle">5</div>
+                <div class="progress-step-label">Konfirmasi</div>
             </div>
         </div>
 
@@ -617,11 +722,17 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                     <?php foreach ($tema_list as $tema): 
                         $foto_tema = ($tema['Foto_Tema'] != 'default_tema.jpg' && file_exists("../../../../assets/img/tema/" . $tema['Foto_Tema'])) 
                             ? "../../../../assets/img/tema/" . $tema['Foto_Tema'] 
-                            : "../../../../assets/img/tema/default_tema.jpg";
+                            : null;
                     ?>
                         <div class="tema-card" onclick="konfirmasiTema(<?= $tema['ID_Tema'] ?>, '<?= htmlspecialchars(addslashes($tema['Nama_Tema'])) ?>')">
                             <div class="tema-img-wrapper">
-                                <img src="<?= $foto_tema ?>" class="tema-img" alt="<?= htmlspecialchars($tema['Nama_Tema']) ?>">
+                                <?php if ($foto_tema): ?>
+                                    <img src="<?= $foto_tema ?>" class="tema-img" alt="<?= htmlspecialchars($tema['Nama_Tema']) ?>">
+                                <?php else: ?>
+                                    <div class="tema-img-placeholder">
+                                        <i class="bi bi-image"></i>
+                                    </div>
+                                <?php endif; ?>
                                 <div class="tema-badge"><?= htmlspecialchars($tema['Kategori_Tema'] ?? 'Tema') ?></div>
                             </div>
                             <div class="tema-body">
@@ -657,7 +768,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                         <div class="summary-icon completed"><i class="bi bi-check-lg"></i></div>
                         <div>
                             <div class="summary-text">Paket</div>
-                            <div class="summary-sub"><?= htmlspecialchars($d_paket['Nama_Paket']) ?></div>
+                            <div class="summary-sub"><?= htmlspecialchars($d_paket['Nama_Paket']) ?> (<?= $d_paket['Durasi_Waktu'] ?> menit)</div>
                         </div>
                     </div>
                     <div class="summary-item">
@@ -681,7 +792,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                             <div class="summary-sub">Belum dipilih</div>
                         </div>
                     </div>
-                    <div class="summary-harga">Rp <?= $harga_format ?></div>
+                    <div class="summary-harga">Rp <?= $harga_format ?> <span style="font-size:0.75rem;color:var(--text-muted);font-weight:600;">/ sesi</span></div>
                 </div>
             </div>
         </div>
@@ -690,6 +801,55 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
 
     <script src="../../../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Toggle dropdown menu
+        function toggleDropdown() {
+            document.getElementById('navDropdown').classList.toggle('show');
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const wrapper = document.querySelector('.nav-avatar-wrapper');
+            if (!wrapper.contains(e.target)) {
+                document.getElementById('navDropdown').classList.remove('show');
+            }
+        });
+
+        function confirmLandingPage(e) {
+            e.preventDefault();
+            Swal.fire({
+                title: 'Kembali ke Beranda?',
+                text: 'Anda akan meninggalkan halaman customer dan kembali ke halaman utama.',
+                icon: 'info',
+                showCancelButton: true,
+                confirmButtonColor: '#d83f67',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Kembali',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = '../../../../index.php';
+                }
+            });
+            return false;
+        }
+
+        function confirmLogout() {
+            Swal.fire({
+                title: 'Keluar Sistem?',
+                text: 'Apakah Anda yakin ingin keluar dari SpotLight Studio?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Keluar',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = '../../../../logout.php';
+                }
+            });
+        }
+
         function konfirmasiTema(idTema, namaTema) {
             Swal.fire({
                 title: 'Pilih Tema Ini?',
