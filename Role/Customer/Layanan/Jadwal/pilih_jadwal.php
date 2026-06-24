@@ -14,7 +14,6 @@ define('STATUS_JADWAL_TERSEDIA', 0);
 define('STATUS_JADWAL_BOOKED', 1);
 define('STATUS_JADWAL_MAINTENANCE', 2);
 define('STATUS_DATA_AKTIF', 1);
-define('STATUS_DATA_NONAKTIF', 0);
 
 // --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Customer') {
@@ -131,24 +130,11 @@ if ($d_validasi_tema['total'] == 0) {
 
 // =====================================================
 // AMBIL JADWAL DARI MASTER Jadwal_Studio
-// Filter: ID_Ruangan + ID_Paket + Tanggal >= hari ini + Status = 1 + Is_Deleted = 0
+// Filter: ID_Ruangan + ID_Paket + Tanggal >= hari ini + Status_Jadwal = 0 + Status = 1 + Is_Deleted = 0
 // Urutkan berdasarkan Tanggal dan Jam
 // =====================================================
 $today = date('Y-m-d');
 $now_time = date('H:i:s');
-
-// Parameter tanggal dari URL (untuk navigasi 7 hari)
-$selected_date = isset($_GET['tanggal']) ? trim($_GET['tanggal']) : $today;
-if (strtotime($selected_date) < strtotime($today)) {
-    $selected_date = $today;
-}
-
-// Hitung range tanggal (7 hari dari selected_date)
-$date_start = new DateTime($selected_date);
-$date_end = clone $date_start;
-$date_end->modify('+6 days');
-$date_start_str = $date_start->format('Y-m-d');
-$date_end_str = $date_end->format('Y-m-d');
 
 $q_jadwal = sqlsrv_query($conn, 
     "SELECT 
@@ -157,16 +143,16 @@ $q_jadwal = sqlsrv_query($conn,
         j.Jam_Mulai,
         j.Jam_Selesai,
         j.Keterangan,
-        j.Status_Jadwal,
-        j.Status
+        j.Status_Jadwal
      FROM Jadwal_Studio j
      WHERE j.ID_Ruangan = ?
        AND j.ID_Paket = ?
-       AND j.Tanggal_Jadwal BETWEEN ? AND ?
+       AND j.Tanggal_Jadwal >= ?
+       AND j.Status_Jadwal = ?
        AND j.Status = ?
        AND j.Is_Deleted = 0
      ORDER BY j.Tanggal_Jadwal ASC, j.Jam_Mulai ASC",
-    array($id_ruangan, $id_paket, $date_start_str, $date_end_str, STATUS_DATA_AKTIF)
+    array($id_ruangan, $id_paket, $today, STATUS_JADWAL_TERSEDIA, STATUS_DATA_AKTIF)
 );
 if ($q_jadwal === false) {
     die("Error query Jadwal: " . print_r(sqlsrv_errors(), true));
@@ -197,7 +183,7 @@ while ($b = sqlsrv_fetch_array($q_booked, SQLSRV_FETCH_ASSOC)) {
 
 // =====================================================
 // PROSES DATA JADWAL
-// Group by tanggal, cek status (tersedia/booked/lewat/libur)
+// Group by tanggal, cek status (tersedia/booked/lewat)
 // =====================================================
 $hari_indo = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
 $bulan_indo = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
@@ -250,17 +236,11 @@ while ($j = sqlsrv_fetch_array($q_jadwal, SQLSRV_FETCH_ASSOC)) {
     // Cek apakah slot sudah dibooking (berdasarkan ID_Jadwal)
     $is_booked = in_array((int)$j['ID_Jadwal'], $booked_ids);
 
-    // Cek apakah jadwal maintenance/libur dari master
-    $is_maintenance = ($j['Status_Jadwal'] == STATUS_JADWAL_MAINTENANCE);
-    $is_libur = (stripos($j['Keterangan'] ?? '', 'libur') !== false);
-
-    // Status akhir: tersedia / booked / expired / libur / maintenance
+    // Status akhir: tersedia / booked / expired
     if ($is_expired) {
         $status = 'expired';
-    } elseif ($is_booked || $j['Status_Jadwal'] == STATUS_JADWAL_BOOKED) {
+    } elseif ($is_booked) {
         $status = 'booked';
-    } elseif ($is_libur || $is_maintenance) {
-        $status = 'libur';
     } else {
         $status = 'tersedia';
     }
@@ -321,28 +301,6 @@ $ruangan_nama_js = htmlspecialchars($d_ruangan['Nama_Ruangan'], ENT_QUOTES, 'UTF
 $tema_nama_js = htmlspecialchars($d_tema['Nama_Tema'], ENT_QUOTES, 'UTF-8');
 $paket_nama_js = htmlspecialchars($d_paket['Nama_Paket'], ENT_QUOTES, 'UTF-8');
 $durasi_js = (int)$d_paket['Durasi_Waktu'];
-
-// Navigation dates
-$prev_date = clone $date_start;
-$prev_date->modify('-7 days');
-$next_date = clone $date_start;
-$next_date->modify('+7 days');
-
-// Generate 7 day tabs
-$date_tabs = [];
-$temp_date = clone $date_start;
-for ($i = 0; $i < 7; $i++) {
-    $ts = strtotime($temp_date->format('Y-m-d'));
-    $date_tabs[] = [
-        'date' => $temp_date->format('Y-m-d'),
-        'hari' => $hari_indo[date('w', $ts)],
-        'tgl' => date('d', $ts),
-        'bln' => $bulan_indo[(int)date('n', $ts) - 1],
-        'is_today' => ($temp_date->format('Y-m-d') == $today),
-        'is_selected' => ($temp_date->format('Y-m-d') == $selected_date)
-    ];
-    $temp_date->modify('+1 day');
-}
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -617,112 +575,6 @@ for ($i = 0; $i < 7; $i++) {
         }
         .progress-line.completed { background: #059669; }
 
-        /* ===== DATE NAVIGATION (Like AYO) ===== */
-        .date-nav-container {
-            background: #ffffff;
-            border-radius: 20px;
-            padding: 24px 30px;
-            margin-bottom: 30px;
-            border: 1px solid #f1f5f9;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
-        .date-nav-title {
-            font-size: 1.1rem;
-            font-weight: 800;
-            color: var(--text-dark);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .date-nav-title i { color: var(--p-pink); font-size: 1.3rem; }
-        .date-tabs-wrapper {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex: 1;
-            justify-content: center;
-            overflow-x: auto;
-            scrollbar-width: none;
-        }
-        .date-tabs-wrapper::-webkit-scrollbar { display: none; }
-        .date-tab {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-            padding: 12px 20px;
-            border-radius: 16px;
-            background: #f8fafc;
-            border: 2px solid #e2e8f0;
-            text-decoration: none;
-            color: #4a5568;
-            transition: all 0.3s;
-            min-width: 80px;
-            cursor: pointer;
-        }
-        .date-tab:hover {
-            border-color: var(--light-pink);
-            background: var(--s-pink);
-        }
-        .date-tab.active {
-            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            border-color: var(--p-pink);
-            color: #ffffff;
-            box-shadow: 0 4px 15px rgba(216, 63, 103, 0.3);
-        }
-        .date-tab .tab-hari {
-            font-size: 0.75rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .date-tab .tab-tgl {
-            font-size: 1.2rem;
-            font-weight: 800;
-        }
-        .date-tab .tab-bln {
-            font-size: 0.7rem;
-            font-weight: 600;
-            opacity: 0.8;
-        }
-        .date-tab.today {
-            border-color: var(--p-pink);
-            background: var(--s-pink);
-        }
-        .date-tab.today.active {
-            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-        }
-        .date-nav-btn {
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            border: 2px solid #e2e8f0;
-            background: #ffffff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #4a5568;
-            font-size: 1.2rem;
-            cursor: pointer;
-            transition: all 0.3s;
-            text-decoration: none;
-            flex-shrink: 0;
-        }
-        .date-nav-btn:hover {
-            border-color: var(--p-pink);
-            background: var(--s-pink);
-            color: var(--p-pink);
-        }
-        .date-nav-btn.disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
-
         /* ===== RINGKASAN BOOKING (STICKY SIDEBAR) ===== */
         .booking-summary {
             position: sticky;
@@ -766,7 +618,6 @@ for ($i = 0; $i < 7; $i++) {
             flex-shrink: 0;
         }
         .summary-icon.completed { background: #d1fae5; color: #059669; }
-        .summary-icon.libur { background: #fff7ed; color: #ea580c; }
         .summary-text {
             font-size: 0.9rem;
             font-weight: 700;
@@ -866,15 +717,6 @@ for ($i = 0; $i < 7; $i++) {
             font-weight: 800;
             text-transform: uppercase;
         }
-        .tanggal-libur {
-            background: linear-gradient(135deg, #ea580c, #d97706);
-            color: #ffffff;
-            padding: 4px 12px;
-            border-radius: 50px;
-            font-size: 0.75rem;
-            font-weight: 800;
-            text-transform: uppercase;
-        }
 
         /* ===== SLOT GRID ===== */
         .slot-grid {
@@ -948,24 +790,21 @@ for ($i = 0; $i < 7; $i++) {
             text-transform: uppercase;
         }
 
-        /* Slot Libur */
-        .slot-jam.libur {
-            background: #fff7ed;
-            border-color: #fed7aa;
-            color: #ea580c;
+        /* Slot Expired */
+        .slot-jam.expired {
+            background: #f8fafc;
+            border-color: #e2e8f0;
+            color: #94a3b8;
             cursor: not-allowed;
-            opacity: 0.8;
+            opacity: 0.6;
+            display: none; /* Sembunyikan slot yang sudah lewat */
         }
-        .slot-jam.libur .slot-durasi { color: #f59e0b; }
-        .slot-jam.libur .slot-waktu { 
-            color: #ea580c; 
+        .slot-jam.expired .slot-durasi { color: #cbd5e1; }
+        .slot-jam.expired .slot-waktu { 
+            color: #94a3b8; 
             text-decoration: line-through;
         }
-        .slot-jam.libur .slot-status { 
-            color: #ea580c; 
-            text-transform: uppercase;
-            font-weight: 800;
-        }
+        .slot-jam.expired .slot-status { color: #94a3b8; }
 
         /* ===== LEGEND ===== */
         .slot-legend {
@@ -998,10 +837,6 @@ for ($i = 0; $i < 7; $i++) {
             background: #f8fafc; 
             border-color: #e2e8f0; 
         }
-        .legend-box.libur { 
-            background: #fff7ed; 
-            border-color: #fed7aa; 
-        }
 
         /* ===== EMPTY STATE ===== */
         .empty-jadwal {
@@ -1024,41 +859,6 @@ for ($i = 0; $i < 7; $i++) {
             font-size: 0.95rem;
         }
 
-        /* ===== LOADING OVERLAY ===== */
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(255,255,255,0.9);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 9999;
-            flex-direction: column;
-            gap: 16px;
-        }
-        .loading-overlay.show {
-            display: flex;
-        }
-        .loading-spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid var(--light-pink);
-            border-top-color: var(--p-pink);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        .loading-text {
-            font-size: 1rem;
-            font-weight: 700;
-            color: var(--p-pink);
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-5px); }
             to { opacity: 1; transform: translateY(0); }
@@ -1073,23 +873,13 @@ for ($i = 0; $i < 7; $i++) {
             .top-navbar { padding: 16px 20px; }
             .breadcrumb-bar { padding: 16px 20px; }
             .slot-grid { grid-template-columns: repeat(3, 1fr); }
-            .date-nav-container { padding: 20px; }
-            .date-tab { min-width: 70px; padding: 10px 14px; }
         }
         @media (max-width: 576px) {
             .slot-grid { grid-template-columns: repeat(2, 1fr); }
-            .date-tabs-wrapper { gap: 6px; }
-            .date-tab { min-width: 60px; padding: 8px 10px; }
-            .date-tab .tab-tgl { font-size: 1rem; }
         }
     </style>
 </head>
 <body>
-    <!-- LOADING OVERLAY -->
-    <div class="loading-overlay" id="loadingOverlay">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Memproses...</div>
-    </div>
 
     <!-- NAVBAR ATAS -->
     <nav class="top-navbar">
@@ -1099,7 +889,7 @@ for ($i = 0; $i < 7; $i++) {
         <div class="nav-menu-center">
             <a href="../../index.php" class="nav-link-item">Dashboard</a>
             <a href="../Paket/pilih_paket.php?id_paket=<?= $id_paket ?>" class="nav-link-item active">Booking Baru</a>
-            <a href="../../Riwayat/riwayat.php" class="nav-link-item">Riwayat</a>
+            <a href="../../Booking/Riwayat/index.php" class="nav-link-item">Riwayat</a>
             <a href="../../Cetak/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
         </div>
         <div class="nav-right">
@@ -1169,32 +959,6 @@ for ($i = 0; $i < 7; $i++) {
             </div>
         </div>
 
-        <!-- DATE NAVIGATION (Like AYO) -->
-        <div class="date-nav-container">
-            <div class="date-nav-title">
-                <i class="bi bi-calendar-week-fill"></i>
-                Pilih Tanggal
-            </div>
-            <a href="?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&tanggal=<?= $prev_date->format('Y-m-d') ?>" 
-               class="date-nav-btn <?= ($prev_date->format('Y-m-d') < $today) ? 'disabled' : '' ?>">
-                <i class="bi bi-chevron-left"></i>
-            </a>
-            <div class="date-tabs-wrapper">
-                <?php foreach ($date_tabs as $tab): ?>
-                    <a href="?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&tanggal=<?= $tab['date'] ?>" 
-                       class="date-tab <?= $tab['is_selected'] ? 'active' : '' ?> <?= $tab['is_today'] ? 'today' : '' ?>">
-                        <span class="tab-hari"><?= $tab['hari'] ?></span>
-                        <span class="tab-tgl"><?= $tab['tgl'] ?></span>
-                        <span class="tab-bln"><?= $tab['bln'] ?></span>
-                    </a>
-                <?php endforeach; ?>
-            </div>
-            <a href="?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&tanggal=<?= $next_date->format('Y-m-d') ?>" 
-               class="date-nav-btn">
-                <i class="bi bi-chevron-right"></i>
-            </a>
-        </div>
-
         <!-- JADWAL SECTION + SIDEBAR -->
         <div class="jadwal-section">
             <!-- Left: Grid Slot Jam -->
@@ -1226,15 +990,6 @@ for ($i = 0; $i < 7; $i++) {
                             return $s['status'] != 'expired';
                         });
                         if (empty($visible_slots)) continue;
-
-                        // Cek apakah semua slot libur
-                        $all_libur = true;
-                        foreach ($visible_slots as $slot) {
-                            if ($slot['status'] != 'libur') {
-                                $all_libur = false;
-                                break;
-                            }
-                        }
                     ?>
                         <div class="tanggal-section">
                             <div class="tanggal-header">
@@ -1242,9 +997,6 @@ for ($i = 0; $i < 7; $i++) {
                                 <span class="tanggal-tanggal"><?= $hari_data['tgl_format'] ?></span>
                                 <?php if ($hari_data['is_today']): ?>
                                     <span class="tanggal-today">Hari Ini</span>
-                                <?php endif; ?>
-                                <?php if ($all_libur): ?>
-                                    <span class="tanggal-libur">Libur</span>
                                 <?php endif; ?>
                             </div>
                             <div class="slot-grid">
@@ -1256,14 +1008,8 @@ for ($i = 0; $i < 7; $i++) {
                                         <div class="slot-waktu"><?= htmlspecialchars($slot['jam_mulai']) ?> - <?= htmlspecialchars($slot['jam_selesai']) ?></div>
                                         <div class="slot-status">Booked</div>
                                     </div>
-                                <?php elseif ($slot['status'] == 'libur'): ?>
-                                    <div class="slot-jam libur">
-                                        <div class="slot-durasi"><?= (int)$d_paket['Durasi_Waktu'] ?> Menit</div>
-                                        <div class="slot-waktu"><?= htmlspecialchars($slot['jam_mulai']) ?> - <?= htmlspecialchars($slot['jam_selesai']) ?></div>
-                                        <div class="slot-status">Libur</div>
-                                    </div>
                                 <?php else: 
-                                    // Build data-attributes for JS (safe, no inline onclick)
+                                    // Build data-attributes for JS instead of inline onclick
                                     $slot_data = json_encode([
                                         'id' => $slot['id_jadwal'],
                                         'tanggal' => $hari_data['tanggal'],
@@ -1292,10 +1038,6 @@ for ($i = 0; $i < 7; $i++) {
                         <div class="legend-item">
                             <div class="legend-box booked"></div>
                             <span>Sudah Dibooking</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-box libur"></div>
-                            <span>Libur</span>
                         </div>
                     </div>
                 <?php endif; ?>
@@ -1391,7 +1133,7 @@ for ($i = 0; $i < 7; $i++) {
             });
         }
 
-        // Data dari PHP untuk JS (sudah di-escape dengan json_encode)
+        // Data dari PHP untuk JS (sudah di-escape)
         const ruanganNama = <?= json_encode($ruangan_nama_js) ?>;
         const temaNama = <?= json_encode($tema_nama_js) ?>;
         const paketNama = <?= json_encode($paket_nama_js) ?>;
@@ -1401,63 +1143,15 @@ for ($i = 0; $i < 7; $i++) {
         const idRuangan = <?= json_encode((int)$id_ruangan) ?>;
         const idTema = <?= json_encode((int)$id_tema) ?>;
 
-        // Fungsi hide loading
-        function hideLoading() {
-            const overlay = document.getElementById('loadingOverlay');
-            if (overlay) overlay.classList.remove('show');
-        }
-
-        // Fungsi show loading
-        function showLoading() {
-            const overlay = document.getElementById('loadingOverlay');
-            if (overlay) overlay.classList.add('show');
-        }
-
         // Event listener untuk slot tersedia (gunakan data-attributes, bukan inline onclick)
         document.querySelectorAll('.slot-jam.tersedia').forEach(function(el) {
             el.addEventListener('click', function() {
-                const slotData = this.getAttribute('data-slot');
-                let slot = null;
-
-                // Parse JSON dengan error handling
-                try {
-                    slot = JSON.parse(slotData);
-                } catch (e) {
-                    console.error('Error parsing slot data:', e);
-                    hideLoading(); // Hide kalau ada error
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error',
-                        text: 'Data jadwal tidak valid. Silakan refresh halaman.',
-                        confirmButtonColor: '#d83f67'
-                    });
-                    return;
-                }
-
-                // Validasi data slot
-                if (!slot || !slot.id) {
-                    console.error('Slot data tidak lengkap:', slot);
-                    hideLoading(); // Hide kalau ada error
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error',
-                        text: 'Data jadwal tidak lengkap.',
-                        confirmButtonColor: '#d83f67'
-                    });
-                    return;
-                }
-
-                // Panggil pilihJadwal dengan validasi lolos
+                const slot = JSON.parse(this.getAttribute('data-slot'));
                 pilihJadwal(slot.id, slot.tanggal, slot.jam_mulai, slot.jam_selesai, slot.hari, slot.tgl_format);
             });
         });
 
-        /**
-         * FIX BUG: Loading ditampilkan SETELAH validasi berhasil
-         * Jika ada error, loading tidak akan ditampilkan
-         */
         function pilihJadwal(idJadwal, tanggal, jamMulai, jamSelesai, hari, tglFormat) {
-            // SEKARANG showLoading() hanya dipanggil KETIKA USER CONFIRM di SweetAlert
             Swal.fire({
                 title: 'Konfirmasi Jadwal',
                 html: '<div style="text-align:left">' +
@@ -1474,44 +1168,17 @@ for ($i = 0; $i < 7; $i++) {
                 confirmButtonColor: '#d83f67',
                 cancelButtonColor: '#718096',
                 confirmButtonText: 'Ya, Pilih Jadwal Ini',
-                cancelButtonText: 'Batal',
-                allowOutsideClick: true,
-                allowEscapeKey: true,
-                showCloseButton: true
+                cancelButtonText: 'Batal'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    // HANYA TAMPILKAN LOADING KETIKA USER CONFIRM
-                    showLoading();
-                    // Redirect ke halaman konfirmasi
+                    // Kirim ke proses_order.php dengan ID_Jadwal dari master
                     window.location.href = '../Konfirmasi/konfirmasi.php?id_paket=' + idPaket + 
                                           '&id_ruangan=' + idRuangan + 
                                           '&id_tema=' + idTema + 
                                           '&id_jadwal=' + idJadwal;
                 }
-                // Kalau cancel, loading tetap tidak ditampilkan (OK!)
-            }).catch((error) => {
-                console.error('Swal error:', error);
-                hideLoading(); // Safety fallback
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Terjadi Kesalahan',
-                    text: 'Silakan coba lagi.',
-                    confirmButtonColor: '#d83f67'
-                });
             });
         }
-
-        // Safety: hide loading on page load
-        window.addEventListener('load', function() {
-            hideLoading();
-        });
-
-        // Safety: hide loading kalau user tekan ESC
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                hideLoading();
-            }
-        });
     </script>
 </body>
 </html>
