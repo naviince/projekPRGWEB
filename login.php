@@ -512,11 +512,11 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
         }
         .input-label {
             display: block;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             font-weight: 700;
-            color: #8a99a8;
+            color: #1e1e24;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
             margin-bottom: 8px;
         }
         .input-label .required { color: #ef4444; margin-left: 2px; }
