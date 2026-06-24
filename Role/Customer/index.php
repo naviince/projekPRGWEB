@@ -689,7 +689,7 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             <a href="index.php" class="nav-link-item active">Dashboard</a>
             <a href="Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
             <a href="Riwayat/riwayat.php" class="nav-link-item">Riwayat</a>
-            <a href="Cetak/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
+            <a href="Barang/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
         </div>
         <div class="nav-right">
             <a href="Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
@@ -906,7 +906,7 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
                                 <div class="info-sub">Rp<?= $harga_barang ?></div>
                             </div>
                         </div>
-                        <a href="Cetak/Katalog/index.php" class="info-btn">Lihat</a>
+                        <a href="Barang/Katalog/index.php" class="info-btn">Lihat</a>
                     </div>
                 <?php endwhile; else: ?>
                     <div class="text-center py-4">
