@@ -2,7 +2,7 @@
 session_start();
 include '../../koneksi.php';
 
-// --- 1. PROTEKSI HALAMAN ---
+// --- PROTEKSI ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Admin') {
     header("Location: ../../login.php");
     exit();
@@ -10,58 +10,81 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 
-// --- 2. AMBIL PROFIL ADMIN ---
-$q_admin = sqlsrv_query($conn, "SELECT Nama_Karyawan, Foto_Profil FROM Karyawan WHERE ID_Karyawan = ?", array($id_admin));
-$admin_data = sqlsrv_fetch_array($q_admin, SQLSRV_FETCH_ASSOC);
+// --- Pesan Notifikasi ---
+$msg = $_GET['msg'] ?? '';
+$alert_map = [
+    'success_add'    => ['type' => 'success', 'text' => 'Sesi foto berhasil ditambahkan!'],
+    'success_edit'   => ['type' => 'success', 'text' => 'Sesi foto berhasil diperbarui!'],
+    'success_delete' => ['type' => 'success', 'text' => 'Sesi foto berhasil dihapus.'],
+    'error_duplikat' => ['type' => 'error',   'text' => 'Order ini sudah memiliki sesi foto aktif!'],
+    'error_format'   => ['type' => 'error',   'text' => 'Format file tidak diizinkan. Gunakan ZIP, JPG, PNG, atau PDF.'],
+    'error_ukuran'   => ['type' => 'error',   'text' => 'Ukuran file terlalu besar. Maksimal 50MB.'],
+    'error_upload'   => ['type' => 'error',   'text' => 'Gagal mengunggah file. Coba lagi.'],
+    'error_db'       => ['type' => 'error',   'text' => 'Terjadi kesalahan pada database. Coba lagi.'],
+    'error_validasi' => ['type' => 'error',   'text' => 'Data tidak lengkap. Periksa kembali form.'],
+];
 
-$nama_admin = $admin_data['Nama_Karyawan'] ?? 'Administrator';
-$foto_admin = $admin_data['Foto_Profil'] ?? 'default.jpg';
-$default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
-$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
-    ? "../../assets/img/karyawan/" . $foto_admin : $default_svg_avatar;
+// --- Pencarian ---
+$cari = isset($_GET['cari']) ? trim($_GET['cari']) : '';
+$filter_status = isset($_GET['filter_status']) ? $_GET['filter_status'] : '';
 
-// --- 3. LOGIKA PENCARIAN ---
-$cari = isset($_GET['cari']) ? trim($_GET['cari']) : "";
-$filter_cari = "";
-$params = array();
+$where_extra = '';
+$params = [];
 
 if (!empty($cari)) {
-    // Mencari berdasarkan Nama Pelanggan atau ID Order
-    $filter_cari = " AND (pl.Nama_Pelanggan LIKE ? OR o.ID_Order LIKE ?)";
-    $params = array("%$cari%", "%$cari%");
+    $where_extra .= " AND (pl.Nama_Pelanggan LIKE ? OR CAST(o.ID_Order AS VARCHAR) LIKE ?)";
+    $params[] = "%$cari%";
+    $params[] = "%$cari%";
+}
+if ($filter_status !== '') {
+    $where_extra .= " AND s.Status_Sesi = ?";
+    $params[] = intval($filter_status);
 }
 
-// --- 4. QUERY STATISTIK (Disesuaikan dengan filter cari) ---
-$sql_stats = "SELECT 
-    COUNT(*) as total,
-    SUM(CASE WHEN s.File_Hasil IS NULL OR s.File_Hasil = '' THEN 1 ELSE 0 END) as pending,
-    SUM(CASE WHEN s.File_Hasil IS NOT NULL AND s.File_Hasil <> '' THEN 1 ELSE 0 END) as selesai
-    FROM Sesi_Foto s
-    JOIN [Order] o ON s.ID_Order = o.ID_Order
-    JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan
-    WHERE s.Status = 1 $filter_cari";
-
-$q_stats = sqlsrv_query($conn, $sql_stats, $params);
+// --- Statistik ---
+$q_stats = sqlsrv_query($conn,
+    "SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN s.Status_Sesi = 0 THEN 1 ELSE 0 END) as terjadwal,
+        SUM(CASE WHEN s.Status_Sesi = 1 THEN 1 ELSE 0 END) as proses,
+        SUM(CASE WHEN s.Status_Sesi = 2 THEN 1 ELSE 0 END) as selesai
+     FROM Sesi_Foto s
+     JOIN [Order] o ON s.ID_Order = o.ID_Order
+     JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan
+     WHERE s.Status = 1",
+    []
+);
 $stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
 
-// --- 5. QUERY LIST DATA SESI FOTO (Disesuaikan dengan filter cari) ---
-$sql_list = "SELECT s.*, o.ID_Order, pl.Nama_Pelanggan, k.Nama_Karyawan 
+// --- Data List ---
+$sql_list = "SELECT s.ID_Sesi_Foto, s.Waktu_Mulai, s.Waktu_Selesai, s.Status_Sesi, s.File_Hasil, s.Tanggal_Upload_Hasil,
+                    o.ID_Order, pl.Nama_Pelanggan, k.Nama_Karyawan
              FROM Sesi_Foto s
-             JOIN [Order] o ON s.ID_Order = o.ID_Order
+             JOIN [Order] o  ON s.ID_Order    = o.ID_Order
              JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan
-             JOIN Karyawan k ON s.ID_Karyawan = k.ID_Karyawan
-             WHERE s.Status = 1 $filter_cari
-             ORDER BY CASE WHEN s.File_Hasil IS NULL OR s.File_Hasil = '' THEN 0 ELSE 1 END, s.Waktu_Mulai DESC";
-
+             JOIN Karyawan k   ON s.ID_Karyawan  = k.ID_Karyawan
+             WHERE s.Status = 1 $where_extra
+             ORDER BY 
+                CASE s.Status_Sesi WHEN 1 THEN 0 WHEN 0 THEN 1 ELSE 2 END,
+                s.Waktu_Mulai ASC";
 $query = sqlsrv_query($conn, $sql_list, $params);
-?>
 
+// Status label helper
+function statusSesi($s) {
+    $map = [
+        0 => ['label' => 'Terjadwal',  'class' => 'badge-terjadwal', 'icon' => 'bi-calendar-event'],
+        1 => ['label' => 'Proses',     'class' => 'badge-proses',    'icon' => 'bi-camera-reels'],
+        2 => ['label' => 'Selesai',    'class' => 'badge-selesai',   'icon' => 'bi-check-circle'],
+    ];
+    return $map[$s] ?? ['label' => 'Unknown', 'class' => '', 'icon' => 'bi-question'];
+}
+?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Upload Hasil Foto – SpotLight Studio</title>
+    <title>Sesi Foto – SpotLight Studio</title>
 
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
@@ -71,434 +94,426 @@ $query = sqlsrv_query($conn, $sql_list, $params);
     <style>
         :root {
             --p-pink: #D53D66; --d-pink: #CA3366; --s-pink: #FFF0F3;
-            --light-pink: #FFE4E9; --accent-pink: #E85D84;
-            --text-dark: #1e1e24; --text-muted: #718096;
-             --body-bg: #f8fafc;
+            --light-pink: #FFE4E9; --text-dark: #1e1e24; --text-muted: #718096;
+            --body-bg: #f8fafc; --sidebar-bg: #ffffff;
             --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            --sidebar-bg: #ffffff;
         }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        ul, li { list-style: none !important; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--body-bg); color: var(--text-dark); }
 
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--body-bg); color: var(--text-dark); overflow-x: hidden; }
+        /* SIDEBAR */
+        .sidebar { width: 260px; height: 100vh; background: var(--sidebar-bg); position: fixed; top: 0; left: 0; border-right: 1px solid rgba(255,228,233,0.8); display: flex; flex-direction: column; justify-content: space-between; padding: 30px 20px; z-index: 100; }
+        .sidebar-brand { font-weight: 800; font-size: 1.5rem; color: var(--p-pink); text-decoration: none; letter-spacing: -1px; margin-bottom: 40px; display: block; }
+        .sidebar-brand span { color: var(--text-dark); font-size: 0.85rem; font-weight: 600; }
+        .sidebar-menu-wrapper { flex-grow: 1; overflow-y: auto; margin-bottom: 20px; scrollbar-width: none; }
+        .sidebar-menu-wrapper::-webkit-scrollbar { display: none; }
+        .nav-menu { list-style: none; padding: 0; margin: 0; }
+        .nav-item { margin-bottom: 8px; }
+        .nav-link-custom { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; color: #4a5568; font-weight: 700; text-decoration: none; border-radius: 12px; font-size: 0.9rem; transition: var(--transition-3d); }
+        .nav-link-custom:hover, .nav-link-custom.active { background: var(--light-pink); color: var(--p-pink); transform: translateX(4px); }
+        .submenu { padding-left: 20px; margin-top: 5px; display: none; }
+        .submenu.show { display: block !important; }
+        .submenu-link { display: flex; align-items: center; padding: 8px 18px; color: #718096; font-weight: 600; font-size: 0.85rem; text-decoration: none; border-radius: 10px; transition: 0.3s; }
+        .submenu-link:hover, .submenu-link.active { color: var(--p-pink); background: rgba(213,61,102,0.04); padding-left: 22px; }
+        .btn-logout { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #fff; border: none; width: 100%; padding: 12px; border-radius: 12px; font-weight: 800; font-size: 0.85rem; transition: var(--transition-3d); cursor: pointer; }
+        .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213,61,102,0.2); }
 
-        /* SIDEBAR (Template Matching) */
-
-
-        /* SIDEBAR STYLING */
-        .sidebar {
-            width: 260px;
-            height: 100vh;
-            background: var(--sidebar-bg);
-            position: fixed;
-            top: 0;
-            left: 0;
-            border-right: 1px solid rgba(255, 228, 233, 0.8);
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            padding: 30px 20px;
-            z-index: 100;
-        }
-        .sidebar-brand {
-            font-weight: 800;
-            font-size: 1.5rem;
-            color: var(--p-pink);
-            text-decoration: none;
-            letter-spacing: -1px;
-            margin-bottom: 40px;
-            display: block;
-        }
-        .sidebar-brand span {
-            color: var(--text-dark);
-            font-size: 0.85rem;
-            font-weight: 600;
-        }
-
-        .sidebar-menu-wrapper {
-            flex-grow: 1;
-            overflow-y: auto;
-            margin-bottom: 20px;
-            scrollbar-width: none;
-        }
-        .sidebar-menu-wrapper::-webkit-scrollbar {
-            display: none;
-        }
-
-        .nav-menu {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        .nav-item {
-            margin-bottom: 8px;
-        }
-        .nav-link-custom {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 18px;
-            color: #4a5568;
-            font-weight: 700;
-            text-decoration: none;
-            border-radius: 12px;
-            font-size: 0.9rem;
-            transition: var(--transition-3d);
-        }
-        .nav-link-custom:hover, .nav-link-custom.active {
-            background-color: var(--light-pink);
-            color: var(--p-pink);
-            transform: translateX(4px);
-        }
-        .submenu {
-            list-style: none;
-            padding-left: 20px;
-            margin-top: 5px;
-            display: none;
-            transition: var(--transition-3d);
-        }
-        .submenu.show {
-            display: block !important;
-        }
-        .submenu-link {
-            display: flex;
-            align-items: center;
-            padding: 8px 18px;
-            color: #718096;
-            font-weight: 600;
-            font-size: 0.85rem;
-            text-decoration: none;
-            border-radius: 10px;
-            transition: 0.3s;
-        }
-        .submenu-link:hover, .submenu-link.active {
-            color: var(--p-pink);
-            background-color: rgba(213, 61, 102, 0.03);
-            padding-left: 22px;
-        }
-
-        .btn-logout {
-            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            color: #ffffff;
-            border: none;
-            width: 100%;
-            padding: 12px;
-            border-radius: 12px;
-            font-weight: 800;
-            font-size: 0.85rem;
-            transition: var(--transition-3d);
-        }
-        .btn-logout:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2);
-        }
-
-
-        /* CONTENT */
+        /* MAIN */
         .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
-        .card-3d { background: #ffffff; border-radius: 22px; border: 1px solid rgba(255, 228, 233, 0.8); box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03); transition: var(--transition-3d); padding: 20px; position: relative; overflow: hidden; }
-        .card-3d:hover { transform: translateY(-5px); box-shadow: 0 15px 35px rgba(213, 61, 102, 0.1); }
+        .dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .clock-badge { background: var(--light-pink); color: var(--text-dark); padding: 10px 20px; border-radius: 12px; font-weight: 700; font-size: 0.85rem; }
 
         /* STATS */
-        .stats-row { display: flex; gap: 16px; margin-bottom: 30px; }
-        .stat-icon { width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
-        .stat-icon-pink { background: var(--s-pink); color: var(--p-pink); }
-        .stat-icon-orange { background: #fff7ed; color: #ea580c; }
-        .stat-icon-green { background: #ecfdf5; color: #059669; }
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+        .stat-card { background: #fff; border-radius: 20px; border: 1px solid rgba(255,228,233,0.8); padding: 22px 24px; display: flex; align-items: center; gap: 16px; transition: var(--transition-3d); }
+        .stat-card:hover { transform: translateY(-4px); box-shadow: 0 12px 30px rgba(213,61,102,0.08); }
+        .stat-icon { width: 50px; height: 50px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; flex-shrink: 0; }
+        .stat-icon-pink   { background: var(--s-pink);  color: var(--p-pink); }
+        .stat-icon-yellow { background: #fffbeb;         color: #d97706; }
+        .stat-icon-blue   { background: #eff6ff;         color: #3b82f6; }
+        .stat-icon-green  { background: #ecfdf5;         color: #059669; }
+        .stat-label { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+        .stat-value { font-size: 1.6rem; font-weight: 800; color: var(--text-dark); line-height: 1; margin-top: 2px; }
+
+        /* SEARCH */
+        .search-bar-row { display: flex; gap: 12px; margin-bottom: 20px; align-items: center; }
+        .search-wrap { position: relative; flex: 1; }
+        .search-wrap i { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #94a3b8; }
+        .search-input { width: 100%; padding: 13px 18px 13px 44px; border: 2px solid #e2e8f0; border-radius: 14px; font-weight: 600; font-size: 0.9rem; background: #fff; transition: 0.3s; color: var(--text-dark); }
+        .search-input:focus { outline: none; border-color: var(--p-pink); }
+        .filter-select { padding: 13px 18px; border: 2px solid #e2e8f0; border-radius: 14px; font-weight: 600; font-size: 0.9rem; background: #fff; color: var(--text-dark); cursor: pointer; min-width: 180px; }
+        .filter-select:focus { outline: none; border-color: var(--p-pink); }
+        .btn-cari { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #fff; border: none; border-radius: 14px; padding: 13px 28px; font-weight: 700; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: 0.3s; white-space: nowrap; }
+        .btn-cari:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(213,61,102,0.3); }
+        .btn-add { background: #fff; border: 2px solid var(--p-pink); color: var(--p-pink); border-radius: 14px; padding: 13px 24px; font-weight: 700; font-size: 0.9rem; text-decoration: none; display: flex; align-items: center; gap: 8px; transition: 0.3s; white-space: nowrap; }
+        .btn-add:hover { background: var(--p-pink); color: #fff; }
 
         /* TABLE */
-        .data-table { width: 100%; border-collapse: separate; border-spacing: 0; }
-        .data-table thead th { background: #ffffff; padding: 16px 20px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: #94a3b8; border-bottom: 2px solid #f1f5f9; }
-        .data-table tbody td { padding: 16px 20px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
-        .data-table tbody tr:hover { background-color: #FFF8F0; }
+        .table-card { background: #fff; border-radius: 20px; border: 1px solid rgba(255,228,233,0.8); box-shadow: 0 4px 20px rgba(0,0,0,0.02); overflow: hidden; }
+        .table-card-header { padding: 20px 28px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; }
+        .table-card-title { font-weight: 800; font-size: 1rem; }
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table thead th { background: #fafafa; padding: 14px 20px; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; border-bottom: 2px solid #f1f5f9; white-space: nowrap; }
+        .data-table tbody td { padding: 16px 20px; border-bottom: 1px solid #f8fafc; vertical-align: middle; }
+        .data-table tbody tr:last-child td { border-bottom: none; }
+        .data-table tbody tr:hover { background: #fffbfc; }
 
-        /* BUTTONS */
-        .btn-upload-task { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: white; border-radius: 12px; padding: 8px 16px; font-weight: 700; font-size: 0.8rem; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(213, 61, 102, 0.2); }
-        .btn-upload-task:hover { color: white; transform: translateY(-2px); }
-        
-        .badge-status { font-size: 0.7rem; font-weight: 700; padding: 6px 12px; border-radius: 50px; }
-        .badge-pending { background: #fff7ed; color: #ea580c; }
-        .badge-selesai { background: #ecfdf5; color: #059669; }
+        /* BADGES */
+        .badge-sesi { display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 800; padding: 6px 14px; border-radius: 50px; }
+        .badge-terjadwal { background: #eff6ff; color: #3b82f6; }
+        .badge-proses    { background: #fffbeb; color: #d97706; }
+        .badge-selesai   { background: #ecfdf5; color: #059669; }
 
-        /* Menghilangkan titik-titik pada seluruh menu sidebar */
-.nav-menu, 
-.nav-menu li, 
-.submenu, 
-.submenu li, 
-.list-unstyled {
-    list-style: none !important;
-    list-style-type: none !important;
-    padding-left: 0 !important;
-    margin-left: 0 !important;
-}
+        /* ACTIONS */
+        .action-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 10px; font-size: 0.78rem; font-weight: 700; text-decoration: none; transition: 0.2s; border: none; cursor: pointer; }
+        .btn-upload { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #fff; box-shadow: 0 3px 10px rgba(213,61,102,0.2); }
+        .btn-upload:hover { transform: translateY(-2px); color: #fff; }
+        .btn-view   { background: #eff6ff; color: #3b82f6; }
+        .btn-view:hover { background: #3b82f6; color: #fff; }
+        .btn-edit   { background: #fffbeb; color: #d97706; }
+        .btn-edit:hover { background: #d97706; color: #fff; }
+        .btn-del    { background: #fff5f5; color: #ef4444; }
+        .btn-del:hover { background: #ef4444; color: #fff; }
 
-/* Memastikan item navigasi tidak memiliki gaya list */
-.nav-item {
-    list-style: none !important;
-    list-style-type: none !important;
-}
+        /* EMPTY STATE */
+        .empty-state { text-align: center; padding: 60px 20px; }
+        .empty-state i { font-size: 3rem; color: #cbd5e1; margin-bottom: 12px; }
+        .empty-state p { color: var(--text-muted); font-weight: 600; }
 
-/* SEARCH & FILTER BAR */
-.search-filter-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 25px; }
-.search-form-flex { display: flex; align-items: center; gap: 10px; flex: 1; }
-.search-input-wrapper { position: relative; flex: 1; }
-.search-icon-inside { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #94a3b8; }
-.search-input-main {
-    width: 100%; border: 2px solid #e2e8f0; border-radius: 14px;
-    padding: 12px 18px 12px 45px; font-weight: 600; font-size: 0.9rem;
-    color: #1e293b; transition: 0.3s; background: #ffffff;
-}
-.search-input-main:focus { outline: none; border-color: var(--p-pink); }
+        /* PELANGGAN INFO */
+        .pelanggan-name { font-weight: 700; font-size: 0.9rem; color: var(--text-dark); }
+        .order-id-badge { display: inline-block; background: var(--s-pink); color: var(--p-pink); font-size: 0.7rem; font-weight: 800; padding: 2px 10px; border-radius: 50px; margin-top: 4px; }
+        .fotografer-name { font-size: 0.82rem; color: var(--text-muted); font-weight: 600; }
 
-.btn-filter-custom {
-    background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-    color: #ffffff; border: none; border-radius: 14px;
-    padding: 12px 24px; font-weight: 700; font-size: 0.9rem;
-    display: inline-flex; align-items: center; gap: 8px; cursor: pointer; transition: 0.3s;
-}
-.btn-filter-custom:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(213, 61, 102, 0.3); }
-
-.btn-search-icon-only {
-    background: #ffffff; border: 2px solid #e2e8f0; border-radius: 14px;
-    padding: 12px 16px; color: #94a3b8; transition: 0.3s; display: flex; align-items: center;
-}
-.btn-search-icon-only:hover { border-color: var(--p-pink); color: var(--p-pink); }
+        /* FILE INFO */
+        .file-badge { display: inline-flex; align-items: center; gap: 6px; background: #ecfdf5; color: #059669; font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 8px; }
+        .no-file-badge { display: inline-flex; align-items: center; gap: 6px; background: #fff5f5; color: #ef4444; font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 8px; }
     </style>
 </head>
 <body>
 
-    <!-- SIDEBAR (Identik dengan Template Anda) -->
-     <div class="sidebar">
-        <div class="sidebar-menu-wrapper">
-            <a href="../../index.php" class="sidebar-brand">
-                SpotLight.<br>
-                <span>Panel Administrator</span>
-            </a>
-            
-            <ul class="nav-menu">
-                <li class="nav-item">
-                    <a href="../../Role/Admin/index.php" class="nav-link-custom">
-                        <span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span>
-                    </a>
-                </li>
-                
-                <!-- DATA MASTER -->
-                <li class="nav-item">
-                    <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuMaster">
-                        <span><i class="bi bi-folder-fill me-2"></i> Data Master</span>
-                        <i class="bi bi-chevron-down small icon-chevron"></i>
-                    </a>
-                    <div class="submenu" id="submenuMaster">
-                        <ul class="list-unstyled">
-                            <li><a href="../../Master/Pelanggan/list.php" class="submenu-link"><i class="bi bi-person-fill me-2"></i>Pelanggan</a></li>
-                            <li><a href="../../Master/Paket Foto/list.php" class="submenu-link"><i class="bi bi-camera-fill me-2"></i>Paket Foto</a></li>
-                            <li><a href="../../Master/Ruangan/list.php" class="submenu-link"><i class="bi bi-door-open-fill me-2"></i>Ruangan</a></li>
-                            <li><a href="../../Master/Properti/list.php" class="submenu-link"><i class="bi bi-box-seam-fill me-2"></i>Properti</a></li>
-                            <li><a href="../../Master/Tema Foto/list.php" class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
-                            <li><a href="../../Master/Jadwal Studio/list.php" class="submenu-link"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Studio</a></li>
-                            <li><a href="../../Master/Barang Cetak/list.php" class="submenu-link"><i class="bi bi-printer-fill me-2"></i>Barang Cetak</a></li>
-                        </ul>
-                    </div>
-                </li>
+<!-- SIDEBAR -->
+<div class="sidebar">
+    <div class="sidebar-menu-wrapper">
+        <a href="../../index.php" class="sidebar-brand">SpotLight.<br><span>Panel Administrator</span></a>
+        <ul class="nav-menu">
+            <li class="nav-item">
+                <a href="../../Role/Admin/index.php" class="nav-link-custom">
+                    <span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuMaster">
+                    <span><i class="bi bi-folder-fill me-2"></i> Data Master</span>
+                    <i class="bi bi-chevron-down small icon-chevron"></i>
+                </a>
+                <div class="submenu" id="submenuMaster">
+                    <ul class="list-unstyled">
+                        <li><a href="../../Master/Pelanggan/list.php" class="submenu-link"><i class="bi bi-person-fill me-2"></i>Pelanggan</a></li>
+                        <li><a href="../../Master/Paket Foto/list.php" class="submenu-link"><i class="bi bi-camera-fill me-2"></i>Paket Foto</a></li>
+                        <li><a href="../../Master/Ruangan/list.php" class="submenu-link"><i class="bi bi-door-open-fill me-2"></i>Ruangan</a></li>
+                        <li><a href="../../Master/Properti/list.php" class="submenu-link"><i class="bi bi-box-seam-fill me-2"></i>Properti</a></li>
+                        <li><a href="../../Master/Tema Foto/list.php" class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
+                        <li><a href="../../Master/Jadwal Studio/list.php" class="submenu-link"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Studio</a></li>
+                        <li><a href="../../Master/Barang Cetak/list.php" class="submenu-link"><i class="bi bi-printer-fill me-2"></i>Barang Cetak</a></li>
+                    </ul>
+                </div>
+            </li>
+            <li class="nav-item">
+                <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuTransaksi">
+                    <span><i class="bi bi-cart-fill me-2"></i> Transaksi</span>
+                    <i class="bi bi-chevron-down small icon-chevron"></i>
+                </a>
+                <div class="submenu" id="submenuTransaksi">
+                    <ul class="list-unstyled">
+                        <li><a href="../../Transaksi/Order/index.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                        <li><a href="../../Transaksi/Pembayaran/index.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran</a></li>
+                        <li><a href="../../Transaksi/Penjualan/index.php" class="submenu-link"><i class="bi bi-shop-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                    </ul>
+                </div>
+            </li>
+            <li class="nav-item">
+                <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuSesi">
+                    <span><i class="bi bi-camera-reels-fill me-2"></i> Sesi Foto</span>
+                    <i class="bi bi-chevron-down small icon-chevron"></i>
+                </a>
+                <div class="submenu show" id="submenuSesi">
+                    <ul class="list-unstyled">
+                        <li><a href="./index.php" class="submenu-link active"><i class="bi bi-camera-video-fill me-2"></i>Kelola Sesi Foto</a></li>
+                    </ul>
+                </div>
+            </li>
+            <li class="nav-item">
+                <a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)">
+                    <span><i class="bi bi-house-door-fill me-2"></i> Landing Page</span>
+                </a>
+            </li>
+        </ul>
+    </div>
+    <div>
+        <button onclick="confirmLogout(event)" class="btn-logout">
+            <i class="bi bi-box-arrow-right me-2"></i> Keluar Sistem
+        </button>
+    </div>
+</div>
 
-                <!-- TRANSAKSI -->
-                <li class="nav-item">
-                    <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuTransaksi">
-                        <span><i class="bi bi-cart-fill me-2"></i> Transaksi</span>
-                        <i class="bi bi-chevron-down small icon-chevron"></i>
-                    </a>
-                    <div class="submenu" id="submenuTransaksi">
-                        <ul class="list-unstyled">
-                            <li><a href="../../Transaksi/Order/index.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-                            <li><a href="../../Transaksi/Pembayaran/index.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran</a></li>
-                            <li><a href="../../Transaksi/Penjualan/index.php" class="submenu-link"><i class="bi bi-shop-fill me-2"></i>Penjualan Barang Cetak</a></li>
-                        </ul>
-                    </div>
-                </li>
+<!-- MAIN CONTENT -->
+<div class="main-content">
 
-                <!-- SESI FOTO -->
-                <li class="nav-item">
-                    <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuSesi">
-                        <span><i class="bi bi-camera-reels-fill me-2"></i> Sesi Foto</span>
-                        <i class="bi bi-chevron-down small icon-chevron"></i>
-                    </a>
-                    <div class="submenu" id="submenuSesi">
-                        <ul class="list-unstyled">
-                            <li><a href="./index.php" class="submenu-link active"><i class="bi bi-upload-fill me-2"></i>Upload Hasil Foto</a></li>
-                        </ul>
-                    </div>
-                </li>
-
-                <li class="nav-item">
-                    <a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)">
-                        <span><i class="bi bi-house-door-fill me-2"></i> Landing Page</span>
-                    </a>
-                </li>
-            </ul>
-        </div>
-
+    <!-- HEADER -->
+    <div class="dashboard-header">
         <div>
-            <button onclick="confirmLogout(event)" class="btn btn-logout text-center d-block w-100">
-                <i class="bi bi-box-arrow-right me-2"></i> Keluar Sistem
-            </button>
+            <h3 class="fw-800 mb-1">Sesi Foto 📸</h3>
+            <p class="text-muted small mb-0">Kelola jadwal dan upload hasil foto untuk setiap pelanggan.</p>
+        </div>
+        <div class="clock-badge">
+            <i class="bi bi-clock-history me-1 text-danger"></i>
+            <span id="live-clock">Memuat...</span>
         </div>
     </div>
 
-    <!-- MAIN CONTENT -->
-    <div class="main-content">
-        <div class="d-flex justify-content-between align-items-center mb-4">
+    <!-- STATS -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="stat-icon stat-icon-pink"><i class="bi bi-camera-fill"></i></div>
             <div>
-                <h3 class="fw-bold mb-1">Upload Hasil Foto 📁</h3>
-                <p class="text-muted small">Kelola dan unggah file dokumentasi untuk sesi foto yang telah selesai.</p>
-            </div>
-            <div class="text-end">
-                <span class="badge px-3 py-2 text-dark border shadow-sm bg-white" style="border-radius: 10px;">
-                    <i class="bi bi-clock-history me-1 text-danger"></i> <span id="live-clock">...</span>
-                </span>
+                <div class="stat-label">Total Sesi</div>
+                <div class="stat-value"><?= $stats['total'] ?? 0 ?></div>
             </div>
         </div>
-
-        <!-- STATS -->
-        <div class="stats-row">
-            <div class="card-3d flex-fill">
-                <div class="d-flex align-items-center gap-3">
-                    <div class="stat-icon stat-icon-pink"><i class="bi bi-camera-fill"></i></div>
-                    <div>
-                        <div class="text-muted small fw-bold">TOTAL SESI</div>
-                        <div class="h4 fw-800 mb-0"><?= $stats['total'] ?> Sesi</div>
-                    </div>
-                </div>
-            </div>
-            <div class="card-3d flex-fill" style="border-left: 5px solid #ea580c;">
-                <div class="d-flex align-items-center gap-3">
-                    <div class="stat-icon stat-icon-orange"><i class="bi bi-cloud-arrow-up"></i></div>
-                    <div>
-                        <div class="text-muted small fw-bold">BELUM UPLOAD</div>
-                        <div class="h4 fw-800 mb-0" style="color: #ea580c;"><?= $stats['pending'] ?> Sesi</div>
-                    </div>
-                </div>
-            </div>
-            <div class="card-3d flex-fill" style="border-left: 5px solid #059669;">
-                <div class="d-flex align-items-center gap-3">
-                    <div class="stat-icon stat-icon-green"><i class="bi bi-check-all"></i></div>
-                    <div>
-                        <div class="text-muted small fw-bold">SELESAI</div>
-                        <div class="h4 fw-800 mb-0" style="color: #059669;"><?= $stats['selesai'] ?> Sesi</div>
-                    </div>
-                </div>
+        <div class="stat-card">
+            <div class="stat-icon stat-icon-blue"><i class="bi bi-calendar-event-fill"></i></div>
+            <div>
+                <div class="stat-label">Terjadwal</div>
+                <div class="stat-value" style="color:#3b82f6;"><?= $stats['terjadwal'] ?? 0 ?></div>
             </div>
         </div>
-
-  <!-- SEARCH & FILTER SECTION -->
-<div class="search-filter-bar">
-    <form method="GET" action="" class="search-form-flex">
-        <!-- Input Utama -->
-        <div class="search-input-wrapper">
-            <i class="bi bi-search search-icon-inside"></i>
-            <input type="text" name="cari" class="search-input-main" 
-                   placeholder="Cari nama pelanggan atau ID order..." 
-                   value="<?= htmlspecialchars($cari) ?>">
+        <div class="stat-card">
+            <div class="stat-icon stat-icon-yellow"><i class="bi bi-camera-reels-fill"></i></div>
+            <div>
+                <div class="stat-label">Sedang Proses</div>
+                <div class="stat-value" style="color:#d97706;"><?= $stats['proses'] ?? 0 ?></div>
+            </div>
         </div>
-
-        <!-- Tombol Filter Pink -->
-        <button type="submit" class="btn btn-filter-custom">
-    <i class="bi bi-search"></i> Cari Data
-</button>   
-
-        <!-- Tombol Cari Icon Saja -->
-        
-    </form>
-</div>
-
-        <!-- TABLE -->
-        <div class="card-3d">
-            <div class="table-responsive">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Pelanggan</th>
-                            <th>Jadwal & Fotografer</th>
-                            <th>Status File</th>
-                            <th class="text-center">Aksi Kerja</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php while($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)): ?>
-                        <tr>
-                            <td>
-                                <div class="fw-bold" style="font-size: 0.9rem;"><?= htmlspecialchars($row['Nama_Pelanggan']) ?></div>
-                                <div class="text-muted small">Order ID: #<?= $row['ID_Order'] ?></div>
-                            </td>
-                            <td>
-                                <div class="fw-600 mb-1" style="font-size: 0.85rem;">
-    <i class="bi bi-calendar-event me-1 text-danger"></i> 
-    <?= $row['Waktu_Mulai'] ? $row['Waktu_Mulai']->format('d M Y, H:i') : '<span class="text-muted">Belum diatur</span>' ?>
-</div>
-                            </td>
-                            <td>
-                                <?php if(!$row['File_Hasil']): ?>
-                                    <span class="badge-status badge-pending">PENDING</span>
-                                <?php else: ?>
-                                    <span class="badge-status badge-selesai">TERUNGGAH</span>
-                                <?php endif; ?>
-                            </td>
-                            <td class="text-center">
-                                <?php if(!$row['File_Hasil']): ?>
-                                    <a href="edit.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-upload-task">
-                                        <i class="bi bi-cloud-upload-fill"></i> Upload Sekarang
-                                    </a>
-                                <?php else: ?>
-                                    <div class="d-flex justify-content-center gap-2">
-                                        <a href="../../../assets/img/hasil_foto/<?= $row['File_Hasil'] ?>" target="_blank" class="btn btn-sm btn-outline-secondary" title="Lihat File" style="border-radius: 10px;">
-                                            <i class="bi bi-eye"></i>
-                                        </a>
-                                        <a href="edit.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn btn-sm btn-outline-danger" style="border-radius: 10px; font-weight: 700;">Update</a>
-                                    </div>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                        <?php endwhile; ?>
-                    </tbody>
-                </table>
+        <div class="stat-card">
+            <div class="stat-icon stat-icon-green"><i class="bi bi-check-circle-fill"></i></div>
+            <div>
+                <div class="stat-label">Selesai</div>
+                <div class="stat-value" style="color:#059669;"><?= $stats['selesai'] ?? 0 ?></div>
             </div>
         </div>
     </div>
 
-    <script>
-        // Toggle Submenu (Template Logic)
-        document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
-            button.addEventListener('click', function(e) {
-                e.preventDefault();
-                const targetId = this.getAttribute('data-target');
-                const targetEl = document.querySelector(targetId);
-                const chevron = this.querySelector('.icon-chevron');
-                if (targetEl) {
-                    const isShown = targetEl.classList.contains('show');
-                    document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
-                    if (!isShown) {
-                        targetEl.classList.add('show');
-                        if (chevron) chevron.style.transform = 'rotate(180deg)';
-                    }
-                }
-            });
-        });
+    <!-- SEARCH & ADD -->
+    <form method="GET" action="">
+        <div class="search-bar-row">
+            <div class="search-wrap">
+                <i class="bi bi-search"></i>
+                <input type="text" name="cari" class="search-input"
+                       placeholder="Cari nama pelanggan atau ID order..."
+                       value="<?= htmlspecialchars($cari) ?>">
+            </div>
+            <select name="filter_status" class="filter-select">
+                <option value="">Semua Status</option>
+                <option value="0" <?= $filter_status === '0' ? 'selected' : '' ?>>Terjadwal</option>
+                <option value="1" <?= $filter_status === '1' ? 'selected' : '' ?>>Proses</option>
+                <option value="2" <?= $filter_status === '2' ? 'selected' : '' ?>>Selesai</option>
+            </select>
+            <button type="submit" class="btn-cari">
+                <i class="bi bi-search"></i> Cari
+            </button>
+            <a href="add.php" class="btn-add">
+                <i class="bi bi-plus-lg"></i> Tambah Sesi
+            </a>
+        </div>
+    </form>
 
-        // Live Clock
-        function updateClock() {
-            const now = new Date();
-            document.getElementById('live-clock').innerText = now.toLocaleTimeString('id-ID') + " WIB";
-        }
-        setInterval(updateClock, 1000); updateClock();
+    <!-- TABLE -->
+    <div class="table-card">
+        <div class="table-card-header">
+            <div class="table-card-title"><i class="bi bi-table me-2 text-danger"></i>Daftar Sesi Foto</div>
+            <?php if (!empty($cari) || $filter_status !== ''): ?>
+                <a href="index.php" class="action-btn btn-view" style="font-size:0.78rem;">
+                    <i class="bi bi-x-circle"></i> Reset Filter
+                </a>
+            <?php endif; ?>
+        </div>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Pelanggan</th>
+                        <th>Fotografer</th>
+                        <th>Waktu Mulai</th>
+                        <th>Status</th>
+                        <th>File Hasil</th>
+                        <th class="text-center">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php
+                $no = 1;
+                $ada_data = false;
+                while ($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
+                    $ada_data = true;
+                    $status = statusSesi($row['Status_Sesi']);
+                    $waktu = $row['Waktu_Mulai'] instanceof DateTime
+                        ? $row['Waktu_Mulai']->format('d M Y, H:i')
+                        : ($row['Waktu_Mulai'] ? date('d M Y, H:i', strtotime($row['Waktu_Mulai'])) : '-');
+                ?>
+                <tr>
+                    <td class="text-muted fw-600" style="font-size:0.85rem;"><?= $no++ ?></td>
+                    <td>
+                        <div class="pelanggan-name"><?= htmlspecialchars($row['Nama_Pelanggan']) ?></div>
+                        <span class="order-id-badge">#<?= $row['ID_Order'] ?></span>
+                    </td>
+                    <td>
+                        <div class="fotografer-name">
+                            <i class="bi bi-person-badge me-1"></i>
+                            <?= htmlspecialchars($row['Nama_Karyawan']) ?>
+                        </div>
+                    </td>
+                    <td>
+                        <div style="font-size:0.85rem; font-weight:600;">
+                            <i class="bi bi-calendar3 me-1 text-danger"></i> <?= $waktu ?>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge-sesi <?= $status['class'] ?>">
+                            <i class="bi <?= $status['icon'] ?>"></i>
+                            <?= $status['label'] ?>
+                        </span>
+                    </td>
+                    <td>
+                        <?php if (!empty($row['File_Hasil'])): ?>
+                            <span class="file-badge">
+                                <i class="bi bi-file-earmark-check"></i> Terunggah
+                            </span>
+                        <?php else: ?>
+                            <span class="no-file-badge">
+                                <i class="bi bi-file-earmark-x"></i> Belum ada
+                            </span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <div class="d-flex gap-2 justify-content-center flex-wrap">
+                            <?php if (!empty($row['File_Hasil'])): ?>
+                                <a href="../../../assets/img/hasil_foto/<?= htmlspecialchars($row['File_Hasil']) ?>"
+                                   target="_blank" class="action-btn btn-view" title="Lihat File">
+                                    <i class="bi bi-eye"></i> Lihat
+                                </a>
+                            <?php endif; ?>
+                            <a href="edit.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="action-btn btn-edit">
+                                <i class="bi bi-cloud-upload"></i>
+                                <?= empty($row['File_Hasil']) ? 'Upload' : 'Update' ?>
+                            </a>
+                            <button onclick="confirmDelete(<?= $row['ID_Sesi_Foto'] ?>)" class="action-btn btn-del">
+                                <i class="bi bi-trash3"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                <?php endwhile; ?>
+                <?php if (!$ada_data): ?>
+                <tr>
+                    <td colspan="7">
+                        <div class="empty-state">
+                            <i class="bi bi-camera-video-off"></i>
+                            <p>Tidak ada data sesi foto<?= !empty($cari) ? ' untuk pencarian "' . htmlspecialchars($cari) . '"' : '' ?>.</p>
+                            <a href="add.php" class="btn-add d-inline-flex mt-2">
+                                <i class="bi bi-plus-lg"></i> Tambah Sesi Foto
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 
-        function confirmLogout(e) {
-            e.preventDefault();
-            Swal.fire({
-                title: 'Keluar Sistem?',
-                text: "Anda akan keluar dari sesi administrator.",
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#D53D66',
-                confirmButtonText: 'Keluar'
-            }).then((result) => { if (result.isConfirmed) window.location.href = '../../logout.php'; });
+<script>
+// Submenu toggle
+document.querySelectorAll('.btn-toggle-submenu').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        const target = document.querySelector(this.dataset.target);
+        const chevron = this.querySelector('.icon-chevron');
+        if (!target) return;
+        const isOpen = target.classList.contains('show');
+        document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
+        document.querySelectorAll('.icon-chevron').forEach(ic => ic.style.transform = '');
+        if (!isOpen) {
+            target.classList.add('show');
+            if (chevron) chevron.style.transform = 'rotate(180deg)';
         }
-    </script>
+    });
+});
+
+// Clock
+function updateClock() {
+    const now = new Date();
+    const opt = { weekday:'long', day:'numeric', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' };
+    document.getElementById('live-clock').innerText = now.toLocaleDateString('id-ID', opt) + ' WIB';
+}
+setInterval(updateClock, 1000); updateClock();
+
+// Delete confirm
+function confirmDelete(id) {
+    Swal.fire({
+        title: 'Hapus Sesi Foto?',
+        text: 'Data sesi foto ini akan dihapus dari sistem.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#D53D66',
+        cancelButtonColor: '#718096',
+        confirmButtonText: 'Ya, Hapus',
+        cancelButtonText: 'Batal',
+        borderRadius: '16px'
+    }).then(result => {
+        if (result.isConfirmed) window.location.href = 'action_foto.php?act=delete&id=' + id;
+    });
+}
+
+function confirmLogout(e) {
+    e.preventDefault();
+    Swal.fire({
+        title: 'Keluar Sistem?',
+        text: 'Anda akan keluar dari sesi administrator.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#D53D66',
+        confirmButtonText: 'Keluar',
+        cancelButtonText: 'Batal'
+    }).then(r => { if (r.isConfirmed) window.location.href = '../../logout.php'; });
+}
+
+function confirmLandingPage(e) {
+    e.preventDefault();
+    Swal.fire({
+        title: 'Buka Landing Page?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#D53D66',
+        confirmButtonText: 'Ya, Buka',
+        cancelButtonText: 'Batal'
+    }).then(r => { if (r.isConfirmed) window.location.href = '../../index.php'; });
+}
+
+// SweetAlert notifikasi dari PHP
+<?php if (!empty($msg) && isset($alert_map[$msg])): ?>
+Swal.fire({
+    icon: '<?= $alert_map[$msg]['type'] ?>',
+    title: '<?= $alert_map[$msg]['type'] === 'success' ? 'Berhasil!' : 'Gagal!' ?>',
+    text: '<?= $alert_map[$msg]['text'] ?>',
+    confirmButtonColor: '#D53D66',
+    timer: 3000,
+    timerProgressBar: true
+});
+<?php endif; ?>
+</script>
 </body>
 </html>
