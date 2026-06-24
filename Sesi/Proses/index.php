@@ -1,0 +1,293 @@
+<?php
+session_start();
+include '../../koneksi.php';
+
+if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Fotografer') {
+    header("Location: ../../login.php");
+    exit();
+}
+
+$id_fotografer = $_SESSION['id_user'];
+$username_fotografer = $_SESSION['username'] ?? 'fotografer';
+
+if (!isset($_GET['id']) || empty($_GET['id'])) {
+    header("Location: ../Terjadwal/index.php");
+    exit();
+}
+
+$id_sesi = intval($_GET['id']);
+
+// Cek sesi milik fotografer dan status menunggu
+$q_sesi = sqlsrv_query($conn, "
+    SELECT S.*, P.Nama_Pelanggan, PK.Nama_Paket, R.Nama_Ruangan,
+           J.Tanggal_Jadwal, J.Jam_Mulai, J.Jam_Selesai
+    FROM Sesi_Foto S
+    JOIN [Order] O ON S.ID_Order = O.ID_Order
+    JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
+    JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
+    JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan
+    JOIN Jadwal_Studio J ON O.ID_Jadwal = J.ID_Jadwal
+    WHERE S.ID_Sesi_Foto = ? AND S.ID_Karyawan = ? AND S.Status = 1 AND S.Status_Sesi = 0
+", array($id_sesi, $id_fotografer));
+
+if (!$q_sesi || !sqlsrv_has_rows($q_sesi)) {
+    header("Location: ../Terjadwal/index.php?error=notfound");
+    exit();
+}
+
+$sesi = sqlsrv_fetch_array($q_sesi, SQLSRV_FETCH_ASSOC);
+
+// Proses: Mulai Sesi
+if (isset($_POST['mulai_sesi'])) {
+    $sql = "UPDATE Sesi_Foto SET Waktu_Mulai = GETDATE(), Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Sesi_Foto = ?";
+    sqlsrv_query($conn, $sql, array($username_fotografer, $id_sesi));
+    header("Location: index.php?id=" . $id_sesi . "&success=started");
+    exit();
+}
+
+// Proses: Selesai Sesi
+if (isset($_POST['selesai_sesi'])) {
+    $sql = "UPDATE Sesi_Foto SET Waktu_Selesai = GETDATE(), Status_Sesi = 1, Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Sesi_Foto = ?";
+    sqlsrv_query($conn, $sql, array($username_fotografer, $id_sesi));
+    header("Location: ../Selesai/index.php?success=completed");
+    exit();
+}
+
+function formatTanggal($date) {
+    if (!$date) return '-';
+    if (is_string($date)) $date = new DateTime($date);
+    $bulan = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    return $date->format('d').' '.$bulan[intval($date->format('m'))-1].' '.$date->format('Y');
+}
+function formatWaktu($time) {
+    if (!$time) return '-';
+    if (is_string($time)) $time = new DateTime($time);
+    return $time->format('H:i');
+}
+
+$is_started = !empty($sesi['Waktu_Mulai']);
+$is_completed = !empty($sesi['Waktu_Selesai']);
+?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proses Sesi – SpotLight Studio</title>
+    <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        :root { --p-pink: #D53D66; --d-pink: #CA3366; --s-pink: #FFF0F3; --light-pink: #FFE4E9; --accent-pink: #E85D84; --text-dark: #1e1e24; --text-muted: #718096; --sidebar-bg: #ffffff; --body-bg: #f8fafc; --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--body-bg); color: var(--text-dark); overflow-x: hidden; }
+        .sidebar { width: 260px; height: 100vh; background: var(--sidebar-bg); position: fixed; top: 0; left: 0; border-right: 1px solid rgba(255, 228, 233, 0.8); display: flex; flex-direction: column; justify-content: space-between; padding: 30px 20px; z-index: 100; }
+        .sidebar-brand { font-weight: 800; font-size: 1.5rem; color: var(--p-pink); text-decoration: none; letter-spacing: -1px; margin-bottom: 40px; display: block; }
+        .sidebar-brand span { color: var(--text-dark); font-size: 0.85rem; font-weight: 600; }
+        .sidebar-menu-wrapper { flex-grow: 1; overflow-y: auto; margin-bottom: 20px; scrollbar-width: none; }
+        .sidebar-menu-wrapper::-webkit-scrollbar { display: none; }
+        .nav-menu { list-style: none; padding: 0; margin: 0; }
+        .nav-item { margin-bottom: 8px; }
+        .nav-link-custom { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; color: #4a5568; font-weight: 700; text-decoration: none; border-radius: 12px; font-size: 0.9rem; transition: var(--transition-3d); }
+        .nav-link-custom:hover, .nav-link-custom.active { background-color: var(--light-pink); color: var(--p-pink); transform: translateX(4px); }
+        .submenu { list-style: none; padding-left: 20px; margin-top: 5px; display: none; }
+        .submenu.show { display: block !important; }
+        .submenu-link { display: flex; align-items: center; padding: 8px 18px; color: #718096; font-weight: 600; font-size: 0.85rem; text-decoration: none; border-radius: 10px; transition: 0.3s; }
+        .submenu-link:hover, .submenu-link.active { color: var(--p-pink); background-color: rgba(213, 61, 102, 0.03); padding-left: 22px; }
+        .btn-logout { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; width: 100%; padding: 12px; border-radius: 12px; font-weight: 800; font-size: 0.85rem; transition: var(--transition-3d); }
+        .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
+        .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
+        .card-3d { background: #ffffff; border-radius: 22px; border: 1px solid rgba(255, 228, 233, 0.8); box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03); transition: var(--transition-3d); padding: 30px; position: relative; overflow: hidden; }
+        .card-3d::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: linear-gradient(90deg, var(--p-pink), var(--accent-pink)); opacity: 0; transition: opacity 0.3s ease; }
+        .card-3d:hover { transform: translateY(-4px); box-shadow: 0 22px 45px rgba(213, 61, 102, 0.1); border-color: var(--p-pink); }
+        .card-3d:hover::before { opacity: 1; }
+        .status-step { display: flex; align-items: center; gap: 20px; margin-bottom: 30px; }
+        .status-step-item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .status-step-circle { width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; transition: var(--transition-3d); }
+        .status-step-circle.active { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; box-shadow: 0 8px 20px rgba(213, 61, 102, 0.3); }
+        .status-step-circle.pending { background: #f1f5f9; color: #94a3b8; }
+        .status-step-circle.completed { background: linear-gradient(135deg, #059669, #047857); color: #ffffff; }
+        .status-step-line { flex: 1; height: 3px; background: #f1f5f9; border-radius: 3px; position: relative; }
+        .status-step-line.active { background: linear-gradient(90deg, var(--p-pink), #059669); }
+        .btn-action { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; border-radius: 14px; padding: 16px 32px; font-weight: 800; font-size: 1rem; transition: var(--transition-3d); text-decoration: none; display: inline-flex; align-items: center; gap: 10px; }
+        .btn-action:hover { transform: translateY(-3px); box-shadow: 0 12px 30px rgba(213, 61, 102, 0.3); color: #ffffff; }
+        .btn-action-success { background: linear-gradient(135deg, #059669, #047857); }
+        .btn-action-success:hover { box-shadow: 0 12px 30px rgba(5, 150, 105, 0.3); }
+        .btn-action:disabled { background: #e2e8f0; color: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none; }
+        .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
+        .info-item { padding: 16px; background: #f8fafc; border-radius: 14px; }
+        .info-label { font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
+        .info-value { font-size: 0.95rem; font-weight: 700; color: var(--text-dark); }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeInUp 0.6s ease-out forwards; }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+        .pulse { animation: pulse 2s infinite; }
+        @media (max-width: 992px) { .main-content { margin-left: 0; padding: 20px; } .sidebar { transform: translateX(-100%); } .info-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="sidebar-menu-wrapper">
+            <a href="../../index.php" class="sidebar-brand">SpotLight.<br><span>Panel Fotografer</span></a>
+            <ul class="nav-menu">
+                <li class="nav-item"><a href="../../Role/Fotografer/index.php" class="nav-link-custom"><span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span></a></li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuJadwal"><span><i class="bi bi-calendar-week-fill me-2"></i> Jadwal & Sesi</span><i class="bi bi-chevron-down small icon-chevron" style="transform: rotate(180deg);"></i></a>
+                    <div class="submenu show" id="submenuJadwal">
+                        <ul class="list-unstyled">
+                            <li><a href="../Jadwal/index.php" class="submenu-link"><i class="bi bi-calendar-day-fill me-2"></i>Jadwal Saya</a></li>
+                            <li><a href="../Terjadwal/index.php" class="submenu-link"><i class="bi bi-camera-reels-fill me-2"></i>Sesi Terjadwal</a></li>
+                            <li><a href="../Selesai/index.php" class="submenu-link"><i class="bi bi-check-circle-fill me-2"></i>Sesi Selesai</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuUpload"><span><i class="bi bi-cloud-upload-fill me-2"></i> Upload Hasil</span><i class="bi bi-chevron-down small icon-chevron"></i></a>
+                    <div class="submenu" id="submenuUpload">
+                        <ul class="list-unstyled">
+                            <li><a href="../Upload/index.php" class="submenu-link"><i class="bi bi-image-fill me-2"></i>Upload Foto</a></li>
+                            <li><a href="../RiwayatUpload/index.php" class="submenu-link"><i class="bi bi-clock-history me-2"></i>Riwayat Upload</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item"><a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)"><span><i class="bi bi-house-door-fill me-2"></i> Beranda</span></a></li>
+            </ul>
+        </div>
+        <div><button onclick="confirmLogout(event)" class="btn btn-logout text-center d-block w-100"><i class="bi bi-box-arrow-right me-2"></i> Keluar</button></div>
+    </div>
+
+    <div class="main-content">
+        <div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
+            <div>
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb mb-1" style="font-size: 0.8rem;">
+                        <li class="breadcrumb-item"><a href="../../Role/Fotografer/index.php" style="color: var(--p-pink); text-decoration: none; font-weight: 600;">Dashboard</a></li>
+                        <li class="breadcrumb-item"><a href="../Terjadwal/index.php" style="color: var(--p-pink); text-decoration: none; font-weight: 600;">Sesi Terjadwal</a></li>
+                        <li class="breadcrumb-item active" style="color: var(--text-muted); font-weight: 600;">Proses Sesi</li>
+                    </ol>
+                </nav>
+                <h3 class="fw-bold mb-0">Proses Sesi Foto</h3>
+            </div>
+        </div>
+
+        <div class="card-3d animate-fade-in">
+            <!-- Status Step -->
+            <div class="status-step">
+                <div class="status-step-item">
+                    <div class="status-step-circle <?= $is_started || $is_completed ? 'completed' : 'active pulse' ?>">
+                        <i class="bi bi-hourglass-split"></i>
+                    </div>
+                    <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted);">Menunggu</span>
+                </div>
+                <div class="status-step-line <?= $is_started || $is_completed ? 'active' : '' ?>"></div>
+                <div class="status-step-item">
+                    <div class="status-step-circle <?= $is_started && !$is_completed ? 'active pulse' : ($is_completed ? 'completed' : 'pending') ?>">
+                        <i class="bi bi-camera-fill"></i>
+                    </div>
+                    <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted);">Sedang Berlangsung</span>
+                </div>
+                <div class="status-step-line <?= $is_completed ? 'active' : '' ?>"></div>
+                <div class="status-step-item">
+                    <div class="status-step-circle <?= $is_completed ? 'completed' : 'pending' ?>">
+                        <i class="bi bi-check-lg"></i>
+                    </div>
+                    <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted);">Selesai</span>
+                </div>
+            </div>
+
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">ID Sesi</div>
+                    <div class="info-value">#<?= $sesi['ID_Sesi_Foto'] ?></div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Pelanggan</div>
+                    <div class="info-value"><?= htmlspecialchars($sesi['Nama_Pelanggan']) ?></div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Paket</div>
+                    <div class="info-value"><?= htmlspecialchars($sesi['Nama_Paket']) ?></div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Ruangan</div>
+                    <div class="info-value"><?= htmlspecialchars($sesi['Nama_Ruangan']) ?></div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Tanggal</div>
+                    <div class="info-value"><?= formatTanggal($sesi['Tanggal_Jadwal']) ?></div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Jam</div>
+                    <div class="info-value"><?= formatWaktu($sesi['Jam_Mulai']) ?> - <?= formatWaktu($sesi['Jam_Selesai']) ?></div>
+                </div>
+                <?php if ($is_started): ?>
+                <div class="info-item">
+                    <div class="info-label">Waktu Mulai</div>
+                    <div class="info-value text-success"><?= formatTanggal($sesi['Waktu_Mulai']) ?> <?= formatWaktu($sesi['Waktu_Mulai']) ?></div>
+                </div>
+                <?php endif; ?>
+                <?php if ($is_completed): ?>
+                <div class="info-item">
+                    <div class="info-label">Waktu Selesai</div>
+                    <div class="info-value text-success"><?= formatTanggal($sesi['Waktu_Selesai']) ?> <?= formatWaktu($sesi['Waktu_Selesai']) ?></div>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <form method="POST" class="text-center">
+                <?php if (!$is_started && !$is_completed): ?>
+                    <button type="submit" name="mulai_sesi" class="btn-action" onclick="return confirmMulai()">
+                        <i class="bi bi-play-fill"></i> Mulai Sesi Foto
+                    </button>
+                <?php elseif ($is_started && !$is_completed): ?>
+                    <button type="submit" name="selesai_sesi" class="btn-action btn-action-success" onclick="return confirmSelesai()">
+                        <i class="bi bi-check-lg"></i> Selesaikan Sesi
+                    </button>
+                <?php else: ?>
+                    <div class="alert border-0" style="background: linear-gradient(135deg, #ecfdf5, #d1fae5); border-radius: 14px;">
+                        <div class="d-flex align-items-center justify-content-center gap-2">
+                            <i class="bi bi-check-circle-fill text-success fs-4"></i>
+                            <span class="fw-bold" style="color: #166534;">Sesi sudah selesai!</span>
+                        </div>
+                        <a href="../../Role/Fotografer/upload_hasil.php?id=<?= $id_sesi ?>" class="btn-action mt-3">
+                            <i class="bi bi-cloud-upload"></i> Upload Hasil Foto
+                        </a>
+                    </div>
+                <?php endif; ?>
+            </form>
+        </div>
+    </div>
+
+    <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function confirmMulai() {
+            return confirm('Mulai sesi foto sekarang? Waktu mulai akan dicatat.');
+        }
+        function confirmSelesai() {
+            return confirm('Selesaikan sesi foto? Pastikan semua foto sudah diambil.');
+        }
+        document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('data-target');
+                const targetEl = document.querySelector(targetId);
+                const chevron = this.querySelector('.icon-chevron');
+                if (targetEl) {
+                    const isShown = targetEl.classList.contains('show');
+                    document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
+                    document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
+                    if (!isShown) { targetEl.classList.add('show'); if (chevron) chevron.style.transform = 'rotate(180deg)'; }
+                }
+            });
+        });
+        function confirmLogout(e) {
+            e.preventDefault();
+            Swal.fire({ title: 'Keluar?', text: 'Apakah Anda yakin ingin keluar?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#D53D66', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Keluar', cancelButtonText: 'Batal' }).then((result) => { if (result.isConfirmed) window.location.href = '../../logout.php'; });
+        }
+        function confirmLandingPage(e) {
+            e.preventDefault();
+            Swal.fire({ title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama.', icon: 'info', showCancelButton: true, confirmButtonColor: '#D53D66', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal' }).then((result) => { if (result.isConfirmed) window.location.href = '../../index.php'; });
+        }
+    </script>
+</body>
+</html>

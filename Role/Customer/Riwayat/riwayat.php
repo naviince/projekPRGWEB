@@ -283,11 +283,13 @@ function formatTanggalIndo($tanggal) {
 function getAksiButtons($item) {
     $status = $item['Status_Order'];
     $id_order = $item['ID_Order'];
+    $has_file = !empty($item['File_Hasil']);
+    $id_sesi = $item['ID_Sesi_Foto'] ?? 0;
     $buttons = '';
 
     switch ($status) {
         case STATUS_ORDER_MENUNGGU_DP:
-            $buttons .= '<a href="../Booking/Pembayaran/upload_dp.php?id_order=' . $id_order . '" class="btn-aksi btn-upload"><i class="fas fa-upload"></i> Upload Bukti DP</a>';
+            $buttons .= '<a href="../Layanan/Paket/pilih_paket.php?id_order=' . $id_order . '" class="btn-aksi btn-upload"><i class="fas fa-upload"></i> Upload Bukti DP</a>';
             $buttons .= '<a href="javascript:void(0)" onclick="batalkanOrder(' . $id_order . ')" class="btn-aksi btn-batal"><i class="fas fa-times"></i> Batalkan</a>';
             break;
 
@@ -299,15 +301,15 @@ function getAksiButtons($item) {
             break;
 
         case STATUS_ORDER_SELESAI_FOTO:
-            $buttons .= '<a href="../Booking/Pembayaran/upload_pelunasan.php?id_order=' . $id_order . '" class="btn-aksi btn-upload"><i class="fas fa-upload"></i> Upload Pelunasan</a>';
-            if (!empty($item['File_Hasil'])) {
-                $buttons .= '<a href="' . htmlspecialchars($item['File_Hasil']) . '" target="_blank" class="btn-aksi btn-preview"><i class="fas fa-images"></i> Lihat Hasil</a>';
+            $buttons .= '<a href="../Layanan/Paket/pilih_paket.php?id_order=' . $id_order . '" class="btn-aksi btn-upload"><i class="fas fa-upload"></i> Upload Pelunasan</a>';
+            if ($has_file && $id_sesi > 0) {
+                $buttons .= '<a href="../HasilFoto/index.php?id_sesi=' . $id_sesi . '" class="btn-aksi btn-preview"><i class="fas fa-images"></i> Lihat Hasil</a>';
             }
             break;
 
         case STATUS_ORDER_LUNAS:
-            if (!empty($item['File_Hasil'])) {
-                $buttons .= '<a href="' . htmlspecialchars($item['File_Hasil']) . '" download class="btn-aksi btn-download"><i class="fas fa-download"></i> Download Hasil</a>';
+            if ($has_file && $id_sesi > 0) {
+                $buttons .= '<a href="../HasilFoto/index.php?id_sesi=' . $id_sesi . '" class="btn-aksi btn-download"><i class="fas fa-download"></i> Download Hasil</a>';
             }
             if (empty($item['Rating'])) {
                 $buttons .= '<a href="javascript:void(0)" onclick="bukaRating(' . $id_order . ')" class="btn-aksi btn-rating"><i class="fas fa-star"></i> Beri Rating</a>';
@@ -710,6 +712,7 @@ function getAksiButtons($item) {
 </head>
 <body>
 
+<!-- TOP NAVBAR -->
 <nav class="top-navbar">
     <a href="../index.php" class="nav-logo">
         SpotLight.<span>StudioFoto</span>
