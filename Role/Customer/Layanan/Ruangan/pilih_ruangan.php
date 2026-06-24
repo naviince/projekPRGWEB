@@ -865,7 +865,7 @@ function formatTimeSafe($val) {
         <div class="nav-menu-center">
             <a href="../../index.php" class="nav-link-item">Dashboard</a>
             <a href="../Paket/pilih_paket.php?id_paket=<?= $id_paket ?>" class="nav-link-item">Booking Baru</a>
-            <a href="../../Booking/Riwayat/index.php" class="nav-link-item">Riwayat</a>
+            <a href="../../Riwayat/riwayat.php" class="nav-link-item">Riwayat</a>
             <a href="../../Cetak/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
         </div>
         <div class="nav-right">
