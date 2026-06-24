@@ -62,9 +62,6 @@ $harga_paket = (float)$d_paket['Harga_Paket'];
 // =====================================================
 // VALIDASI JADWAL: MASIH TERSEDIA?
 // =====================================================
-// Lock row untuk prevent race condition
-sqlsrv_query($conn, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
-
 $q_jadwal = sqlsrv_query($conn, 
     "SELECT ID_Jadwal, ID_Ruangan, ID_Paket, Status_Jadwal 
      FROM Jadwal_Studio 
@@ -141,57 +138,64 @@ if ($d_cek_customer['total'] > 0) {
 }
 
 // =====================================================
-// SIMPAN ORDER KE DATABASE
+// SIMPAN ORDER KE DATABASE (DENGAN TRANSACTION)
 // =====================================================
-// Total_Harga adalah computed column - JANGAN di-insert
-// ID_Order auto-increment - JANGAN di-insert
-$q_insert_order = sqlsrv_query($conn, 
-    "INSERT INTO [Order] (ID_Pelanggan, ID_Paket, ID_Ruangan, ID_Tema, ID_Jadwal, Total_Paket, Total_Barang_Cetak, Status_Order, Status)
-     OUTPUT INSERTED.ID_Order
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    array(
-        $id_customer,
-        $id_paket,
-        $id_ruangan,
-        $id_tema,
-        $id_jadwal,
-        $harga_paket,   // Total_Paket = harga paket
-        0,              // Total_Barang_Cetak = 0 (belum pilih barang cetak)
-        STATUS_ORDER_MENUNGGU_DP,
-        STATUS_DATA_AKTIF
-    )
-);
-
-if ($q_insert_order === false) {
-    die("Error insert order: " . print_r(sqlsrv_errors(), true));
+// BEGIN TRANSACTION
+if (!sqlsrv_begin_transaction($conn)) {
+    die("Error begin transaction: " . print_r(sqlsrv_errors(), true));
 }
 
-// Ambil ID_Order yang baru dibuat
-$d_new_order = sqlsrv_fetch_array($q_insert_order, SQLSRV_FETCH_ASSOC);
-$id_order = (int)$d_new_order['ID_Order'];
-sqlsrv_free_stmt($q_insert_order);
-
-if (empty($id_order) || $id_order === 0) {
-    die("Error: ID_Order kosong. Order tidak berhasil dibuat.");
-}
-
-// =====================================================
-// UPDATE JADWAL MENJADI BOOKED
-// =====================================================
-$q_update_jadwal = sqlsrv_query($conn, 
-    "UPDATE Jadwal_Studio SET Status_Jadwal = ? WHERE ID_Jadwal = ?",
-    array(STATUS_JADWAL_BOOKED, $id_jadwal)
-);
-
-if ($q_update_jadwal === false) {
-    // Rollback: hapus order yang baru dibuat
-    sqlsrv_query($conn, 
-        "UPDATE [Order] SET Status = 0, Status_Order = ? WHERE ID_Order = ?", 
-        array(STATUS_ORDER_DIBATALKAN, $id_order)
+try {
+    // Insert order
+    $q_insert_order = sqlsrv_query($conn, 
+        "INSERT INTO [Order] (ID_Pelanggan, ID_Paket, ID_Ruangan, ID_Tema, ID_Jadwal, Total_Paket, Total_Barang_Cetak, Status_Order, Status)
+         OUTPUT INSERTED.ID_Order
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        array(
+            $id_customer,
+            $id_paket,
+            $id_ruangan,
+            $id_tema,
+            $id_jadwal,
+            $harga_paket,   // Total_Paket = harga paket
+            0,              // Total_Barang_Cetak = 0 (belum pilih barang cetak)
+            STATUS_ORDER_MENUNGGU_DP,
+            STATUS_DATA_AKTIF
+        )
     );
-    die("Error update jadwal: " . print_r(sqlsrv_errors(), true));
+
+    if ($q_insert_order === false) {
+        throw new Exception("Error insert order: " . print_r(sqlsrv_errors(), true));
+    }
+
+    // Ambil ID_Order yang baru dibuat
+    $d_new_order = sqlsrv_fetch_array($q_insert_order, SQLSRV_FETCH_ASSOC);
+    $id_order = (int)$d_new_order['ID_Order'];
+    sqlsrv_free_stmt($q_insert_order);
+
+    if (empty($id_order) || $id_order === 0) {
+        throw new Exception("Error: ID_Order kosong. Order tidak berhasil dibuat.");
+    }
+
+    // Update jadwal menjadi booked
+    $q_update_jadwal = sqlsrv_query($conn, 
+        "UPDATE Jadwal_Studio SET Status_Jadwal = ? WHERE ID_Jadwal = ?",
+        array(STATUS_JADWAL_BOOKED, $id_jadwal)
+    );
+
+    if ($q_update_jadwal === false) {
+        throw new Exception("Error update jadwal: " . print_r(sqlsrv_errors(), true));
+    }
+    sqlsrv_free_stmt($q_update_jadwal);
+
+    // COMMIT TRANSACTION
+    sqlsrv_commit($conn);
+
+} catch (Exception $e) {
+    // ROLLBACK TRANSACTION
+    sqlsrv_rollback($conn);
+    die($e->getMessage());
 }
-sqlsrv_free_stmt($q_update_jadwal);
 
 // =====================================================
 // SIMPAN KE SESSION (untuk halaman pembayaran)
