@@ -722,6 +722,7 @@ function getAksiButtons($item) {
         <a href="../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
         <a href="index.php" class="nav-link-item active">Riwayat</a>
         <a href="../Barang/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
+        <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
     </div>
     <div class="nav-right">
         <a href="../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">

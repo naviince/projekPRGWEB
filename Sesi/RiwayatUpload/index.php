@@ -15,7 +15,8 @@ $q_riwayat = sqlsrv_query($conn, "
         S.ID_Sesi_Foto, S.ID_Order, S.File_Hasil, S.Tanggal_Upload_Hasil,
         S.Waktu_Mulai, S.Waktu_Selesai,
         P.Nama_Pelanggan, PK.Nama_Paket, R.Nama_Ruangan,
-        J.Tanggal_Jadwal, J.Jam_Mulai, J.Jam_Selesai
+        J.Tanggal_Jadwal, J.Jam_Mulai, J.Jam_Selesai,
+        O.Status_Order
     FROM Sesi_Foto S
     JOIN [Order] O ON S.ID_Order = O.ID_Order
     JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
@@ -32,6 +33,30 @@ function formatTanggal($date) {
     $bulan = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
     return $date->format('d').' '.$bulan[intval($date->format('m'))-1].' '.$date->format('Y');
 }
+
+// Helper: Status Order label
+function getStatusOrderLabel($status) {
+    switch ($status) {
+        case 0: return ['Menunggu DP', '#f59e0b', '#fffbeb'];
+        case 1: return ['DP Terverifikasi', '#3b82f6', '#eff6ff'];
+        case 2: return ['Selesai', '#8b5cf6', '#f5f3ff'];
+        case 3: return ['Lunas', '#059669', '#ecfdf5'];
+        case 4: return ['Dibatalkan', '#dc2626', '#fef2f2'];
+        default: return ['Unknown', '#718096', '#f8fafc'];
+    }
+}
+
+// Helper: Customer access status
+function getCustomerAccessLabel($status_order) {
+    if ($status_order == 3) {
+        return ['<i class="bi bi-check-circle-fill me-1"></i> Customer Bisa Akses', '#059669', '#ecfdf5'];
+    } elseif ($status_order == 4) {
+        return ['<i class="bi bi-x-circle-fill me-1"></i> Order Dibatalkan', '#dc2626', '#fef2f2'];
+    } else {
+        return ['<i class="bi bi-hourglass-split me-1"></i> Menunggu Pelunasan', '#d97706', '#fffbeb'];
+    }
+}
+
 function formatWaktu($time) {
     if (!$time) return '-';
     if (is_string($time)) $time = new DateTime($time);
@@ -136,7 +161,22 @@ function formatWaktu($time) {
                 <h5 class="content-title"><i class="bi bi-clock-history text-danger me-2"></i>Daftar File Upload</h5>
             </div>
 
-            <div class="table-responsive">
+                        <!-- INFO STATUS -->
+            <div class="alert border-0 mb-4" style="background: linear-gradient(135deg, #eff6ff, #dbeafe); border-radius: 14px;">
+                <div class="d-flex align-items-start gap-2">
+                    <i class="bi bi-info-circle-fill text-primary mt-1"></i>
+                    <div style="font-size: 0.85rem; color: #1e40af;">
+                        <strong>Keterangan Status:</strong>
+                        <ul class="mb-0 mt-1 ps-3">
+                            <li><span style="color:#d97706;font-weight:700">Menunggu Pelunasan</span> — Customer belum bisa melihat hasil foto. Tunggu pelunasan terverifikasi admin.</li>
+                            <li><span style="color:#059669;font-weight:700">Customer Bisa Akses</span> — Order sudah lunas, customer dapat melihat dan download hasil foto.</li>
+                            <li><span style="color:#dc2626;font-weight:700">Order Dibatalkan</span> — Order dibatalkan, file tidak akan diteruskan ke customer.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+<div class="table-responsive">
                 <table class="table-custom">
                     <thead>
                         <tr>
@@ -144,6 +184,8 @@ function formatWaktu($time) {
                             <th>Pelanggan</th>
                             <th>Paket</th>
                             <th>Nama File</th>
+                            <th>Status Order</th>
+                            <th>Akses Customer</th>
                             <th>Tanggal Upload</th>
                             <th>Aksi</th>
                         </tr>
@@ -160,10 +202,26 @@ function formatWaktu($time) {
                                 <td><?= htmlspecialchars($row['Nama_Pelanggan']) ?></td>
                                 <td><?= htmlspecialchars($row['Nama_Paket']) ?></td>
                                 <td><span class="file-name"><i class="bi bi-file-earmark-zip me-1"></i><?= htmlspecialchars($row['File_Hasil']) ?></span></td>
+                                <td>
+                                    <?php 
+                                    $status_label = getStatusOrderLabel($row['Status_Order']);
+                                    ?>
+                                    <span style="background: <?= $status_label[2] ?>; color: <?= $status_label[1] ?>; padding: 5px 12px; border-radius: 50px; font-size: 0.7rem; font-weight: 800; display: inline-block;">
+                                        <?= $status_label[0] ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <?php 
+                                    $access_label = getCustomerAccessLabel($row['Status_Order']);
+                                    ?>
+                                    <span style="background: <?= $access_label[2] ?>; color: <?= $access_label[1] ?>; padding: 5px 12px; border-radius: 50px; font-size: 0.7rem; font-weight: 800; display: inline-block;">
+                                        <?= $access_label[0] ?>
+                                    </span>
+                                </td>
                                 <td><?= formatTanggal($row['Tanggal_Upload_Hasil']) ?><br><small class="text-muted"><?= formatWaktu($row['Tanggal_Upload_Hasil']) ?></small></td>
                                 <td>
-                                    <a href="../../uploads/hasil/download.php?file=<?= urlencode($row['File_Hasil']) ?>" class="btn-action btn-action-success">
-                                        <i class="bi bi-download"></i> Download
+                                    <a href="../../uploads/hasil/<?= rawurlencode($row['File_Hasil']) ?>" class="btn-action btn-action-success" download title="Download File">
+                                        <i class="bi bi-download"></i>
                                     </a>
                                 </td>
                             </tr>
@@ -209,5 +267,17 @@ function formatWaktu($time) {
             Swal.fire({ title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama.', icon: 'info', showCancelButton: true, confirmButtonColor: '#D53D66', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal' }).then((result) => { if (result.isConfirmed) window.location.href = '../../index.php'; });
         }
     </script>
+    <!-- Notifikasi Upload Sukses -->
+    <?php if ($upload_notif): ?>
+    <script>
+        Swal.fire({
+            icon: 'success',
+            title: 'Upload Berhasil!',
+            text: 'File hasil foto berhasil diupload dan tersimpan di riwayat.',
+            confirmButtonColor: '#D53D66',
+            confirmButtonText: 'Oke'
+        });
+    </script>
+    <?php endif; ?>
 </body>
 </html>

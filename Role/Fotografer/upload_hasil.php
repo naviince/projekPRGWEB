@@ -68,7 +68,11 @@ $q_sesi = sqlsrv_query($conn, "
     WHERE S.ID_Sesi_Foto = ? AND S.ID_Karyawan = ? AND S.Status = 1
 ", array($id_sesi, $id_fotografer));
 
-if (!$q_sesi || !sqlsrv_has_rows($q_sesi)) {
+if (!$q_sesi) {
+    $errors = sqlsrv_errors();
+    die("Query error: " . ($errors[0]['message'] ?? 'Unknown database error'));
+}
+if (!sqlsrv_has_rows($q_sesi)) {
     header("Location: index.php?error=notfound");
     exit();
 }
@@ -174,11 +178,12 @@ if (isset($_POST['upload_hasil'])) {
 
                             if ($update_stmt) {
                                 $success = true;
-                                // Refresh data
-                                $sesi_data['file_hasil'] = $new_file_name;
-                                $sesi_data['tanggal_upload_hasil'] = new DateTime();
+                                // Redirect ke Riwayat Upload dengan notifikasi sukses
+                                header("Location: ../../Sesi/RiwayatUpload/index.php?uploaded=1&id_order=" . $id_order);
+                                exit();
                             } else {
-                                $error = "Gagal memperbarui database!";
+                                $errors = sqlsrv_errors();
+                                $error = "Gagal memperbarui database: " . ($errors[0]['message'] ?? 'Unknown error');
                                 // Hapus file yang sudah diupload
                                 if (file_exists($target_path)) {
                                     unlink($target_path);
@@ -257,6 +262,11 @@ function formatWaktu($time) {
 
 // Cek apakah ada parameter success=deleted
 if (isset($_GET['success']) && $_GET['success'] === 'deleted') {
+    $success = true;
+}
+
+// Cek apakah ada parameter success=uploaded (dari redirect JS)
+if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
     $success = true;
 }
 ?>
@@ -1065,14 +1075,14 @@ if (isset($_GET['success']) && $_GET['success'] === 'deleted') {
     </script>
 
     <!-- SweetAlert Notifikasi -->
-    <?php if ($success === true): ?>
+    <?php if ($success === true || (isset($_GET['success']) && $_GET['success'] === 'uploaded')): ?>
     <script>
         Swal.fire({
             icon: 'success',
             title: 'Upload Berhasil!',
-            text: 'File hasil foto berhasil diupload.',
+            html: '<div style="text-align:left"><p>File hasil foto berhasil diupload.</p><hr style="border-color:#f1f5f9;margin:10px 0"><p style="color:#718096;font-size:0.85rem"><i class="bi bi-info-circle-fill text-warning me-1"></i> File akan tersedia untuk customer setelah <strong style="color:#D53D66">pelunasan terverifikasi</strong> oleh admin.</p></div>',
             confirmButtonColor: '#D53D66',
-            confirmButtonText: 'Selesai'
+            confirmButtonText: 'Mengerti'
         }).then(() => {
             // Complete progress bar
             const progressBar = document.getElementById('progressBar');
@@ -1084,6 +1094,15 @@ if (isset($_GET['success']) && $_GET['success'] === 'deleted') {
     <?php endif; ?>
 
     <?php if (!empty($error)): ?>
+    <div class="alert alert-danger mb-4" style="border-radius: 14px; background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 16px 20px;">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <div>
+                <strong>Upload Gagal!</strong><br>
+                <span style="font-size: 0.85rem;"><?= htmlspecialchars($error) ?></span>
+            </div>
+        </div>
+    </div>
     <script>
         Swal.fire({
             icon: 'error',

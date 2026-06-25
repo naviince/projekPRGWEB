@@ -646,14 +646,15 @@ function hitungHargaPromo($harga, $diskon_persen) {
 
     <!-- NAVBAR ATAS -->
     <nav class="top-navbar">
-        <a href="../../../index.php" class="nav-logo">
+        <a href="../../index.php" class="nav-logo">
             SpotLight.<span>StudioFoto</span>
         </a>
         <div class="nav-menu-center">
-            <a href="../../../index.php" class="nav-link-item">Dashboard</a>
-            <a href="../../../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
-            <a href="../../../Riwayat/index.php" class="nav-link-item">Riwayat</a>
+            <a href="../../index.php" class="nav-link-item">Dashboard</a>
+            <a href="../../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
+            <a href="../../Riwayat/riwayat.php" class="nav-link-item">Riwayat</a>
             <a href="index.php" class="nav-link-item active">Barang Cetak</a>
+            <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
         </div>
         <div class="nav-right">
             <a href="keranjang.php" class="keranjang-btn" title="Keranjang Belanja">
@@ -662,7 +663,7 @@ function hitungHargaPromo($harga, $diskon_persen) {
                 <span class="keranjang-badge"><?= $jumlah_keranjang ?></span>
                 <?php endif; ?>
             </a>
-            <a href="../../../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
+            <a href="../../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
                 <i class="bi bi-plus-lg"></i> Booking
             </a>
             <div class="nav-avatar-wrapper">
@@ -670,7 +671,7 @@ function hitungHargaPromo($harga, $diskon_persen) {
                 <div class="nav-dropdown" id="navDropdown">
                     <div class="dropdown-header">Halo, <?= htmlspecialchars($nama_customer) ?></div>
                     <div class="dropdown-divider"></div>
-                    <a href="../../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
+                    <a href="../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
                         <i class="bi bi-house-door"></i> Kembali ke Beranda
                     </a>
                     <div class="dropdown-divider"></div>
@@ -805,7 +806,7 @@ function hitungHargaPromo($harga, $diskon_persen) {
                 cancelButtonText: 'Batal'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    window.location.href = '../../../index.php';
+                    window.location.href = '../../index.php';
                 }
             });
             return false;

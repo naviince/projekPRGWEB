@@ -690,6 +690,8 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             <a href="Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
             <a href="Riwayat/riwayat.php" class="nav-link-item">Riwayat</a>
             <a href="Barang/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
+            <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
+
         </div>
         <div class="nav-right">
             <a href="Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
