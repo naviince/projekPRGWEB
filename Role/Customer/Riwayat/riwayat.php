@@ -44,15 +44,20 @@ define('STATUS_PEMBAYARAN_DITOLAK', 2);
 define('STATUS_SESI_BELUM', 0);
 define('STATUS_SESI_SELESAI', 1);
 
+define('STATUS_PENJUALAN_PROSES', 0);
+define('STATUS_PENJUALAN_SELESAI', 1);
+
 // =====================================================
 // QUERY RIWAYAT ORDER LENGKAP
 // =====================================================
 $sql = "
 SELECT 
     o.ID_Order,
-    o.Tanggal_Order,
+    o.Tanggal_Booking,
     o.Status_Order,
     o.Total_Harga,
+    o.Total_Paket,
+    o.Total_Barang_Cetak,
     o.Rating,
     o.Review,
 
@@ -88,14 +93,12 @@ SELECT
     dp.Jumlah_Bayar as Jumlah_DP,
     dp.Status_Pembayaran as Status_DP,
     dp.Tanggal_Upload as Tgl_DP,
-    dp.Tanggal_Verifikasi as Tgl_Verifikasi_DP,
     dp.Bukti_Transfer as Bukti_DP,
 
     pl.ID_Pembayaran as ID_Pelunasan,
     pl.Jumlah_Bayar as Jumlah_Pelunasan,
     pl.Status_Pembayaran as Status_Pelunasan,
     pl.Tanggal_Upload as Tgl_Pelunasan,
-    pl.Tanggal_Verifikasi as Tgl_Verifikasi_Pelunasan,
     pl.Bukti_Transfer as Bukti_Pelunasan
 
 FROM [Order] o
@@ -108,7 +111,7 @@ LEFT JOIN Karyawan k ON sf.ID_Karyawan = k.ID_Karyawan
 LEFT JOIN Pembayaran dp ON o.ID_Order = dp.ID_Order AND dp.Tipe_Pembayaran = 'DP'
 LEFT JOIN Pembayaran pl ON o.ID_Order = pl.ID_Order AND pl.Tipe_Pembayaran = 'Pelunasan'
 WHERE o.ID_Pelanggan = ? AND o.Is_Deleted = 0
-ORDER BY o.Tanggal_Order DESC
+ORDER BY o.Tanggal_Booking DESC
 ";
 
 $params = [$id_pelanggan];
@@ -117,34 +120,61 @@ $q_riwayat = sqlsrv_query($conn, $sql, $params);
 $riwayat_list = [];
 if ($q_riwayat !== false) {
     while ($row = sqlsrv_fetch_array($q_riwayat, SQLSRV_FETCH_ASSOC)) {
-        if (isset($row['Tanggal_Order']) && is_object($row['Tanggal_Order'])) {
-            $row['Tanggal_Order'] = $row['Tanggal_Order']->format('Y-m-d H:i:s');
+        $date_fields = ['Tanggal_Booking', 'Tanggal_Jadwal', 'Tanggal_Upload_Hasil', 'Tgl_DP', 'Tgl_Pelunasan'];
+        foreach ($date_fields as $field) {
+            if (isset($row[$field]) && is_object($row[$field]) && method_exists($row[$field], 'format')) {
+                $row[$field] = $row[$field]->format('Y-m-d H:i:s');
+            }
         }
-        if (isset($row['Tanggal_Jadwal']) && is_object($row['Tanggal_Jadwal'])) {
-            $row['Tanggal_Jadwal'] = $row['Tanggal_Jadwal']->format('Y-m-d');
-        }
-        if (isset($row['Tanggal_Upload_Hasil']) && is_object($row['Tanggal_Upload_Hasil'])) {
-            $row['Tanggal_Upload_Hasil'] = $row['Tanggal_Upload_Hasil']->format('Y-m-d H:i:s');
-        }
-        if (isset($row['Tgl_DP']) && is_object($row['Tgl_DP'])) {
-            $row['Tgl_DP'] = $row['Tgl_DP']->format('Y-m-d H:i:s');
-        }
-        if (isset($row['Tgl_Verifikasi_DP']) && is_object($row['Tgl_Verifikasi_DP'])) {
-            $row['Tgl_Verifikasi_DP'] = $row['Tgl_Verifikasi_DP']->format('Y-m-d H:i:s');
-        }
-        if (isset($row['Tgl_Pelunasan']) && is_object($row['Tgl_Pelunasan'])) {
-            $row['Tgl_Pelunasan'] = $row['Tgl_Pelunasan']->format('Y-m-d H:i:s');
-        }
-        if (isset($row['Tgl_Verifikasi_Pelunasan']) && is_object($row['Tgl_Verifikasi_Pelunasan'])) {
-            $row['Tgl_Verifikasi_Pelunasan'] = $row['Tgl_Verifikasi_Pelunasan']->format('Y-m-d H:i:s');
-        }
-        if (isset($row['Jam_Mulai']) && is_object($row['Jam_Mulai'])) {
-            $row['Jam_Mulai'] = $row['Jam_Mulai']->format('H:i');
-        }
-        if (isset($row['Jam_Selesai']) && is_object($row['Jam_Selesai'])) {
-            $row['Jam_Selesai'] = $row['Jam_Selesai']->format('H:i');
+        $time_fields = ['Jam_Mulai', 'Jam_Selesai'];
+        foreach ($time_fields as $field) {
+            if (isset($row[$field]) && is_object($row[$field]) && method_exists($row[$field], 'format')) {
+                $row[$field] = $row[$field]->format('H:i');
+            } elseif (isset($row[$field]) && is_string($row[$field])) {
+                $row[$field] = substr($row[$field], 0, 5);
+            }
         }
         $riwayat_list[] = $row;
+    }
+}
+
+// =====================================================
+// AMBIL BARANG CETAK PER ORDER
+// =====================================================
+$barang_per_order = [];
+if (!empty($riwayat_list)) {
+    $order_ids = array_column($riwayat_list, 'ID_Order');
+    $placeholders = implode(',', array_fill(0, count($order_ids), '?'));
+
+    $sql_barang = "
+        SELECT 
+            pen.ID_Order,
+            pen.ID_Penjualan,
+            pen.Status_Penjualan,
+            pen.Total_Penjualan,
+            d.ID_Barang,
+            d.Jumlah,
+            d.Harga_Satuan,
+            d.Subtotal,
+            b.Nama_Barang,
+            b.Foto_Barang,
+            b.Kategori_Barang
+        FROM Penjualan pen
+        INNER JOIN Detail_Penjualan_Barang_Cetak d ON pen.ID_Penjualan = d.ID_Penjualan
+        INNER JOIN Barang_Cetak b ON d.ID_Barang = b.ID_Barang
+        WHERE pen.ID_Order IN ($placeholders) AND pen.Status = 1
+        ORDER BY pen.ID_Order, d.ID_Detail
+    ";
+
+    $q_barang = sqlsrv_query($conn, $sql_barang, $order_ids);
+    if ($q_barang !== false) {
+        while ($b = sqlsrv_fetch_array($q_barang, SQLSRV_FETCH_ASSOC)) {
+            $id_order = $b['ID_Order'];
+            if (!isset($barang_per_order[$id_order])) {
+                $barang_per_order[$id_order] = [];
+            }
+            $barang_per_order[$id_order][] = $b;
+        }
     }
 }
 
@@ -220,6 +250,17 @@ function getStatusPembayaranBadge($status) {
             return '<span class="badge-pay badge-pay-rejected"><i class="fas fa-times"></i> Ditolak</span>';
         default:
             return '<span class="badge-pay badge-pay-wait">Belum Bayar</span>';
+    }
+}
+
+function getStatusPenjualanBadge($status) {
+    switch ($status) {
+        case STATUS_PENJUALAN_PROSES:
+            return '<span class="badge-pay badge-pay-wait"><i class="fas fa-box"></i> Proses</span>';
+        case STATUS_PENJUALAN_SELESAI:
+            return '<span class="badge-pay badge-pay-verified"><i class="fas fa-check"></i> Selesai</span>';
+        default:
+            return '<span class="badge-pay badge-pay-wait">-</span>';
     }
 }
 
@@ -300,41 +341,40 @@ function getAksiButtons($item) {
     <title>Riwayat Transaksi - SpotLight Studio</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         :root {
             --primary: #D53D66;
             --primary-dark: #B82E52;
-            --primary-light: #F8E1E7;
-            --secondary: #2D2D2D;
-            --accent: #FF8FB0;
-            --bg: #F5F5F5;
+            --primary-light: #FFF0F3;
+            --secondary: #1e1e24;
+            --accent: #FF6694;
+            --bg: #f8fafc;
             --white: #FFFFFF;
             --shadow: 0 8px 32px rgba(213, 61, 102, 0.15);
             --shadow-card: 0 4px 20px rgba(0,0,0,0.08);
-            --radius: 16px;
+            --radius: 20px;
         }
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Poppins', sans-serif; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }
         body { background: var(--bg); min-height: 100vh; }
 
-        /* TOP NAVBAR - KONSISTEN DENGAN CUSTOMER INDEX */
         .top-navbar {
             position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
             display: flex; align-items: center; justify-content: space-between;
-            padding: 12px 40px; background: var(--white);
+            padding: 16px 40px; background: var(--white);
             box-shadow: 0 2px 20px rgba(0,0,0,0.06);
         }
         .nav-logo {
-            font-size: 24px; font-weight: 700; color: var(--primary); text-decoration: none;
-            display: flex; align-items: center; gap: 8px;
+            font-size: 1.8rem; font-weight: 900; color: var(--primary); text-decoration: none;
+            letter-spacing: -1.5px;
         }
-        .nav-logo span { color: var(--secondary); font-weight: 400; }
+        .nav-logo span { color: var(--secondary); font-weight: 700; font-size: 0.9rem; }
         .nav-menu-center {
             display: flex; gap: 32px; align-items: center;
         }
         .nav-link-item {
-            text-decoration: none; color: #666; font-size: 14px; font-weight: 500;
+            text-decoration: none; color: #4a5568; font-size: 0.9rem; font-weight: 700;
             padding: 8px 0; position: relative; transition: all 0.3s;
         }
         .nav-link-item:hover, .nav-link-item.active {
@@ -348,46 +388,46 @@ function getAksiButtons($item) {
             display: flex; align-items: center; gap: 16px;
         }
         .nav-btn-booking {
-            background: var(--primary); color: var(--white); padding: 10px 24px;
-            border-radius: 25px; text-decoration: none; font-size: 14px; font-weight: 600;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: var(--white); padding: 10px 24px;
+            border-radius: 12px; text-decoration: none; font-size: 0.85rem; font-weight: 800;
             display: flex; align-items: center; gap: 6px; transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(213, 61, 102, 0.25);
         }
-        .nav-btn-booking:hover { background: var(--primary-dark); transform: translateY(-2px); }
+        .nav-btn-booking:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(213, 61, 102, 0.35); color: #fff; }
         .nav-avatar-wrapper { position: relative; }
         .nav-avatar {
             width: 40px; height: 40px; border-radius: 50%; object-fit: cover;
             cursor: pointer; border: 2px solid var(--primary-light);
         }
         .nav-dropdown {
-            display: none; position: absolute; top: 50px; right: 0;
-            background: var(--white); border-radius: 12px; box-shadow: var(--shadow);
-            min-width: 200px; padding: 8px 0; overflow: hidden;
+            display: none; position: absolute; top: 55px; right: 0;
+            background: var(--white); border-radius: 16px; box-shadow: var(--shadow);
+            min-width: 220px; padding: 12px; border: 1px solid #f1f5f9;
         }
-        .nav-dropdown.show { display: block; }
+        .nav-dropdown.show { display: block; animation: fadeIn 0.2s ease; }
         .dropdown-header {
-            padding: 12px 16px; font-size: 14px; font-weight: 600; color: var(--secondary);
-            border-bottom: 1px solid #f0f0f0;
+            padding: 8px 16px; font-size: 0.95rem; font-weight: 800; color: var(--secondary);
         }
-        .dropdown-divider { height: 1px; background: #f0f0f0; margin: 4px 0; }
+        .dropdown-divider { height: 1px; background: #f1f5f9; margin: 8px 0; }
         .dropdown-item {
             display: flex; align-items: center; gap: 10px;
-            padding: 10px 16px; color: #666; text-decoration: none; font-size: 13px;
-            transition: all 0.2s; cursor: pointer; border: none; background: none; width: 100%;
+            padding: 12px 16px; color: #4a5568; text-decoration: none; font-size: 0.9rem;
+            transition: all 0.3s; cursor: pointer; border: none; background: none; width: 100%;
+            font-weight: 600; border-radius: 12px;
         }
         .dropdown-item:hover { background: var(--primary-light); color: var(--primary); }
-        .dropdown-item.logout { color: #D32F2F; }
-        .dropdown-item.logout:hover { background: #FFEBEE; }
+        .dropdown-item.logout { color: #dc2626; }
+        .dropdown-item.logout:hover { background: #fef2f2; }
 
-        /* MAIN CONTENT */
         .main-content { padding: 100px 40px 40px; max-width: 1400px; margin: 0 auto; }
         .page-header {
             display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 30px;
         }
-        .page-title h1 { color: var(--secondary); font-size: 28px; font-weight: 700; }
+        .page-title h1 { color: var(--secondary); font-size: 28px; font-weight: 800; }
         .page-title p { color: #888; font-size: 14px; margin-top: 4px; }
 
-        /* STATS CARDS */
         .stats-grid {
             display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 20px; margin-bottom: 30px;
@@ -411,6 +451,7 @@ function getAksiButtons($item) {
         .stat-card .stat-value { font-size: 28px; font-weight: 700; color: var(--secondary); }
         .stat-card .stat-label { font-size: 13px; color: #888; margin-top: 2px; }
         .stat-card.total .stat-icon { background: var(--primary-light); color: var(--primary); }
+        .stat-card.total { border-left-color: var(--primary); }
         .stat-card.menunggu .stat-icon { background: #FFF8E1; color: #F9A825; }
         .stat-card.menunggu { border-left-color: #F9A825; }
         .stat-card.proses .stat-icon { background: #E3F2FD; color: #1976D2; }
@@ -420,7 +461,6 @@ function getAksiButtons($item) {
         .stat-card.batal .stat-icon { background: #FFEBEE; color: #D32F2F; }
         .stat-card.batal { border-left-color: #D32F2F; }
 
-        /* TABS */
         .tabs-container {
             background: var(--white); border-radius: var(--radius);
             box-shadow: var(--shadow-card); margin-bottom: 25px; overflow: hidden;
@@ -434,9 +474,7 @@ function getAksiButtons($item) {
             position: relative; transition: all 0.3s; white-space: nowrap;
         }
         .tab-btn:hover { color: var(--primary); }
-        .tab-btn.active {
-            color: var(--primary);
-        }
+        .tab-btn.active { color: var(--primary); }
         .tab-btn.active::after {
             content: ''; position: absolute; bottom: -2px; left: 0; width: 100%; height: 3px;
             background: var(--primary); border-radius: 3px 3px 0 0;
@@ -446,7 +484,6 @@ function getAksiButtons($item) {
             padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-left: 6px;
         }
 
-        /* ORDER CARDS */
         .orders-container { display: flex; flex-direction: column; gap: 20px; }
         .order-card {
             background: var(--white); border-radius: var(--radius);
@@ -500,7 +537,29 @@ function getAksiButtons($item) {
         .detail-item .detail-label { font-size: 12px; color: #888; margin-bottom: 2px; }
         .detail-item .detail-value { font-size: 14px; color: var(--secondary); font-weight: 500; }
 
-        /* PEMBAYARAN SECTION */
+        .barang-cetak-section {
+            margin-top: 20px; padding-top: 20px; border-top: 1px dashed #ddd;
+        }
+        .barang-cetak-section h4 {
+            font-size: 14px; color: var(--secondary); margin-bottom: 12px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .barang-cetak-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;
+        }
+        .barang-cetak-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px; background: #FAFAFA; border-radius: 12px;
+            border-left: 3px solid var(--primary);
+        }
+        .barang-cetak-item img {
+            width: 50px; height: 50px; border-radius: 8px; object-fit: cover;
+        }
+        .barang-cetak-info { flex: 1; }
+        .barang-cetak-nama { font-size: 13px; font-weight: 700; color: var(--secondary); }
+        .barang-cetak-detail { font-size: 12px; color: #888; margin-top: 2px; }
+        .barang-cetak-subtotal { font-size: 14px; font-weight: 800; color: var(--primary); }
+
         .pembayaran-section {
             margin-top: 20px; padding-top: 20px; border-top: 1px dashed #ddd;
         }
@@ -525,7 +584,6 @@ function getAksiButtons($item) {
         .pembayaran-box.pelunasan .pay-amount { color: #388E3C; }
         .pembayaran-box .pay-detail { font-size: 12px; color: #888; margin-top: 4px; }
 
-        /* AKSI BUTTONS */
         .order-aksi {
             padding: 16px 24px; background: #FAFAFA;
             display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
@@ -552,7 +610,6 @@ function getAksiButtons($item) {
         }
         .text-batal { color: #D32F2F; font-size: 13px; font-weight: 500; }
 
-        /* RATING */
         .rating-display { display: flex; gap: 4px; margin-top: 8px; }
         .star-filled { color: #F9A825; font-size: 18px; }
         .star-empty { color: #DDD; font-size: 18px; }
@@ -561,7 +618,6 @@ function getAksiButtons($item) {
             border-radius: 10px; font-size: 13px; color: #666; font-style: italic;
         }
 
-        /* BADGES */
         .badge {
             display: inline-flex; align-items: center; gap: 6px;
             padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
@@ -580,7 +636,6 @@ function getAksiButtons($item) {
         .badge-pay-verified { background: #E8F5E9; color: #388E3C; }
         .badge-pay-rejected { background: #FFEBEE; color: #D32F2F; }
 
-        /* EMPTY STATE */
         .empty-state {
             text-align: center; padding: 60px 20px;
         }
@@ -595,7 +650,6 @@ function getAksiButtons($item) {
         }
         .empty-state .btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); }
 
-        /* MODAL RATING */
         .modal-overlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center;
@@ -620,7 +674,7 @@ function getAksiButtons($item) {
         .modal-content textarea {
             width: 100%; padding: 14px; border: 2px solid #f0f0f0; border-radius: 12px;
             font-size: 14px; resize: vertical; min-height: 100px; margin-bottom: 20px;
-            font-family: 'Poppins', sans-serif;
+            font-family: 'Plus Jakarta Sans', sans-serif;
         }
         .modal-content textarea:focus { outline: none; border-color: var(--primary); }
         .modal-actions {
@@ -634,7 +688,6 @@ function getAksiButtons($item) {
         .modal-actions .btn-submit { background: var(--primary); color: var(--white); }
         .modal-actions button:hover { transform: translateY(-2px); }
 
-        /* RESPONSIVE */
         @media (max-width: 768px) {
             .top-navbar { padding: 12px 20px; }
             .nav-menu-center { display: none; }
@@ -643,13 +696,18 @@ function getAksiButtons($item) {
             .tabs-header { overflow-x: auto; }
             .order-grid { grid-template-columns: 1fr; }
             .pembayaran-grid { grid-template-columns: 1fr; }
+            .barang-cetak-grid { grid-template-columns: 1fr; }
         }
 
-        /* SCROLLBAR */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #f0f0f0; border-radius: 4px; }
         ::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--primary-dark); }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
@@ -657,13 +715,13 @@ function getAksiButtons($item) {
 <!-- TOP NAVBAR -->
 <nav class="top-navbar">
     <a href="../index.php" class="nav-logo">
-        <i class="bi bi-camera-fill"></i> SpotLight<span>.StudioFoto</span>
+        SpotLight.<span>StudioFoto</span>
     </a>
     <div class="nav-menu-center">
         <a href="../index.php" class="nav-link-item">Dashboard</a>
         <a href="../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
-        <a href="riwayat.php" class="nav-link-item active">Riwayat</a>
-        <a href="../Cetak/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
+        <a href="index.php" class="nav-link-item active">Riwayat</a>
+        <a href="../Barang/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
     </div>
     <div class="nav-right">
         <a href="../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
@@ -686,16 +744,14 @@ function getAksiButtons($item) {
     </div>
 </nav>
 
-<!-- MAIN CONTENT -->
 <div class="main-content">
     <div class="page-header">
         <div class="page-title">
             <h1><i class="fas fa-history" style="color:var(--primary);margin-right:10px;"></i>Riwayat Transaksi</h1>
-            <p>Kelola dan pantau semua pesanan foto Anda</p>
+            <p>Kelola dan pantau semua pesanan foto dan barang cetak Anda</p>
         </div>
     </div>
 
-    <!-- STATS CARDS -->
     <div class="stats-grid">
         <div class="stat-card total">
             <div class="stat-icon"><i class="fas fa-shopping-bag"></i></div>
@@ -724,7 +780,6 @@ function getAksiButtons($item) {
         </div>
     </div>
 
-    <!-- TABS -->
     <div class="tabs-container">
         <div class="tabs-header">
             <button class="tab-btn <?php echo $tab=='semua'?'active':''; ?>" onclick="location.href='?tab=semua'">
@@ -749,7 +804,7 @@ function getAksiButtons($item) {
                 <div class="empty-state">
                     <i class="fas fa-inbox"></i>
                     <h3>Belum Ada Riwayat</h3>
-                    <p>Anda belum memiliki transaksi. Yuk, pesan paket foto sekarang!</p>
+                    <p>Anda belum memiliki transaksi. Yuk, pesan paket foto atau barang cetak sekarang!</p>
                     <a href="../Layanan/Paket/pilih_paket.php" class="btn-primary">
                         <i class="fas fa-camera"></i> Pesan Sekarang
                     </a>
@@ -758,9 +813,10 @@ function getAksiButtons($item) {
                 <div class="orders-container">
                     <?php foreach ($filtered_list as $item): 
                         $is_batal = ($item['Status_Order'] == STATUS_ORDER_DIBATALKAN);
+                        $id_order = $item['ID_Order'];
+                        $barang_order = $barang_per_order[$id_order] ?? [];
                     ?>
                     <div class="order-card <?php echo $is_batal ? 'batal' : ''; ?>">
-                        <!-- HEADER -->
                         <div class="order-header">
                             <div class="order-id">
                                 <strong>#ORDER-<?php echo str_pad($item['ID_Order'], 4, '0', STR_PAD_LEFT); ?></strong>
@@ -768,16 +824,15 @@ function getAksiButtons($item) {
                             <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
                                 <div class="order-date">
                                     <i class="fas fa-calendar-alt"></i>
-                                    <?php echo formatTanggalIndo($item['Tanggal_Order']); ?>
+                                    <?php echo formatTanggalIndo($item['Tanggal_Booking']); ?>
                                 </div>
                                 <?php echo getStatusBadge($item['Status_Order']); ?>
                             </div>
                         </div>
 
-                        <!-- BODY -->
                         <div class="order-body">
                             <div class="order-grid">
-                                <!-- PAKET INFO -->
+                                <?php if (!empty($item['Nama_Paket'])): ?>
                                 <div class="paket-section">
                                     <?php 
                                     $foto_paket = $item['Foto_Paket'] ?? 'default_paket.jpg';
@@ -796,11 +851,24 @@ function getAksiButtons($item) {
                                             <span><i class="fas fa-palette" style="margin-right:4px;"></i><?php echo htmlspecialchars($item['Nama_Tema']); ?></span>
                                             <?php endif; ?>
                                         </div>
-                                        <div class="paket-price"><?php echo formatRupiah($item['Total_Harga'] ?? 0); ?></div>
+                                        <div class="paket-price"><?php echo formatRupiah($item['Total_Paket'] ?? 0); ?></div>
                                     </div>
                                 </div>
+                                <?php else: ?>
+                                <div class="paket-section">
+                                    <div class="paket-img" style="background:var(--primary-light);display:flex;align-items:center;justify-content:center;color:var(--primary);font-size:2rem;">
+                                        <i class="fas fa-shopping-bag"></i>
+                                    </div>
+                                    <div class="paket-info">
+                                        <h3>Order Barang Cetak</h3>
+                                        <div class="paket-meta">
+                                            <span><i class="fas fa-box" style="margin-right:4px;"></i>Barang Cetak</span>
+                                        </div>
+                                        <div class="paket-price"><?php echo formatRupiah($item['Total_Barang_Cetak'] ?? 0); ?></div>
+                                    </div>
+                                </div>
+                                <?php endif; ?>
 
-                                <!-- DETAIL JADWAL & FOTOGRAFER -->
                                 <div class="detail-section">
                                     <?php if (!empty($item['Tanggal_Jadwal'])): ?>
                                     <div class="detail-item">
@@ -829,23 +897,48 @@ function getAksiButtons($item) {
                                     </div>
                                     <?php endif; ?>
 
-                                    <?php if (!empty($item['Jadwal_Keterangan']) && stripos($item['Jadwal_Keterangan'], 'libur') !== false): ?>
-                                    <div class="detail-item" style="background:#FFF8E1;">
-                                        <i class="fas fa-exclamation-triangle" style="background:#FFF8E1;color:#F9A825;"></i>
+                                    <?php if (!empty($item['Total_Barang_Cetak']) && $item['Total_Barang_Cetak'] > 0): ?>
+                                    <div class="detail-item" style="background:var(--primary-light);">
+                                        <i class="fas fa-shopping-bag" style="background:var(--primary);color:#fff;"></i>
                                         <div>
-                                            <div class="detail-label">Keterangan</div>
-                                            <div class="detail-value" style="color:#F9A825;"><?php echo htmlspecialchars($item['Jadwal_Keterangan']); ?></div>
+                                            <div class="detail-label">Total Barang Cetak</div>
+                                            <div class="detail-value" style="color:var(--primary);font-weight:800;"><?php echo formatRupiah($item['Total_Barang_Cetak']); ?></div>
                                         </div>
                                     </div>
                                     <?php endif; ?>
                                 </div>
                             </div>
 
-                            <!-- PEMBAYARAN SECTION -->
+                            <?php if (!empty($barang_order)): ?>
+                            <div class="barang-cetak-section">
+                                <h4><i class="fas fa-box-open" style="color:var(--primary);"></i> Detail Barang Cetak</h4>
+                                <div class="barang-cetak-grid">
+                                    <?php foreach ($barang_order as $b): 
+                                        $foto_barang = $b['Foto_Barang'] ?? 'default_barang.jpg';
+                                        $foto_barang_src = file_exists("../../assets/img/barang/" . $foto_barang) 
+                                            ? "../../assets/img/barang/" . $foto_barang 
+                                            : "../../assets/img/barang/default_barang.jpg";
+                                    ?>
+                                    <div class="barang-cetak-item">
+                                        <img src="<?php echo $foto_barang_src; ?>" alt="<?php echo htmlspecialchars($b['Nama_Barang']); ?>">
+                                        <div class="barang-cetak-info">
+                                            <div class="barang-cetak-nama"><?php echo htmlspecialchars($b['Nama_Barang']); ?></div>
+                                            <div class="barang-cetak-detail"><?php echo $b['Jumlah']; ?> x <?php echo formatRupiah($b['Harga_Satuan']); ?></div>
+                                        </div>
+                                        <div class="barang-cetak-subtotal"><?php echo formatRupiah($b['Subtotal']); ?></div>
+                                    </div>
+                                    <?php endforeach; ?>
+                                </div>
+                                <div style="margin-top:12px;text-align:right;">
+                                    <span style="font-size:13px;color:#888;">Status Penjualan: </span>
+                                    <?php echo getStatusPenjualanBadge($barang_order[0]['Status_Penjualan'] ?? null); ?>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+
                             <div class="pembayaran-section">
                                 <h4><i class="fas fa-credit-card" style="color:var(--primary);"></i> Informasi Pembayaran</h4>
                                 <div class="pembayaran-grid">
-                                    <!-- DP -->
                                     <div class="pembayaran-box">
                                         <div class="pay-header">
                                             <span class="pay-label"><i class="fas fa-hand-holding-usd" style="margin-right:6px;"></i>DP (Uang Muka)</span>
@@ -860,15 +953,14 @@ function getAksiButtons($item) {
                                         <div class="pay-amount">
                                             <?php echo !empty($item['Jumlah_DP']) ? formatRupiah($item['Jumlah_DP']) : '-'; ?>
                                         </div>
-                                        <?php if (!empty($item['Tgl_Verifikasi_DP'])): ?>
+                                        <?php if (!empty($item['Tgl_DP'])): ?>
                                         <div class="pay-detail">
-                                            <i class="fas fa-check" style="color:#388E3C;margin-right:4px;"></i>
-                                            Diverifikasi: <?php echo formatTanggalIndo($item['Tgl_Verifikasi_DP']); ?>
+                                            <i class="fas fa-calendar" style="color:#888;margin-right:4px;"></i>
+                                            <?php echo formatTanggalIndo($item['Tgl_DP']); ?>
                                         </div>
                                         <?php endif; ?>
                                     </div>
 
-                                    <!-- Pelunasan -->
                                     <div class="pembayaran-box pelunasan">
                                         <div class="pay-header">
                                             <span class="pay-label"><i class="fas fa-money-bill-wave" style="margin-right:6px;"></i>Pelunasan</span>
@@ -883,10 +975,10 @@ function getAksiButtons($item) {
                                         <div class="pay-amount">
                                             <?php echo !empty($item['Jumlah_Pelunasan']) ? formatRupiah($item['Jumlah_Pelunasan']) : '-'; ?>
                                         </div>
-                                        <?php if (!empty($item['Tgl_Verifikasi_Pelunasan'])): ?>
+                                        <?php if (!empty($item['Tgl_Pelunasan'])): ?>
                                         <div class="pay-detail">
-                                            <i class="fas fa-check" style="color:#388E3C;margin-right:4px;"></i>
-                                            Diverifikasi: <?php echo formatTanggalIndo($item['Tgl_Verifikasi_Pelunasan']); ?>
+                                            <i class="fas fa-calendar" style="color:#888;margin-right:4px;"></i>
+                                            <?php echo formatTanggalIndo($item['Tgl_Pelunasan']); ?>
                                         </div>
                                         <?php endif; ?>
                                     </div>
@@ -894,7 +986,6 @@ function getAksiButtons($item) {
                             </div>
                         </div>
 
-                        <!-- AKSI -->
                         <div class="order-aksi">
                             <?php echo getAksiButtons($item); ?>
                         </div>
@@ -906,7 +997,6 @@ function getAksiButtons($item) {
     </div>
 </div>
 
-<!-- MODAL RATING -->
 <div class="modal-overlay" id="modalRating">
     <div class="modal-content">
         <h3><i class="fas fa-star" style="color:#F9A825;margin-right:8px;"></i>Beri Rating & Review</h3>
@@ -929,12 +1019,10 @@ function getAksiButtons($item) {
 let currentOrderId = null;
 let selectedRating = 0;
 
-// DROPDOWN
 function toggleDropdown() {
     document.getElementById('navDropdown').classList.toggle('show');
 }
 
-// Close dropdown when clicking outside
 document.addEventListener('click', function(e) {
     const wrapper = document.querySelector('.nav-avatar-wrapper');
     if (!wrapper.contains(e.target)) {
@@ -943,7 +1031,22 @@ document.addEventListener('click', function(e) {
 });
 
 function confirmLandingPage(e) {
-    return true;
+    e.preventDefault();
+    Swal.fire({
+        title: 'Kembali ke Beranda?',
+        text: 'Anda akan meninggalkan halaman ini.',
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonColor: '#D53D66',
+        cancelButtonColor: '#718096',
+        confirmButtonText: 'Ya, Kembali',
+        cancelButtonText: 'Batal'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            window.location.href = '../../index.php';
+        }
+    });
+    return false;
 }
 
 function confirmLogout() {
@@ -963,7 +1066,6 @@ function confirmLogout() {
     });
 }
 
-// STAR RATING
 const stars = document.querySelectorAll('#starContainer i');
 stars.forEach(star => {
     star.addEventListener('click', function() {
@@ -993,7 +1095,6 @@ function updateStars(rating) {
     });
 }
 
-// MODAL
 function bukaRating(id_order) {
     currentOrderId = id_order;
     selectedRating = 0;
@@ -1056,7 +1157,6 @@ function submitRating() {
     });
 }
 
-// BATALKAN ORDER
 function batalkanOrder(id_order) {
     Swal.fire({
         title: 'Batalkan Pesanan?',
@@ -1092,7 +1192,6 @@ function batalkanOrder(id_order) {
     });
 }
 
-// LIHAT DETAIL
 function lihatDetail(id_order) {
     Swal.fire({
         title: 'Detail Pesanan #' + String(id_order).padStart(4, '0'),
@@ -1102,7 +1201,6 @@ function lihatDetail(id_order) {
     });
 }
 
-// TUTUP MODAL KALAU KLIK OUTSIDE
 document.getElementById('modalRating').addEventListener('click', function(e) {
     if (e.target === this) tutupModal();
 });

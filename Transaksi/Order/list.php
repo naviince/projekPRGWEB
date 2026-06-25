@@ -236,16 +236,6 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 </div>
 </li>
 
-<!-- SESI FOTO (VIEW ONLY) -->
-<li class="nav-item">
-<a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuSesi"><span><i class="bi bi-camera-reels-fill me-2"></i> Sesi Foto</span><i class="bi bi-chevron-down small icon-chevron"></i></a>
-<div class="submenu" id="submenuSesi">
-<ul class="list-unstyled">
-<li><a href="../../Transaksi/Sesi Foto/list.php" class="submenu-link"><i class="bi bi-eye-fill me-2"></i>Lihat Sesi Foto</a></li>
-</ul>
-</div>
-</li>
-
 <li class="nav-item"><a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)"><span><i class="bi bi-house-door-fill me-2"></i> Landing Page</span></a></li>
 </ul>
 </div>

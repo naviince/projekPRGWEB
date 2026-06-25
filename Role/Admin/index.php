@@ -143,6 +143,21 @@ $q_ruangan = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Ruangan WHERE Is
 $d_ruangan = sqlsrv_fetch_array($q_ruangan, SQLSRV_FETCH_ASSOC);
 $total_ruangan = $d_ruangan['total'] ?? 0;
 
+// =====================================================
+// STATISTIK PENJUALAN BARANG CETAK (BARU)
+// =====================================================
+$q_penjualan_proses = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Penjualan WHERE Status_Penjualan = 0 AND Status = 1");
+$d_penjualan_proses = sqlsrv_fetch_array($q_penjualan_proses, SQLSRV_FETCH_ASSOC);
+$penjualan_proses = $d_penjualan_proses['total'] ?? 0;
+
+$q_penjualan_selesai = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Penjualan WHERE Status_Penjualan = 1 AND Status = 1");
+$d_penjualan_selesai = sqlsrv_fetch_array($q_penjualan_selesai, SQLSRV_FETCH_ASSOC);
+$penjualan_selesai = $d_penjualan_selesai['total'] ?? 0;
+
+$q_total_penjualan = sqlsrv_query($conn, "SELECT SUM(Total_Penjualan) AS total FROM Penjualan WHERE Status = 1");
+$d_total_penjualan = sqlsrv_fetch_array($q_total_penjualan, SQLSRV_FETCH_ASSOC);
+$total_penjualan_rp = $d_total_penjualan['total'] ?? 0;
+
 $q_status_booking = sqlsrv_query($conn, "SELECT SUM(CASE WHEN Status_Order = 0 THEN 1 ELSE 0 END) AS menunggu_dp, SUM(CASE WHEN Status_Order = 1 THEN 1 ELSE 0 END) AS dp_verified, SUM(CASE WHEN Status_Order = 2 THEN 1 ELSE 0 END) AS tunggu_pelunasan, SUM(CASE WHEN Status_Order = 3 THEN 1 ELSE 0 END) AS lunas, SUM(CASE WHEN Status_Order = 4 THEN 1 ELSE 0 END) AS dibatalkan FROM [Order] WHERE Status = 1");
 $d_status_booking = sqlsrv_fetch_array($q_status_booking, SQLSRV_FETCH_ASSOC);
 
@@ -212,6 +227,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background-color:var(--body-bg);
 .stat-icon-red{background:linear-gradient(135deg,#fef2f2,#fee2e2);color:#dc2626;}
 .stat-icon-purple{background:linear-gradient(135deg,#f5f3ff,#ede9fe);color:#7c3aed;}
 .stat-icon-cyan{background:linear-gradient(135deg,#ecfeff,#cffafe);color:#0891b2;}
+.stat-icon-blue{background:linear-gradient(135deg,#dbeafe,#bfdbfe);color:#2563eb;}
 .stat-content{flex:1;min-width:0;overflow:hidden;}
 .stat-val{font-size:1.5rem;font-weight:800;color:var(--text-dark);margin-bottom:2px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .stat-title{font-size:0.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -294,7 +310,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background-color:var(--body-bg);
 </div>
 </li>
 
-<!-- TRANSAKSI - URUTAN BERURUTAN -->
+<!-- TRANSAKSI - TANPA SESI FOTO -->
 <li class="nav-item">
 <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuTransaksi"><span><i class="bi bi-cart-fill me-2"></i> Transaksi</span><i class="bi bi-chevron-down small icon-chevron"></i></a>
 <div class="submenu" id="submenuTransaksi">
@@ -302,17 +318,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background-color:var(--body-bg);
 <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
 <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
 <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-shop-fill me-2"></i>Penjualan Barang Cetak</a></li>
-</ul>
-</div>
-</li>
-
-<!-- SESI FOTO (VIEW ONLY) -->
-<li class="nav-item">
-<a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuSesi"><span><i class="bi bi-camera-reels-fill me-2"></i> Sesi Foto</span><i class="bi bi-chevron-down small icon-chevron"></i></a>
-<div class="submenu" id="submenuSesi">
-<ul class="list-unstyled">
-<li><a href="../../Transaksi/Sesi Foto/list.php" class="submenu-link"><i class="bi bi-eye-fill me-2"></i>Lihat Sesi Foto</a></li>
+<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
 </ul>
 </div>
 </li>
@@ -353,6 +359,9 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background-color:var(--body-bg);
 <div class="stat-card-item"><div class="card-3d"><div class="stat-card"><div class="stat-icon stat-icon-red"><i class="bi bi-box-seam-fill"></i></div><div class="stat-content"><div class="stat-title">Stok Menipis</div><div class="stat-val"><?= $stok_menipis ?> Barang</div><div class="stat-subtitle">Di bawah minimum</div></div></div></div></div>
 <div class="stat-card-item"><div class="card-3d"><div class="stat-card"><div class="stat-icon stat-icon-pink"><i class="bi bi-camera-reels-fill"></i></div><div class="stat-content"><div class="stat-title">Paket Aktif</div><div class="stat-val"><?= $total_paket ?> Paket</div><div class="stat-subtitle">Tersedia untuk booking</div></div></div></div></div>
 <div class="stat-card-item"><div class="card-3d"><div class="stat-card"><div class="stat-icon stat-icon-pink"><i class="bi bi-door-open-fill"></i></div><div class="stat-content"><div class="stat-title">Ruangan Tersedia</div><div class="stat-val"><?= $total_ruangan ?> Ruangan</div><div class="stat-subtitle">Siap digunakan</div></div></div></div></div>
+<!-- STAT BARU: PENJUALAN -->
+<div class="stat-card-item"><div class="card-3d"><div class="stat-card"><div class="stat-icon stat-icon-blue"><i class="bi bi-bag-fill"></i></div><div class="stat-content"><div class="stat-title">Penjualan Proses</div><div class="stat-val"><?= $penjualan_proses ?> Order</div><div class="stat-subtitle">Barang cetak belum selesai</div></div></div></div></div>
+<div class="stat-card-item"><div class="card-3d"><div class="stat-card"><div class="stat-icon stat-icon-green"><i class="bi bi-shop-fill"></i></div><div class="stat-content"><div class="stat-title">Total Penjualan</div><div class="stat-val">Rp<?= number_format($total_penjualan_rp,0,',','.') ?></div><div class="stat-subtitle"><?= $penjualan_selesai ?> order selesai</div></div></div></div></div>
 </div>
 </div>
 
@@ -462,7 +471,7 @@ if($stok_menipis>0&&$q_stok_alert&&sqlsrv_has_rows($q_stok_alert)):$has_alert=tr
 <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Lengkap</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['alamat']??'-')?></span></div>
 </div>
 </div>
-<button class="btn btn-reg shadow-sm py-3 mt-0" onclick="bukaModalEditDariBiodata()" style="border-radius:14px;">Edit Profil Anda ⚙</button>
+<button class="btn btn-reg shadow-sm py-3 mt-0" onclick="bukaModalEditDariBiodata()" style="border-radius:14px;">Edit Profil Anda</button>
 </div>
 </div>
 </div>
@@ -495,7 +504,7 @@ if($stok_menipis>0&&$q_stok_alert&&sqlsrv_has_rows($q_stok_alert)):$has_alert=tr
 <div class="col-md-6 mb-3"><label class="form-label">Sandi Baru (Opsional)</label><div class="password-group"><input type="password" name="password" id="pass_baru_modal" class="form-control" placeholder="Minimal 8 karakter"><i class="bi bi-eye-slash toggle-password" id="btnToggleBaru"></i></div></div>
 <div class="col-md-6 mb-3"><label class="form-label">Konfirmasi Sandi</label><div class="password-group"><input type="password" name="confirm_password" id="pass_konf_modal" class="form-control" placeholder="Ulangi sandi baru"><i class="bi bi-eye-slash toggle-password" id="btnToggleKonf"></i></div></div>
 </div>
-<button type="submit" name="update_profil" class="btn btn-reg shadow-sm py-3 mt-2">Simpan Perubahan ✨</button>
+<button type="submit" name="update_profil" class="btn btn-reg shadow-sm py-3 mt-2">Simpan Perubahan</button>
 </form>
 </div>
 </div>
@@ -508,8 +517,8 @@ document.querySelectorAll('.btn-toggle-submenu').forEach(button=>{button.addEven
 function bukaModalProfil(){var modalProfil=new bootstrap.Modal(document.getElementById('modalGantiProfil'));modalProfil.show();}
 function bukaModalBiodata(){var modalBiodata=new bootstrap.Modal(document.getElementById('modalLihatBiodata'));modalBiodata.show();}
 function bukaModalEditDariBiodata(){var modalBiodata=bootstrap.Modal.getInstance(document.getElementById('modalLihatBiodata'));if(modalBiodata)modalBiodata.hide();setTimeout(bukaModalProfil,400);}
-function confirmLandingPage(e){e.preventDefault();Swal.fire({title:'Kembali ke Beranda? ✦',text:'Anda akan dialihkan ke halaman utama publik.',icon:'info',showCancelButton:true,confirmButtonColor:'#D53D66',cancelButtonColor:'#718096',confirmButtonText:'Ya, Kembali',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed)window.location.href='../../index.php';});}
-function confirmLogout(e){e.preventDefault();Swal.fire({title:'Keluar Sistem? ❌',text:'Apakah Anda yakin ingin keluar?',icon:'warning',showCancelButton:true,confirmButtonColor:'#D53D66',cancelButtonColor:'#718096',confirmButtonText:'Ya, Keluar',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed)window.location.href='../../logout.php';});}
+function confirmLandingPage(e){e.preventDefault();Swal.fire({title:'Kembali ke Beranda?',text:'Anda akan dialihkan ke halaman utama publik.',icon:'info',showCancelButton:true,confirmButtonColor:'#D53D66',cancelButtonColor:'#718096',confirmButtonText:'Ya, Kembali',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed)window.location.href='../../index.php';});}
+function confirmLogout(e){e.preventDefault();Swal.fire({title:'Keluar Sistem?',text:'Apakah Anda yakin ingin keluar?',icon:'warning',showCancelButton:true,confirmButtonColor:'#D53D66',cancelButtonColor:'#718096',confirmButtonText:'Ya, Keluar',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed)window.location.href='../../logout.php';});}
 const inputFotoModal=document.getElementById('inputFotoModal');if(inputFotoModal){inputFotoModal.addEventListener('change',function(e){const file=e.target.files[0];if(file){const reader=new FileReader();reader.onload=function(event){document.getElementById('profile-preview-modal').src=event.target.result;};reader.readAsDataURL(file);}});}
 const inputNamaModal=document.getElementById('inputNamaModal');if(inputNamaModal){inputNamaModal.addEventListener('input',function(){this.value=this.value.replace(/[^a-zA-Z ]/g,'');});}
 const inputUsernameModal=document.getElementById('inputUsernameModal');if(inputUsernameModal){inputUsernameModal.addEventListener('input',function(){this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'');});}
@@ -534,11 +543,11 @@ new Chart(ctxPembayaran,{type:'doughnut',data:{labels:['Menunggu','Valid','Tidak
 </script>
 
 <?php if(isset($success_profile)&&$success_profile===true):?>
-<script>Swal.fire({icon:'success',title:'Profil Diperbarui! 🎉',text:'Informasi profil Anda berhasil disinkronkan.',confirmButtonColor:'#D53D66',confirmButtonText:'Selesai'});</script>
+<script>Swal.fire({icon:'success',title:'Profil Diperbarui!',text:'Informasi profil Anda berhasil disinkronkan.',confirmButtonColor:'#D53D66',confirmButtonText:'Selesai'});</script>
 <?php endif;?>
 
 <?php if(isset($error_profile)&&$error_profile!==""):?>
-<script>Swal.fire({icon:'error',title:'Pembaruan Gagal! ❌',text:'<?= $error_profile?>',confirmButtonColor:'#D53D66',confirmButtonText:'Periksa Kembali'}).then(()=>{var modalGanti=new bootstrap.Modal(document.getElementById('modalGantiProfil'));modalGanti.show();});</script>
+<script>Swal.fire({icon:'error',title:'Pembaruan Gagal!',text:'<?= $error_profile?>',confirmButtonColor:'#D53D66',confirmButtonText:'Periksa Kembali'}).then(()=>{var modalGanti=new bootstrap.Modal(document.getElementById('modalGantiProfil'));modalGanti.show();});</script>
 <?php endif;?>
 </body>
 </html>
