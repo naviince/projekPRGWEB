@@ -11,7 +11,29 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 $id_fotografer = $_SESSION['id_user'];
 
 // =====================================================
-// QUERY: SESI SELESAI YANG BELUM/BELUM LENGKAP UPLOAD
+// HANDLE NOTIFIKASI DARI REDIRECT
+// =====================================================
+$upload_success = false;
+$delete_success = false;
+$error_msg = '';
+
+if (isset($_GET['uploaded']) && $_GET['uploaded'] == '1') {
+    $upload_success = true;
+}
+if (isset($_GET['deleted']) && $_GET['deleted'] == '1') {
+    $delete_success = true;
+}
+if (isset($_GET['error'])) {
+    switch ($_GET['error']) {
+        case 'noid': $error_msg = 'ID Sesi tidak valid!'; break;
+        case 'notfound': $error_msg = 'Sesi tidak ditemukan atau Anda tidak berhak mengaksesnya.'; break;
+        case 'notcompleted': $error_msg = 'Sesi belum selesai. Hanya sesi selesai yang bisa diupload.'; break;
+        default: $error_msg = 'Terjadi kesalahan.';
+    }
+}
+
+// =====================================================
+// QUERY: SESI SELESAI YANG BELUM DIUPLOAD (File_Hasil IS NULL)
 // =====================================================
 $q_list = sqlsrv_query($conn, "
     SELECT 
@@ -25,16 +47,34 @@ $q_list = sqlsrv_query($conn, "
         R.Nama_Ruangan,
         J.Tanggal_Jadwal,
         J.Jam_Mulai,
-        J.Jam_Selesai
+        J.Jam_Selesai,
+        O.Status_Order
     FROM Sesi_Foto S
     JOIN [Order] O ON S.ID_Order = O.ID_Order
     JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
     JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
     JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan
     JOIN Jadwal_Studio J ON O.ID_Jadwal = J.ID_Jadwal
-    WHERE S.ID_Karyawan = ? AND S.Status = 1 AND S.Status_Sesi = 1
+    WHERE S.ID_Karyawan = ? 
+      AND S.Status = 1 
+      AND S.Status_Sesi = 1
+      AND S.File_Hasil IS NULL
+      AND O.Status_Order <> 4
     ORDER BY S.Waktu_Selesai DESC
 ", array($id_fotografer));
+
+// =====================================================
+// QUERY: STATISTIK
+// =====================================================
+$q_stats = sqlsrv_query($conn, "
+    SELECT 
+        COUNT(*) AS total_selesai,
+        SUM(CASE WHEN File_Hasil IS NOT NULL THEN 1 ELSE 0 END) AS sudah_upload,
+        SUM(CASE WHEN File_Hasil IS NULL THEN 1 ELSE 0 END) AS belum_upload
+    FROM Sesi_Foto
+    WHERE ID_Karyawan = ? AND Status = 1 AND Status_Sesi = 1
+", array($id_fotografer));
+$stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
 
 // =====================================================
 // AMBIL DATA PROFIL FOTOGRAFER
@@ -70,6 +110,17 @@ function formatWaktu($time) {
         $time = new DateTime($time);
     }
     return $time->format('H:i');
+}
+
+function getStatusOrderLabel($status) {
+    switch ($status) {
+        case 0: return ['Menunggu DP', '#f59e0b', '#fffbeb'];
+        case 1: return ['DP Terverifikasi', '#3b82f6', '#eff6ff'];
+        case 2: return ['Selesai', '#8b5cf6', '#f5f3ff'];
+        case 3: return ['Lunas', '#059669', '#ecfdf5'];
+        case 4: return ['Dibatalkan', '#dc2626', '#fef2f2'];
+        default: return ['Unknown', '#718096', '#f8fafc'];
+    }
 }
 ?>
 
@@ -247,6 +298,39 @@ function formatWaktu($time) {
             color: var(--text-dark);
         }
 
+        /* STAT CARDS */
+        .stat-card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid #f1f5f9;
+            transition: var(--transition-3d);
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+        }
+        .stat-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            margin-bottom: 12px;
+        }
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--text-dark);
+        }
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
         .sesi-item {
             display: flex;
             align-items: center;
@@ -296,7 +380,6 @@ function formatWaktu($time) {
             display: inline-block;
         }
         .badge-selesai { background: #ecfdf5; color: #059669; }
-        .badge-upload { background: #dbeafe; color: #2563eb; }
         .badge-belum { background: #fffbeb; color: #d97706; }
 
         .btn-action {
@@ -317,12 +400,6 @@ function formatWaktu($time) {
             transform: translateY(-2px);
             box-shadow: 0 6px 15px rgba(213, 61, 102, 0.25);
             color: #ffffff;
-        }
-        .btn-action-success {
-            background: linear-gradient(135deg, #059669, #047857);
-        }
-        .btn-action-success:hover {
-            box-shadow: 0 6px 15px rgba(5, 150, 105, 0.25);
         }
         .btn-action-secondary {
             background: #f1f5f9;
@@ -419,12 +496,54 @@ function formatWaktu($time) {
             </div>
         </div>
 
+        <!-- STAT CARDS -->
+        <div class="row g-3 mb-4 animate-fade-in">
+            <div class="col-md-4">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #dbeafe, #bfdbfe); color: #2563eb;">
+                        <i class="bi bi-camera-fill"></i>
+                    </div>
+                    <div class="stat-value"><?= $stats['total_selesai'] ?? 0 ?></div>
+                    <div class="stat-label">Total Sesi Selesai</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #fffbeb, #fef3c7); color: #d97706;">
+                        <i class="bi bi-hourglass-split"></i>
+                    </div>
+                    <div class="stat-value"><?= $stats['belum_upload'] ?? 0 ?></div>
+                    <div class="stat-label">Menunggu Upload</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #ecfdf5, #d1fae5); color: #059669;">
+                        <i class="bi bi-check-circle-fill"></i>
+                    </div>
+                    <div class="stat-value"><?= $stats['sudah_upload'] ?? 0 ?></div>
+                    <div class="stat-label">Sudah Diupload</div>
+                </div>
+            </div>
+        </div>
+
         <div class="card-3d animate-fade-in">
             <div class="content-header">
-                <h5 class="content-title"><i class="bi bi-list-check text-danger me-2"></i>Daftar Sesi Selesai</h5>
+                <h5 class="content-title"><i class="bi bi-list-check text-danger me-2"></i>Daftar Sesi Siap Upload</h5>
                 <span class="badge" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; border-radius: 8px; font-size: 0.75rem;">
-                    Sesi Selesai
+                    Belum Upload
                 </span>
+            </div>
+
+            <!-- INFO -->
+            <div class="alert border-0 mb-4" style="background: linear-gradient(135deg, #eff6ff, #dbeafe); border-radius: 14px;">
+                <div class="d-flex align-items-start gap-2">
+                    <i class="bi bi-info-circle-fill text-primary mt-1"></i>
+                    <div style="font-size: 0.85rem; color: #1e40af;">
+                        <strong>Halaman ini hanya menampilkan sesi yang BELUM diupload.</strong>
+                        Sesi yang sudah diupload dapat dilihat di menu <a href="../../Sesi/RiwayatUpload/index.php" style="color: var(--p-pink); font-weight: 700;">Riwayat Upload</a>.
+                    </div>
+                </div>
             </div>
 
             <?php
@@ -432,15 +551,10 @@ function formatWaktu($time) {
             if ($q_list && sqlsrv_has_rows($q_list)):
                 $has_data = true;
                 while ($row = sqlsrv_fetch_array($q_list, SQLSRV_FETCH_ASSOC)):
-                    $is_uploaded = !empty($row['File_Hasil']);
-                    $status_class = $is_uploaded ? 'badge-upload' : 'badge-belum';
-                    $status_text = $is_uploaded ? 'Sudah Upload' : 'Belum Upload';
-                    $icon_bg = $is_uploaded 
-                        ? 'background: linear-gradient(135deg, #dbeafe, #bfdbfe); color: #2563eb;' 
-                        : 'background: linear-gradient(135deg, #fffbeb, #fef3c7); color: #d97706;';
+                    $status_label = getStatusOrderLabel($row['Status_Order']);
             ?>
                 <div class="sesi-item">
-                    <div class="sesi-icon" style="<?= $icon_bg ?>">
+                    <div class="sesi-icon" style="background: linear-gradient(135deg, #fffbeb, #fef3c7); color: #d97706;">
                         <i class="bi bi-camera-fill"></i>
                     </div>
                     <div class="flex-grow-1">
@@ -455,18 +569,12 @@ function formatWaktu($time) {
                                     <?= formatTanggal($row['Tanggal_Jadwal']) ?> • 
                                     <?= formatWaktu($row['Jam_Mulai']) ?> - <?= formatWaktu($row['Jam_Selesai']) ?>
                                 </div>
-                                <?php if ($is_uploaded): ?>
-                                    <div class="sesi-info mt-1">
-                                        <i class="bi bi-file-earmark-check me-1 text-success"></i>
-                                        <?= htmlspecialchars($row['File_Hasil']) ?>
-                                    </div>
-                                <?php endif; ?>
                             </div>
-                            <span class="badge-status <?= $status_class ?>"><?= $status_text ?></span>
+                            <span class="badge-status badge-belum">Belum Upload</span>
                         </div>
                     </div>
-                    <a href="../../Role/Fotografer/upload_hasil.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action <?= $is_uploaded ? 'btn-action-secondary' : '' ?>">
-                        <i class="bi bi-cloud-upload"></i> <?= $is_uploaded ? 'Upload Ulang' : 'Upload' ?>
+                    <a href="../../Role/Fotografer/upload_hasil.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action">
+                        <i class="bi bi-cloud-upload"></i> Upload
                     </a>
                 </div>
             <?php 
@@ -476,13 +584,13 @@ function formatWaktu($time) {
             if (!$has_data):
             ?>
                 <div class="text-center py-5">
-                    <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #f1f5f9, #e2e8f0); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
-                        <i class="bi bi-inbox fs-1" style="color: #94a3b8;"></i>
+                    <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #ecfdf5, #d1fae5); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
+                        <i class="bi bi-check-circle fs-1" style="color: #059669;"></i>
                     </div>
-                    <h6 class="fw-bold text-muted">Tidak Ada Sesi Selesai</h6>
-                    <p class="text-muted" style="font-size: 0.85rem;">Belum ada sesi foto yang selesai dan siap diupload.</p>
-                    <a href="../../Sesi/Selesai/index.php" class="btn-action mt-2">
-                        <i class="bi bi-check-circle"></i> Lihat Sesi Selesai
+                    <h6 class="fw-bold text-muted">Semua Sesi Sudah Diupload!</h6>
+                    <p class="text-muted" style="font-size: 0.85rem;">Tidak ada sesi foto yang menunggu upload. Semua hasil foto sudah tersimpan.</p>
+                    <a href="../../Sesi/RiwayatUpload/index.php" class="btn-action mt-2">
+                        <i class="bi bi-clock-history"></i> Lihat Riwayat Upload
                     </a>
                 </div>
             <?php endif; ?>
@@ -498,51 +606,55 @@ function formatWaktu($time) {
                 const targetId = this.getAttribute('data-target');
                 const targetEl = document.querySelector(targetId);
                 const chevron = this.querySelector('.icon-chevron');
-
                 if (targetEl) {
                     const isShown = targetEl.classList.contains('show');
                     document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
                     document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
-
-                    if (!isShown) {
-                        targetEl.classList.add('show');
-                        if (chevron) chevron.style.transform = 'rotate(180deg)';
-                    }
+                    if (!isShown) { targetEl.classList.add('show'); if (chevron) chevron.style.transform = 'rotate(180deg)'; }
                 }
             });
         });
 
         function confirmLogout(e) {
             e.preventDefault();
-            Swal.fire({
-                title: 'Keluar?',
-                text: 'Apakah Anda yakin ingin keluar?',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#D53D66',
-                cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Keluar',
-                cancelButtonText: 'Batal'
-            }).then((result) => {
-                if (result.isConfirmed) window.location.href = '../../logout.php';
-            });
+            Swal.fire({ title: 'Keluar?', text: 'Apakah Anda yakin ingin keluar?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#D53D66', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Keluar', cancelButtonText: 'Batal' }).then((result) => { if (result.isConfirmed) window.location.href = '../../logout.php'; });
         }
 
         function confirmLandingPage(e) {
             e.preventDefault();
-            Swal.fire({
-                title: 'Kembali ke Beranda?',
-                text: 'Anda akan dialihkan ke halaman utama.',
-                icon: 'info',
-                showCancelButton: true,
-                confirmButtonColor: '#D53D66',
-                cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Kembali',
-                cancelButtonText: 'Batal'
-            }).then((result) => {
-                if (result.isConfirmed) window.location.href = '../../index.php';
-            });
+            Swal.fire({ title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama.', icon: 'info', showCancelButton: true, confirmButtonColor: '#D53D66', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal' }).then((result) => { if (result.isConfirmed) window.location.href = '../../index.php'; });
         }
+
+        // Notifikasi dari redirect
+        <?php if ($upload_success): ?>
+        Swal.fire({
+            icon: 'success',
+            title: 'Upload Berhasil!',
+            text: 'File hasil foto berhasil diupload dan tersimpan.',
+            confirmButtonColor: '#D53D66',
+            confirmButtonText: 'Oke'
+        });
+        <?php endif; ?>
+
+        <?php if ($delete_success): ?>
+        Swal.fire({
+            icon: 'success',
+            title: 'File Dihapus!',
+            text: 'File hasil foto berhasil dihapus dari sistem.',
+            confirmButtonColor: '#D53D66',
+            confirmButtonText: 'Oke'
+        });
+        <?php endif; ?>
+
+        <?php if (!empty($error_msg)): ?>
+        Swal.fire({
+            icon: 'error',
+            title: 'Terjadi Kesalahan!',
+            text: '<?= addslashes($error_msg) ?>',
+            confirmButtonColor: '#D53D66',
+            confirmButtonText: 'Oke'
+        });
+        <?php endif; ?>
     </script>
 </body>
 </html>
