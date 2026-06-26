@@ -646,15 +646,20 @@ function hitungHargaPromo($harga, $diskon_persen) {
 
     <!-- NAVBAR ATAS -->
     <nav class="top-navbar">
+<<<<<<< Updated upstream
 <<<<<<< HEAD
         <a href="../../../index.php" class="nav-logo">
+=======
+        <a href="../../index.php" class="nav-logo">
+>>>>>>> Stashed changes
             SpotLight.<span>StudioFoto</span>
         </a>
         <div class="nav-menu-center">
-            <a href="../../../index.php" class="nav-link-item">Dashboard</a>
-            <a href="../../../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
-            <a href="../../../Riwayat/index.php" class="nav-link-item">Riwayat</a>
+            <a href="../../index.php" class="nav-link-item">Dashboard</a>
+            <a href="../../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
+            <a href="../../Riwayat/riwayat.php" class="nav-link-item">Riwayat</a>
             <a href="index.php" class="nav-link-item active">Barang Cetak</a>
+<<<<<<< Updated upstream
 =======
         <a href="../../index.php" class="nav-logo">
             SpotLight.<span>StudioFoto</span>
@@ -666,6 +671,9 @@ function hitungHargaPromo($harga, $diskon_persen) {
             <a href="index.php" class="nav-link-item active">Barang Cetak</a>
             <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
 >>>>>>> 0abd9d4d5c2874abb677ffcabe7bc8ac4c06b8c9
+=======
+            <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
+>>>>>>> Stashed changes
         </div>
         <div class="nav-right">
             <a href="keranjang.php" class="keranjang-btn" title="Keranjang Belanja">
@@ -674,11 +682,15 @@ function hitungHargaPromo($harga, $diskon_persen) {
                 <span class="keranjang-badge"><?= $jumlah_keranjang ?></span>
                 <?php endif; ?>
             </a>
+<<<<<<< Updated upstream
 <<<<<<< HEAD
             <a href="../../../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
 =======
             <a href="../../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
 >>>>>>> 0abd9d4d5c2874abb677ffcabe7bc8ac4c06b8c9
+=======
+            <a href="../../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
+>>>>>>> Stashed changes
                 <i class="bi bi-plus-lg"></i> Booking
             </a>
             <div class="nav-avatar-wrapper">
@@ -686,11 +698,15 @@ function hitungHargaPromo($harga, $diskon_persen) {
                 <div class="nav-dropdown" id="navDropdown">
                     <div class="dropdown-header">Halo, <?= htmlspecialchars($nama_customer) ?></div>
                     <div class="dropdown-divider"></div>
+<<<<<<< Updated upstream
 <<<<<<< HEAD
                     <a href="../../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
 =======
                     <a href="../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
 >>>>>>> 0abd9d4d5c2874abb677ffcabe7bc8ac4c06b8c9
+=======
+                    <a href="../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
+>>>>>>> Stashed changes
                         <i class="bi bi-house-door"></i> Kembali ke Beranda
                     </a>
                     <div class="dropdown-divider"></div>
@@ -825,11 +841,15 @@ function hitungHargaPromo($harga, $diskon_persen) {
                 cancelButtonText: 'Batal'
             }).then((result) => {
                 if (result.isConfirmed) {
+<<<<<<< Updated upstream
 <<<<<<< HEAD
                     window.location.href = '../../../index.php';
 =======
                     window.location.href = '../../index.php';
 >>>>>>> 0abd9d4d5c2874abb677ffcabe7bc8ac4c06b8c9
+=======
+                    window.location.href = '../../index.php';
+>>>>>>> Stashed changes
                 }
             });
             return false;

@@ -722,10 +722,14 @@ function getAksiButtons($item) {
         <a href="../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
         <a href="index.php" class="nav-link-item active">Riwayat</a>
         <a href="../Barang/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
+<<<<<<< Updated upstream
 <<<<<<< HEAD
 =======
         <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
 >>>>>>> 0abd9d4d5c2874abb677ffcabe7bc8ac4c06b8c9
+=======
+        <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
+>>>>>>> Stashed changes
     </div>
     <div class="nav-right">
         <a href="../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
