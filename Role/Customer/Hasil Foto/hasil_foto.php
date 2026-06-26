@@ -68,13 +68,18 @@ $q_hasil = sqlsrv_query($conn, "
 ", array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_LUNAS, STATUS_DATA_AKTIF));
 
 // =====================================================
-// QUERY: Order yang masih menunggu pelunasan (untuk info)
+// QUERY: Order yang sesi selesai tapi belum lunas (untuk info)
 // =====================================================
 $q_menunggu = sqlsrv_query($conn, "
     SELECT COUNT(*) as total_menunggu
-    FROM [Order]
-    WHERE ID_Pelanggan = ? AND Status = ? AND Status_Order IN (?, ?) AND Status_Order != ?
-", array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_SELESAI, STATUS_ORDER_DP_TERVERIFIKASI, STATUS_ORDER_DIBATALKAN));
+    FROM [Order] O
+    JOIN Sesi_Foto S ON O.ID_Order = S.ID_Order
+    WHERE O.ID_Pelanggan = ? 
+      AND O.Status = ? 
+      AND O.Status_Order IN (?, ?)
+      AND S.Status = ?
+      AND S.File_Hasil IS NOT NULL
+", array($id_customer, STATUS_DATA_AKTIF, STATUS_ORDER_SELESAI, STATUS_ORDER_DP_TERVERIFIKASI, STATUS_DATA_AKTIF));
 $d_menunggu = sqlsrv_fetch_array($q_menunggu, SQLSRV_FETCH_ASSOC);
 $total_menunggu = $d_menunggu['total_menunggu'] ?? 0;
 
@@ -120,7 +125,7 @@ function formatWaktu($time) {
             color: var(--text-dark);
         }
 
-        /* ===== NAVBAR ATAS (SAMA DENGAN CUSTOMER INDEX) ===== */
+        /* ===== NAVBAR ATAS ===== */
         .top-navbar {
             background: #ffffff;
             padding: 16px 40px;
@@ -419,25 +424,6 @@ function formatWaktu($time) {
             box-shadow: 0 6px 15px rgba(216, 63, 103, 0.25);
             color: #fff;
         }
-        .btn-preview {
-            width: 50px;
-            height: 50px;
-            border-radius: 12px;
-            border: 2px solid #e2e8f0;
-            background: #ffffff;
-            color: #4a5568;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s;
-            font-size: 1.2rem;
-        }
-        .btn-preview:hover {
-            border-color: var(--p-pink);
-            color: var(--p-pink);
-            background: var(--s-pink);
-        }
 
         /* ===== EMPTY STATE ===== */
         .empty-hasil {
@@ -565,7 +551,7 @@ function formatWaktu($time) {
         </div>
 
         <?php if ($total_menunggu > 0): ?>
-        <!-- INFO: Ada order yang menunggu pelunasan -->
+        <!-- INFO: Ada order yang sesi selesai + file diupload tapi belum lunas -->
         <div class="waiting-card">
             <i class="bi bi-hourglass-split"></i>
             <h4>Ada <?= $total_menunggu ?> Hasil Foto Menunggu</h4>

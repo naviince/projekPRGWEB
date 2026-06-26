@@ -27,20 +27,260 @@ $allowed_mime_types = [
 ];
 
 // =====================================================
-// AMBIL DATA SESI FOTO
+// HANDLE AJAX UPLOAD (Fetch API)
+// =====================================================
+$is_ajax = isset($_SERVER['HTTP_X_REQUESTED_WITH']) && 
+           strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+
+if ($is_ajax && isset($_POST['ajax_upload'])) {
+    header('Content-Type: application/json');
+
+    $response = ['success' => false, 'message' => ''];
+
+    if (!isset($_GET['id']) || empty($_GET['id'])) {
+        $response['message'] = 'ID Sesi tidak valid!';
+        echo json_encode($response);
+        exit();
+    }
+
+    $id_sesi = intval($_GET['id']);
+
+    // Validasi sesi
+    $q_sesi = sqlsrv_query($conn, "
+        SELECT S.ID_Sesi_Foto, S.ID_Order, S.File_Hasil, S.Status_Sesi
+        FROM Sesi_Foto S
+        JOIN [Order] O ON S.ID_Order = O.ID_Order
+        WHERE S.ID_Sesi_Foto = ? AND S.ID_Karyawan = ? AND S.Status = 1
+    ", array($id_sesi, $id_fotografer));
+
+    if (!$q_sesi || !sqlsrv_has_rows($q_sesi)) {
+        $response['message'] = 'Sesi tidak ditemukan atau Anda tidak berhak mengaksesnya.';
+        echo json_encode($response);
+        exit();
+    }
+
+    $sesi_data = sqlsrv_fetch_array($q_sesi, SQLSRV_FETCH_ASSOC);
+    if ($sesi_data['Status_Sesi'] != 1) {
+        $response['message'] = 'Sesi belum selesai. Hanya sesi selesai yang bisa diupload.';
+        echo json_encode($response);
+        exit();
+    }
+
+    if (!isset($_FILES['file_hasil']) || $_FILES['file_hasil']['error'] === UPLOAD_ERR_NO_FILE) {
+        $response['message'] = 'Silakan pilih file untuk diupload!';
+        echo json_encode($response);
+        exit();
+    }
+
+    $file = $_FILES['file_hasil'];
+    $file_name = $file['name'];
+    $file_tmp = $file['tmp_name'];
+    $file_size = $file['size'];
+    $file_error = $file['error'];
+
+    if ($file_error !== UPLOAD_ERR_OK) {
+        $response['message'] = 'Terjadi kesalahan saat upload file. Error code: ' . $file_error;
+        echo json_encode($response);
+        exit();
+    }
+
+    if ($file_size > $max_file_size) {
+        $response['message'] = 'Ukuran file terlalu besar! Maksimal 100 MB.';
+        echo json_encode($response);
+        exit();
+    }
+
+    $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+    if (!in_array($file_ext, $allowed_extensions)) {
+        $response['message'] = 'Format file tidak didukung! Format yang diizinkan: ZIP, JPG, JPEG, PNG, RAR, PDF.';
+        echo json_encode($response);
+        exit();
+    }
+
+    // Validasi MIME type
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mime_type = finfo_file($finfo, $file_tmp);
+    finfo_close($finfo);
+
+    $mime_valid = false;
+    foreach ($allowed_mime_types as $allowed) {
+        if (strpos($mime_type, $allowed) !== false || strpos($allowed, $mime_type) !== false) {
+            $mime_valid = true;
+            break;
+        }
+    }
+    if (!$mime_valid && in_array($file_ext, $allowed_extensions)) {
+        $mime_valid = true;
+    }
+
+    if (!$mime_valid) {
+        $response['message'] = 'Tipe file tidak valid!';
+        echo json_encode($response);
+        exit();
+    }
+
+    // Buat direktori upload jika belum ada
+    if (!is_dir($upload_dir)) {
+        if (!mkdir($upload_dir, 0777, true)) {
+            $response['message'] = 'Gagal membuat folder upload. Periksa permission folder.';
+            echo json_encode($response);
+            exit();
+        }
+    }
+
+    // Generate nama file unik
+    $id_order = $sesi_data['ID_Order'];
+    $timestamp = time();
+    $uniqid = uniqid();
+    $new_file_name = "hasil_order{$id_order}_{$timestamp}_{$uniqid}.{$file_ext}";
+    $target_path = $upload_dir . $new_file_name;
+
+    // =====================================================
+    // TRANSACTION
+    // =====================================================
+    sqlsrv_begin_transaction($conn);
+
+    try {
+        // Hapus file lama jika ada
+        if (!empty($sesi_data['File_Hasil'])) {
+            $old_file = $upload_dir . $sesi_data['File_Hasil'];
+            if (file_exists($old_file)) {
+                unlink($old_file);
+            }
+        }
+
+        // Pindahkan file
+        if (move_uploaded_file($file_tmp, $target_path)) {
+            $update_sql = "UPDATE Sesi_Foto SET 
+                File_Hasil = ?, 
+                Tanggal_Upload_Hasil = GETDATE(),
+                Modified_By = ?,
+                Modified_Date = GETDATE()
+                WHERE ID_Sesi_Foto = ? AND Status = 1";
+
+            $update_stmt = sqlsrv_query($conn, $update_sql, array(
+                $new_file_name,
+                $username_fotografer,
+                $id_sesi
+            ));
+
+            if ($update_stmt) {
+                sqlsrv_commit($conn);
+                $response['success'] = true;
+                $response['message'] = 'File hasil foto berhasil diupload!';
+                $response['redirect'] = '../../Sesi/RiwayatUpload/index.php?uploaded=1';
+            } else {
+                $errors = sqlsrv_errors();
+                $response['message'] = 'Gagal memperbarui database: ' . ($errors[0]['message'] ?? 'Unknown error');
+                sqlsrv_rollback($conn);
+                if (file_exists($target_path)) {
+                    unlink($target_path);
+                }
+            }
+        } else {
+            $response['message'] = 'Gagal memindahkan file ke server! Periksa permission folder uploads/hasil/.';
+            sqlsrv_rollback($conn);
+        }
+    } catch (Exception $e) {
+        $response['message'] = 'Terjadi kesalahan: ' . $e->getMessage();
+        sqlsrv_rollback($conn);
+        if (file_exists($target_path)) {
+            unlink($target_path);
+        }
+    }
+
+    echo json_encode($response);
+    exit();
+}
+
+// =====================================================
+// HANDLE HAPUS FILE (AJAX)
+// =====================================================
+$is_ajax_delete = isset($_SERVER['HTTP_X_REQUESTED_WITH']) && 
+                  strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest' &&
+                  isset($_POST['ajax_hapus']);
+
+if ($is_ajax_delete) {
+    header('Content-Type: application/json');
+    $response = ['success' => false, 'message' => ''];
+
+    if (!isset($_GET['id']) || empty($_GET['id'])) {
+        $response['message'] = 'ID Sesi tidak valid!';
+        echo json_encode($response);
+        exit();
+    }
+
+    $id_sesi = intval($_GET['id']);
+
+    $q_sesi = sqlsrv_query($conn, "
+        SELECT S.File_Hasil FROM Sesi_Foto S
+        JOIN [Order] O ON S.ID_Order = O.ID_Order
+        WHERE S.ID_Sesi_Foto = ? AND S.ID_Karyawan = ? AND S.Status = 1
+    ", array($id_sesi, $id_fotografer));
+
+    if (!$q_sesi || !sqlsrv_has_rows($q_sesi)) {
+        $response['message'] = 'Sesi tidak ditemukan.';
+        echo json_encode($response);
+        exit();
+    }
+
+    $sesi_data_del = sqlsrv_fetch_array($q_sesi, SQLSRV_FETCH_ASSOC);
+
+    if (empty($sesi_data_del['File_Hasil'])) {
+        $response['message'] = 'Tidak ada file yang bisa dihapus.';
+        echo json_encode($response);
+        exit();
+    }
+
+    sqlsrv_begin_transaction($conn);
+
+    try {
+        $file_path = $upload_dir . $sesi_data_del['File_Hasil'];
+        if (file_exists($file_path)) {
+            unlink($file_path);
+        }
+
+        $delete_sql = "UPDATE Sesi_Foto SET 
+            File_Hasil = NULL, 
+            Tanggal_Upload_Hasil = NULL,
+            Modified_By = ?,
+            Modified_Date = GETDATE()
+            WHERE ID_Sesi_Foto = ? AND Status = 1";
+
+        $delete_stmt = sqlsrv_query($conn, $delete_sql, array($username_fotografer, $id_sesi));
+
+        if ($delete_stmt) {
+            sqlsrv_commit($conn);
+            $response['success'] = true;
+            $response['message'] = 'File berhasil dihapus!';
+            $response['redirect'] = '../../Sesi/Upload/index.php?deleted=1';
+        } else {
+            $errors = sqlsrv_errors();
+            $response['message'] = 'Gagal menghapus dari database: ' . ($errors[0]['message'] ?? 'Unknown error');
+            sqlsrv_rollback($conn);
+        }
+    } catch (Exception $e) {
+        $response['message'] = 'Terjadi kesalahan: ' . $e->getMessage();
+        sqlsrv_rollback($conn);
+    }
+
+    echo json_encode($response);
+    exit();
+}
+
+// =====================================================
+// AMBIL DATA SESI FOTO (untuk tampilan halaman)
 // =====================================================
 $error = "";
-$success = false;
 $sesi_data = null;
 
 if (!isset($_GET['id']) || empty($_GET['id'])) {
-    header("Location: index.php?error=noid");
+    header("Location: ../../Sesi/Upload/index.php?error=noid");
     exit();
 }
 
 $id_sesi = intval($_GET['id']);
 
-// Query data sesi dengan join ke order, pelanggan, paket, ruangan
 $q_sesi = sqlsrv_query($conn, "
     SELECT 
         S.ID_Sesi_Foto,
@@ -73,7 +313,7 @@ if (!$q_sesi) {
     die("Query error: " . ($errors[0]['message'] ?? 'Unknown database error'));
 }
 if (!sqlsrv_has_rows($q_sesi)) {
-    header("Location: index.php?error=notfound");
+    header("Location: ../../Sesi/Upload/index.php?error=notfound");
     exit();
 }
 
@@ -84,143 +324,8 @@ if ($sesi_data) {
 
 // Validasi: hanya bisa upload jika Status_Sesi = 1 (Selesai)
 if ($sesi_data['status_sesi'] != 1) {
-    header("Location: index.php?error=notcompleted");
+    header("Location: ../../Sesi/Upload/index.php?error=notcompleted");
     exit();
-}
-
-// =====================================================
-// PROSES UPLOAD FILE
-// =====================================================
-if (isset($_POST['upload_hasil'])) {
-
-    if (!isset($_FILES['file_hasil']) || $_FILES['file_hasil']['error'] === UPLOAD_ERR_NO_FILE) {
-        $error = "Silakan pilih file untuk diupload!";
-    } else {
-        $file = $_FILES['file_hasil'];
-        $file_name = $file['name'];
-        $file_tmp = $file['tmp_name'];
-        $file_size = $file['size'];
-        $file_error = $file['error'];
-
-        // Cek error upload
-        if ($file_error !== UPLOAD_ERR_OK) {
-            $error = "Terjadi kesalahan saat upload file. Error code: " . $file_error;
-        } else {
-            // Validasi ukuran
-            if ($file_size > $max_file_size) {
-                $error = "Ukuran file terlalu besar! Maksimal 100 MB.";
-            } else {
-                // Validasi ekstensi
-                $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
-                if (!in_array($file_ext, $allowed_extensions)) {
-                    $error = "Format file tidak didukung! Format yang diizinkan: ZIP, JPG, JPEG, PNG, RAR, PDF.";
-                } else {
-                    // Validasi MIME type
-                    $finfo = finfo_open(FILEINFO_MIME_TYPE);
-                    $mime_type = finfo_file($finfo, $file_tmp);
-                    finfo_close($finfo);
-
-                    // Cek MIME type dengan toleransi
-                    $mime_valid = false;
-                    foreach ($allowed_mime_types as $allowed) {
-                        if (strpos($mime_type, $allowed) !== false || strpos($allowed, $mime_type) !== false) {
-                            $mime_valid = true;
-                            break;
-                        }
-                    }
-
-                    // Fallback: jika MIME check gagal tapi ekstensi valid, tetap izinkan
-                    if (!$mime_valid) {
-                        // Whitelist ekstensi yang aman
-                        if (in_array($file_ext, ['zip', 'jpg', 'jpeg', 'png', 'rar', 'pdf'])) {
-                            $mime_valid = true;
-                        }
-                    }
-
-                    if (!$mime_valid) {
-                        $error = "Tipe file tidak valid!";
-                    } else {
-                        // Buat direktori upload jika belum ada
-                        if (!is_dir($upload_dir)) {
-                            mkdir($upload_dir, 0777, true);
-                        }
-
-                        // Generate nama file unik
-                        $id_order = $sesi_data['id_order'];
-                        $timestamp = time();
-                        $uniqid = uniqid();
-                        $new_file_name = "hasil_order{$id_order}_{$timestamp}_{$uniqid}.{$file_ext}";
-                        $target_path = $upload_dir . $new_file_name;
-
-                        // Hapus file lama jika ada
-                        if (!empty($sesi_data['file_hasil'])) {
-                            $old_file = $upload_dir . $sesi_data['file_hasil'];
-                            if (file_exists($old_file)) {
-                                unlink($old_file);
-                            }
-                        }
-
-                        // Pindahkan file
-                        if (move_uploaded_file($file_tmp, $target_path)) {
-                            // Update database
-                            $update_sql = "UPDATE Sesi_Foto SET 
-                                File_Hasil = ?, 
-                                Tanggal_Upload_Hasil = GETDATE(),
-                                Modified_By = ?,
-                                Modified_Date = GETDATE()
-                                WHERE ID_Sesi_Foto = ? AND Status = 1";
-
-                            $update_stmt = sqlsrv_query($conn, $update_sql, array(
-                                $new_file_name,
-                                $username_fotografer,
-                                $id_sesi
-                            ));
-
-                            if ($update_stmt) {
-                                $success = true;
-                                // Redirect ke Riwayat Upload dengan notifikasi sukses
-                                header("Location: ../../Sesi/RiwayatUpload/index.php?uploaded=1&id_order=" . $id_order);
-                                exit();
-                            } else {
-                                $errors = sqlsrv_errors();
-                                $error = "Gagal memperbarui database: " . ($errors[0]['message'] ?? 'Unknown error');
-                                // Hapus file yang sudah diupload
-                                if (file_exists($target_path)) {
-                                    unlink($target_path);
-                                }
-                            }
-                        } else {
-                            $error = "Gagal memindahkan file ke server!";
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// =====================================================
-// PROSES HAPUS FILE
-// =====================================================
-if (isset($_POST['hapus_hasil'])) {
-    if (!empty($sesi_data['file_hasil'])) {
-        $file_path = $upload_dir . $sesi_data['file_hasil'];
-        if (file_exists($file_path)) {
-            unlink($file_path);
-        }
-
-        $delete_sql = "UPDATE Sesi_Foto SET 
-            File_Hasil = NULL, 
-            Tanggal_Upload_Hasil = NULL,
-            Modified_By = ?,
-            Modified_Date = GETDATE()
-            WHERE ID_Sesi_Foto = ? AND Status = 1";
-
-        sqlsrv_query($conn, $delete_sql, array($username_fotografer, $id_sesi));
-
-        header("Location: upload_hasil.php?id=" . $id_sesi . "&success=deleted");
-        exit();
-    }
 }
 
 // =====================================================
@@ -260,15 +365,13 @@ function formatWaktu($time) {
     return $time->format('H:i');
 }
 
-// Cek apakah ada parameter success=deleted
-if (isset($_GET['success']) && $_GET['success'] === 'deleted') {
-    $success = true;
+// Tentukan tipe file untuk preview
+$file_ext_preview = '';
+if (!empty($sesi_data['file_hasil'])) {
+    $file_ext_preview = strtolower(pathinfo($sesi_data['file_hasil'], PATHINFO_EXTENSION));
 }
-
-// Cek apakah ada parameter success=uploaded (dari redirect JS)
-if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
-    $success = true;
-}
+$is_image_preview = in_array($file_ext_preview, ['jpg', 'jpeg', 'png']);
+$is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
 ?>
 
 <!DOCTYPE html>
@@ -502,8 +605,11 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
             color: var(--text-muted);
         }
 
-        /* FILE PREVIEW */
-        .file-preview {
+        /* FILE PREVIEW - BARU */
+        .file-preview-area {
+            margin-bottom: 20px;
+        }
+        .file-preview-card {
             display: flex;
             align-items: center;
             gap: 15px;
@@ -511,6 +617,7 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
             background: linear-gradient(135deg, #ecfdf5, #d1fae5);
             border-radius: 16px;
             border: 2px solid #a7f3d0;
+            margin-bottom: 12px;
         }
         .file-preview-icon {
             width: 50px;
@@ -522,6 +629,7 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
             align-items: center;
             justify-content: center;
             font-size: 1.5rem;
+            flex-shrink: 0;
         }
         .file-preview-info { flex: 1; }
         .file-preview-name {
@@ -534,6 +642,43 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
             font-size: 0.75rem;
             color: #059669;
             font-weight: 600;
+        }
+
+        /* PREVIEW GAMBAR - BARU */
+        .image-preview-wrapper {
+            position: relative;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 2px solid var(--light-pink);
+            background: #f8fafc;
+            margin-bottom: 16px;
+            display: none;
+        }
+        .image-preview-wrapper.show { display: block; }
+        .image-preview-wrapper img {
+            width: 100%;
+            max-height: 300px;
+            object-fit: contain;
+            display: block;
+        }
+        .image-preview-overlay {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+        }
+        .image-preview-overlay button {
+            background: rgba(220, 38, 38, 0.9);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .image-preview-overlay button:hover {
+            background: rgba(185, 28, 28, 1);
         }
 
         /* BUTTONS */
@@ -594,6 +739,7 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
             display: none;
             margin-top: 20px;
         }
+        .progress-wrapper.show { display: block; }
         .progress {
             height: 10px;
             border-radius: 10px;
@@ -604,6 +750,16 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
             background: linear-gradient(90deg, var(--p-pink), var(--accent-pink));
             border-radius: 10px;
             transition: width 0.3s ease;
+        }
+
+        /* ERROR ALERT */
+        .error-alert {
+            border-radius: 14px;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+            padding: 16px 20px;
+            margin-bottom: 20px;
         }
 
         /* ANIMATION */
@@ -660,7 +816,7 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
                     </a>
                     <div class="submenu show" id="submenuUpload">
                         <ul class="list-unstyled">
-                            <li><a href="../../Sesi/Upload/index.php" class="submenu-link active"><i class="bi bi-image-fill me-2"></i>Upload Foto</a></li>
+                            <li><a href="../../Sesi/Upload/index.php" class="submenu-link"><i class="bi bi-image-fill me-2"></i>Upload Foto</a></li>
                             <li><a href="../../Sesi/RiwayatUpload/index.php" class="submenu-link"><i class="bi bi-clock-history me-2"></i>Riwayat Upload</a></li>
                         </ul>
                     </div>
@@ -774,23 +930,38 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
 
                     <?php if (!empty($sesi_data['file_hasil'])): ?>
                         <!-- FILE SUDAH ADA -->
-                        <div class="file-preview mb-4">
-                            <div class="file-preview-icon">
-                                <i class="bi bi-file-earmark-zip"></i>
+                        <div class="file-preview-area">
+                            <!-- PREVIEW GAMBAR JIKA FILE ADALAH GAMBAR -->
+                            <?php if ($is_image_preview): ?>
+                            <div class="image-preview-wrapper show" id="existingImagePreview">
+                                <img src="../../uploads/hasil/<?= rawurlencode($sesi_data['file_hasil']) ?>" alt="Preview Hasil Foto" id="existingPreviewImg">
                             </div>
-                            <div class="file-preview-info">
-                                <div class="file-preview-name"><?= htmlspecialchars($sesi_data['file_hasil']) ?></div>
-                                <div class="file-preview-meta">
-                                    <i class="bi bi-clock-history me-1"></i>
-                                    Diupload: <?= $sesi_data['tanggal_upload_hasil'] ? formatTanggal($sesi_data['tanggal_upload_hasil']) . ' ' . formatWaktu($sesi_data['tanggal_upload_hasil']) : '-' ?>
+                            <?php endif; ?>
+
+                            <div class="file-preview-card">
+                                <div class="file-preview-icon">
+                                    <?php if ($is_image_preview): ?>
+                                        <i class="bi bi-image"></i>
+                                    <?php elseif ($is_zip_preview): ?>
+                                        <i class="bi bi-file-earmark-zip"></i>
+                                    <?php else: ?>
+                                        <i class="bi bi-file-earmark"></i>
+                                    <?php endif; ?>
                                 </div>
+                                <div class="file-preview-info">
+                                    <div class="file-preview-name"><?= htmlspecialchars($sesi_data['file_hasil']) ?></div>
+                                    <div class="file-preview-meta">
+                                        <i class="bi bi-clock-history me-1"></i>
+                                        Diupload: <?= $sesi_data['tanggal_upload_hasil'] ? formatTanggal($sesi_data['tanggal_upload_hasil']) . ' ' . formatWaktu($sesi_data['tanggal_upload_hasil']) : '-' ?>
+                                    </div>
+                                </div>
+                                <a href="../../uploads/hasil/<?= rawurlencode($sesi_data['file_hasil']) ?>" 
+                                   class="btn-action btn-action-success" 
+                                   download 
+                                   title="Download File">
+                                    <i class="bi bi-download"></i>
+                                </a>
                             </div>
-                            <a href="../../uploads/hasil/<?= rawurlencode($sesi_data['file_hasil']) ?>" 
-                               class="btn-action btn-action-success" 
-                               download 
-                               title="Download File">
-                                <i class="bi bi-download"></i>
-                            </a>
                         </div>
 
                         <div class="alert border-0 mb-4" style="background: linear-gradient(135deg, #fffbeb, #fef3c7); border-radius: 14px;">
@@ -798,11 +969,23 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
                                 <i class="bi bi-info-circle-fill text-warning"></i>
                                 <span style="font-size: 0.85rem; font-weight: 600; color: #92400e;">
                                     File sudah pernah diupload. Upload ulang akan menimpa file lama.
+                                    <br><small class="text-muted">File hanya akan tersedia untuk customer setelah pelunasan terverifikasi oleh admin.</small>
                                 </span>
                             </div>
                         </div>
 
-                        <form method="POST" enctype="multipart/form-data" id="formUpload">
+                        <!-- FORM UPLOAD ULANG -->
+                        <form id="formUpload" enctype="multipart/form-data">
+                            <!-- PREVIEW GAMBAR BARU (akan muncul setelah pilih file) -->
+                            <div class="image-preview-wrapper" id="newImagePreview">
+                                <img src="" alt="Preview File Baru" id="newPreviewImg">
+                                <div class="image-preview-overlay">
+                                    <button type="button" onclick="clearFileSelection()">
+                                        <i class="bi bi-x-lg"></i> Hapus
+                                    </button>
+                                </div>
+                            </div>
+
                             <div class="upload-zone mb-3" onclick="document.getElementById('fileInput').click();" id="dropZone">
                                 <i class="bi bi-cloud-arrow-up"></i>
                                 <div class="upload-zone-text">Klik atau seret file ke sini</div>
@@ -832,11 +1015,10 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
                             </div>
 
                             <div class="d-flex gap-2">
-                                <button type="submit" name="upload_hasil" class="btn-action flex-fill" id="btnUpload">
+                                <button type="button" class="btn-action flex-fill" id="btnUpload" onclick="submitUpload()">
                                     <i class="bi bi-cloud-upload"></i> Upload Ulang
                                 </button>
-                                <button type="submit" name="hapus_hasil" class="btn-action btn-action-danger" 
-                                        onclick="return confirmHapus(event)">
+                                <button type="button" class="btn-action btn-action-danger" onclick="confirmHapus()">
                                     <i class="bi bi-trash"></i> Hapus
                                 </button>
                             </div>
@@ -844,7 +1026,17 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
 
                     <?php else: ?>
                         <!-- FILE BELUM ADA -->
-                        <form method="POST" enctype="multipart/form-data" id="formUpload">
+                        <form id="formUpload" enctype="multipart/form-data">
+                            <!-- PREVIEW GAMBAR BARU -->
+                            <div class="image-preview-wrapper" id="newImagePreview">
+                                <img src="" alt="Preview File Baru" id="newPreviewImg">
+                                <div class="image-preview-overlay">
+                                    <button type="button" onclick="clearFileSelection()">
+                                        <i class="bi bi-x-lg"></i> Hapus
+                                    </button>
+                                </div>
+                            </div>
+
                             <div class="upload-zone mb-3" onclick="document.getElementById('fileInput').click();" id="dropZone">
                                 <i class="bi bi-cloud-arrow-up"></i>
                                 <div class="upload-zone-text">Klik atau seret file ke sini</div>
@@ -873,7 +1065,7 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
                                 </div>
                             </div>
 
-                            <button type="submit" name="upload_hasil" class="btn-action w-100" id="btnUpload">
+                            <button type="button" class="btn-action w-100" id="btnUpload" onclick="submitUpload()">
                                 <i class="bi bi-cloud-upload"></i> Upload Hasil Foto
                             </button>
                         </form>
@@ -889,6 +1081,7 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
                             <li>Pastikan file tidak melebihi <strong>100 MB</strong>.</li>
                             <li>Beri nama file yang jelas (contoh: hasil_foto_nama_customer.zip).</li>
                             <li>Pastikan kualitas foto sudah di-edit sebelum diupload.</li>
+                            <li>File akan tersedia untuk customer setelah <strong>pelunasan terverifikasi</strong> oleh admin.</li>
                         </ul>
                     </div>
                 </div>
@@ -920,12 +1113,17 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
             });
         });
 
-        // File Input Handler
+        // =====================================================
+        // FILE INPUT HANDLER + PREVIEW GAMBAR
+        // =====================================================
         const fileInput = document.getElementById('fileInput');
         const fileSelected = document.getElementById('fileSelected');
         const selectedFileName = document.getElementById('selectedFileName');
         const selectedFileSize = document.getElementById('selectedFileSize');
         const dropZone = document.getElementById('dropZone');
+        const newImagePreview = document.getElementById('newImagePreview');
+        const newPreviewImg = document.getElementById('newPreviewImg');
+        const existingImagePreview = document.getElementById('existingImagePreview');
 
         function formatFileSize(bytes) {
             if (bytes === 0) return '0 Bytes';
@@ -935,14 +1133,54 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
+        function isImageFile(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            return ['jpg', 'jpeg', 'png'].includes(ext);
+        }
+
+        function handleFileSelect(file) {
+            if (!file) return;
+
+            selectedFileName.textContent = file.name;
+            selectedFileSize.textContent = formatFileSize(file.size);
+            fileSelected.classList.remove('d-none');
+
+            // PREVIEW GAMBAR JIKA FILE ADALAH GAMBAR
+            if (isImageFile(file.name)) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    newPreviewImg.src = e.target.result;
+                    newImagePreview.classList.add('show');
+                    // Sembunyikan preview lama jika ada
+                    if (existingImagePreview) {
+                        existingImagePreview.style.display = 'none';
+                    }
+                };
+                reader.readAsDataURL(file);
+            } else {
+                // Bukan gambar, sembunyikan preview gambar
+                newImagePreview.classList.remove('show');
+                newPreviewImg.src = '';
+            }
+        }
+
+        function clearFileSelection() {
+            fileInput.value = '';
+            fileSelected.classList.add('d-none');
+            selectedFileName.textContent = '-';
+            selectedFileSize.textContent = '-';
+            newImagePreview.classList.remove('show');
+            newPreviewImg.src = '';
+            // Tampilkan kembali preview lama jika ada
+            if (existingImagePreview) {
+                existingImagePreview.style.display = 'block';
+            }
+        }
+
         if (fileInput) {
             fileInput.addEventListener('change', function(e) {
                 const file = e.target.files[0];
-                if (file) {
-                    selectedFileName.textContent = file.name;
-                    selectedFileSize.textContent = formatFileSize(file.size);
-                    fileSelected.classList.remove('d-none');
-                }
+                handleFileSelect(file);
             });
         }
 
@@ -970,63 +1208,140 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
                 const files = dt.files;
                 if (files.length > 0) {
                     fileInput.files = files;
-                    const file = files[0];
-                    selectedFileName.textContent = file.name;
-                    selectedFileSize.textContent = formatFileSize(file.size);
-                    fileSelected.classList.remove('d-none');
+                    handleFileSelect(files[0]);
                 }
             });
         }
 
-        // Form Submit with Progress Simulation
-        const formUpload = document.getElementById('formUpload');
+        // =====================================================
+        // AJAX UPLOAD DENGAN FETCH API
+        // =====================================================
         const progressWrapper = document.getElementById('progressWrapper');
         const progressBar = document.getElementById('progressBar');
         const progressText = document.getElementById('progressText');
         const btnUpload = document.getElementById('btnUpload');
 
-        if (formUpload) {
-            formUpload.addEventListener('submit', function(e) {
-                if (!fileInput.files || fileInput.files.length === 0) {
-                    e.preventDefault();
+        function submitUpload() {
+            if (!fileInput.files || fileInput.files.length === 0) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'File Belum Dipilih',
+                    text: 'Silakan pilih file terlebih dahulu.',
+                    confirmButtonColor: '#D53D66'
+                });
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const maxSize = 100 * 1024 * 1024; // 100 MB
+            if (file.size > maxSize) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Ukuran File Terlalu Besar',
+                    text: 'Maksimal ukuran file adalah 100 MB.',
+                    confirmButtonColor: '#D53D66'
+                });
+                return;
+            }
+
+            // Validasi ekstensi
+            const allowedExt = ['zip', 'jpg', 'jpeg', 'png', 'rar', 'pdf'];
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (!allowedExt.includes(ext)) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Format Tidak Didukung',
+                    text: 'Format yang diizinkan: ZIP, JPG, JPEG, PNG, RAR, PDF.',
+                    confirmButtonColor: '#D53D66'
+                });
+                return;
+            }
+
+            // Tampilkan progress bar
+            progressWrapper.classList.add('show');
+            btnUpload.disabled = true;
+            btnUpload.innerHTML = '<i class="bi bi-hourglass-split"></i> Mengupload...';
+
+            // Simulasi progress bar
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress >= 90) {
+                    progress = 90;
+                    clearInterval(progressInterval);
+                }
+                progressBar.style.width = progress + '%';
+                progressText.textContent = Math.round(progress) + '%';
+            }, 200);
+
+            // Kirim via Fetch API
+            const formData = new FormData();
+            formData.append('file_hasil', file);
+            formData.append('ajax_upload', '1');
+
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                clearInterval(progressInterval);
+                progressBar.style.width = '100%';
+                progressText.textContent = '100%';
+
+                if (data.success) {
                     Swal.fire({
-                        icon: 'warning',
-                        title: 'File Belum Dipilih',
-                        text: 'Silakan pilih file terlebih dahulu.',
+                        icon: 'success',
+                        title: 'Upload Berhasil!',
+                        html: '<div style="text-align:left"><p>File hasil foto berhasil diupload dan tersimpan di sistem.</p><hr style="border-color:#f1f5f9;margin:10px 0"><p style="color:#718096;font-size:0.85rem"><i class="bi bi-info-circle-fill text-warning me-1"></i> File akan tersedia untuk customer setelah <strong style="color:#D53D66">pelunasan terverifikasi</strong> oleh admin.</p></div>',
+                        confirmButtonColor: '#D53D66',
+                        confirmButtonText: 'Lihat Riwayat'
+                    }).then(() => {
+                        window.location.href = data.redirect;
+                    });
+                } else {
+                    btnUpload.disabled = false;
+                    btnUpload.innerHTML = '<i class="bi bi-cloud-upload"></i> Upload Hasil Foto';
+                    progressWrapper.classList.remove('show');
+                    progressBar.style.width = '0%';
+                    progressText.textContent = '0%';
+
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Upload Gagal!',
+                        text: data.message,
                         confirmButtonColor: '#D53D66'
                     });
-                    return false;
                 }
+            })
+            .catch(error => {
+                clearInterval(progressInterval);
+                btnUpload.disabled = false;
+                btnUpload.innerHTML = '<i class="bi bi-cloud-upload"></i> Upload Hasil Foto';
+                progressWrapper.classList.remove('show');
+                progressBar.style.width = '0%';
+                progressText.textContent = '0%';
 
-                // Cek tombol mana yang ditekan menggunakan document.activeElement
-                const activeElement = document.activeElement;
-                const isUploadBtn = activeElement && (activeElement.name === 'upload_hasil' || activeElement.closest('button[name="upload_hasil"]'));
-                
-                // Show progress hanya untuk upload, bukan hapus
-                if (isUploadBtn) {
-                    progressWrapper.style.display = 'block';
-                    btnUpload.disabled = true;
-                    btnUpload.innerHTML = '<i class="bi bi-hourglass-split"></i> Mengupload...';
-
-                    let progress = 0;
-                    const interval = setInterval(() => {
-                        progress += Math.random() * 15;
-                        if (progress >= 90) {
-                            progress = 90;
-                            clearInterval(interval);
-                        }
-                        progressBar.style.width = progress + '%';
-                        progressText.textContent = Math.round(progress) + '%';
-                    }, 200);
-                }
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Upload Gagal!',
+                    text: 'Terjadi kesalahan saat mengupload file. Silakan coba lagi.',
+                    confirmButtonColor: '#D53D66'
+                });
+                console.error('Upload error:', error);
             });
         }
 
-        function confirmHapus(e) {
-            e.preventDefault();
+        // =====================================================
+        // AJAX HAPUS FILE
+        // =====================================================
+        function confirmHapus() {
             Swal.fire({
                 title: 'Hapus File?',
-                text: 'File hasil foto akan dihapus permanen. Lanjutkan?',
+                text: 'File hasil foto akan dihapus permanen dari sistem. Lanjutkan?',
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#dc2626',
@@ -1035,10 +1350,48 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
                 cancelButtonText: 'Batal'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    e.target.closest('form').submit();
+                    const formData = new FormData();
+                    formData.append('ajax_hapus', '1');
+
+                    fetch(window.location.href, {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'File Dihapus!',
+                                text: data.message,
+                                confirmButtonColor: '#D53D66',
+                                confirmButtonText: 'Oke'
+                            }).then(() => {
+                                window.location.href = data.redirect;
+                            });
+                        } else {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Gagal Menghapus!',
+                                text: data.message,
+                                confirmButtonColor: '#D53D66'
+                            });
+                        }
+                    })
+                    .catch(error => {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Gagal Menghapus!',
+                            text: 'Terjadi kesalahan saat menghapus file.',
+                            confirmButtonColor: '#D53D66'
+                        });
+                        console.error('Delete error:', error);
+                    });
                 }
             });
-            return false;
         }
 
         function confirmLogout(e) {
@@ -1073,45 +1426,5 @@ if (isset($_GET['success']) && $_GET['success'] === 'uploaded') {
             });
         }
     </script>
-
-    <!-- SweetAlert Notifikasi -->
-    <?php if ($success === true || (isset($_GET['success']) && $_GET['success'] === 'uploaded')): ?>
-    <script>
-        Swal.fire({
-            icon: 'success',
-            title: 'Upload Berhasil!',
-            html: '<div style="text-align:left"><p>File hasil foto berhasil diupload.</p><hr style="border-color:#f1f5f9;margin:10px 0"><p style="color:#718096;font-size:0.85rem"><i class="bi bi-info-circle-fill text-warning me-1"></i> File akan tersedia untuk customer setelah <strong style="color:#D53D66">pelunasan terverifikasi</strong> oleh admin.</p></div>',
-            confirmButtonColor: '#D53D66',
-            confirmButtonText: 'Mengerti'
-        }).then(() => {
-            // Complete progress bar
-            const progressBar = document.getElementById('progressBar');
-            const progressText = document.getElementById('progressText');
-            if (progressBar) progressBar.style.width = '100%';
-            if (progressText) progressText.textContent = '100%';
-        });
-    </script>
-    <?php endif; ?>
-
-    <?php if (!empty($error)): ?>
-    <div class="alert alert-danger mb-4" style="border-radius: 14px; background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 16px 20px;">
-        <div class="d-flex align-items-center gap-2">
-            <i class="bi bi-exclamation-triangle-fill"></i>
-            <div>
-                <strong>Upload Gagal!</strong><br>
-                <span style="font-size: 0.85rem;"><?= htmlspecialchars($error) ?></span>
-            </div>
-        </div>
-    </div>
-    <script>
-        Swal.fire({
-            icon: 'error',
-            title: 'Upload Gagal!',
-            text: '<?= addslashes($error) ?>',
-            confirmButtonColor: '#D53D66',
-            confirmButtonText: 'Coba Lagi'
-        });
-    </script>
-    <?php endif; ?>
 </body>
 </html>
