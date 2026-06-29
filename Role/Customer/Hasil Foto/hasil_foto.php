@@ -1,6 +1,7 @@
 <?php
 session_start();
-include '../../../../koneksi.php';
+// PERBAIKAN PATH: koneksi naik 3 tingkat
+include '../../../koneksi.php';
 
 // =====================================================
 // KONSTANTA STATUS
@@ -14,7 +15,8 @@ define('STATUS_DATA_AKTIF', 1);
 
 // --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Customer') {
-    header("Location: ../../../../login.php");
+    // PERBAIKAN PATH: redirect naik 3 tingkat ke login.php di root
+    header("Location: ../../../login.php");
     exit();
 }
 
@@ -30,8 +32,9 @@ $q_profile = sqlsrv_query($conn,
 $d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
 $nama_customer = $d_profile['Nama_Pelanggan'] ?? 'Customer';
 $foto_customer = $d_profile['Foto_Profil'] ?? 'default.jpg';
-$foto_customer_src = ($foto_customer != 'default.jpg' && file_exists("../../../../assets/img/pelanggan/" . $foto_customer)) 
-    ? "../../../../assets/img/pelanggan/" . $foto_customer 
+// PERBAIKAN PATH: letak foto profil naik 3 tingkat ke root
+$foto_customer_src = ($foto_customer != 'default.jpg' && file_exists("../../../assets/img/pelanggan/" . $foto_customer)) 
+    ? "../../../assets/img/pelanggan/" . $foto_customer 
     : $default_svg_avatar;
 
 // =====================================================
@@ -101,8 +104,9 @@ function formatWaktu($time) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hasil Foto Saya - SpotLight Studio</title>
-    <link href="../../../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
-    <link href="../../../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+    <!-- PERBAIKAN PATH: pemanggilan aset CSS naik 3 tingkat -->
+    <link href="../../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <link href="../../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
@@ -413,7 +417,6 @@ function formatWaktu($time) {
             font-size: 0.9rem;
             font-weight: 800;
             text-decoration: none;
-            transition: all 0.3s;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -510,18 +513,19 @@ function formatWaktu($time) {
 
     <!-- NAVBAR ATAS -->
     <nav class="top-navbar">
-        <a href="../../index.php" class="nav-logo">
+        <a href="../index.php" class="nav-logo">
             SpotLight.<span>StudioFoto</span>
         </a>
         <div class="nav-menu-center">
-            <a href="../../index.php" class="nav-link-item">Dashboard</a>
-            <a href="../../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
-            <a href="../../Riwayat/riwayat.php" class="nav-link-item">Riwayat</a>
-            <a href="../../Barang/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
-            <a href="index.php" class="nav-link-item active">Hasil Foto</a>
+            <!-- PERBAIKAN SINKRONISASI PATH NAVBAR CUSTOMER (Hasil Foto sebagai Menu Aktif) -->
+            <a href="../index.php" class="nav-link-item">Dashboard</a>
+            <a href="../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
+            <a href="../Riwayat/riwayat.php" class="nav-link-item">Riwayat</a>
+            <a href="../Barang/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
+            <a href="hasil_foto.php" class="nav-link-item active">Hasil Foto</a>
         </div>
         <div class="nav-right">
-            <a href="../../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
+            <a href="../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
                 <i class="bi bi-plus-lg"></i> Booking
             </a>
             <div class="nav-avatar-wrapper">
@@ -575,7 +579,8 @@ function formatWaktu($time) {
             if ($q_hasil && sqlsrv_has_rows($q_hasil)):
                 $has_data = true;
                 while ($row = sqlsrv_fetch_array($q_hasil, SQLSRV_FETCH_ASSOC)):
-                    $file_url = "../../../../uploads/hasil/" . rawurlencode($row['File_Hasil']);
+                    // PERBAIKAN PATH UNDUH FILE: Menghubungkan langsung ke folder uploads/hasil/
+                    $file_url = "../../../uploads/hasil/" . rawurlencode($row['File_Hasil']);
             ?>
                 <div class="hasil-card">
                     <div class="hasil-header">
@@ -633,7 +638,7 @@ function formatWaktu($time) {
             <i class="bi bi-images"></i>
             <h3>Belum Ada Hasil Foto</h3>
             <p>Anda belum memiliki hasil foto yang tersedia. Hasil foto akan muncul di sini setelah sesi foto selesai dan pembayaran lunas terverifikasi.</p>
-            <a href="../../Layanan/Paket/pilih_paket.php" class="btn-action">
+            <a href="../Layanan/Paket/pilih_paket.php" class="btn-action">
                 <i class="bi bi-calendar-plus"></i> Booking Sekarang
             </a>
         </div>
@@ -641,17 +646,22 @@ function formatWaktu($time) {
 
     </main>
 
-    <script src="../../../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <!-- PERBAIKAN PATH: Mengambil bootstrap bundle dari assets -->
+    <script src="../../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Toggle dropdown menu
         function toggleDropdown() {
             document.getElementById('navDropdown').classList.toggle('show');
         }
+        
+        // Close dropdown when clicking outside
         document.addEventListener('click', function(e) {
             const wrapper = document.querySelector('.nav-avatar-wrapper');
             if (!wrapper.contains(e.target)) {
                 document.getElementById('navDropdown').classList.remove('show');
             }
         });
+
         function confirmLandingPage(e) {
             e.preventDefault();
             Swal.fire({
@@ -670,6 +680,7 @@ function formatWaktu($time) {
             });
             return false;
         }
+
         function confirmLogout() {
             Swal.fire({
                 title: 'Keluar Sistem?',

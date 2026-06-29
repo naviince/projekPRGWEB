@@ -16,6 +16,71 @@ if (!$id_pelanggan) {
     exit();
 }
 
+// =====================================================
+// HANDLE UPLOAD PEMBAYARAN (AJAX) - SELARAS LOGIKA REFERENSI DP
+// =====================================================
+if (isset($_POST['action_upload_pembayaran'])) {
+    header('Content-Type: application/json');
+    
+    $id_order = intval($_POST['id_order']);
+    $tipe_pembayaran = $_POST['tipe_pembayaran']; // 'DP' atau 'Pelunasan'
+    $metode_pembayaran = $_POST['metode_pembayaran'];
+    $jumlah_bayar = floatval($_POST['jumlah_bayar']);
+    
+    if (empty($metode_pembayaran) || $jumlah_bayar <= 0) {
+        echo json_encode(['success' => false, 'message' => 'Data input tidak valid.']);
+        exit();
+    }
+    
+    if (!isset($_FILES['bukti_transfer']) || $_FILES['bukti_transfer']['error'] === UPLOAD_ERR_NO_FILE) {
+        echo json_encode(['success' => false, 'message' => 'Bukti transfer wajib diunggah.']);
+        exit();
+    }
+    
+    $file = $_FILES['bukti_transfer'];
+    $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $allowed_exts = ['jpg', 'jpeg', 'png', 'pdf'];
+    
+    if (!in_array($file_ext, $allowed_exts)) {
+        echo json_encode(['success' => false, 'message' => 'Format file bukti transfer harus JPG, JPEG, PNG, atau PDF.']);
+        exit();
+    }
+    
+    // Sesuaikan direktori upload ke assets/img/bukti/ seperti referensi Anda
+    $upload_dir = '../../../assets/img/bukti/';
+    if (!is_dir($upload_dir)) {
+        mkdir($upload_dir, 0777, true);
+    }
+    
+    // Penamaan file diselaraskan dengan pola referensi Anda
+    $prefix = ($tipe_pembayaran === 'DP') ? 'bukti_dp_' : 'bukti_pelunasan_';
+    $new_file_name = $prefix . $id_order . '_' . time() . '_' . uniqid() . '.' . $file_ext;
+    $target_path = $upload_dir . $new_file_name;
+    
+    if (move_uploaded_file($file['tmp_name'], $target_path)) {
+        $username_cust = $_SESSION['username'] ?? 'customer';
+        
+        $sql_insert = "INSERT INTO Pembayaran (
+            ID_Order, Tipe_Pembayaran, Metode_Pembayaran, Jumlah_Bayar, Bukti_Transfer, 
+            Tanggal_Upload, Status_Pembayaran, Status, Created_By, Created_Date
+        ) VALUES (?, ?, ?, ?, ?, GETDATE(), 0, 1, ?, GETDATE())";
+        
+        $stmt_insert = sqlsrv_query($conn, $sql_insert, [
+            $id_order, $tipe_pembayaran, $metode_pembayaran, $jumlah_bayar, $new_file_name, $username_cust
+        ]);
+        
+        if ($stmt_insert) {
+            echo json_encode(['success' => true, 'message' => 'Bukti pembayaran ' . $tipe_pembayaran . ' berhasil diunggah dan menunggu verifikasi admin.']);
+        } else {
+            $errors = sqlsrv_errors();
+            echo json_encode(['success' => false, 'message' => 'Gagal menyimpan ke database: ' . ($errors[0]['message'] ?? 'Unknown error')]);
+        }
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Gagal mengunggah file bukti transfer ke server.']);
+    }
+    exit();
+}
+
 // Ambil data pelanggan
 $q_pelanggan = sqlsrv_query($conn, "SELECT * FROM Pelanggan WHERE ID_Pelanggan = ?", [$id_pelanggan]);
 $d_pelanggan = sqlsrv_fetch_array($q_pelanggan, SQLSRV_FETCH_ASSOC);
@@ -289,7 +354,9 @@ function getAksiButtons($item) {
 
     switch ($status) {
         case STATUS_ORDER_MENUNGGU_DP:
-            $buttons .= '<a href="../Layanan/Paket/pilih_paket.php?id_order=' . $id_order . '" class="btn-aksi btn-upload"><i class="fas fa-upload"></i> Upload Bukti DP</a>';
+            // SINKRONISASI: DP bernilai 65% berdasarkan logika pembayaran_dp.php Anda
+            $dp_amount = $item['Total_Paket'] * 0.65;
+            $buttons .= '<button onclick="bukaModalPembayaran(' . $id_order . ', \'DP\', ' . $dp_amount . ')" class="btn-aksi btn-upload"><i class="fas fa-upload"></i> Upload Bukti DP</button>';
             $buttons .= '<a href="javascript:void(0)" onclick="batalkanOrder(' . $id_order . ')" class="btn-aksi btn-batal"><i class="fas fa-times"></i> Batalkan</a>';
             break;
 
@@ -301,15 +368,17 @@ function getAksiButtons($item) {
             break;
 
         case STATUS_ORDER_SELESAI_FOTO:
-            $buttons .= '<a href="../Layanan/Paket/pilih_paket.php?id_order=' . $id_order . '" class="btn-aksi btn-upload"><i class="fas fa-upload"></i> Upload Pelunasan</a>';
+            // Sisa pembayaran pelunasan = Total Harga Order keseluruhan - Jumlah DP yang telah dibayar
+            $remaining_amount = $item['Total_Harga'] - ($item['Jumlah_DP'] ?? 0);
+            $buttons .= '<button onclick="bukaModalPembayaran(' . $id_order . ', \'Pelunasan\', ' . $remaining_amount . ')" class="btn-aksi btn-upload" style="background:#388E3C;color:#fff;"><i class="fas fa-upload"></i> Upload Pelunasan</button>';
             if ($has_file && $id_sesi > 0) {
-                $buttons .= '<a href="../HasilFoto/index.php?id_sesi=' . $id_sesi . '" class="btn-aksi btn-preview"><i class="fas fa-images"></i> Lihat Hasil</a>';
+                $buttons .= '<a href="../../../assets/img/bukti/' . rawurlencode($item['File_Hasil']) . '" class="btn-aksi btn-preview" download><i class="fas fa-images"></i> Lihat Preview Hasil</a>';
             }
             break;
 
         case STATUS_ORDER_LUNAS:
             if ($has_file && $id_sesi > 0) {
-                $buttons .= '<a href="../HasilFoto/index.php?id_sesi=' . $id_sesi . '" class="btn-aksi btn-download"><i class="fas fa-download"></i> Download Hasil</a>';
+                $buttons .= '<a href="../../../uploads/hasil/' . rawurlencode($item['File_Hasil']) . '" class="btn-aksi btn-download" download><i class="fas fa-download"></i> Download Hasil</a>';
             }
             if (empty($item['Rating'])) {
                 $buttons .= '<a href="javascript:void(0)" onclick="bukaRating(' . $id_order . ')" class="btn-aksi btn-rating"><i class="fas fa-star"></i> Beri Rating</a>';
@@ -722,14 +791,7 @@ function getAksiButtons($item) {
         <a href="../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
         <a href="index.php" class="nav-link-item active">Riwayat</a>
         <a href="../Barang/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
-<<<<<<< Updated upstream
-<<<<<<< HEAD
-=======
         <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
->>>>>>> 0abd9d4d5c2874abb677ffcabe7bc8ac4c06b8c9
-=======
-        <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
->>>>>>> Stashed changes
     </div>
     <div class="nav-right">
         <a href="../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
@@ -1005,6 +1067,7 @@ function getAksiButtons($item) {
     </div>
 </div>
 
+<!-- MODAL RATING & REVIEW -->
 <div class="modal-overlay" id="modalRating">
     <div class="modal-content">
         <h3><i class="fas fa-star" style="color:#F9A825;margin-right:8px;"></i>Beri Rating & Review</h3>
@@ -1020,6 +1083,51 @@ function getAksiButtons($item) {
             <button class="btn-batal-modal" onclick="tutupModal()">Batal</button>
             <button class="btn-submit" onclick="submitRating()">Kirim</button>
         </div>
+    </div>
+</div>
+
+<!-- MODAL UPLOAD PEMBAYARAN (DP / PELUNASAN) - SINKRON DENGAN DIREKTORI REFERENSI -->
+<div class="modal-overlay" id="modalPembayaran">
+    <div class="modal-content" style="max-width: 500px;">
+        <h3><i class="fas fa-credit-card" style="color:var(--primary);margin-right:8px;"></i>Upload Pembayaran</h3>
+        <form id="formPembayaran" enctype="multipart/form-data">
+            <input type="hidden" name="action_upload_pembayaran" value="1">
+            <input type="hidden" name="id_order" id="payOrderId">
+            <input type="hidden" name="tipe_pembayaran" id="payTipe">
+            
+            <div class="mb-3 text-start">
+                <label class="form-label d-block fw-bold mb-1" style="font-size: 14px; text-align: left;">Jenis Pembayaran</label>
+                <input type="text" id="payTipeLabel" class="form-control w-100 p-2" style="border: 2px solid #f0f0f0; border-radius: 12px; background: #fafafa; font-weight:700;" readonly>
+            </div>
+            
+            <div class="mb-3 text-start">
+                <label class="form-label d-block fw-bold mb-1" style="font-size: 14px; text-align: left;">Jumlah yang Harus Dibayar</label>
+                <input type="text" id="payJumlahLabel" class="form-control w-100 p-2" style="border: 2px solid #f0f0f0; border-radius: 12px; background: #fafafa; font-weight:700; color:var(--primary);" readonly>
+                <input type="hidden" name="jumlah_bayar" id="payJumlah">
+            </div>
+            
+            <div class="mb-3 text-start">
+                <label class="form-label d-block fw-bold mb-1" style="font-size: 14px; text-align: left;">Metode Pembayaran</label>
+                <select name="metode_pembayaran" id="payMetode" class="form-control w-100 p-2" style="border: 2px solid #f0f0f0; border-radius: 12px; height: 42px;" required>
+                    <option value="">-- Pilih Metode Pembayaran --</option>
+                    <option value="Transfer Bank BCA">Transfer Bank BCA (123-456-7890 a/n SpotLight Studio)</option>
+                    <option value="Transfer Bank BNI">Transfer Bank BNI (098-765-4321 a/n SpotLight Studio)</option>
+                    <option value="Transfer Bank Mandiri">Transfer Bank Mandiri (112-233-4455 a/n SpotLight Studio)</option>
+                    <option value="QRIS">QRIS SpotLight Studio (E-Wallet)</option>
+                </select>
+            </div>
+            
+            <div class="mb-4 text-start">
+                <label class="form-label d-block fw-bold mb-1" style="font-size: 14px; text-align: left;">Unggah Bukti Transfer</label>
+                <input type="file" name="bukti_transfer" id="payBukti" class="form-control w-100 p-2" style="border: 2px solid #f0f0f0; border-radius: 12px;" accept=".jpg,.jpeg,.png,.pdf" required>
+                <small class="text-muted d-block mt-1" style="font-size: 11px;">Format yang diperbolehkan: JPG, JPEG, PNG, PDF (Maksimal 5MB)</small>
+            </div>
+            
+            <div class="modal-actions">
+                <button type="button" class="btn-batal-modal" onclick="tutupModalPembayaran()">Batal</button>
+                <button type="submit" class="btn-submit" style="background:var(--primary);">Kirim Bukti</button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -1165,6 +1273,100 @@ function submitRating() {
     });
 }
 
+// =====================================================
+// FUNGSI MODAL PEMBAYARAN (AJAX) - SELARAS LOGIKA REFERENSI DP
+// =====================================================
+function bukaModalPembayaran(id_order, tipe, jumlah) {
+    document.getElementById('payOrderId').value = id_order;
+    document.getElementById('payTipe').value = tipe;
+    
+    // Penamaan tipe disesuaikan logika Anda
+    document.getElementById('payTipeLabel').value = tipe === 'DP' ? 'Uang Muka (DP 65%)' : 'Pelunasan Sesi Foto';
+    
+    // Format mata uang rupiah ke label tampilan
+    const formatter = new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        minimumFractionDigits: 0
+    });
+    
+    document.getElementById('payJumlahLabel').value = formatter.format(jumlah);
+    document.getElementById('payJumlah').value = jumlah;
+    
+    document.getElementById('payMetode').value = '';
+    document.getElementById('payBukti').value = '';
+    
+    document.getElementById('modalPembayaran').classList.add('active');
+}
+
+function tutupModalPembayaran() {
+    document.getElementById('modalPembayaran').classList.remove('active');
+}
+
+document.getElementById('formPembayaran').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    
+    Swal.fire({
+        title: 'Kirim Bukti Pembayaran?',
+        text: 'Pastikan bukti transfer dan metode pembayaran yang Anda pilih sudah benar.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#D53D66',
+        cancelButtonColor: '#718096',
+        confirmButtonText: 'Ya, Kirim',
+        cancelButtonText: 'Batal'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            Swal.fire({
+                title: 'Mengirim Bukti...',
+                html: 'Mohon tunggu sebentar.',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+            
+            fetch('riwayat.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(data => {
+                Swal.close();
+                if (data.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Upload Berhasil!',
+                        text: data.message,
+                        confirmButtonColor: '#D53D66'
+                    }).then(() => {
+                        tutupModalPembayaran();
+                        location.reload();
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Gagal',
+                        text: data.message,
+                        confirmButtonColor: '#D53D66'
+                    });
+                }
+            })
+            .catch(err => {
+                Swal.close();
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'Terjadi kesalahan sistem saat mengunggah bukti.',
+                    confirmButtonColor: '#D53D66'
+                });
+            });
+        }
+    });
+});
+
 function batalkanOrder(id_order) {
     Swal.fire({
         title: 'Batalkan Pesanan?',
@@ -1203,7 +1405,7 @@ function batalkanOrder(id_order) {
 function lihatDetail(id_order) {
     Swal.fire({
         title: 'Detail Pesanan #' + String(id_order).padStart(4, '0'),
-        html: 'Silakan hubungi admin untuk informasi lebih detail.<br>WhatsApp: <a href="https://wa.me/62xxx" target="_blank">Klik di sini</a>',
+        html: 'Sesi foto Anda sudah terverifikasi dan dijadwalkan.<br>Silakan hubungi admin via WhatsApp untuk koordinasi properti/tambahan: <br><a href="https://wa.me/6287871438459" target="_blank" class="btn btn-success mt-2" style="background:#25D366; border:none; color:white;"><i class="fab fa-whatsapp"></i> Hubungi Admin</a>',
         icon: 'info',
         confirmButtonColor: '#D53D66'
     });
@@ -1211,6 +1413,10 @@ function lihatDetail(id_order) {
 
 document.getElementById('modalRating').addEventListener('click', function(e) {
     if (e.target === this) tutupModal();
+});
+
+document.getElementById('modalPembayaran').addEventListener('click', function(e) {
+    if (e.target === this) tutupModalPembayaran();
 });
 </script>
 

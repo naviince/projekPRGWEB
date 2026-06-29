@@ -136,7 +136,7 @@ if ($is_ajax && isset($_POST['ajax_upload'])) {
     $target_path = $upload_dir . $new_file_name;
 
     // =====================================================
-    // TRANSACTION
+    // TRANSACTION (UPLOAD BERHASIL & UPDATE STATUS ORDER)
     // =====================================================
     sqlsrv_begin_transaction($conn);
 
@@ -149,8 +149,10 @@ if ($is_ajax && isset($_POST['ajax_upload'])) {
             }
         }
 
-        // Pindahkan file
+        // Pindahkan file ke server
         if (move_uploaded_file($file_tmp, $target_path)) {
+            
+            // 1. Update data di tabel Sesi_Foto
             $update_sql = "UPDATE Sesi_Foto SET 
                 File_Hasil = ?, 
                 Tanggal_Upload_Hasil = GETDATE(),
@@ -164,7 +166,20 @@ if ($is_ajax && isset($_POST['ajax_upload'])) {
                 $id_sesi
             ));
 
-            if ($update_stmt) {
+            // 2. Update status order pada tabel [Order] menjadi 2 (Menunggu Pelunasan)
+            $update_order_sql = "UPDATE [Order] SET 
+                Status_Order = 2,
+                Modified_By = ?,
+                Modified_Date = GETDATE()
+                WHERE ID_Order = ? AND Status = 1";
+
+            $update_order_stmt = sqlsrv_query($conn, $update_order_sql, array(
+                $username_fotografer,
+                $id_order
+            ));
+
+            // Commit jika kedua query berhasil dijalankan
+            if ($update_stmt && $update_order_stmt) {
                 sqlsrv_commit($conn);
                 $response['success'] = true;
                 $response['message'] = 'File hasil foto berhasil diupload!';
@@ -212,8 +227,9 @@ if ($is_ajax_delete) {
 
     $id_sesi = intval($_GET['id']);
 
+    // Mengambil File_Hasil sekaligus ID_Order untuk mengembalikan status order
     $q_sesi = sqlsrv_query($conn, "
-        SELECT S.File_Hasil FROM Sesi_Foto S
+        SELECT S.File_Hasil, S.ID_Order FROM Sesi_Foto S
         JOIN [Order] O ON S.ID_Order = O.ID_Order
         WHERE S.ID_Sesi_Foto = ? AND S.ID_Karyawan = ? AND S.Status = 1
     ", array($id_sesi, $id_fotografer));
@@ -232,6 +248,9 @@ if ($is_ajax_delete) {
         exit();
     }
 
+    $id_order = $sesi_data_del['ID_Order'];
+
+    // Mulai proses transaksi hapus
     sqlsrv_begin_transaction($conn);
 
     try {
@@ -240,6 +259,7 @@ if ($is_ajax_delete) {
             unlink($file_path);
         }
 
+        // 1. Reset data File_Hasil di tabel Sesi_Foto
         $delete_sql = "UPDATE Sesi_Foto SET 
             File_Hasil = NULL, 
             Tanggal_Upload_Hasil = NULL,
@@ -249,7 +269,16 @@ if ($is_ajax_delete) {
 
         $delete_stmt = sqlsrv_query($conn, $delete_sql, array($username_fotografer, $id_sesi));
 
-        if ($delete_stmt) {
+        // 2. Kembalikan Status_Order ke 1 (DP Terverifikasi / Sesi Foto Aktif)
+        $revert_order_sql = "UPDATE [Order] SET 
+            Status_Order = 1,
+            Modified_By = ?,
+            Modified_Date = GETDATE()
+            WHERE ID_Order = ? AND Status = 1";
+
+        $revert_order_stmt = sqlsrv_query($conn, $revert_order_sql, array($username_fotografer, $id_order));
+
+        if ($delete_stmt && $revert_order_stmt) {
             sqlsrv_commit($conn);
             $response['success'] = true;
             $response['message'] = 'File berhasil dihapus!';
@@ -605,7 +634,7 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
             color: var(--text-muted);
         }
 
-        /* FILE PREVIEW - BARU */
+        /* FILE PREVIEW */
         .file-preview-area {
             margin-bottom: 20px;
         }
@@ -644,7 +673,7 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
             font-weight: 600;
         }
 
-        /* PREVIEW GAMBAR - BARU */
+        /* PREVIEW GAMBAR */
         .image-preview-wrapper {
             position: relative;
             border-radius: 16px;
@@ -976,7 +1005,7 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
 
                         <!-- FORM UPLOAD ULANG -->
                         <form id="formUpload" enctype="multipart/form-data">
-                            <!-- PREVIEW GAMBAR BARU (akan muncul setelah pilih file) -->
+                            <!-- PREVIEW GAMBAR BARU -->
                             <div class="image-preview-wrapper" id="newImagePreview">
                                 <img src="" alt="Preview File Baru" id="newPreviewImg">
                                 <div class="image-preview-overlay">
@@ -1341,7 +1370,7 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
         function confirmHapus() {
             Swal.fire({
                 title: 'Hapus File?',
-                text: 'File hasil foto akan dihapus permanen dari sistem. Lanjutkan?',
+                text: 'File hasil foto akan dihapus permanen dari sistem, dan status order akan diturunkan kembali. Lanjutkan?',
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#dc2626',

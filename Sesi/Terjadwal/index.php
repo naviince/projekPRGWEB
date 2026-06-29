@@ -114,9 +114,7 @@ function formatWaktu($time) {
                         <ul class="list-unstyled">
                             <li><a href="../Jadwal/index.php" class="submenu-link"><i class="bi bi-calendar-day-fill me-2"></i>Jadwal Saya</a></li>
                             <li><a href="index.php" class="submenu-link active"><i class="bi bi-camera-reels-fill me-2"></i>Sesi Terjadwal</a></li>
-                            <li><a href="../Selesai/index.php" class="submenu-link"><i class="bi bi-check-circle-fill me-2"></i>Sesi Selesai</a></li>
-                        </ul>
-                    </div>
+<li><a href="../Selesai/index.php" class="submenu-link"><i class="bi bi-check-circle-fill me-2"></i>Sesi Selesai</a></li>                    </div>
                 </li>
                 <li class="nav-item">
                     <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuUpload"><span><i class="bi bi-cloud-upload-fill me-2"></i> Upload Hasil</span><i class="bi bi-chevron-down small icon-chevron"></i></a>
