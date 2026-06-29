@@ -646,21 +646,6 @@ function hitungHargaPromo($harga, $diskon_persen) {
 
     <!-- NAVBAR ATAS -->
     <nav class="top-navbar">
-<<<<<<< Updated upstream
-<<<<<<< HEAD
-        <a href="../../../index.php" class="nav-logo">
-=======
-        <a href="../../index.php" class="nav-logo">
->>>>>>> Stashed changes
-            SpotLight.<span>StudioFoto</span>
-        </a>
-        <div class="nav-menu-center">
-            <a href="../../index.php" class="nav-link-item">Dashboard</a>
-            <a href="../../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
-            <a href="../../Riwayat/riwayat.php" class="nav-link-item">Riwayat</a>
-            <a href="index.php" class="nav-link-item active">Barang Cetak</a>
-<<<<<<< Updated upstream
-=======
         <a href="../../index.php" class="nav-logo">
             SpotLight.<span>StudioFoto</span>
         </a>
@@ -669,45 +654,23 @@ function hitungHargaPromo($harga, $diskon_persen) {
             <a href="../../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
             <a href="../../Riwayat/riwayat.php" class="nav-link-item">Riwayat</a>
             <a href="index.php" class="nav-link-item active">Barang Cetak</a>
-            <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
->>>>>>> 0abd9d4d5c2874abb677ffcabe7bc8ac4c06b8c9
-=======
-            <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
->>>>>>> Stashed changes
+            <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>        
         </div>
-        <div class="nav-right">
+                <div class="nav-right">
             <a href="keranjang.php" class="keranjang-btn" title="Keranjang Belanja">
                 <i class="bi bi-cart-fill" style="font-size:1.2rem;"></i>
                 <?php if ($jumlah_keranjang > 0): ?>
                 <span class="keranjang-badge"><?= $jumlah_keranjang ?></span>
                 <?php endif; ?>
             </a>
-<<<<<<< Updated upstream
-<<<<<<< HEAD
-            <a href="../../../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
-=======
-            <a href="../../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
->>>>>>> 0abd9d4d5c2874abb677ffcabe7bc8ac4c06b8c9
-=======
-            <a href="../../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
->>>>>>> Stashed changes
-                <i class="bi bi-plus-lg"></i> Booking
-            </a>
             <div class="nav-avatar-wrapper">
                 <img src="<?= $foto_customer_src ?>" class="nav-avatar" alt="Profil" onclick="toggleDropdown()">
                 <div class="nav-dropdown" id="navDropdown">
                     <div class="dropdown-header">Halo, <?= htmlspecialchars($nama_customer) ?></div>
                     <div class="dropdown-divider"></div>
-<<<<<<< Updated upstream
-<<<<<<< HEAD
                     <a href="../../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
-=======
                     <a href="../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
->>>>>>> 0abd9d4d5c2874abb677ffcabe7bc8ac4c06b8c9
-=======
-                    <a href="../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
->>>>>>> Stashed changes
-                        <i class="bi bi-house-door"></i> Kembali ke Beranda
+                    <a href="../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">                        <i class="bi bi-house-door"></i> Kembali ke Beranda
                     </a>
                     <div class="dropdown-divider"></div>
                     <button class="dropdown-item logout" onclick="confirmLogout()">

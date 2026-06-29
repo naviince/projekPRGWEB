@@ -21,15 +21,153 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 
 $id_customer = $_SESSION['id_user'];
 
-// --- Profil ---
-$default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23d83f67'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
+// =====================================================
+// PROSES UPDATE PROFIL / KATA SANDI
+// =====================================================
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action_type'])) {
+    $action_type = $_POST['action_type'];
+    
+    // 1. UPDATE DETAIL PROFIL
+    if ($action_type == 'update_profile') {
+        $nama = trim($_POST['nama_pelanggan']);
+        $email = trim($_POST['email_pelanggan']);
+        $no_hp = trim($_POST['no_hp']);
+        $alamat = trim($_POST['alamat']);
+        $jk = $_POST['jenis_kelamin'];
+        $tgl_lahir = $_POST['tanggal_lahir'];
+        
+        // Validasi format nomor handphone sesuai CHK_Pelanggan_NoHp di SQL Server
+        if (substr($no_hp, 0, 3) !== '+62') {
+            $_SESSION['profile_msg'] = ['type' => 'error', 'title' => 'Format Salah', 'text' => 'Nomor HP harus diawali dengan +62.'];
+        } else if (strlen($no_hp) < 12 || strlen($no_hp) > 16) {
+            $_SESSION['profile_msg'] = ['type' => 'error', 'title' => 'Format Salah', 'text' => 'Panjang nomor HP harus antara 12 sampai 16 karakter.'];
+        } else if (!preg_match('/^\+62[0-9]+$/', $no_hp)) {
+            $_SESSION['profile_msg'] = ['type' => 'error', 'title' => 'Format Salah', 'text' => 'Nomor HP hanya boleh berisi angka setelah tanda plus (+).'];
+        } else {
+            // Proses unggah foto profil jika ada
+            $foto_nama_baru = null;
+            if (isset($_FILES['foto_profil']) && $_FILES['foto_profil']['error'] == 0) {
+                $file_tmp = $_FILES['foto_profil']['tmp_name'];
+                $file_name = $_FILES['foto_profil']['name'];
+                $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+                $allowed_ext = ['jpg', 'jpeg', 'png'];
+                
+                if (in_array($file_ext, $allowed_ext)) {
+                    $foto_nama_baru = "pelanggan_" . $id_customer . "_" . time() . "." . $file_ext;
+                    $upload_dir = "../../assets/img/pelanggan/";
+                    
+                    if (!is_dir($upload_dir)) {
+                        mkdir($upload_dir, 0777, true);
+                    }
+                    
+                    if (move_uploaded_file($file_tmp, $upload_dir . $foto_nama_baru)) {
+                        // Hapus file foto lama jika bukan default
+                        $q_old_photo = sqlsrv_query($conn, "SELECT Foto_Profil FROM Pelanggan WHERE ID_Pelanggan = ?", array($id_customer));
+                        $d_old_photo = sqlsrv_fetch_array($q_old_photo, SQLSRV_FETCH_ASSOC);
+                        if ($d_old_photo && $d_old_photo['Foto_Profil'] != 'default.jpg' && file_exists($upload_dir . $d_old_photo['Foto_Profil'])) {
+                            unlink($upload_dir . $d_old_photo['Foto_Profil']);
+                        }
+                    } else {
+                        $foto_nama_baru = null;
+                    }
+                }
+            }
+            
+            // Penyusunan query update database
+            if ($foto_nama_baru) {
+                $sql_up = "UPDATE Pelanggan SET Nama_Pelanggan = ?, Email_Pelanggan = ?, No_Hp = ?, Alamat = ?, Jenis_Kelamin = ?, Tanggal_Lahir = ?, Foto_Profil = ?, Modified_By = 'customer', Modified_Date = GETDATE() WHERE ID_Pelanggan = ?";
+                $params_up = array($nama, $email, $no_hp, $alamat, $jk, $tgl_lahir, $foto_nama_baru, $id_customer);
+            } else {
+                $sql_up = "UPDATE Pelanggan SET Nama_Pelanggan = ?, Email_Pelanggan = ?, No_Hp = ?, Alamat = ?, Jenis_Kelamin = ?, Tanggal_Lahir = ?, Modified_By = 'customer', Modified_Date = GETDATE() WHERE ID_Pelanggan = ?";
+                $params_up = array($nama, $email, $no_hp, $alamat, $jk, $tgl_lahir, $id_customer);
+            }
+            
+            $stmt_up = sqlsrv_query($conn, $sql_up, $params_up);
+            if ($stmt_up) {
+                $_SESSION['profile_msg'] = ['type' => 'success', 'title' => 'Berhasil', 'text' => 'Data profil Anda berhasil diperbarui!'];
+            } else {
+                $errors = sqlsrv_errors();
+                $is_duplicate = false;
+                if ($errors != null) {
+                    foreach($errors as $error) {
+                        if (strpos($error['message'], 'UNIQUE') !== false || strpos($error['message'], 'duplicate') !== false) {
+                            $is_duplicate = true;
+                            break;
+                        }
+                    }
+                }
+                if ($is_duplicate) {
+                    $_SESSION['profile_msg'] = ['type' => 'error', 'title' => 'Email Sudah Terdaftar', 'text' => 'Email tersebut sudah digunakan oleh akun lain.'];
+                } else {
+                    $_SESSION['profile_msg'] = ['type' => 'error', 'title' => 'Gagal', 'text' => 'Gagal memperbarui profil. Mohon periksa kembali inputan Anda.'];
+                }
+            }
+        }
+        header("Location: index.php");
+        exit();
+    }
+    
+    // 2. UPDATE KATA SANDI
+    if ($action_type == 'update_password') {
+        $pass_lama = $_POST['pass_lama'];
+        $pass_baru = $_POST['pass_baru'];
+        $pass_konfirmasi = $_POST['pass_konfirmasi'];
+        
+        $q_pass = sqlsrv_query($conn, "SELECT Password_Pelanggan FROM Pelanggan WHERE ID_Pelanggan = ?", array($id_customer));
+        $d_pass = sqlsrv_fetch_array($q_pass, SQLSRV_FETCH_ASSOC);
+        
+        if ($d_pass) {
+            if ($pass_lama !== $d_pass['Password_Pelanggan']) {
+                $_SESSION['profile_msg'] = ['type' => 'error', 'title' => 'Verifikasi Gagal', 'text' => 'Kata sandi lama yang Anda masukkan salah.'];
+            } else if ($pass_baru !== $pass_konfirmasi) {
+                $_SESSION['profile_msg'] = ['type' => 'error', 'title' => 'Gagal', 'text' => 'Konfirmasi kata sandi baru tidak cocok.'];
+            } else {
+                // Validasi kekuatan kata sandi agar lolos constraint CHK_Pelanggan_Password di SQL Server
+                $len = strlen($pass_baru);
+                $has_letter = preg_match('/[A-Za-z]/', $pass_baru);
+                $has_digit = preg_match('/[0-9]/', $pass_baru);
+                $has_special = preg_match('/[^A-Za-z0-9]/', $pass_baru);
+                
+                if ($len < 8 || !$has_letter || !$has_digit || !$has_special) {
+                    $_SESSION['profile_msg'] = ['type' => 'error', 'title' => 'Sandi Lemah', 'text' => 'Kata sandi baru harus minimal 8 karakter, serta mengandung kombinasi huruf, angka, dan karakter spesial (seperti @, !, #, $, dll).'];
+                } else {
+                    $sql_up_pass = "UPDATE Pelanggan SET Password_Pelanggan = ?, Modified_By = 'customer', Modified_Date = GETDATE() WHERE ID_Pelanggan = ?";
+                    $stmt_up_pass = sqlsrv_query($conn, $sql_up_pass, array($pass_baru, $id_customer));
+                    if ($stmt_up_pass) {
+                        $_SESSION['profile_msg'] = ['type' => 'success', 'title' => 'Berhasil', 'text' => 'Kata sandi Anda berhasil diperbarui!'];
+                    } else {
+                        $_SESSION['profile_msg'] = ['type' => 'error', 'title' => 'Gagal', 'text' => 'Gagal memperbarui kata sandi pada database.'];
+                    }
+                }
+            }
+        }
+        header("Location: index.php");
+        exit();
+    }
+}
 
+// --- Ambil Detail Profil Pelanggan ---
 $q_profile = sqlsrv_query($conn, 
-    "SELECT Nama_Pelanggan, Foto_Profil FROM Pelanggan WHERE ID_Pelanggan = ? AND Is_Deleted = 0 AND Status = ?", 
+    "SELECT Nama_Pelanggan, Username_Pelanggan, Email_Pelanggan, No_Hp, Alamat, Jenis_Kelamin, Tanggal_Lahir, Foto_Profil 
+     FROM Pelanggan WHERE ID_Pelanggan = ? AND Is_Deleted = 0 AND Status = ?", 
     array($id_customer, STATUS_DATA_AKTIF)
 );
 $d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
+
 $nama_customer = $d_profile['Nama_Pelanggan'] ?? 'Customer';
+$username_customer = $d_profile['Username_Pelanggan'] ?? '';
+$email_customer = $d_profile['Email_Pelanggan'] ?? '';
+$no_hp_customer = $d_profile['No_Hp'] ?? '';
+$alamat_customer = $d_profile['Alamat'] ?? '';
+$jk_customer = $d_profile['Jenis_Kelamin'] ?? 'Laki-laki';
+$tgl_lahir_raw = $d_profile['Tanggal_Lahir'] ?? '';
+$tgl_lahir_str = '';
+if (is_object($tgl_lahir_raw) && method_exists($tgl_lahir_raw, 'format')) {
+    $tgl_lahir_str = $tgl_lahir_raw->format('Y-m-d');
+} else if (is_string($tgl_lahir_raw)) {
+    $tgl_lahir_str = substr($tgl_lahir_raw, 0, 10);
+}
+
 $foto_customer = $d_profile['Foto_Profil'] ?? 'default.jpg';
 $foto_customer_src = ($foto_customer != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_customer)) 
     ? "../../assets/img/pelanggan/" . $foto_customer 
@@ -98,6 +236,10 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html {
+            scroll-behavior: smooth;
+        }
 
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
@@ -352,6 +494,16 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             font-size: 0.85rem;
             flex-shrink: 0;
         }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(216, 63, 103, 0.5); }
+            70% { box-shadow: 0 0 0 10px rgba(216, 63, 103, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(216, 63, 103, 0); }
+        }
+        .step-number-active {
+            animation: pulse 2s infinite;
+        }
+
         .step-number.inactive {
             background: #e2e8f0;
             color: #94a3b8;
@@ -394,7 +546,7 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             color: var(--text-dark);
         }
 
-        /* ===== PAKET GRID (Referensi AYO Style) ===== */
+        /* ===== PAKET GRID ===== */
         .paket-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -545,7 +697,7 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             color: #fff;
         }
 
-        /* ===== INFO SECTION (Jadwal + Barang) ===== */
+        /* ===== INFO SECTION ===== */
         .info-section {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -661,15 +813,114 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             color: var(--text-muted);
         }
 
+        /* ===== MODAL STYLE (PINK ACCENT) ===== */
+        .modal-content-custom {
+            border-radius: 24px;
+            border: none;
+            box-shadow: 0 15px 50px rgba(0,0,0,0.15);
+            overflow: hidden;
+        }
+        .modal-header-custom {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #ffffff;
+            border-bottom: none;
+            padding: 24px;
+        }
+        .modal-body-custom {
+            padding: 24px;
+            background-color: #ffffff;
+        }
+        .modal-footer-custom {
+            border-top: 1px solid #f1f5f9;
+            padding: 18px 24px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        .profile-nav-tabs .nav-link {
+            border: none;
+            color: var(--text-muted);
+            font-weight: 700;
+            padding: 12px 20px;
+            border-radius: 12px;
+            transition: all 0.3s;
+        }
+        .profile-nav-tabs .nav-link.active {
+            background: var(--s-pink);
+            color: var(--p-pink);
+        }
+        .form-control-custom {
+            border-radius: 12px;
+            border: 1.5px solid #cbd5e1;
+            padding: 10px 16px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .form-control-custom:focus {
+            border-color: var(--p-pink);
+            box-shadow: 0 0 0 4px var(--light-pink);
+        }
+        .form-label-custom {
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: var(--text-dark);
+            margin-bottom: 6px;
+        }
+        .img-preview-container {
+            position: relative;
+            width: 110px;
+            height: 110px;
+            margin: 0 auto 20px auto;
+        }
+        .img-preview {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid var(--light-pink);
+        }
+        .btn-upload-trigger {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            background: var(--p-pink);
+            color: #ffffff;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+        }
+        .btn-upload-trigger:hover {
+            background: var(--d-pink);
+            transform: scale(1.1);
+        }
+        .pwd-requirement {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 4px;
+        }
+        .pwd-requirement.valid {
+            color: #059669;
+        }
+
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-5px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* ===== RESPONSIVE ===== */
         @media (max-width: 992px) {
             .hero-title { font-size: 2rem; }
-            .search-bar { flex-wrap: wrap; }
             .info-section { grid-template-columns: 1fr; }
             .nav-menu-center { display: none; }
             .main-container { padding: 20px; }
@@ -687,13 +938,13 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
         </a>
         <div class="nav-menu-center">
             <a href="index.php" class="nav-link-item active">Dashboard</a>
-            <a href="Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
+            <a href="#section-paket" class="nav-link-item">Booking Baru</a>
             <a href="Riwayat/riwayat.php" class="nav-link-item">Riwayat</a>
             <a href="Barang/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
             <a href="Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
         </div>
         <div class="nav-right">
-            <a href="Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
+            <a href="#section-paket" class="nav-btn-booking">
                 <i class="bi bi-plus-lg"></i> Booking
             </a>
             <div class="nav-avatar-wrapper">
@@ -701,6 +952,12 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
                 <div class="nav-dropdown" id="navDropdown">
                     <div class="dropdown-header">Halo, <?= htmlspecialchars($nama_customer) ?></div>
                     <div class="dropdown-divider"></div>
+                    
+                    <!-- MENU BARU: Akses Detil Profil -->
+                    <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalProfil">
+                        <i class="bi bi-person-circle"></i> Profil Saya
+                    </button>
+                    
                     <a href="../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
                         <i class="bi bi-house-door"></i> Kembali ke Beranda
                     </a>
@@ -718,7 +975,7 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
         <div class="hero-content">
             <h1 class="hero-title">BOOKING STUDIO FOTO TERBAIK</h1>
             <p class="hero-subtitle">Pesan sesi foto profesional dengan mudah, cepat, dan terjangkau</p>
-            <a href="Layanan/Paket/pilih_paket.php" class="hero-btn">
+            <a href="#section-paket" class="hero-btn">
                 <i class="bi bi-calendar-plus-fill"></i>
                 Booking Sekarang
             </a>
@@ -729,8 +986,8 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
     <section class="booking-steps">
         <div class="steps-container">
             <div class="step-item">
-                <div class="step-number">1</div>
-                <div class="step-text">Pilih Paket</div>
+                <div class="step-number step-number-active">1</div>
+                <div class="step-text" style="color: var(--p-pink);">Pilih Paket</div>
             </div>
             <div class="step-item">
                 <div class="step-number inactive">2</div>
@@ -787,7 +1044,7 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
         </div>
 
         <!-- PAKET FOTO -->
-        <div class="section-header">
+        <div class="section-header" id="section-paket" style="scroll-margin-top: 100px;">
             <div class="section-title">
                 <i class="bi bi-fire text-danger me-2"></i>
                 Paket Foto <span>Populer</span>
@@ -878,7 +1135,7 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
                                 <div class="info-sub"><?= $jam_mulai_str ?> - <?= $jam_selesai_str ?></div>
                             </div>
                         </div>
-                        <a href="Layanan/Paket/pilih_paket.php" class="info-btn">Booking</a>
+                        <a href="#section-paket" class="info-btn">Booking</a>
                     </div>
                 <?php endwhile; else: ?>
                     <div class="text-center py-4">
@@ -920,17 +1177,234 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
 
     </main>
 
+    <!-- =====================================================
+    MODAL DETAIL PROFIL & KATA SANDI (BARU & MODEREN)
+    ===================================================== -->
+    <div class="modal fade" id="modalProfil" data-bs-backdrop="static" tabindex="-1" aria-labelledby="modalProfilLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content modal-content-custom">
+                <div class="modal-header modal-header-custom">
+                    <h5 class="modal-title fw-bold" id="modalProfilLabel">
+                        <i class="bi bi-person-fill-gear me-2"></i> Pengaturan Profil Pelanggan
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                
+                <!-- Tab Menu Navigasi Moderen -->
+                <div class="bg-light px-4 pt-3">
+                    <ul class="nav profile-nav-tabs" id="profileTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="detail-tab" data-bs-toggle="tab" data-bs-target="#tab-detail" type="button" role="tab" aria-controls="tab-detail" aria-selected="true">
+                                <i class="bi bi-person-badge-fill me-1"></i> Detail Profil
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="password-tab" data-bs-toggle="tab" data-bs-target="#tab-password" type="button" role="tab" aria-controls="tab-password" aria-selected="false">
+                                <i class="bi bi-shield-lock-fill me-1"></i> Ubah Kata Sandi
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="modal-body modal-body-custom">
+                    <div class="tab-content" id="profileTabsContent">
+                        
+                        <!-- TAB 1: DETAIL PROFIL -->
+                        <div class="tab-pane fade show active" id="tab-detail" role="tabpanel" aria-labelledby="detail-tab">
+                            <form action="index.php" method="POST" enctype="multipart/form-data">
+                                <input type="hidden" name="action_type" value="update_profile">
+                                
+                                <div class="img-preview-container">
+                                    <img src="<?= $foto_customer_src ?>" id="profilePreview" class="img-preview" alt="Foto Profil">
+                                    <label for="foto_profil" class="btn-upload-trigger" title="Ubah Foto">
+                                        <i class="bi bi-camera-fill"></i>
+                                    </label>
+                                    <input type="file" id="foto_profil" name="foto_profil" accept="image/png, image/jpeg, image/jpg" style="display: none;" onchange="previewImage(event)">
+                                </div>
+                                
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Username</label>
+                                        <input type="text" class="form-control form-control-custom bg-light" value="<?= htmlspecialchars($username_customer) ?>" disabled>
+                                        <small class="text-muted">Username tidak dapat diubah.</small>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Nama Lengkap</label>
+                                        <input type="text" name="nama_pelanggan" class="form-control form-control-custom" value="<?= htmlspecialchars($nama_customer) ?>" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Email</label>
+                                        <input type="email" name="email_pelanggan" class="form-control form-control-custom" value="<?= htmlspecialchars($email_customer) ?>" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Nomor HP (Contoh: +628211...)</label>
+                                        <input type="text" name="no_hp" class="form-control form-control-custom" value="<?= htmlspecialchars($no_hp_customer) ?>" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Jenis Kelamin</label>
+                                        <select name="jenis_kelamin" class="form-select form-control-custom">
+                                            <option value="Laki-laki" <?= ($jk_customer == 'Laki-laki') ? 'selected' : '' ?>>Laki-laki</option>
+                                            <option value="Perempuan" <?= ($jk_customer == 'Perempuan') ? 'selected' : '' ?>>Perempuan</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Tanggal Lahir</label>
+                                        <input type="date" name="tanggal_lahir" class="form-control form-control-custom" value="<?= $tgl_lahir_str ?>" required>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label form-label-custom">Alamat Lengkap</label>
+                                        <textarea name="alamat" rows="2" class="form-control form-control-custom" required><?= htmlspecialchars($alamat_customer) ?></textarea>
+                                    </div>
+                                </div>
+                                <div class="modal-footer-custom mt-4 px-0 pb-0">
+                                    <button type="button" class="btn btn-secondary px-4" style="border-radius:12px; font-weight:700;" data-bs-dismiss="modal">Batal</button>
+                                    <button type="submit" class="btn text-white px-4" style="background: var(--p-pink); border-radius:12px; font-weight:700;">Simpan Profil</button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- TAB 2: UBAH KATA SANDI -->
+                        <div class="tab-pane fade" id="tab-password" role="tabpanel" aria-labelledby="password-tab">
+                            <form action="index.php" method="POST" id="formPassword">
+                                <input type="hidden" name="action_type" value="update_password">
+                                
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <label class="form-label form-label-custom">Kata Sandi Saat Ini</label>
+                                        <input type="password" name="pass_lama" class="form-control form-control-custom" placeholder="Masukkan kata sandi lama Anda" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Kata Sandi Baru</label>
+                                        <input type="password" name="pass_baru" id="pass_baru" class="form-control form-control-custom" placeholder="Masukkan kata sandi baru" oninput="checkPasswordStrength()" required>
+                                        
+                                        <!-- Indikator Validasi Kekuatan Kata Sandi Realtime -->
+                                        <div class="mt-2">
+                                            <span class="pwd-requirement" id="req-len">
+                                                <i class="bi bi-x-circle-fill text-danger" id="icon-len"></i> Minimal 8 Karakter
+                                            </span>
+                                            <span class="pwd-requirement" id="req-char">
+                                                <i class="bi bi-x-circle-fill text-danger" id="icon-char"></i> Mengandung Huruf & Angka
+                                            </span>
+                                            <span class="pwd-requirement" id="req-spec">
+                                                <i class="bi bi-x-circle-fill text-danger" id="icon-spec"></i> Mengandung Karakter Spesial (e.g. !@#$)
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Konfirmasi Kata Sandi Baru</label>
+                                        <input type="password" name="pass_konfirmasi" id="pass_konfirmasi" class="form-control form-control-custom" placeholder="Ulangi kata sandi baru" oninput="checkPasswordMatch()" required>
+                                        <div class="mt-2">
+                                            <span class="pwd-requirement" id="req-match">
+                                                <i class="bi bi-x-circle-fill text-danger" id="icon-match"></i> Kesesuaian Kata Sandi
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer-custom mt-4 px-0 pb-0">
+                                    <button type="button" class="btn btn-secondary px-4" style="border-radius:12px; font-weight:700;" data-bs-dismiss="modal">Batal</button>
+                                    <button type="submit" id="btnSubmitPassword" class="btn text-white px-4" style="background: var(--p-pink); border-radius:12px; font-weight:700;" disabled>Perbarui Sandi</button>
+                                </div>
+                            </form>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Toggle dropdown menu
+        // Memunculkan pesan status SweetAlert2 saat aksi POST profil/password selesai dilakukan
+        document.addEventListener("DOMContentLoaded", function() {
+            <?php if (isset($_SESSION['profile_msg'])): ?>
+                Swal.fire({
+                    title: "<?= $_SESSION['profile_msg']['title'] ?>",
+                    text: "<?= $_SESSION['profile_msg']['text'] ?>",
+                    icon: "<?= $_SESSION['profile_msg']['type'] ?>",
+                    confirmButtonColor: "#d83f67"
+                });
+                <?php unset($_SESSION['profile_msg']); ?>
+            <?php endif; ?>
+        });
+
+        // Realtime Image Preview ketika memilih foto profil baru
+        function previewImage(event) {
+            const reader = new FileReader();
+            reader.onload = function() {
+                const output = document.getElementById('profilePreview');
+                output.src = reader.result;
+            }
+            reader.readAsDataURL(event.target.files[0]);
+        }
+
+        // Verifikasi Realtime Kekuatan Password sesuai aturan Constraint di Database
+        function checkPasswordStrength() {
+            const password = document.getElementById('pass_baru').value;
+            
+            // Aturan 1: Minimal 8 Karakter
+            const isLenValid = password.length >= 8;
+            updateIndicator('req-len', 'icon-len', isLenValid);
+
+            // Aturan 2: Memiliki Huruf dan Angka
+            const hasLetter = /[A-Za-z]/.test(password);
+            const hasDigit = /[0-9]/.test(password);
+            const isCharValid = hasLetter && hasDigit;
+            updateIndicator('req-char', 'icon-char', isCharValid);
+
+            // Aturan 3: Memiliki Karakter Spesial
+            const isSpecValid = /[^A-Za-z0-9]/.test(password);
+            updateIndicator('req-spec', 'icon-spec', isSpecValid);
+
+            // Validasi kecocokan ulang
+            checkPasswordMatch();
+        }
+
+        // Verifikasi kecocokan Sandi Baru dan Sandi Konfirmasi
+        function checkPasswordMatch() {
+            const password = document.getElementById('pass_baru').value;
+            const confirmPassword = document.getElementById('pass_konfirmasi').value;
+            
+            const isMatch = password === confirmPassword && confirmPassword.length > 0;
+            updateIndicator('req-match', 'icon-match', isMatch);
+
+            // Validasi tombol submit jika semua syarat terpenuhi
+            const isLenValid = password.length >= 8;
+            const hasLetter = /[A-Za-z]/.test(password);
+            const hasDigit = /[0-9]/.test(password);
+            const isSpecValid = /[^A-Za-z0-9]/.test(password);
+
+            const btnSubmit = document.getElementById('btnSubmitPassword');
+            if (isLenValid && hasLetter && hasDigit && isSpecValid && isMatch) {
+                btnSubmit.removeAttribute('disabled');
+            } else {
+                btnSubmit.setAttribute('disabled', 'true');
+            }
+        }
+
+        // Fungsi pembantu memperbarui visual indikator checklist form
+        function updateIndicator(elementId, iconId, isValid) {
+            const element = document.getElementById(elementId);
+            const icon = document.getElementById(iconId);
+            
+            if (isValid) {
+                element.classList.add('valid');
+                icon.className = 'bi bi-check-circle-fill text-success';
+            } else {
+                element.classList.remove('valid');
+                icon.className = 'bi bi-x-circle-fill text-danger';
+            }
+        }
+
+        // Toggle dropdown menu profil
         function toggleDropdown() {
             document.getElementById('navDropdown').classList.toggle('show');
         }
         
-        // Close dropdown when clicking outside
+        // Tutup dropdown jika mengklik area lain di luar foto/menu dropdown
         document.addEventListener('click', function(e) {
             const wrapper = document.querySelector('.nav-avatar-wrapper');
-            if (!wrapper.contains(e.target)) {
+            if (wrapper && !wrapper.contains(e.target)) {
                 document.getElementById('navDropdown').classList.remove('show');
             }
         });
@@ -970,6 +1444,47 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
                 }
             });
         }
+
+        // Deteksi Parameter Navigasi/Error
+        document.addEventListener("DOMContentLoaded", function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('error')) {
+                const errorType = urlParams.get('error');
+                let message = "Terjadi kesalahan pada proses navigasi.";
+                let title = "Navigasi Ditangguhkan";
+                let icon = "warning";
+                
+                if (errorType === 'pilih_paket_dulu') {
+                    title = "Pilih Paket Terlebih Dahulu";
+                    message = "Sistem mengarahkan Anda kembali ke dasbor. Silakan pilih salah satu Paket Foto Populer di bawah ini untuk memulai langkah pemesanan.";
+                    icon = "info";
+                } else if (errorType === 'pilih_ruangan_dulu') {
+                    title = "Pilih Ruangan Dahulu";
+                    message = "Mohon maaf, Anda harus menyelesaikan pemilihan ruangan yang sesuai dengan paket Anda terlebih dahulu.";
+                } else if (errorType === 'pilih_tema_dulu') {
+                    title = "Pilih Tema Dahulu";
+                    message = "Silakan pilih konsep atau tema foto yang Anda inginkan sebelum melanjutkan.";
+                } else if (errorType === 'pilih_jadwal_dulu') {
+                    title = "Pilih Jadwal Dahulu";
+                    message = "Harap tentukan tanggal dan jam sewa studio yang masih tersedia.";
+                }
+
+                Swal.fire({
+                    title: title,
+                    text: message,
+                    icon: icon,
+                    confirmButtonColor: "#d83f67",
+                    confirmButtonText: "Pilih Paket Sekarang"
+                }).then(() => {
+                    const targetElement = document.getElementById('section-paket');
+                    if (targetElement) {
+                        targetElement.scrollIntoView({ behavior: 'smooth' });
+                    }
+                });
+
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        });
     </script>
 </body>
 </html>

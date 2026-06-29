@@ -331,7 +331,7 @@ if (isset($_POST['simpan'])) {
 <div class="sidebar">
     <div class="sidebar-menu-wrapper">
         <a href="../../index.php" class="sidebar-brand">
-            SpotLight.<br><span>Panel Admin</span>
+            SpotLight.<br><span>Panel Administrator</span>
         </a>
         <ul class="nav-menu">
             <li class="nav-item">

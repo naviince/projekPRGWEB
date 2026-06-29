@@ -286,7 +286,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 <body>
 <div class="sidebar">
 <div class="sidebar-menu-wrapper">
-<a href="../../index.php" class="sidebar-brand">SpotLight.<br><span>Panel Admin</span></a>
+<a href="../../index.php" class="sidebar-brand">SpotLight.<br><span>Panel Administrator</span></a>
 <ul class="nav-menu">
 <li class="nav-item"><a href="../../Role/Admin/index.php" class="nav-link-custom"><span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span></a></li>
 <li class="nav-item">
