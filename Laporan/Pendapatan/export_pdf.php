@@ -1,242 +1,311 @@
 <?php
 session_start();
-include '../../koneksi.php';
 
-// --- PROTEKSI HALAMAN ---
+// =====================================================
+// KONSTANTA STATUS
+// =====================================================
+define('STATUS_ORDER_MENUNGGU_DP', 0);
+define('STATUS_ORDER_DP_TERVERIFIKASI', 1);
+define('STATUS_ORDER_LUNAS', 2);
+define('STATUS_ORDER_SELESAI', 3);
+define('STATUS_ORDER_DIBATALKAN', 4);
+
+define('STATUS_PEMBAYARAN_MENUNGGU', 0);
+define('STATUS_PEMBAYARAN_VALID', 1);
+define('STATUS_PEMBAYARAN_DITOLAK', 2);
+
+// --- PROTEKSI HALAMAN: HANYA OWNER ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Owner') {
     header("Location: ../../login.php");
     exit();
 }
 
-// =====================================================
-// FILTER PARAMETER
-// =====================================================
+// --- INCLUDE KONEKSI ---
+if (!file_exists('../../koneksi.php')) {
+    die('Error: File koneksi.php tidak ditemukan!');
+}
+include '../../koneksi.php';
+
+if (!isset($conn) || $conn === false) {
+    die('Error: Koneksi database gagal!');
+}
+
+// --- FILTER TANGGAL ---
 $tgl_mulai = isset($_GET['tgl_mulai']) ? $_GET['tgl_mulai'] : date('Y-m-01');
 $tgl_selesai = isset($_GET['tgl_selesai']) ? $_GET['tgl_selesai'] : date('Y-m-d');
-$filter_tipe = isset($_GET['filter_tipe']) ? $_GET['filter_tipe'] : 'semua';
-$filter_status = isset($_GET['filter_status']) ? $_GET['filter_status'] : 'semua';
 
 // =====================================================
-// QUERY DATA
+// QUERY DATA PENDAPATAN
 // =====================================================
-$sql_data = "";
-$params = array();
+$sql_detail = "SELECT p.ID_Pembayaran, p.ID_Order, p.Jumlah_Bayar, p.Metode_Pembayaran, p.Tanggal_Upload, pl.Nama_Pelanggan, pl.No_Hp, pk.Nama_Paket, r.Nama_Ruangan, t.Nama_Tema, o.Total_Paket, o.Total_Barang_Cetak, o.Tanggal_Booking, o.Status_Order, k.Nama_Karyawan as Nama_Verifikator FROM Pembayaran p INNER JOIN [Order] o ON p.ID_Order = o.ID_Order INNER JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan INNER JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket INNER JOIN Ruangan r ON o.ID_Ruangan = r.ID_Ruangan INNER JOIN Tema_Foto t ON o.ID_Tema = t.ID_Tema LEFT JOIN Karyawan k ON p.ID_Karyawan_Verifikator = k.ID_Karyawan WHERE p.Tipe_Pembayaran = 'Pelunasan' AND p.Status_Pembayaran = ? AND p.Status = 1 AND o.Status = 1 AND o.Status_Order IN (?, ?) AND CAST(p.Tanggal_Upload AS DATE) BETWEEN ? AND ? ORDER BY p.Tanggal_Upload DESC";
 
-if ($filter_tipe == 'semua' || $filter_tipe == 'dp' || $filter_tipe == 'pelunasan') {
-    $sql_data .= "
-        SELECT 
-            p.ID_Pembayaran as id_transaksi,
-            p.Tanggal_Upload as tanggal,
-            o.ID_Order,
-            pl.Nama_Pelanggan,
-            pk.Nama_Paket,
-            p.Tipe_Pembayaran as tipe,
-            p.Metode_Pembayaran as metode,
-            p.Jumlah_Bayar as jumlah,
-            p.Status_Pembayaran as status,
-            k.Nama_Karyawan as verifikator,
-            'Pembayaran' as sumber
-        FROM Pembayaran p
-        INNER JOIN [Order] o ON p.ID_Order = o.ID_Order
-        INNER JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan
-        INNER JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket
-        LEFT JOIN Karyawan k ON p.ID_Karyawan_Verifikator = k.ID_Karyawan
-        WHERE p.Status = 1
-        AND CAST(p.Tanggal_Upload AS DATE) BETWEEN ? AND ?
-    ";
-    $params[] = $tgl_mulai;
-    $params[] = $tgl_selesai;
+$params = [STATUS_PEMBAYARAN_VALID, STATUS_ORDER_LUNAS, STATUS_ORDER_SELESAI, $tgl_mulai, $tgl_selesai];
+$query = sqlsrv_query($conn, $sql_detail, $params);
 
-    if ($filter_tipe == 'dp') {
-        $sql_data .= " AND p.Tipe_Pembayaran = 'DP'";
-    } elseif ($filter_tipe == 'pelunasan') {
-        $sql_data .= " AND p.Tipe_Pembayaran = 'Pelunasan'";
+if ($query === false) {
+    $errors = sqlsrv_errors(SQLSRV_ERR_ERRORS);
+    $errorMsg = "Query Error:
+";
+    foreach ($errors as $error) {
+        $errorMsg .= "SQLSTATE: " . $error['SQLSTATE'] . " | Code: " . $error['code'] . " | Message: " . $error['message'] . "
+";
     }
+    die(nl2br($errorMsg));
+}
 
-    if ($filter_status != 'semua') {
-        $status_map = ['menunggu' => 0, 'valid' => 1, 'ditolak' => 2];
-        $sql_data .= " AND p.Status_Pembayaran = " . $status_map[$filter_status];
+// Hitung total
+$q_total = sqlsrv_query($conn, "SELECT SUM(p.Jumlah_Bayar) AS total, COUNT(*) AS jumlah FROM Pembayaran p INNER JOIN [Order] o ON p.ID_Order = o.ID_Order WHERE p.Tipe_Pembayaran = 'Pelunasan' AND p.Status_Pembayaran = ? AND p.Status = 1 AND o.Status = 1 AND o.Status_Order IN (?, ?) AND CAST(p.Tanggal_Upload AS DATE) BETWEEN ? AND ?", $params);
+if ($q_total === false) {
+    die('Error menghitung total pendapatan.');
+}
+$d_total = sqlsrv_fetch_array($q_total, SQLSRV_FETCH_ASSOC);
+$total_pendapatan = $d_total['total'] ?? 0;
+$jumlah_order = $d_total['jumlah'] ?? 0;
+
+// =====================================================
+// GENERATE PDF DENGAN TCPDF
+// =====================================================
+$tcpdf_paths = [
+    '../../assets/vendor/tcpdf/tcpdf.php',
+    '../../assets/tcpdf/tcpdf.php',
+    '../../tcpdf/tcpdf.php',
+];
+
+$tcpdf_found = false;
+foreach ($tcpdf_paths as $path) {
+    if (file_exists($path)) {
+        require_once($path);
+        $tcpdf_found = true;
+        break;
     }
 }
 
-if ($filter_tipe == 'semua' || $filter_tipe == 'barang') {
-    if (!empty($sql_data)) {
-        $sql_data .= " UNION ALL ";
-    }
-    $sql_data .= "
-        SELECT 
-            pe.ID_Penjualan as id_transaksi,
-            pe.Tanggal_Penjualan as tanggal,
-            pe.ID_Order,
-            pl.Nama_Pelanggan,
-            'Barang Cetak' as Nama_Paket,
-            'Penjualan' as tipe,
-            'Kasir' as metode,
-            pe.Total_Penjualan as jumlah,
-            pe.Status_Penjualan as status,
-            k.Nama_Karyawan as verifikator,
-            'Barang_Cetak' as sumber
-        FROM Penjualan pe
-        INNER JOIN [Order] o ON pe.ID_Order = o.ID_Order
-        INNER JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan
-        LEFT JOIN Karyawan k ON pe.ID_Karyawan_Admin = k.ID_Karyawan
-        WHERE pe.Status = 1
-        AND CAST(pe.Tanggal_Penjualan AS DATE) BETWEEN ? AND ?
-    ";
-    $params[] = $tgl_mulai;
-    $params[] = $tgl_selesai;
+// Jika TCPDF tidak ditemukan, generate HTML sederhana yang bisa di-print ke PDF
+if (!$tcpdf_found) {
+    header("Content-Type: text/html; charset=UTF-8");
+    ?>
+    <!DOCTYPE html>
+    <html lang="id">
+    <head>
+        <meta charset="UTF-8">
+        <title>Laporan Pendapatan - SpotLight Studio</title>
+        <style>
+            @page { size: A4 landscape; margin: 15mm; }
+            body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #1e1e24; }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #d83f67; padding-bottom: 15px; }
+            .header h1 { color: #d83f67; font-size: 22px; margin: 0 0 5px 0; }
+            .header p { color: #718096; margin: 0; font-size: 10px; }
+            .info { margin-bottom: 15px; font-size: 10px; }
+            .info strong { color: #d83f67; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10px; }
+            th { background: linear-gradient(135deg, #d83f67, #c73165); color: white; padding: 10px 8px; text-align: left; font-weight: 700; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; }
+            td { padding: 8px; border-bottom: 1px solid #e2e8f0; }
+            tr:nth-child(even) { background-color: #fff8f0; }
+            tr:hover { background-color: #ffedd5; }
+            .text-right { text-align: right; }
+            .text-center { text-align: center; }
+            .total-row { background: #1e1e24 !important; color: white; font-weight: 700; }
+            .total-row td { border: none; padding: 12px 8px; }
+            .footer { margin-top: 30px; display: flex; justify-content: space-between; font-size: 10px; }
+            .signature { text-align: center; width: 200px; }
+            .signature-line { border-top: 1px solid #1e1e24; margin-top: 50px; padding-top: 5px; font-weight: 700; }
+            .print-btn { position: fixed; top: 20px; right: 20px; background: #d83f67; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 700; }
+            @media print { .print-btn { display: none; } body { margin: 0; } }
+        </style>
+    </head>
+    <body>
+        <button class="print-btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
 
-    if ($filter_status != 'semua') {
-        $status_map = ['menunggu' => 0, 'valid' => 1, 'ditolak' => 2];
-        $sql_data .= " AND pe.Status_Penjualan = " . $status_map[$filter_status];
-    }
+        <div class="header">
+            <h1>SpotLight Studio Foto</h1>
+            <p>Cikarang Pusat, Bekasi, Jawa Barat | Telepon: +62 878-7143-8459</p>
+            <p style="margin-top:10px; font-size:14px; color:#1e1e24; font-weight:700;">LAPORAN PENDAPATAN PELUNASAN</p>
+            <p>Periode: <strong><?= date('d M Y', strtotime($tgl_mulai)) ?> s/d <?= date('d M Y', strtotime($tgl_selesai)) ?></strong></p>
+        </div>
+
+        <div class="info">
+            <p><strong>Total Pendapatan:</strong> Rp <?= number_format($total_pendapatan, 0, ',', '.') ?> | 
+            <strong>Jumlah Order:</strong> <?= $jumlah_order ?> | 
+            <strong>Dicetak:</strong> <?= date('d M Y H:i') ?></p>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th width="4%">No</th>
+                    <th width="8%">No. Bayar</th>
+                    <th width="8%">No. Order</th>
+                    <th width="15%">Pelanggan</th>
+                    <th width="12%">Paket</th>
+                    <th width="12%">Ruangan</th>
+                    <th width="10%">Tema</th>
+                    <th width="10%">Metode</th>
+                    <th width="12%" class="text-right">Jumlah</th>
+                    <th width="12%">Tanggal</th>
+                    <th width="10%">Verifikator</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php 
+                $no = 1;
+                if ($query && sqlsrv_has_rows($query)):
+                    while ($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
+                        $tgl = is_object($row['Tanggal_Upload']) && method_exists($row['Tanggal_Upload'], 'format') 
+                            ? $row['Tanggal_Upload']->format('d-m-Y H:i') 
+                            : date('d-m-Y H:i', strtotime($row['Tanggal_Upload']));
+                ?>
+                <tr>
+                    <td class="text-center"><?= $no++ ?></td>
+                    <td>#<?= str_pad((int)$row['ID_Pembayaran'], 5, '0', STR_PAD_LEFT) ?></td>
+                    <td>#<?= str_pad((int)$row['ID_Order'], 5, '0', STR_PAD_LEFT) ?></td>
+                    <td><?= htmlspecialchars($row['Nama_Pelanggan']) ?><br><small style="color:#718096;"><?= htmlspecialchars($row['No_Hp']) ?></small></td>
+                    <td><?= htmlspecialchars($row['Nama_Paket']) ?></td>
+                    <td><?= htmlspecialchars($row['Nama_Ruangan']) ?></td>
+                    <td><?= htmlspecialchars($row['Nama_Tema']) ?></td>
+                    <td><?= htmlspecialchars($row['Metode_Pembayaran']) ?></td>
+                    <td class="text-right">Rp <?= number_format((float)$row['Jumlah_Bayar'], 0, ',', '.') ?></td>
+                    <td><?= $tgl ?></td>
+                    <td><?= htmlspecialchars($row['Nama_Verifikator'] ?? 'System') ?></td>
+                </tr>
+                <?php endwhile; else: ?>
+                <tr><td colspan="11" class="text-center" style="padding:30px; color:#718096;">Tidak ada data pada periode ini.</td></tr>
+                <?php endif; ?>
+                <tr class="total-row">
+                    <td colspan="8" class="text-right">TOTAL PENDAPATAN:</td>
+                    <td class="text-right">Rp <?= number_format($total_pendapatan, 0, ',', '.') ?></td>
+                    <td colspan="2"></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="footer">
+            <div>
+                <p style="color:#718096; font-size:9px;">Dicetak oleh sistem SpotLight Studio</p>
+            </div>
+            <div class="signature">
+                <p>Bekasi, <?= date('d F Y') ?></p>
+                <div class="signature-line">Owner SpotLight Studio</div>
+            </div>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit();
 }
 
-$sql_data .= " ORDER BY tanggal DESC";
-
-$query = sqlsrv_query($conn, $sql_data, $params);
-
 // =====================================================
-// HITUNG TOTAL
+// TCPPDF TERDETEKSI - GENERATE PDF LANGSUNG
 // =====================================================
-$total_dp = 0; $total_pelunasan = 0; $total_barang = 0;
-
-$q_dp = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) as total FROM Pembayaran WHERE Status_Pembayaran = 1 AND Tipe_Pembayaran = 'DP' AND CAST(Tanggal_Upload AS DATE) BETWEEN ? AND ?", array($tgl_mulai, $tgl_selesai));
-$d_dp = sqlsrv_fetch_array($q_dp, SQLSRV_FETCH_ASSOC);
-$total_dp = $d_dp['total'] ?? 0;
-
-$q_pel = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) as total FROM Pembayaran WHERE Status_Pembayaran = 1 AND Tipe_Pembayaran = 'Pelunasan' AND CAST(Tanggal_Upload AS DATE) BETWEEN ? AND ?", array($tgl_mulai, $tgl_selesai));
-$d_pel = sqlsrv_fetch_array($q_pel, SQLSRV_FETCH_ASSOC);
-$total_pelunasan = $d_pel['total'] ?? 0;
-
-$q_brg = sqlsrv_query($conn, "SELECT SUM(Total_Penjualan) as total FROM Penjualan WHERE Status_Penjualan = 1 AND CAST(Tanggal_Penjualan AS DATE) BETWEEN ? AND ?", array($tgl_mulai, $tgl_selesai));
-$d_brg = sqlsrv_fetch_array($q_brg, SQLSRV_FETCH_ASSOC);
-$total_barang = $d_brg['total'] ?? 0;
-
-$grand_total = $total_dp + $total_pelunasan + $total_barang;
-
-function getStatusLabel($status, $sumber) {
-    if ($sumber == 'Barang_Cetak') {
-        $map = [0 => 'Proses', 1 => 'Selesai'];
-    } else {
-        $map = [0 => 'Menunggu', 1 => 'Valid', 2 => 'Ditolak'];
-    }
-    return $map[$status] ?? 'Unknown';
-}
-
-function getTipeLabel($tipe) {
-    $map = ['DP' => 'Uang Muka', 'Pelunasan' => 'Pelunasan', 'Penjualan' => 'Barang Cetak'];
-    return $map[$tipe] ?? $tipe;
-}
-
-// =====================================================
-// GENERATE PDF DENGAN FPDF
-// =====================================================
-require('../../assets/vendor/fpdf/fpdf.php');
-
-class PDF extends FPDF {
-    function Header() {
-        // Logo/Brand
-        $this->SetFont('Arial', 'B', 20);
-        $this->SetTextColor(216, 63, 103);
-        $this->Cell(0, 10, 'SpotLight Studio', 0, 1, 'L');
-
-        $this->SetFont('Arial', '', 10);
-        $this->SetTextColor(100, 100, 100);
-        $this->Cell(0, 6, 'Laporan Pendapatan', 0, 1, 'L');
-        $this->Cell(0, 6, 'Periode: ' . date('d M Y', strtotime($GLOBALS['tgl_mulai'])) . ' - ' . date('d M Y', strtotime($GLOBALS['tgl_selesai'])), 0, 1, 'L');
-        $this->Ln(5);
-
-        // Garis pemisah
-        $this->SetDrawColor(216, 63, 103);
-        $this->Line(10, $this->GetY(), 200, $this->GetY());
-        $this->Ln(5);
-    }
-
-    function Footer() {
-        $this->SetY(-15);
-        $this->SetFont('Arial', 'I', 8);
-        $this->SetTextColor(128, 128, 128);
-        $this->Cell(0, 10, 'Halaman ' . $this->PageNo() . ' | Dicetak pada ' . date('d M Y H:i'), 0, 0, 'C');
-    }
-
-    function SummaryRow($label, $value, $isTotal = false) {
-        $this->SetFont('Arial', $isTotal ? 'B' : '', 10);
-        $this->SetTextColor($isTotal ? 216 : 80, $isTotal ? 63 : 80, $isTotal ? 103 : 80);
-        $this->Cell(100, 8, $label, 0, 0, 'L');
-        $this->Cell(0, 8, 'Rp ' . number_format($value, 0, ',', '.'), 0, 1, 'R');
-    }
-}
-
-$pdf = new PDF('L', 'mm', 'A4');
+$pdf = new TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
+$pdf->SetCreator('SpotLight Studio');
+$pdf->SetAuthor('SpotLight Studio');
+$pdf->SetTitle('Laporan Pendapatan - SpotLight Studio');
+$pdf->SetSubject('Laporan Pendapatan Pelunasan');
+$pdf->setPrintHeader(false);
+$pdf->setPrintFooter(false);
+$pdf->SetMargins(15, 15, 15);
+$pdf->SetAutoPageBreak(true, 15);
 $pdf->AddPage();
-$pdf->SetAutoPageBreak(true, 20);
 
-// Summary Section
-$pdf->SetFont('Arial', 'B', 12);
+// Header
+$pdf->SetFont('helvetica', 'B', 18);
 $pdf->SetTextColor(216, 63, 103);
-$pdf->Cell(0, 10, 'Ringkasan Pendapatan', 0, 1, 'L');
-$pdf->Ln(2);
+$pdf->Cell(0, 10, 'SpotLight Studio Foto', 0, 1, 'C');
+$pdf->SetFont('helvetica', '', 9);
+$pdf->SetTextColor(113, 128, 150);
+$pdf->Cell(0, 5, 'Cikarang Pusat, Bekasi, Jawa Barat | Telepon: +62 878-7143-8459', 0, 1, 'C');
+$pdf->SetDrawColor(216, 63, 103);
+$pdf->Line(15, 32, 282, 32);
+$pdf->Ln(3);
 
-$pdf->SummaryRow('Total Uang Muka (DP)', $total_dp);
-$pdf->SummaryRow('Total Pelunasan', $total_pelunasan);
-$pdf->SummaryRow('Total Barang Cetak', $total_barang);
-$pdf->SetDrawColor(200, 200, 200);
-$pdf->Line(10, $pdf->GetY(), 200, $pdf->GetY());
-$pdf->Ln(2);
-$pdf->SummaryRow('GRAND TOTAL', $grand_total, true);
-$pdf->Ln(10);
+$pdf->SetFont('helvetica', 'B', 13);
+$pdf->SetTextColor(30, 30, 36);
+$pdf->Cell(0, 8, 'LAPORAN PENDAPATAN PELUNASAN', 0, 1, 'C');
+$pdf->SetFont('helvetica', '', 10);
+$pdf->Cell(0, 6, 'Periode: ' . date('d M Y', strtotime($tgl_mulai)) . ' s/d ' . date('d M Y', strtotime($tgl_selesai)), 0, 1, 'C');
+$pdf->Ln(5);
 
-// Table Header
-$pdf->SetFont('Arial', 'B', 12);
+// Info Box
+$pdf->SetFillColor(255, 245, 246);
+$pdf->SetDrawColor(255, 228, 233);
+$pdf->RoundedRect(15, 50, 267, 18, 3, '1111', 'DF');
+$pdf->SetFont('helvetica', 'B', 10);
 $pdf->SetTextColor(216, 63, 103);
-$pdf->Cell(0, 10, 'Detail Transaksi', 0, 1, 'L');
-$pdf->Ln(2);
+$pdf->SetXY(20, 54);
+$pdf->Cell(80, 6, 'Total Pendapatan: Rp ' . number_format($total_pendapatan, 0, ',', '.'), 0, 0, 'L');
+$pdf->SetTextColor(30, 30, 36);
+$pdf->Cell(80, 6, 'Jumlah Order: ' . $jumlah_order, 0, 0, 'L');
+$pdf->Cell(80, 6, 'Dicetak: ' . date('d M Y H:i'), 0, 1, 'R');
+$pdf->Ln(12);
 
+// Tabel Header
 $pdf->SetFillColor(216, 63, 103);
 $pdf->SetTextColor(255, 255, 255);
-$pdf->SetFont('Arial', 'B', 9);
+$pdf->SetFont('helvetica', 'B', 8);
+$pdf->SetDrawColor(216, 63, 103);
 
-$headers = ['No', 'Tanggal', 'Pelanggan', 'Paket', 'Tipe', 'Metode', 'Jumlah', 'Status'];
-$widths = [10, 30, 40, 35, 25, 25, 30, 25];
+$headers = ['No', 'No. Bayar', 'No. Order', 'Pelanggan', 'Paket', 'Ruangan', 'Tema', 'Metode', 'Jumlah', 'Tanggal', 'Verifikator'];
+$widths = [8, 18, 18, 35, 30, 30, 25, 25, 30, 30, 25];
 
 foreach ($headers as $i => $header) {
     $pdf->Cell($widths[$i], 10, $header, 1, 0, 'C', true);
 }
 $pdf->Ln();
 
-// Table Data
-$pdf->SetTextColor(50, 50, 50);
-$pdf->SetFont('Arial', '', 8);
+// Tabel Data
+$pdf->SetFont('helvetica', '', 8);
+$pdf->SetTextColor(30, 30, 36);
 $fill = false;
 
-$no = 1;
 if ($query && sqlsrv_has_rows($query)):
+    $no = 1;
     while ($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
-        $statusLabel = getStatusLabel((int)$row['status'], $row['sumber']);
-        $tipeLabel = getTipeLabel($row['tipe']);
-        $tanggal = (is_object($row['tanggal']) && method_exists($row['tanggal'], 'format')) 
-            ? $row['tanggal']->format('d M Y') 
-            : date('d M Y', strtotime($row['tanggal']));
+        $tgl = is_object($row['Tanggal_Upload']) && method_exists($row['Tanggal_Upload'], 'format') 
+            ? $row['Tanggal_Upload']->format('d-m-Y') 
+            : date('d-m-Y', strtotime($row['Tanggal_Upload']));
 
-        $pdf->SetFillColor($fill ? 255 : 255, $fill ? 245 : 255, $fill ? 246 : 255);
+        if ($fill) {
+            $pdf->SetFillColor(255, 248, 240);
+        } else {
+            $pdf->SetFillColor(255, 255, 255);
+        }
 
         $pdf->Cell($widths[0], 8, $no++, 1, 0, 'C', true);
-        $pdf->Cell($widths[1], 8, $tanggal, 1, 0, 'C', true);
-        $pdf->Cell($widths[2], 8, substr($row['Nama_Pelanggan'], 0, 20), 1, 0, 'L', true);
-        $pdf->Cell($widths[3], 8, substr($row['Nama_Paket'], 0, 18), 1, 0, 'L', true);
-        $pdf->Cell($widths[4], 8, $tipeLabel, 1, 0, 'C', true);
-        $pdf->Cell($widths[5], 8, $row['metode'], 1, 0, 'C', true);
-        $pdf->Cell($widths[6], 8, 'Rp ' . number_format((float)$row['jumlah'], 0, ',', '.'), 1, 0, 'R', true);
-        $pdf->Cell($widths[7], 8, $statusLabel, 1, 1, 'C', true);
+        $pdf->Cell($widths[1], 8, '#' . str_pad((int)$row['ID_Pembayaran'], 5, '0', STR_PAD_LEFT), 1, 0, 'C', true);
+        $pdf->Cell($widths[2], 8, '#' . str_pad((int)$row['ID_Order'], 5, '0', STR_PAD_LEFT), 1, 0, 'C', true);
+        $pdf->Cell($widths[3], 8, htmlspecialchars($row['Nama_Pelanggan']), 1, 0, 'L', true);
+        $pdf->Cell($widths[4], 8, htmlspecialchars($row['Nama_Paket']), 1, 0, 'L', true);
+        $pdf->Cell($widths[5], 8, htmlspecialchars($row['Nama_Ruangan']), 1, 0, 'L', true);
+        $pdf->Cell($widths[6], 8, htmlspecialchars($row['Nama_Tema']), 1, 0, 'L', true);
+        $pdf->Cell($widths[7], 8, htmlspecialchars($row['Metode_Pembayaran']), 1, 0, 'L', true);
+        $pdf->Cell($widths[8], 8, 'Rp ' . number_format((float)$row['Jumlah_Bayar'], 0, ',', '.'), 1, 0, 'R', true);
+        $pdf->Cell($widths[9], 8, $tgl, 1, 0, 'C', true);
+        $pdf->Cell($widths[10], 8, htmlspecialchars($row['Nama_Verifikator'] ?? 'System'), 1, 1, 'C', true);
 
         $fill = !$fill;
     endwhile;
 else:
-    $pdf->Cell(220, 20, 'Tidak ada data transaksi.', 1, 1, 'C');
+    $pdf->Cell(array_sum($widths), 20, 'Tidak ada data pada periode ini.', 1, 1, 'C', false);
 endif;
 
-// Output PDF
-$pdf->Output('Laporan_Pendapatan_' . date('Ymd') . '.pdf', 'D');
+// Total Row
+$pdf->SetFillColor(30, 30, 36);
+$pdf->SetTextColor(255, 255, 255);
+$pdf->SetFont('helvetica', 'B', 9);
+$pdf->Cell(array_sum(array_slice($widths, 0, 8)), 10, 'TOTAL PENDAPATAN:', 1, 0, 'R', true);
+$pdf->Cell($widths[8], 10, 'Rp ' . number_format($total_pendapatan, 0, ',', '.'), 1, 0, 'R', true);
+$pdf->Cell($widths[9] + $widths[10], 10, '', 1, 1, 'C', true);
+
+// Footer
+$pdf->Ln(15);
+$pdf->SetTextColor(30, 30, 36);
+$pdf->SetFont('helvetica', '', 9);
+$pdf->Cell(0, 5, 'Bekasi, ' . date('d F Y'), 0, 1, 'R');
+$pdf->Cell(0, 5, 'Owner SpotLight Studio', 0, 1, 'R');
+$pdf->Ln(15);
+$pdf->SetFont('helvetica', 'B', 9);
+$pdf->Cell(0, 5, '_________________________', 0, 1, 'R');
+
+$filename = 'Laporan_Pendapatan_' . $tgl_mulai . '_to_' . $tgl_selesai . '.pdf';
+$pdf->Output($filename, 'D');
 exit();
-?>
