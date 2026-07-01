@@ -101,11 +101,17 @@ if (isset($_POST['tambah_karyawan'])) {
 
         if (empty($alamat)) { $errors[] = "Alamat wajib diisi!"; $error_fields['alamat'] = true; }
 
-        // Cek duplikat
+        // Cek duplikat menggunakan Stored Procedure sp_CekDuplikatKaryawan
         if (empty($errors)) {
-            if (cekDuplikat($conn, 'NIK', $nik) > 0) { $errors[] = "NIK sudah terdaftar!"; $error_fields['nik'] = true; }
-            if (safe_sqlsrv_count($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE LOWER(Username_Karyawan) = LOWER(?) AND Is_Deleted = 0", array($username)) > 0) { $errors[] = "Username sudah digunakan!"; $error_fields['username'] = true; }
-            if (safe_sqlsrv_count($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE LOWER(Email_Karyawan) = LOWER(?) AND Is_Deleted = 0", array($email)) > 0) { $errors[] = "Email sudah terdaftar!"; $error_fields['email'] = true; }
+            $sql_dup = "{CALL sp_CekDuplikatKaryawan(?, ?, ?, NULL)}";
+            $q_dup = safe_sqlsrv_query($conn, $sql_dup, array($nik, $username, $email));
+            $d_dup = safe_sqlsrv_fetch($q_dup);
+            
+            if ($d_dup) {
+                if (($d_dup['Duplikat_NIK'] ?? 0) > 0) { $errors[] = "NIK sudah terdaftar!"; $error_fields['nik'] = true; }
+                if (($d_dup['Duplikat_Username'] ?? 0) > 0) { $errors[] = "Username sudah digunakan!"; $error_fields['username'] = true; }
+                if (($d_dup['Duplikat_Email'] ?? 0) > 0) { $errors[] = "Email sudah terdaftar!"; $error_fields['email'] = true; }
+            }
             if (cekDuplikat($conn, 'No_Hp', $hp) > 0) { $errors[] = "Nomor telepon sudah terdaftar!"; $error_fields['no_hp'] = true; }
         }
 
@@ -134,13 +140,13 @@ if (isset($_POST['tambah_karyawan'])) {
                     // Cek apakah GD library tersedia
                     if (extension_loaded('gd') && function_exists('imagecreatetruecolor')) {
                         // Resize dengan GD
-                    list($width, $height) = $img_info; $new_width = 300; $new_height = 300;
-                                            $thumb = imagecreatetruecolor($new_width, $new_height);
-                                            if ($mime_type == 'image/png') { $source = imagecreatefrompng($file_tmp); imagealphablending($thumb, false); imagesavealpha($thumb, true); }
-                                            else $source = imagecreatefromjpeg($file_tmp);
-                                            imagecopyresampled($thumb, $source, 0, 0, 0, 0, $new_width, $new_height, $width, $height);
-                                            if ($mime_type == 'image/png') imagepng($thumb, $upload_path, 8); else imagejpeg($thumb, $upload_path, 85);
-                                            imagedestroy($thumb); imagedestroy($source);
+                        list($width, $height) = $img_info; $new_width = 300; $new_height = 300;
+                        $thumb = imagecreatetruecolor($new_width, $new_height);
+                        if ($mime_type == 'image/png') { $source = imagecreatefrompng($file_tmp); imagealphablending($thumb, false); imagesavealpha($thumb, true); }
+                        else $source = imagecreatefromjpeg($file_tmp);
+                        imagecopyresampled($thumb, $source, 0, 0, 0, 0, $new_width, $new_height, $width, $height);
+                        if ($mime_type == 'image/png') imagepng($thumb, $upload_path, 8); else imagejpeg($thumb, $upload_path, 85);
+                        imagedestroy($thumb); imagedestroy($source);
                     } else {
                         // Fallback: upload langsung tanpa resize
                         if (!move_uploaded_file($file_tmp, $upload_path)) {
@@ -152,12 +158,36 @@ if (isset($_POST['tambah_karyawan'])) {
             }
         }
 
+        // AKSI SIMPAN DENGAN STORED PROCEDURE sp_InsertKaryawan
         if (empty($errors)) {
             $pass_hash = password_hash($pass, PASSWORD_BCRYPT);
-            $sql_ins = "INSERT INTO Karyawan (NIK, Nama_Karyawan, Username_Karyawan, Email_Karyawan, Password_Karyawan, Jenis_Kelamin, Tanggal_Lahir, Role_Karyawan, No_Hp, Alamat, Foto_Profil, Status, Created_By, Created_Date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, GETDATE())";
-            $stmt_ins = safe_sqlsrv_query($conn, $sql_ins, array($nik, $nama, $username, $email, $pass_hash, $jk, $dob, $role, $hp, $alamat, $foto_profil, $username_session));
-            if ($stmt_ins) { header("Location: index.php?status_sukses=tambah"); exit(); }
-            else { $errors[] = "Gagal menyimpan data ke database!"; if ($foto_profil != 'default.jpg') @unlink('../../assets/img/karyawan/' . $foto_profil); }
+            
+            // Format pemanggilan Stored Procedure SQL Server
+            $sql_ins = "{CALL sp_InsertKaryawan(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)}";
+            $params = array(
+                $nik,
+                $nama,
+                $username,
+                $email,
+                $pass_hash,
+                $jk,
+                $dob,
+                $role,
+                $hp,
+                $alamat,
+                $foto_profil,
+                $username_session
+            );
+            
+            $stmt_ins = safe_sqlsrv_query($conn, $sql_ins, $params);
+            
+            if ($stmt_ins) { 
+                header("Location: index.php?status_sukses=tambah"); 
+                exit(); 
+            } else { 
+                $errors[] = "Gagal menyimpan data ke database! Silakan periksa kembali kecocokan data Anda."; 
+                if ($foto_profil != 'default.jpg') @unlink('../../assets/img/karyawan/' . $foto_profil); 
+            }
         }
         if (!empty($errors)) $error_crud = implode("\n", $errors);
     }

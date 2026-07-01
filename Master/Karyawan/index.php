@@ -257,35 +257,38 @@ $stats['dihapus'] = safe_sqlsrv_count($conn, "SELECT COUNT(*) AS total FROM Kary
         .status-dot .text-aktif { color: #10b981; }
         .status-dot .text-nonaktif { color: var(--text-muted); }
 
-        /* TOGGLE MINI */
-        .toggle-mini {
-            position: relative; display: inline-block; width: 36px; height: 20px; cursor: pointer;
+        /* PERSIS SEPERTI GAMBAR: BULAT DENGAN OUTLINE PINK MUDA */
+        .btn-aksi {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+            border: 1px solid var(--light-pink); /* Outline pink muda */
+            background: #ffffff;
+            font-size: 0.95rem;
+            cursor: pointer;
+            text-decoration: none;
+            margin: 0 4px;
         }
-        .toggle-mini input { opacity: 0; width: 0; height: 0; }
-        .toggle-mini .slider {
-            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #e2e8f0; transition: .3s; border-radius: 20px;
+        .btn-aksi:hover {
+            transform: translateY(-2px);
+            background-color: var(--s-pink);
+            box-shadow: 0 4px 10px rgba(216, 63, 103, 0.12);
         }
-        .toggle-mini .slider:before {
-            position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px;
-            background-color: white; transition: .3s; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        .toggle-mini input:checked + .slider { background-color: var(--p-pink); }
-        .toggle-mini input:checked + .slider:before { transform: translateX(16px); }
-
-        /* ACTION BUTTONS */
-        .btn-aksi { width: 32px; height: 32px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; transition: var(--transition); border: none; background: transparent; font-size: 0.85rem; cursor: pointer; text-decoration: none; margin: 0 2px; }
-        .btn-aksi:hover { transform: translateY(-2px); }
-        .btn-aksi-detail { color: var(--text-muted); }
-        .btn-aksi-detail:hover { color: #2563eb; background: #eff6ff; }
-        .btn-aksi-edit { color: var(--text-muted); }
-        .btn-aksi-edit:hover { color: var(--p-pink); background: var(--s-pink); }
-        .btn-aksi-delete { color: var(--text-muted); }
-        .btn-aksi-delete:hover { color: #dc2626; background: #fef2f2; }
-        .btn-aksi-restore { color: var(--text-muted); }
-        .btn-aksi-restore:hover { color: #059669; background: #ecfdf5; }
-        .btn-aksi-hard { color: var(--text-muted); }
-        .btn-aksi-hard:hover { color: #7c3aed; background: #f5f3ff; }
+        
+        /* Ikon berwarna merah muda */
+        .btn-aksi-edit { color: var(--p-pink); }
+        .btn-aksi-toggle { color: var(--p-pink); }
+        .btn-aksi-delete { color: var(--p-pink); }
+        
+        /* Warna alternatif untuk aksi pemulihan & hapus permanen data arsip */
+        .btn-aksi-restore { color: #059669; border-color: #d1fae5; }
+        .btn-aksi-restore:hover { background-color: #ecfdf5; }
+        .btn-aksi-hard { color: #dc2626; border-color: #fee2e2; }
+        .btn-aksi-hard:hover { background-color: #fef2f2; }
 
         /* PAGINATION */
         .pagination-wrapper { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding: 16px 24px; }
@@ -307,7 +310,6 @@ $stats['dihapus'] = safe_sqlsrv_count($conn, "SELECT COUNT(*) AS total FROM Kary
         .modal-body { padding: 20px 24px; }
         .modal-footer { border-top: 1px solid var(--border-color); padding: 16px 24px; }
 
-        /* RESPONSIVE */
         @media (max-width: 1200px) { .main-content { padding: 20px; } }
         @media (max-width: 992px) { .main-content { margin-left: 0; padding: 15px; } .sidebar { transform: translateX(-100%); } }
     </style>
@@ -441,7 +443,7 @@ $stats['dihapus'] = safe_sqlsrv_count($conn, "SELECT COUNT(*) AS total FROM Kary
                     <th style="width: 100px;">Kelamin</th>
                     <th style="width: 100px;">Peran</th>
                     <th style="width: 80px;">Status</th>
-                    <th style="width: 140px;">Aksi</th>
+                    <th style="width: 180px; text-align: center;">Aksi</th>
                 </tr>
             </thead>
             <tbody>
@@ -483,9 +485,9 @@ $sql_count = "SELECT COUNT(*) AS total FROM Karyawan WHERE " . implode(" AND ", 
 $total_records = safe_sqlsrv_count($conn, $sql_count, $params);
 $total_halaman = ceil($total_records / $limit);
 
-$sql_list = "SELECT * FROM Karyawan WHERE " . implode(" AND ", $conditions) . " ORDER BY " . $order_clause . " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
-$params_list = $params; $params_list[] = $offset; $params_list[] = $limit;
-$query_list = safe_sqlsrv_query($conn, $sql_list, $params_list);
+// FIX ANTI-CRASH: Menyematkan parameter integer $offset dan $limit langsung di dalam query SQL Server
+$sql_list = "SELECT * FROM Karyawan WHERE " . implode(" AND ", $conditions) . " ORDER BY " . $order_clause . " OFFSET $offset ROWS FETCH NEXT $limit ROWS ONLY";
+$query_list = safe_sqlsrv_query($conn, $sql_list, $params);
 
 $no = $offset + 1;
 if ($query_list && sqlsrv_has_rows($query_list)):
@@ -499,7 +501,16 @@ if ($query_list && sqlsrv_has_rows($query_list)):
                     <td><?= $no++ ?></td>
                     <td style="font-weight: 600; color: var(--text-muted);"><?= htmlspecialchars($row['NIK']) ?></td>
                     <td>
-                        <div class="d-flex align-items-center gap-3">
+                        <div class="d-flex align-items-center gap-3" style="cursor: pointer;" onclick="bukaDetailRow(this)"
+                                data-nama="<?= htmlspecialchars($row['Nama_Karyawan']) ?>"
+                                data-nik="<?= htmlspecialchars($row['NIK']) ?>"
+                                data-role="<?= htmlspecialchars($row['Role_Karyawan']) ?>"
+                                data-umur="<?= $umur ?>"
+                                data-hp="<?= htmlspecialchars($row['No_Hp']) ?>"
+                                data-jk="<?= htmlspecialchars($row['Jenis_Kelamin']) ?>"
+                                data-email="<?= htmlspecialchars($row['Email_Karyawan']) ?>"
+                                data-alamat="<?= htmlspecialchars($row['Alamat'] ?? '-') ?>"
+                                data-status="<?= $row['Status'] == 1 ? 'Aktif' : 'Nonaktif' ?>">
                             <div class="avatar-default">
                                 <i class="bi bi-person-fill"></i>
                             </div>
@@ -523,27 +534,46 @@ if ($query_list && sqlsrv_has_rows($query_list)):
                         <span style="font-size: 0.75rem; color: #dc2626; font-weight: 700;">DIHAPUS</span>
                         <?php endif; ?>
                     </td>
-                    <td>
+                    <td style="text-align: center;">
+                        <!-- SINKRONISASI AKSI (SISTEM 3 TOMBOL BULAT PERSIS SEPERTI GAMBAR) -->
                         <?php if (!$isDeleted): ?>
-                            <button class="btn-aksi btn-aksi-detail" onclick="bukaDetail(this)" 
-                                data-nama="<?= htmlspecialchars($row['Nama_Karyawan']) ?>"
-                                data-nik="<?= htmlspecialchars($row['NIK']) ?>"
-                                data-role="<?= htmlspecialchars($row['Role_Karyawan']) ?>"
-                                data-umur="<?= $umur ?>"
-                                data-hp="<?= htmlspecialchars($row['No_Hp']) ?>"
-                                data-jk="<?= htmlspecialchars($row['Jenis_Kelamin']) ?>"
-                                data-email="<?= htmlspecialchars($row['Email_Karyawan']) ?>"
-                                data-alamat="<?= htmlspecialchars($row['Alamat'] ?? '-') ?>"
-                                data-status="<?= $row['Status'] == 1 ? 'Aktif' : 'Nonaktif' ?>"
-                                title="Detail"><i class="bi bi-eye"></i></button>
-                            <a href="edit.php?id=<?= $row['ID_Karyawan'] ?>" class="btn-aksi btn-aksi-edit" title="Edit"><i class="bi bi-pencil"></i></a>
+                            <!-- TOMBOL 1: EDIT (BULAT) -->
+                            <a href="edit.php?id=<?= $row['ID_Karyawan'] ?>" class="btn-aksi btn-aksi-edit" title="Edit Karyawan">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+
+                            <!-- TOMBOL 2: ARSIPKAN / TOGGLE SOFT DELETE (BULAT) -->
+                            <button class="btn-aksi btn-aksi-toggle" onclick="confirmSoftDelete(<?= $row['ID_Karyawan'] ?>, '<?= htmlspecialchars($row['Nama_Karyawan']) ?>')" title="Arsipkan Karyawan">
+                                <i class="bi bi-toggle2-on" style="font-size: 1.25rem;"></i>
+                            </button>
+
+                            <!-- TOMBOL 3: HARD DELETE (BULAT) -->
                             <?php if (!$isOwnerSelf): ?>
-                            <button class="btn-aksi btn-aksi-delete" onclick="confirmSoftDelete(<?= $row['ID_Karyawan'] ?>, '<?= htmlspecialchars($row['Nama_Karyawan']) ?>')" title="Hapus"><i class="bi bi-trash"></i></button>
+                                <button class="btn-aksi btn-aksi-delete" onclick="confirmHardDelete(<?= $row['ID_Karyawan'] ?>, '<?= htmlspecialchars($row['Nama_Karyawan']) ?>')" title="Hapus Permanen">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            <?php else: ?>
+                                <button class="btn-aksi btn-aksi-delete" style="opacity: 0.35; cursor: not-allowed;" disabled title="Akun Sendiri"><i class="bi bi-trash"></i></button>
                             <?php endif; ?>
                         <?php else: ?>
-                            <button class="btn-aksi btn-aksi-restore" onclick="confirmRestore(<?= $row['ID_Karyawan'] ?>, '<?= htmlspecialchars($row['Nama_Karyawan']) ?>')" title="Pulihkan"><i class="bi bi-arrow-counterclockwise"></i></button>
+                            <!-- STATUS DATA TERHAPUS / DIARSIPKAN -->
+                            <!-- TOMBOL 1: EDIT DISABLED (KARENA TERARSIP) -->
+                            <button class="btn-aksi btn-aksi-edit" style="opacity: 0.35; cursor: not-allowed;" disabled title="Pulihkan terlebih dahulu untuk mengedit data ini.">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+
+                            <!-- TOMBOL 2: PULIHKAN / TOGGLE RESTORE (BULAT) -->
+                            <button class="btn-aksi btn-aksi-toggle" onclick="confirmRestore(<?= $row['ID_Karyawan'] ?>, '<?= htmlspecialchars($row['Nama_Karyawan']) ?>')" title="Pulihkan Karyawan">
+                                <i class="bi bi-toggle2-off" style="font-size: 1.25rem; opacity: 0.6;"></i>
+                            </button>
+
+                            <!-- TOMBOL 3: HARD DELETE (BULAT) -->
                             <?php if (!$isOwnerSelf): ?>
-                            <button class="btn-aksi btn-aksi-hard" onclick="confirmHardDelete(<?= $row['ID_Karyawan'] ?>, '<?= htmlspecialchars($row['Nama_Karyawan']) ?>')" title="Hapus Permanen"><i class="bi bi-trash-fill"></i></button>
+                                <button class="btn-aksi btn-aksi-hard" onclick="confirmHardDelete(<?= $row['ID_Karyawan'] ?>, '<?= htmlspecialchars($row['Nama_Karyawan']) ?>')" title="Hapus Permanen">
+                                    <i class="bi bi-trash-fill"></i>
+                                </button>
+                            <?php else: ?>
+                                <button class="btn-aksi btn-aksi-hard" style="opacity: 0.35; cursor: not-allowed;" disabled><i class="bi bi-trash-fill"></i></button>
                             <?php endif; ?>
                         <?php endif; ?>
                     </td>
@@ -671,9 +701,9 @@ if ($query_list && sqlsrv_has_rows($query_list)):
         });
     });
 
-    // DETAIL MODAL
-    function bukaDetail(btn) {
-        const d = btn.dataset;
+    // DETAIL MODAL (Dapat dipicu saat klik foto/nama baris)
+    function bukaDetailRow(element) {
+        const d = element.dataset;
         document.getElementById('d_nama').textContent = d.nama;
         document.getElementById('d_nik').textContent = d.nik;
         document.getElementById('d_role').textContent = d.role;
@@ -687,17 +717,21 @@ if ($query_list && sqlsrv_has_rows($query_list)):
         new bootstrap.Modal(document.getElementById('modalDetail')).show();
     }
 
-    // SWEETALERT FUNCTIONS
+    // SWEETALERT FUNCTIONS & ACTIONS
     function confirmSoftDelete(id, nama) {
-        Swal.fire({ title: 'Hapus Karyawan?', text: '"' + nama + '" akan diarsipkan. Bisa dipulihkan kapan saja.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d83f67', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Hapus', cancelButtonText: 'Batal' }).then(r => { if (r.isConfirmed) window.location = 'action_karyawan.php?aksi=soft_delete&id=' + id; });
+        Swal.fire({ title: 'Arsipkan Karyawan?', text: '"' + nama + '" akan diarsipkan dan dinonaktifkan. Bisa dipulihkan kapan saja.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d83f67', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Arsipkan', cancelButtonText: 'Batal' }).then(r => { if (r.isConfirmed) window.location = 'action_karyawan.php?aksi=soft_delete&id=' + id; });
     }
+    
     function confirmRestore(id, nama) {
-        Swal.fire({ title: 'Pulihkan Data?', text: '"' + nama + '" akan dikembalikan ke daftar aktif.', icon: 'info', showCancelButton: true, confirmButtonColor: '#059669', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Pulihkan', cancelButtonText: 'Batal' }).then(r => { if (r.isConfirmed) window.location = 'action_karyawan.php?aksi=restore&id=' + id; });
+        Swal.fire({ title: 'Pulihkan Data?', text: '"' + nama + '" akan dikembalikan ke daftar aktif dengan status diaktifkan kembali.', icon: 'info', showCancelButton: true, confirmButtonColor: '#059669', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Pulihkan', cancelButtonText: 'Batal' }).then(r => { if (r.isConfirmed) window.location = 'action_karyawan.php?aksi=restore&id=' + id; });
     }
+    
     function confirmHardDelete(id, nama) {
         Swal.fire({ title: 'Hapus Permanen?', text: '"' + nama + '" akan dihapus PERMANEN! Tindakan ini tidak bisa dibatalkan.', icon: 'error', showCancelButton: true, confirmButtonColor: '#dc2626', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Hapus Permanen', cancelButtonText: 'Batal', input: 'text', inputPlaceholder: 'Ketik "HAPUS" untuk konfirmasi', inputValidator: v => v !== 'HAPUS' ? 'Ketik "HAPUS" untuk mengonfirmasi!' : null }).then(r => { if (r.isConfirmed) window.location = 'action_karyawan.php?aksi=hard_delete&id=' + id; });
     }
+    
     function confirmLogout(e) { e.preventDefault(); Swal.fire({ title: 'Keluar?', text: 'Yakin ingin keluar dari sistem?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d83f67', cancelButtonColor: '#718096', confirmButtonText: 'Ya', cancelButtonText: 'Batal' }).then(r => { if (r.isConfirmed) window.location = '../../logout.php'; }); }
+    
     function confirmLandingPage(e) { e.preventDefault(); Swal.fire({ title: 'Kembali?', text: 'Ke halaman utama publik?', icon: 'info', showCancelButton: true, confirmButtonColor: '#d83f67', cancelButtonColor: '#718096', confirmButtonText: 'Ya', cancelButtonText: 'Batal' }).then(r => { if (r.isConfirmed) window.location = '../../index.php'; }); }
 </script>
 
@@ -710,9 +744,8 @@ if ($query_list && sqlsrv_has_rows($query_list)):
     else if (s === 'soft_delete') { msg = "Karyawan berhasil diarsipkan."; title = "Diarsipkan!"; }
     else if (s === 'restore') { msg = "Karyawan berhasil dipulihkan!"; title = "Dipulihkan!"; }
     else if (s === 'hard_delete') { msg = "Karyawan dihapus permanen."; title = "Dihapus!"; t = "warning"; }
-    else if (s === 'toggle_status') { msg = "Status berhasil diubah!"; title = "Status Diubah!"; }
     else if (s === 'error_relasi') { msg = "Tidak bisa hapus! Masih ada data transaksi."; title = "Gagal!"; t = "error"; }
-    else if (s === 'error_self') { msg = "Anda tidak bisa menghapus akun sendiri!"; title = "Ditolak!"; t = "error"; }
+    else if (s === 'error_self') { msg = "Anda tidak bisa mengarsipkan atau menghapus akun sendiri!"; title = "Ditolak!"; t = "error"; }
     else if (s === 'error_general') { msg = "Terjadi kesalahan. Silakan coba lagi."; title = "Error!"; t = "error"; }
     Swal.fire({ icon: t, title: title, text: msg, confirmButtonColor: '#d83f67' });
 </script>
