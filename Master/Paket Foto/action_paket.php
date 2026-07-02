@@ -11,7 +11,7 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 $nama_admin = $_SESSION['nama'] ?? 'Administrator';
 
-$aksi = isset($_GET['aksi']) ? $_GET['aksi'] : '';
+$aksi = isset($_GET['aksi']) ? trim($_GET['aksi']) : '';
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 if ($id <= 0) {
@@ -20,92 +20,138 @@ if ($id <= 0) {
 }
 
 // =====================================================
-// TOGGLE STATUS (Soft Delete / Aktif-Nonaktif)
+// HELPER FUNCTIONS - UNTUK MENJAGA INTEGRITAS RELASI
 // =====================================================
-if ($aksi === 'toggle_status') {
-    $new_status = isset($_GET['status']) ? (int)$_GET['status'] : 0;
 
-    // Validate status value
-    if (!in_array($new_status, [0, 1])) {
-        header("Location: list.php?status_sukses=error&message=Status+tidak+valid");
-        exit();
-    }
+// Cek apakah paket masih memiliki transaksi order di sistem
+function hasOrder($conn, $id_paket) {
+    $sql = "SELECT COUNT(*) as total FROM [Order] WHERE ID_Paket = ? AND Status = 1";
+    $stmt = sqlsrv_query($conn, $sql, [$id_paket]);
+    if ($stmt === false) return true; // Anggap ada order jika query gagal demi keamanan
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    return ($row['total'] ?? 0) > 0;
+}
 
-    // Check if paket exists and is not hard deleted
-    $cek_sql = "SELECT ID_Paket, Nama_Paket, Status FROM Paket_Foto WHERE ID_Paket = ? AND Is_Deleted = 0";
-    $cek_stmt = sqlsrv_query($conn, $cek_sql, [$id]);
+// Cek apakah paket terikat dengan jadwal studio aktif
+function hasJadwal($conn, $id_paket) {
+    $sql = "SELECT COUNT(*) as total FROM Jadwal_Studio WHERE ID_Paket = ? AND Is_Deleted = 0";
+    $stmt = sqlsrv_query($conn, $sql, [$id_paket]);
+    if ($stmt === false) return true;
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    return ($row['total'] ?? 0) > 0;
+}
 
-    if ($cek_stmt === false || !sqlsrv_has_rows($cek_stmt)) {
-        header("Location: list.php?status_sukses=error&message=Paket+tidak+ditemukan");
-        exit();
-    }
-
-    $current = sqlsrv_fetch_array($cek_stmt, SQLSRV_FETCH_ASSOC);
-    sqlsrv_free_stmt($cek_stmt);
-
-    // Update status
-    $update_sql = "UPDATE Paket_Foto 
-                   SET Status = ?, 
-                       Modified_By = ?, 
-                       Modified_Date = GETDATE() 
-                   WHERE ID_Paket = ? AND Is_Deleted = 0";
-
-    $update_stmt = sqlsrv_query($conn, $update_sql, [$new_status, $nama_admin, $id]);
-
-    if ($update_stmt) {
-        sqlsrv_free_stmt($update_stmt);
-        header("Location: list.php?status_sukses=toggle_status");
-        exit();
-    } else {
-        header("Location: list.php?status_sukses=error&message=Gagal+ubah+status");
-        exit();
-    }
+// Mengambil nama file gambar paket sebelum dihapus dari server
+function getFotoPaket($conn, $id) {
+    $sql = "SELECT Foto_Paket FROM Paket_Foto WHERE ID_Paket = ?";
+    $stmt = sqlsrv_query($conn, $sql, [$id]);
+    if ($stmt === false) return 'default_paket.jpg';
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    return $row['Foto_Paket'] ?? 'default_paket.jpg';
 }
 
 // =====================================================
-// HARD DELETE (Permanent Delete)
+// PROSES EKSEKUSI AKSI (ARSIP, PULIHKAN, HAPUS PERMANEN)
 // =====================================================
-elseif ($aksi === 'hard_delete') {
-    // Check if paket has any orders (to prevent deleting used packages)
-    $cek_order_sql = "SELECT COUNT(*) as total FROM [Order] WHERE ID_Paket = ? AND Status = 1 AND Status_Order <> 4";
-    $cek_order_stmt = sqlsrv_query($conn, $cek_order_sql, [$id]);
+switch ($aksi) {
 
-    $has_orders = false;
-    if ($cek_order_stmt !== false) {
-        $order_row = sqlsrv_fetch_array($cek_order_stmt, SQLSRV_FETCH_ASSOC);
-        $has_orders = ($order_row['total'] ?? 0) > 0;
-        sqlsrv_free_stmt($cek_order_stmt);
-    }
+    // -------------------------------------------------
+    // SOFT DELETE: Mengarsipkan Paket (Stored Procedure)
+    // -------------------------------------------------
+    case 'soft_delete':
+        // Cek data apakah sudah diarsipkan sebelumnya
+        $cek_sql = "SELECT Is_Deleted FROM Paket_Foto WHERE ID_Paket = ?";
+        $cek_stmt = sqlsrv_query($conn, $cek_sql, [$id]);
+        $data = sqlsrv_fetch_array($cek_stmt, SQLSRV_FETCH_ASSOC);
 
-    if ($has_orders) {
-        header("Location: list.php?status_sukses=error&message=Paket+masih+memiliki+order+aktif");
+        if ($data && $data['Is_Deleted'] == 1) {
+            header("Location: list.php?status_sukses=error&message=Paket+sudah+berada+dalam+arsip!");
+            exit();
+        }
+
+        // Jalankan Stored Procedure sp_DeletePaketFoto
+        $sql = "{CALL sp_DeletePaketFoto(?, ?)}";
+        $stmt = sqlsrv_query($conn, $sql, [$id, $nama_admin]);
+
+        if ($stmt) {
+            header("Location: list.php?tab=dihapus&status_sukses=soft_delete");
+        } else {
+            header("Location: list.php?status_sukses=error&message=Gagal+mengarsipkan+paket");
+        }
         exit();
-    }
+        break;
 
-    // Soft delete approach (mark as deleted, don't actually remove)
-    // This preserves referential integrity with Jadwal_Studio and Order tables
-    $delete_sql = "UPDATE Paket_Foto 
-                   SET Is_Deleted = 1, 
-                       Status = 0,
-                       Deleted_By = ?, 
-                       Deleted_Date = GETDATE() 
-                   WHERE ID_Paket = ? AND Is_Deleted = 0";
+    // -------------------------------------------------
+    // RESTORE: Memulihkan Paket dari Arsip
+    // -------------------------------------------------
+    case 'restore':
+        $cek_sql = "SELECT Is_Deleted FROM Paket_Foto WHERE ID_Paket = ?";
+        $cek_stmt = sqlsrv_query($conn, $cek_sql, [$id]);
+        $data = sqlsrv_fetch_array($cek_stmt, SQLSRV_FETCH_ASSOC);
 
-    $delete_stmt = sqlsrv_query($conn, $delete_sql, [$nama_admin, $id]);
+        if (!$data || $data['Is_Deleted'] == 0) {
+            header("Location: list.php?status_sukses=error&message=Paket+tidak+sedang+diarsipkan!");
+            exit();
+        }
 
-    if ($delete_stmt) {
-        sqlsrv_free_stmt($delete_stmt);
-        header("Location: list.php?status_sukses=hard_delete");
+        // Mengembalikan Is_Deleted = 0
+        $sql = "UPDATE Paket_Foto SET 
+                Is_Deleted = 0, 
+                Deleted_By = NULL, 
+                Deleted_Date = NULL,
+                Modified_By = ?,
+                Modified_Date = GETDATE()
+                WHERE ID_Paket = ?";
+
+        $stmt = sqlsrv_query($conn, $sql, [$nama_admin, $id]);
+
+        if ($stmt) {
+            header("Location: list.php?tab=aktif&status_sukses=restore");
+        } else {
+            header("Location: list.php?status_sukses=error&message=Gagal+memulihkan+paket");
+        }
         exit();
-    } else {
-        header("Location: list.php?status_sukses=error&message=Gagal+hapus+paket");
-        exit();
-    }
-}
+        break;
 
-// Invalid action
-else {
-    header("Location: list.php?status_sukses=error&message=Aksi+tidak+valid");
-    exit();
+    // -------------------------------------------------
+    // HARD DELETE: Menghapus Fisik Data Permanen
+    // -------------------------------------------------
+    case 'hard_delete':
+        // Cek dependensi relasi agar database tidak crash
+        if (hasOrder($conn, $id)) {
+            header("Location: list.php?tab=dihapus&status_sukses=error&message=Gagal+Hapus!+Paket+ini+memiliki+riwayat+transaksi+booking+pelanggan.");
+            exit();
+        }
+
+        if (hasJadwal($conn, $id)) {
+            header("Location: list.php?tab=dihapus&status_sukses=error&message=Gagal+Hapus!+Paket+ini+terikat+dengan+Jadwal+Studio.");
+            exit();
+        }
+
+        // Ambil nama file foto lama untuk dihapus dari server
+        $foto_name = getFotoPaket($conn, $id);
+        if ($foto_name != 'default_paket.jpg') {
+            $foto_path = "../../assets/img/paket/" . $foto_name;
+            if (file_exists($foto_path)) {
+                @unlink($foto_path);
+            }
+        }
+
+        // Eksekusi Hard Delete secara permanen
+        $sql_delete = "DELETE FROM Paket_Foto WHERE ID_Paket = ?";
+        $stmt_delete = sqlsrv_query($conn, $sql_delete, [$id]);
+
+        if ($stmt_delete) {
+            header("Location: list.php?tab=dihapus&status_sukses=hard_delete");
+        } else {
+            header("Location: list.php?tab=dihapus&status_sukses=error&message=Gagal+menghapus+paket+permanen");
+        }
+        exit();
+        break;
+
+    default:
+        header("Location: list.php?status_sukses=error&message=Aksi+tidak+valid");
+        exit();
+        break;
 }
 ?>

@@ -710,25 +710,6 @@ if (isset($_POST['simpan'])) {
                         </div>
                     </div>
 
-                    <!-- Status -->
-                    <div class="mb-4">
-                        <label class="form-label">Status Tema</label>
-                        <div class="status-toggle-group">
-                            <label class="status-option active" onclick="selectStatus(this, 1)">
-                                <input type="radio" name="status" value="1" checked>
-                                <div class="status-icon">✅</div>
-                                <div class="status-label">Aktif</div>
-                                <div class="status-desc">Tampil ke pelanggan</div>
-                            </label>
-                            <label class="status-option" onclick="selectStatus(this, 0)">
-                                <input type="radio" name="status" value="0">
-                                <div class="status-icon">⛔</div>
-                                <div class="status-label">Nonaktif</div>
-                                <div class="status-desc">Disembunyikan</div>
-                            </label>
-                        </div>
-                    </div>
-
                     <!-- Buttons -->
                     <div class="d-flex gap-3 mt-4">
                         <button type="submit" name="simpan" class="btn-submit">

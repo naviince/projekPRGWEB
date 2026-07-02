@@ -3,6 +3,30 @@ ob_start();
 session_start();
 include '../../koneksi.php';
 
+// =====================================================
+// HELPER FUNCTIONS - SAFE SQLSRV ANTI-CRASH
+// =====================================================
+function safe_sqlsrv_query($conn, $sql, $params = array()) {
+    $query = sqlsrv_query($conn, $sql, $params);
+    if ($query === false) {
+        error_log("SQLSRV Error: " . print_r(sqlsrv_errors(), true));
+        return false;
+    }
+    return $query;
+}
+
+function safe_sqlsrv_fetch($query) {
+    if (!$query) return false;
+    return sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC);
+}
+
+function safe_sqlsrv_count($conn, $sql, $params = array()) {
+    $query = safe_sqlsrv_query($conn, $sql, $params);
+    if (!$query) return 0;
+    $row = safe_sqlsrv_fetch($query);
+    return $row ? ($row['total'] ?? 0) : 0;
+}
+
 // --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Admin') {
     header("Location: ../../login.php");
@@ -13,15 +37,15 @@ $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 $nama_admin = $_SESSION['nama'] ?? 'Administrator';
 
 // Ambil Profil Admin untuk Sidebar & Header
-$q_admin = sqlsrv_query($conn, "SELECT * FROM Karyawan WHERE ID_Karyawan = ?", [$id_admin]);
-$d_admin = sqlsrv_fetch_array($q_admin, SQLSRV_FETCH_ASSOC);
+$q_admin = safe_sqlsrv_query($conn, "SELECT * FROM Karyawan WHERE ID_Karyawan = ?", [$id_admin]);
+$d_admin = safe_sqlsrv_fetch($q_admin);
 if ($d_admin) { $d_admin = array_change_key_case($d_admin, CASE_LOWER); }
 $nama_admin = $d_admin['nama_karyawan'] ?? 'Administrator';
 $foto_admin = $d_admin['foto_profil'] ?? 'default.jpg';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
-$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_admin)) 
-    ? "../../assets/img/pelanggan/" . $foto_admin 
+$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
+    ? "../../assets/img/karyawan/" . $foto_admin 
     : $default_svg_avatar;
 
 // --- AMBIL DATA PAKET ---
@@ -32,8 +56,8 @@ if ($id <= 0) {
 }
 
 $sql_data = "SELECT * FROM Paket_Foto WHERE ID_Paket = ? AND Is_Deleted = 0";
-$stmt_data = sqlsrv_query($conn, $sql_data, [$id]);
-$data = sqlsrv_fetch_array($stmt_data, SQLSRV_FETCH_ASSOC);
+$stmt_data = safe_sqlsrv_query($conn, $sql_data, [$id]);
+$data = safe_sqlsrv_fetch($stmt_data);
 
 if (!$data) {
     header("Location: list.php?status_sukses=error&message=Paket tidak ditemukan");
@@ -65,15 +89,16 @@ if (isset($_POST['update'])) {
     } elseif (!preg_match('/^[a-zA-Z0-9\s\-&]+$/', $nama)) {
         $errors['nama'] = "Nama paket hanya boleh huruf, angka, spasi, -, &!";
     } else {
-        // Cek duplikat (kecuali data sendiri)
-        $sql_cek = "SELECT ID_Paket FROM Paket_Foto WHERE Nama_Paket = ? AND ID_Paket != ? AND Is_Deleted = 0";
-        $stmt_cek = sqlsrv_query($conn, $sql_cek, [$nama, $id]);
-        if ($stmt_cek && sqlsrv_has_rows($stmt_cek)) {
-            $errors['nama'] = "Nama paket sudah ada! Gunakan nama lain.";
+        // Cek duplikat (Menggunakan Stored Procedure sp_CekDuplikatPaketFoto)
+        $sql_cek = "{CALL sp_CekDuplikatPaketFoto(?, ?)}";
+        $stmt_cek = safe_sqlsrv_query($conn, $sql_cek, [$nama, $id]);
+        $row_cek = safe_sqlsrv_fetch($stmt_cek);
+        if ($row_cek && ($row_cek['Total'] ?? 0) > 0) {
+            $errors['nama'] = "Nama paket sudah digunakan! Silakan pilih nama lain.";
         }
     }
 
-    // --- VALIDASI DURASI (BEBAS, 15-300 menit) ---
+    // --- VALIDASI DURASI (15-300 menit) ---
     if (empty($durasi)) {
         $errors['durasi'] = "Durasi wajib diisi!";
     } elseif (!ctype_digit($durasi)) {
@@ -117,10 +142,10 @@ if (isset($_POST['update'])) {
 
     // --- PROSES UPDATE DATABASE ---
     if (empty($errors)) {
-        $new_filename = $data['Foto_Paket'];
+        $new_filename = $data['Foto_Paket'] ?? 'default_paket.jpg';
         $foto_changed = false;
 
-        // Proses upload foto baru (jika ada)
+        // Upload foto baru (jika ada)
         if (!empty($_FILES['foto']['name'])) {
             $foto_name = $_FILES['foto']['name'];
             $foto_tmp  = $_FILES['foto']['tmp_name'];
@@ -139,9 +164,9 @@ if (isset($_POST['update'])) {
                     if (move_uploaded_file($foto_tmp, $upload_path)) {
                         $foto_changed = true;
                         // Hapus foto lama (jika bukan default)
-                        $old_foto = $data['Foto_Paket'];
+                        $old_foto = $data['Foto_Paket'] ?? 'default_paket.jpg';
                         if ($old_foto != 'default_paket.jpg' && file_exists($upload_dir . $old_foto)) {
-                            unlink($upload_dir . $old_foto);
+                            @unlink($upload_dir . $old_foto);
                         }
                     } else {
                         $errors['foto'] = "Gagal mengupload foto baru!";
@@ -152,41 +177,38 @@ if (isset($_POST['update'])) {
             }
         }
 
+        // Simpan menggunakan Stored Procedure sp_UpdatePaketFoto
         if (empty($errors)) {
-            if (!sqlsrv_begin_transaction($conn)) {
-                $errors['general'] = "Gagal memulai transaksi database!";
+            $sql_update = "{CALL sp_UpdatePaketFoto(?, ?, ?, ?, ?, ?, ?, ?, ?)}";
+            
+            // Status diwariskan dari nilai yang sudah ada di database ($data['Status'])
+            $params_update = [
+                $id,
+                $nama,
+                (int)$durasi,
+                (float)$harga,
+                $deskripsi,
+                (int)$kapasitas,
+                $new_filename,
+                (int)($data['Status'] ?? 1),
+                $nama_admin
+            ];
+
+            $stmt_update = safe_sqlsrv_query($conn, $sql_update, $params_update);
+
+            if ($stmt_update) {
+                $success = true;
+                // Update array lokal untuk render tampilan baru
+                $data['Nama_Paket'] = $nama;
+                $data['Durasi_Waktu'] = $durasi;
+                $data['Harga_Paket'] = $harga;
+                $data['Deskripsi'] = $deskripsi;
+                $data['Kapasitas_Orang'] = $kapasitas;
+                $data['Foto_Paket'] = $new_filename;
             } else {
-                $sql_update = "UPDATE Paket_Foto SET 
-                    Nama_Paket = ?, Durasi_Waktu = ?, Harga_Paket = ?, 
-                    Deskripsi = ?, Kapasitas_Orang = ?, Foto_Paket = ?,
-                    Modified_By = ?, Modified_Date = GETDATE()
-                    WHERE ID_Paket = ?";
-
-                $params_update = [
-                    $nama, (int)$durasi, (float)$harga, 
-                    $deskripsi, (int)$kapasitas, $new_filename,
-                    $nama_admin, $id
-                ];
-
-                $stmt_update = sqlsrv_query($conn, $sql_update, $params_update);
-
-                if ($stmt_update) {
-                    sqlsrv_commit($conn);
-                    $success = true;
-                    // Update data untuk tampilan
-                    $data['Nama_Paket'] = $nama;
-                    $data['Durasi_Waktu'] = $durasi;
-                    $data['Harga_Paket'] = $harga;
-                    $data['Deskripsi'] = $deskripsi;
-                    $data['Kapasitas_Orang'] = $kapasitas;
-                    $data['Foto_Paket'] = $new_filename;
-                } else {
-                    sqlsrv_rollback($conn);
-                    $errors['general'] = "Gagal memperbarui data. Silakan coba lagi!";
-                    // Restore foto lama kalau upload baru gagal
-                    if ($foto_changed && file_exists($upload_path)) {
-                        unlink($upload_path);
-                    }
+                $errors['general'] = "Gagal memperbarui data. Silakan coba lagi!";
+                if ($foto_changed && file_exists($upload_path)) {
+                    @unlink($upload_path);
                 }
             }
         }
@@ -813,6 +835,28 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
         </div>
     </div>
 
+    <!-- MODAL PROFILE BIODATA -->
+    <div class="modal fade" id="modalBiodataAdmin" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); background: #fff;">
+          <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center"><h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-badge-fill text-danger me-2"></i>Profil Anda</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+          <div class="modal-body px-4 pb-4 pt-3">
+            <div class="text-center mb-4">
+              <div class="profile-preview-box" style="width: 100px; height: 100px; border: 3px solid var(--s-pink); margin: 0 auto; border-radius: 50%; overflow: hidden;"><img src="<?= $foto_admin_src ?>" alt="Foto Profil" style="width: 100%; height: 100%; object-fit: cover;"></div>
+              <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_admin) ?></h5><span class="badge bg-danger px-3 py-1 text-white text-uppercase" style="font-size: 0.72rem; border-radius: 50px; font-weight: 700;">Admin</span>
+            </div>
+            <div class="card-3d p-3 border-0 mb-3" style="border-radius: 20px; background-color: #f8fafc;">
+              <div class="row g-3">
+                <div class="col-12"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Email Karyawan</small><span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($email_admin) ?></span></div>
+                <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Hak Akses Sistem</small><span class="fw-bold text-dark" style="font-size: 0.85rem;">Administrator (Admin)</span></div>
+              </div>
+            </div>
+            <button class="btn btn-reg-header shadow-sm py-3 mt-0 w-100" data-bs-dismiss="modal" style="border-radius: 14px !important; background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #fff; border: none; font-weight: 700;">Tutup</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
     <script>
@@ -876,6 +920,12 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
                 this.value = this.value.replace(/[^0-9]/g, '');
             });
         });
+
+        // Modal Biodata
+        function bukaModalBiodata() {
+            var modalBiodata = new bootstrap.Modal(document.getElementById('modalBiodataAdmin'));
+            modalBiodata.show();
+        }
 
         // Jam Real-Time
         function updateLiveClock() {

@@ -615,30 +615,6 @@ if (!empty($data_lama['Foto_Barang']) && $data_lama['Foto_Barang'] != 'default_b
                     </div>
                 </div>
 
-                <!-- Status -->
-                <div class="mb-4">
-                    <label class="form-label">Status Produk</label>
-                    <div class="status-toggle-group">
-                        <?php
-                        $status_val = isset($_POST['status']) ? $_POST['status'] : $data_lama['Status'];
-                        ?>
-                        <label class="status-option <?= $status_val == 1 ? 'active' : '' ?>" 
-                               onclick="selectStatus(this, 1)">
-                            <input type="radio" name="status" value="1" <?= $status_val == 1 ? 'checked' : '' ?>>
-                            <div class="status-icon">✅</div>
-                            <div class="status-label">AKTIF</div>
-                            <div class="status-desc">Ditampilkan ke customer</div>
-                        </label>
-                        <label class="status-option <?= $status_val == 0 ? 'active' : '' ?>" 
-                               onclick="selectStatus(this, 0)">
-                            <input type="radio" name="status" value="0" <?= $status_val == 0 ? 'checked' : '' ?>>
-                            <div class="status-icon">⛔</div>
-                            <div class="status-label">NONAKTIF</div>
-                            <div class="status-desc">Disembunyikan</div>
-                        </label>
-                    </div>
-                </div>
-
                 <!-- Buttons -->
                 <div class="d-flex gap-3 mt-5">
                     <button type="submit" name="simpan" class="btn-submit">

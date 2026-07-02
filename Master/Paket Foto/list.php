@@ -619,7 +619,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                     <i class="bi bi-search"></i>
                 </button>
             </form>
-            <a href="create.php" class="btn-reg-header text-decoration-none">
+            <a href="add.php" class="btn-reg-header text-decoration-none">
                 <i class="bi bi-plus-circle-fill me-2"></i>Buat Paket Baru
             </a>
         </div>

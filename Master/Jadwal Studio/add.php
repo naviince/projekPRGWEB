@@ -353,15 +353,6 @@ select.form-input-custom { cursor: pointer; appearance: none; background-image: 
                 <div class="helper-text"><i class="bi bi-info-circle"></i>Isi 'Libur' untuk menandai hari libur full.</div>
             </div>
 
-            <div class="mb-4">
-                <label class="form-label-custom">Status Jadwal</label>
-                <select name="status" class="form-input-custom">
-                    <option value="<?= STATUS_DATA_AKTIF ?>" <?= (!isset($old_values['status']) || $old_values['status'] == STATUS_DATA_AKTIF) ? 'selected' : '' ?>>🟢 Aktif (Bisa Dipesan)</option>
-                    <option value="<?= STATUS_DATA_NONAKTIF ?>" <?= (isset($old_values['status']) && $old_values['status'] == STATUS_DATA_NONAKTIF) ? 'selected' : '' ?>>🔴 Nonaktif (Tidak Tersedia)</option>
-                </select>
-                <div class="helper-text"><i class="bi bi-info-circle"></i>Jadwal nonaktif tidak akan muncul di pilihan customer.</div>
-            </div>
-
             <div class="btn-group-bottom">
                 <a href="list.php" class="btn-kembali"><i class="bi bi-arrow-left"></i>Kembali</a>
                 <button type="submit" name="simpan" class="btn-simpan"><i class="bi bi-check-circle-fill"></i>Simpan Jadwal</button>
