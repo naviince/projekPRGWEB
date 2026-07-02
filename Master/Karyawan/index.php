@@ -534,48 +534,55 @@ if ($query_list && sqlsrv_has_rows($query_list)):
                         <span style="font-size: 0.75rem; color: #dc2626; font-weight: 700;">DIHAPUS</span>
                         <?php endif; ?>
                     </td>
-                    <td style="text-align: center;">
-                        <!-- SINKRONISASI AKSI (SISTEM 3 TOMBOL BULAT PERSIS SEPERTI GAMBAR) -->
+                                        <td style="text-align: center;">
+                        <!-- ========================================== -->
+                        <!-- AKSI: 3 TOMBOL BULAT (PERSIS GAMBAR REFERENSI PAKET FOTO) -->
+                        <!-- ========================================== -->
                         <?php if (!$isDeleted): ?>
-                            <!-- TOMBOL 1: EDIT (BULAT) -->
+                            <!-- === DATA AKTIF === -->
+
+                            <!-- TOMBOL 1: EDIT -->
                             <a href="edit.php?id=<?= $row['ID_Karyawan'] ?>" class="btn-aksi btn-aksi-edit" title="Edit Karyawan">
                                 <i class="bi bi-pencil"></i>
                             </a>
 
-                            <!-- TOMBOL 2: ARSIPKAN / TOGGLE SOFT DELETE (BULAT) -->
+                            <!-- TOMBOL 2: SOFT DELETE (ARSIPKAN) -->
                             <button class="btn-aksi btn-aksi-toggle" onclick="confirmSoftDelete(<?= $row['ID_Karyawan'] ?>, '<?= htmlspecialchars($row['Nama_Karyawan']) ?>')" title="Arsipkan Karyawan">
                                 <i class="bi bi-toggle2-on" style="font-size: 1.25rem;"></i>
                             </button>
 
-                            <!-- TOMBOL 3: HARD DELETE (BULAT) -->
+                            <!-- TOMBOL 3: HARD DELETE -->
                             <?php if (!$isOwnerSelf): ?>
                                 <button class="btn-aksi btn-aksi-delete" onclick="confirmHardDelete(<?= $row['ID_Karyawan'] ?>, '<?= htmlspecialchars($row['Nama_Karyawan']) ?>')" title="Hapus Permanen">
                                     <i class="bi bi-trash"></i>
                                 </button>
                             <?php else: ?>
-                                <button class="btn-aksi btn-aksi-delete" style="opacity: 0.35; cursor: not-allowed;" disabled title="Akun Sendiri"><i class="bi bi-trash"></i></button>
+                                <button class="btn-aksi btn-aksi-delete" style="opacity: 0.35; cursor: not-allowed;" disabled title="Tidak bisa hapus akun sendiri"><i class="bi bi-trash"></i></button>
                             <?php endif; ?>
+
                         <?php else: ?>
-                            <!-- STATUS DATA TERHAPUS / DIARSIPKAN -->
-                            <!-- TOMBOL 1: EDIT DISABLED (KARENA TERARSIP) -->
-                            <button class="btn-aksi btn-aksi-edit" style="opacity: 0.35; cursor: not-allowed;" disabled title="Pulihkan terlebih dahulu untuk mengedit data ini.">
+                            <!-- === DATA TERARSIP === -->
+
+                            <!-- TOMBOL 1: EDIT (DISABLED) -->
+                            <button class="btn-aksi btn-aksi-edit" style="opacity: 0.35; cursor: not-allowed;" disabled title="Pulihkan terlebih dahulu untuk mengedit">
                                 <i class="bi bi-pencil"></i>
                             </button>
 
-                            <!-- TOMBOL 2: PULIHKAN / TOGGLE RESTORE (BULAT) -->
+                            <!-- TOMBOL 2: RESTORE (PULIHKAN) -->
                             <button class="btn-aksi btn-aksi-toggle" onclick="confirmRestore(<?= $row['ID_Karyawan'] ?>, '<?= htmlspecialchars($row['Nama_Karyawan']) ?>')" title="Pulihkan Karyawan">
                                 <i class="bi bi-toggle2-off" style="font-size: 1.25rem; opacity: 0.6;"></i>
                             </button>
 
-                            <!-- TOMBOL 3: HARD DELETE (BULAT) -->
+                            <!-- TOMBOL 3: HARD DELETE -->
                             <?php if (!$isOwnerSelf): ?>
                                 <button class="btn-aksi btn-aksi-hard" onclick="confirmHardDelete(<?= $row['ID_Karyawan'] ?>, '<?= htmlspecialchars($row['Nama_Karyawan']) ?>')" title="Hapus Permanen">
                                     <i class="bi bi-trash-fill"></i>
                                 </button>
                             <?php else: ?>
-                                <button class="btn-aksi btn-aksi-hard" style="opacity: 0.35; cursor: not-allowed;" disabled><i class="bi bi-trash-fill"></i></button>
+                                <button class="btn-aksi btn-aksi-hard" style="opacity: 0.35; cursor: not-allowed;" disabled title="Tidak bisa hapus akun sendiri"><i class="bi bi-trash-fill"></i></button>
                             <?php endif; ?>
                         <?php endif; ?>
+                        <!-- ========================================== -->
                     </td>
                 </tr>
 <?php endwhile; else: ?>

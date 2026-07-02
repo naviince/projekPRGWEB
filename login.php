@@ -1263,5 +1263,5 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
         });
         <?php endif; ?>
     </script>
-</body>
+</body>  
 </html>
