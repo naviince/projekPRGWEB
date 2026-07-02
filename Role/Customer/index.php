@@ -3,7 +3,7 @@ session_start();
 include '../../koneksi.php';
 
 // =====================================================
-// KONSTANTA STATUS
+// KONSTANTA STATUS & ASSET DEFAULT
 // =====================================================
 define('STATUS_ORDER_MENUNGGU_DP', 0);
 define('STATUS_ORDER_DP_TERVERIFIKASI', 1);
@@ -12,6 +12,9 @@ define('STATUS_ORDER_LUNAS', 3);
 define('STATUS_ORDER_DIBATALKAN', 4);
 define('STATUS_JADWAL_TERSEDIA', 0);
 define('STATUS_DATA_AKTIF', 1);
+
+// Menambahkan deklarasi variabel default_svg_avatar untuk mengatasi bug Undefined Variable
+$default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23d83f67'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
 // --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Customer') {
@@ -264,7 +267,7 @@ $d_stats = sqlsrv_fetch_array($q_stats, SQLSRV_FETCH_ASSOC);
             font-size: 1.8rem;
             color: var(--p-pink);
             text-decoration: none;
-            letter-spacing: -1.5px;
+            letter-spacing: -1px;
         }
         .nav-logo span { color: var(--text-dark); font-weight: 700; font-size: 0.9rem; }
         .nav-menu-center {

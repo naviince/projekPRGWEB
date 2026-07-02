@@ -20,9 +20,15 @@ $foto_admin = $d_admin['foto_profil'] ?? 'default.jpg';
 $email_admin = $d_admin['email_karyawan'] ?? 'admin@spotlight.com';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
-$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_admin)) 
-    ? "../../assets/img/pelanggan/" . $foto_admin 
-    : $default_svg_avatar;
+
+// Deteksi berkas foto di folder /karyawan/ maupun /pelanggan/ agar gambar profil tetap tampil sempurna
+if ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) {
+    $foto_admin_src = "../../assets/img/karyawan/" . $foto_admin;
+} elseif ($foto_admin != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_admin)) {
+    $foto_admin_src = "../../assets/img/pelanggan/" . $foto_admin;
+} else {
+    $foto_admin_src = $default_svg_avatar;
+}
 
 // =====================================================
 // PAGINATION & FILTER
@@ -50,7 +56,7 @@ if ($stmt_stats !== false) {
     $stats = sqlsrv_fetch_array($stmt_stats, SQLSRV_FETCH_ASSOC) ?: $stats;
 }
 
-// Best seller
+// Best seller (Menggunakan query analitik sejalan dengan relasi database)
 $top_paket = null;
 $sql_top = "SELECT TOP 1 p.Nama_Paket, p.Foto_Paket, COUNT(o.ID_Order) as total_booked 
             FROM Paket_Foto p 
@@ -296,6 +302,8 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             display: flex; align-items: center; justify-content: center;
         }
         .btn-search-icon:hover { border-color: var(--p-pink); color: var(--p-pink); transform: translateY(-2px); }
+        
+        /* Sinkronisasi tautan pembuatan paket ke create.php (Menghilangkan Bug 404) */
         .btn-reg-header {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink)) !important;
             color: #ffffff !important; border-radius: 14px !important;
@@ -325,27 +333,43 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         .table-scroll-wrapper::-webkit-scrollbar { height: 8px; }
         .table-scroll-wrapper::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
         .table-scroll-wrapper::-webkit-scrollbar-thumb { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); border-radius: 10px; }
+        
+        /* TABLE STYLING FLOATING ROW (TABLE CUSTOM) SINKRON DASHBOARD */
         .data-table {
-            width: 100%; min-width: 950px; border-collapse: separate; border-spacing: 0;
+            width: 100%; min-width: 950px; border-collapse: separate; border-spacing: 0 8px;
         }
         .data-table thead th {
-            background: #ffffff; padding: 16px 20px;
-            font-size: 0.75rem; font-weight: 800; text-transform: uppercase;
+            background: transparent; padding: 12px 20px;
+            font-size: 0.72rem; font-weight: 800; text-transform: uppercase;
             letter-spacing: 1px; color: #94a3b8; white-space: nowrap;
-            border: none; border-bottom: 2px solid #f1f5f9; text-align: left;
+            border: none; text-align: left;
         }
         .data-table thead th:first-child { padding-left: 24px; }
         .data-table thead th:last-child { padding-right: 24px; text-align: center; }
-        .data-table tbody tr { transition: all 0.2s ease; }
+        
+        .data-table tbody tr { 
+            background-color: #ffffff; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+            transition: var(--transition-3d); 
+        }
         .data-table tbody td {
             padding: 16px 20px; border: none;
-            border-bottom: 1px solid #f1f5f9; vertical-align: middle; white-space: nowrap;
+            vertical-align: middle; white-space: nowrap;
         }
-        .data-table tbody td:first-child { padding-left: 24px; }
-        .data-table tbody td:last-child { padding-right: 24px; text-align: center; }
-        .data-table tbody tr:nth-child(even) { background-color: #FFF8F0; }
-        .data-table tbody tr:nth-child(odd) { background-color: #ffffff; }
-        .data-table tbody tr:hover { background-color: #FFEDD5 !important; transform: scale(1.002); }
+        .data-table tbody td:first-child { 
+            padding-left: 24px; 
+            border-radius: 12px 0 0 12px;
+        }
+        .data-table tbody td:last-child { 
+            padding-right: 24px; 
+            text-align: center;
+            border-radius: 0 12px 12px 0;
+        }
+        .data-table tbody tr:hover { 
+            background-color: #fff8f9 !important; 
+            transform: translateX(4px) scale(1.002); 
+            box-shadow: 0 8px 24px rgba(216, 63, 103, 0.08);
+        }
 
         .paket-img {
             width: 60px; height: 60px; object-fit: cover;
@@ -354,11 +378,11 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         }
         .data-table tbody tr:hover .paket-img { transform: scale(1.08) rotate(2deg); }
 
-        .td-nama { font-weight: 700; font-size: 0.9rem; color: var(--text-dark); }
-        .td-deskripsi { font-size: 0.8rem; color: #718096; max-width: 200px; white-space: normal; }
+        .td-nama { font-weight: 800; font-size: 0.9rem; color: var(--text-dark); }
+        .td-deskripsi { font-size: 0.8rem; color: #718096; max-width: 200px; white-space: normal; font-weight: 600; }
         .td-harga { font-weight: 800; color: var(--p-pink); font-size: 1rem; }
-        .td-durasi { font-size: 0.8rem; color: #718096; font-weight: 600; }
-        .td-kapasitas { font-size: 0.85rem; color: #4a5568; font-weight: 600; }
+        .td-durasi { font-size: 0.8rem; color: #718096; font-weight: 700; }
+        .td-kapasitas { font-size: 0.85rem; color: #4a5568; font-weight: 700; }
 
         /* Slot Jadwal Badge */
         .slot-badge {
@@ -366,7 +390,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             color: var(--p-pink);
             padding: 6px 12px;
             border-radius: 10px;
-            font-weight: 700;
+            font-weight: 800;
             font-size: 0.8rem;
             display: inline-flex;
             align-items: center;
@@ -375,12 +399,12 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         .slot-count {
             font-size: 0.7rem;
             color: #94a3b8;
-            font-weight: 600;
+            font-weight: 700;
             margin-top: 4px;
         }
 
         .badge-status {
-            font-size: 0.72rem; font-weight: 700; padding: 6px 14px;
+            font-size: 0.72rem; font-weight: 800; padding: 6px 14px;
             border-radius: 50px; display: inline-flex; align-items: center; gap: 6px;
         }
         .badge-aktif { background: #ecfdf5; color: #059669; }
@@ -389,19 +413,20 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         .badge-aktif .badge-dot { background: #059669; }
         .badge-nonaktif .badge-dot { background: #dc2626; }
 
+        /* BUTTON AKSI BULAT SINKRON DENGAN HALAMAN KARYAWAN & DESIGN SYSTEM */
         .btn-action-circle {
-            width: 34px; height: 34px; border-radius: 50%;
+            width: 36px; height: 36px; border-radius: 50%;
             display: inline-flex; align-items: center; justify-content: center;
-            transition: var(--transition-3d); border: 1.5px solid #eef2f6;
-            background: #ffffff; font-size: 0.85rem; text-decoration: none;
-            margin: 0 2px; cursor: pointer;
+            transition: var(--transition-3d); border: 1.5px solid var(--light-pink);
+            background: #ffffff; font-size: 0.88rem; text-decoration: none;
+            margin: 0 4px; cursor: pointer;
         }
-        .btn-action-detail { color: #D53D66; border-color: #FFE4E9; }
-        .btn-action-detail:hover { background: #D53D66; color: #ffffff; transform: translateY(-2px); }
-        .btn-action-edit { color: var(--p-pink); border-color: #FFE4E9; }
-        .btn-action-edit:hover { background: var(--p-pink); color: #ffffff; transform: translateY(-2px); }
+        .btn-action-edit { color: var(--p-pink); }
+        .btn-action-edit:hover { background: var(--s-pink); border-color: var(--p-pink); transform: translateY(-2px) scale(1.08); }
+        .btn-action-toggle { color: var(--p-pink); }
+        .btn-action-toggle:hover { background: var(--s-pink); border-color: var(--p-pink); transform: translateY(-2px) scale(1.08); }
         .btn-action-delete { color: #dc2626; border-color: #fee2e2; }
-        .btn-action-delete:hover { background: #dc2626; color: #ffffff; transform: translateY(-2px); }
+        .btn-action-delete:hover { background: #fef2f2; border-color: #dc2626; transform: translateY(-2px) scale(1.08); }
 
         /* PAGINATION */
         .pagination-wrapper {
@@ -508,7 +533,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
     <div class="main-content">
 
         <!-- HEADER -->
-        <div class="dashboard-header" data-aos="fade-up">
+        <div class="dashboard-header fade-in-up">
             <div>
                 <h3 class="fw-bold mb-1">Master Paket Foto</h3>
                 <p class="text-muted small mb-0">Kelola standar kualitas dan nilai jual layanan SpotLight Studio.</p>
@@ -594,160 +619,158 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                     <i class="bi bi-search"></i>
                 </button>
             </form>
-            <a href="add.php" class="btn-reg-header text-decoration-none">
+            <a href="create.php" class="btn-reg-header text-decoration-none">
                 <i class="bi bi-plus-circle-fill me-2"></i>Buat Paket Baru
             </a>
         </div>
 
-        <!-- TABEL DATA -->
-        <div class="card-3d mb-4" style="padding: 24px;">
-            <div class="table-scroll-wrapper">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Preview</th>
-                            <th>Katalog Layanan</th>
-                            <th>Harga & Durasi</th>
-                            <th>Slot Jadwal</th>
-                            <th>Kapasitas</th>
-                            <th>Status</th>
-                            <th class="text-center">Aksi</th>
+        <!-- TABEL DATA (MENGGUNAKAN FLOATING ROW) -->
+        <div class="table-scroll-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Preview</th>
+                        <th>Katalog Layanan</th>
+                        <th>Harga & Durasi</th>
+                        <th>Slot Jadwal</th>
+                        <th>Kapasitas</th>
+                        <th>Status</th>
+                        <th class="text-center">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php
+                    $no = $offset + 1;
+                    if ($query && sqlsrv_has_rows($query)):
+                        while($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
+                            $path_img = "../../assets/img/paket/" . ($row['Foto_Paket'] ?? '');
+                            $img_src = (!empty($row['Foto_Paket']) && file_exists($path_img))
+                                ? $path_img 
+                                : $default_svg_avatar;
+
+                            // Status: 1 = Aktif, 0 = Nonaktif
+                            $badge_status = ($row['Status'] == 1) ? "badge-aktif" : "badge-nonaktif";
+                            $text_status = ($row['Status'] == 1) ? "Aktif" : "Nonaktif";
+
+                            // Hitung slot per hari (12 jam = 720 menit)
+                            $durasi = (int)($row['Durasi_Waktu'] ?? 30);
+                            $slot_per_hari = floor(720 / $durasi);
+                    ?>
+                        <tr class="fade-in-up">
+                            <td>
+                                <img src="<?= $img_src ?>" class="paket-img" alt="<?= htmlspecialchars($row['Nama_Paket']) ?>">
+                            </td>
+                            <td>
+                                <div class="td-nama"><?= htmlspecialchars($row['Nama_Paket']) ?></div>
+                                <div class="td-deskripsi"><?= htmlspecialchars($row['Deskripsi'] ?? '-') ?></div>
+                            </td>
+                            <td>
+                                <div class="td-harga">Rp <?= number_format($row['Harga_Paket'] ?? 0, 0, ',', '.') ?></div>
+                                <div class="td-durasi"><i class="bi bi-stopwatch me-1"></i><?= $row['Durasi_Waktu'] ?? 0 ?> menit</div>
+                            </td>
+                            <td>
+                                <span class="slot-badge">
+                                    <i class="bi bi-clock"></i>
+                                    <?= $durasi ?> menit
+                                </span>
+                                <div class="slot-count">
+                                    <?= $slot_per_hari ?> slot/hari
+                                </div>
+                            </td>
+                            <td class="td-kapasitas">
+                                <i class="bi bi-people-fill me-1 text-danger"></i><?= $row['Kapasitas_Orang'] ?? 0 ?> orang
+                            </td>
+                            <td>
+                                <span class="badge-status <?= $badge_status ?>">
+                                    <span class="badge-dot"></span>
+                                    <?= $text_status ?>
+                                </span>
+                            </td>
+                            <td style="text-align: center;">
+                                <a href="edit.php?id=<?= $row['ID_Paket'] ?>" class="btn-action-circle btn-action-edit" title="Edit Paket">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <button class="btn-action-circle btn-action-toggle" onclick="toggleStatus(<?= $row['ID_Paket'] ?>, <?= $row['Status'] ?>, '<?= htmlspecialchars($row['Nama_Paket']) ?>')" title="Toggle Status">
+                                    <i class="bi bi-toggle-<?= $row['Status'] == 1 ? 'on' : 'off' ?>"></i>
+                                </button>
+                                <button class="btn-action-circle btn-action-delete" onclick="hardDelete(<?= $row['ID_Paket'] ?>, '<?= htmlspecialchars($row['Nama_Paket']) ?>')" title="Hapus Permanen">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        <?php
-                        $no = $offset + 1;
-                        if ($query && sqlsrv_has_rows($query)):
-                            while($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
-                                $path_img = "../../assets/img/paket/" . ($row['Foto_Paket'] ?? '');
-                                $img_src = (!empty($row['Foto_Paket']) && file_exists($path_img))
-                                    ? $path_img 
-                                    : $default_svg_avatar;
-
-                                // Status: 1 = Aktif, 0 = Nonaktif
-                                $badge_status = ($row['Status'] == 1) ? "badge-aktif" : "badge-nonaktif";
-                                $text_status = ($row['Status'] == 1) ? "Aktif" : "Nonaktif";
-
-                                // Hitung slot per hari (12 jam = 720 menit)
-                                $durasi = (int)($row['Durasi_Waktu'] ?? 30);
-                                $slot_per_hari = floor(720 / $durasi);
-                        ?>
-                            <tr class="fade-in-up">
-                                <td>
-                                    <img src="<?= $img_src ?>" class="paket-img" alt="<?= htmlspecialchars($row['Nama_Paket']) ?>">
-                                </td>
-                                <td>
-                                    <div class="td-nama"><?= htmlspecialchars($row['Nama_Paket']) ?></div>
-                                    <div class="td-deskripsi"><?= htmlspecialchars($row['Deskripsi'] ?? '-') ?></div>
-                                </td>
-                                <td>
-                                    <div class="td-harga">Rp <?= number_format($row['Harga_Paket'] ?? 0, 0, ',', '.') ?></div>
-                                    <div class="td-durasi"><i class="bi bi-stopwatch me-1"></i><?= $row['Durasi_Waktu'] ?? 0 ?> menit</div>
-                                </td>
-                                <td>
-                                    <span class="slot-badge">
-                                        <i class="bi bi-clock"></i>
-                                        <?= $durasi ?> menit
-                                    </span>
-                                    <div class="slot-count">
-                                        <?= $slot_per_hari ?> slot/hari
-                                    </div>
-                                </td>
-                                <td class="td-kapasitas">
-                                    <i class="bi bi-people-fill me-1 text-danger"></i><?= $row['Kapasitas_Orang'] ?? 0 ?> orang
-                                </td>
-                                <td>
-                                    <span class="badge-status <?= $badge_status ?>">
-                                        <span class="badge-dot"></span>
-                                        <?= $text_status ?>
-                                    </span>
-                                </td>
-                                <td>
-                                    <a href="edit.php?id=<?= $row['ID_Paket'] ?>" class="btn-action-circle btn-action-edit" title="Edit Paket">
-                                        <i class="bi bi-pencil"></i>
-                                    </a>
-                                    <button class="btn-action-circle btn-action-delete" onclick="toggleStatus(<?= $row['ID_Paket'] ?>, <?= $row['Status'] ?>, '<?= htmlspecialchars($row['Nama_Paket']) ?>')" title="Toggle Status">
-                                        <i class="bi bi-toggle-<?= $row['Status'] == 1 ? 'on' : 'off' ?>"></i>
-                                    </button>
-                                    <button class="btn-action-circle btn-action-delete" onclick="hardDelete(<?= $row['ID_Paket'] ?>, '<?= htmlspecialchars($row['Nama_Paket']) ?>')" title="Hapus Permanen">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        <?php 
-                            endwhile; 
-                        else:
-                        ?>
-                            <tr>
-                                <td colspan="7" class="text-center text-muted py-5">
-                                    <i class="bi bi-inbox fs-1 mb-3 d-block" style="color: #cbd5e1;"></i>
-                                    <p class="fw-bold">Tidak ada data paket foto yang sesuai.</p>
-                                </td>
-                            </tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- PAGINATION -->
-            <?php if ($total_halaman > 1): ?>
-            <div class="pagination-wrapper">
-                <div class="pagination-info">
-                    Menampilkan <span><?= $offset + 1 ?></span> - <span><?= min($offset + $limit, $total_records) ?></span> dari <span><?= $total_records ?></span> paket
-                </div>
-                <nav class="pagination-nav">
-                    <?php if ($halaman > 1): ?>
-                        <a class="page-link-pag" href="list.php?halaman=<?= $halaman - 1 ?>&cari=<?= urlencode($cari) ?>&status=<?= $status_filter ?>&sort=<?= $sort ?>" title="Sebelumnya">
-                            <i class="bi bi-chevron-left"></i>
-                        </a>
-                    <?php else: ?>
-                        <span class="page-link-pag disabled"><i class="bi bi-chevron-left"></i></span>
-                    <?php endif; ?>
-
                     <?php 
-                    $start_page = max(1, $halaman - 2);
-                    $end_page = min($total_halaman, $halaman + 2);
-
-                    if ($start_page > 1) {
-                        echo '<a class="page-link-pag" href="list.php?halaman=1&cari=' . urlencode($cari) . '&status=' . $status_filter . '&sort=' . $sort . '">1</a>';
-                        if ($start_page > 2) echo '<span class="page-link-pag disabled">...</span>';
-                    }
-
-                    for ($i = $start_page; $i <= $end_page; $i++): 
+                        endwhile; 
+                    else:
                     ?>
-                        <a class="page-link-pag <?= ($halaman == $i) ? 'active-pag' : '' ?>" href="list.php?halaman=<?= $i ?>&cari=<?= urlencode($cari) ?>&status=<?= $status_filter ?>&sort=<?= $sort ?>">
-                            <?= $i ?>
-                        </a>
-                    <?php endfor; 
-
-                    if ($end_page < $total_halaman) {
-                        if ($end_page < $total_halaman - 1) echo '<span class="page-link-pag disabled">...</span>';
-                        echo '<a class="page-link-pag" href="list.php?halaman=' . $total_halaman . '&cari=' . urlencode($cari) . '&status=' . $status_filter . '&sort=' . $sort . '">' . $total_halaman . '</a>';
-                    }
-                    ?>
-
-                    <?php if ($halaman < $total_halaman): ?>
-                        <a class="page-link-pag" href="list.php?halaman=<?= $halaman + 1 ?>&cari=<?= urlencode($cari) ?>&status=<?= $status_filter ?>&sort=<?= $sort ?>" title="Selanjutnya">
-                            <i class="bi bi-chevron-right"></i>
-                        </a>
-                    <?php else: ?>
-                        <span class="page-link-pag disabled"><i class="bi bi-chevron-right"></i></span>
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-5" style="border-radius: 12px; background: #ffffff;">
+                                <i class="bi bi-inbox fs-1 mb-3 d-block" style="color: #cbd5e1;"></i>
+                                <p class="fw-bold">Tidak ada data paket foto yang sesuai.</p>
+                            </td>
+                        </tr>
                     <?php endif; ?>
-                </nav>
-            </div>
-            <?php elseif ($total_records > 0): ?>
-            <div class="pagination-wrapper">
-                <div class="pagination-info">
-                    Menampilkan <span>1</span> - <span><?= $total_records ?></span> dari <span><?= $total_records ?></span> paket
-                </div>
-            </div>
-            <?php endif; ?>
+                </tbody>
+            </table>
         </div>
+
+        <!-- PAGINATION -->
+        <?php if ($total_halaman > 1): ?>
+        <div class="pagination-wrapper">
+            <div class="pagination-info">
+                Menampilkan <span><?= $offset + 1 ?></span> - <span><?= min($offset + $limit, $total_records) ?></span> dari <span><?= $total_records ?></span> paket
+            </div>
+            <nav class="pagination-nav">
+                <?php if ($halaman > 1): ?>
+                    <a class="page-link-pag" href="list.php?halaman=<?= $halaman - 1 ?>&cari=<?= urlencode($cari) ?>&status=<?= $status_filter ?>&sort=<?= $sort ?>" title="Sebelumnya">
+                        <i class="bi bi-chevron-left"></i>
+                    </a>
+                <?php else: ?>
+                    <span class="page-link-pag disabled"><i class="bi bi-chevron-left"></i></span>
+                <?php endif; ?>
+
+                <?php 
+                $start_page = max(1, $halaman - 2);
+                $end_page = min($total_halaman, $halaman + 2);
+
+                if ($start_page > 1) {
+                    echo '<a class="page-link-pag" href="list.php?halaman=1&cari=' . urlencode($cari) . '&status=' . $status_filter . '&sort=' . $sort . '">1</a>';
+                    if ($start_page > 2) echo '<span class="page-link-pag disabled">...</span>';
+                }
+
+                for ($i = $start_page; $i <= $end_page; $i++): 
+                ?>
+                    <a class="page-link-pag <?= ($halaman == $i) ? 'active-pag' : '' ?>" href="list.php?halaman=<?= $i ?>&cari=<?= urlencode($cari) ?>&status=<?= $status_filter ?>&sort=<?= $sort ?>">
+                        <?= $i ?>
+                    </a>
+                <?php endfor; 
+
+                if ($end_page < $total_halaman) {
+                    if ($end_page < $total_halaman - 1) echo '<span class="page-link-pag disabled">...</span>';
+                    echo '<a class="page-link-pag" href="list.php?halaman=' . $total_halaman . '&cari=' . urlencode($cari) . '&status=' . $status_filter . '&sort=' . $sort . '">' . $total_halaman . '</a>';
+                }
+                ?>
+
+                <?php if ($halaman < $total_halaman): ?>
+                    <a class="page-link-pag" href="list.php?halaman=<?= $halaman + 1 ?>&cari=<?= urlencode($cari) ?>&status=<?= $status_filter ?>&sort=<?= $sort ?>" title="Selanjutnya">
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
+                <?php else: ?>
+                    <span class="page-link-pag disabled"><i class="bi bi-chevron-right"></i></span>
+                <?php endif; ?>
+            </nav>
+        </div>
+        <?php elseif ($total_records > 0): ?>
+        <div class="pagination-wrapper">
+            <div class="pagination-info">
+                Menampilkan <span>1</span> - <span><?= $total_records ?></span> dari <span><?= $total_records ?></span> paket
+            </div>
+        </div>
+        <?php endif; ?>
 
     </div>
 
     <!-- FILTER MODAL POPUP -->
-    <div class="modal fade" id="modalFilterData" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="modalFilterData" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
         <div class="modal-dialog modal-dialog-centered modal-sm">
             <div class="modal-content" style="border: none; border-radius: 24px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); overflow: hidden;">
                 <div class="modal-header" style="border: none; padding: 24px 24px 16px; background: #ffffff;">
@@ -828,13 +851,13 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             document.getElementById('mainSearchForm').submit();
         }
 
-        // Toggle Status (Soft Delete)
+        // Toggle Status
         function toggleStatus(id, currentStatus, nama) {
             const newStatus = currentStatus === 1 ? 0 : 1;
             const actionText = currentStatus === 1 ? 'menonaktifkan' : 'mengaktifkan';
 
             Swal.fire({
-                title: 'Ubah Status Paket?',
+                title: 'Ubah Status Paket? 🟢',
                 text: 'Anda akan ' + actionText + ' paket "' + nama + '"',
                 icon: 'warning',
                 showCancelButton: true,
@@ -852,7 +875,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         // Hard Delete
         function hardDelete(id, nama) {
             Swal.fire({
-                title: 'HAPUS PERMANEN?',
+                title: 'HAPUS PERMANEN? ❌',
                 text: 'Paket "' + nama + '" akan dihapus PERMANEN dari database!',
                 icon: 'error',
                 showCancelButton: true,
@@ -871,7 +894,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         function confirmLogout(e) {
             e.preventDefault();
             Swal.fire({
-                title: 'Keluar Sistem?',
+                title: 'Keluar Sistem? ❌',
                 text: 'Apakah Anda yakin ingin keluar dari sistem SpotLight Studio?',
                 icon: 'warning',
                 showCancelButton: true,
@@ -889,7 +912,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         function confirmLandingPage(e) {
             e.preventDefault();
             Swal.fire({
-                title: 'Kembali ke Beranda?',
+                title: 'Kembali ke Beranda? ✦',
                 text: 'Anda akan dialihkan ke halaman utama publik.',
                 icon: 'info',
                 showCancelButton: true,
@@ -923,6 +946,25 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         }
         setInterval(updateLiveClock, 1000);
         updateLiveClock();
+
+        function bukaModalBiodata() {
+            Swal.fire({
+                title: 'Profil Administrator 👤',
+                html: `
+                    <div class="text-center mb-3">
+                        <img src="<?= $foto_admin_src ?>" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid var(--light-pink);" alt="Admin">
+                        <h5 class="fw-bold mt-2 mb-0"><?= htmlspecialchars($nama_admin) ?></h5>
+                        <small class="text-muted">Administrator</small>
+                    </div>
+                    <div style="text-align: left; font-size: 0.85rem; padding: 10px; background: #f8fafc; border-radius: 12px;">
+                        <p class="mb-1"><strong>Email:</strong> <?= htmlspecialchars($email_admin) ?></p>
+                        <p class="mb-0"><strong>Sistem:</strong> SpotLight Studio</p>
+                    </div>
+                `,
+                confirmButtonColor: '#D53D66',
+                confirmButtonText: 'Tutup'
+            });
+        }
     </script>
 
     <!-- Notifikasi -->
@@ -935,7 +977,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         if ("<?= $_GET['status_sukses'] ?>" == 'tambah') msg = "Paket foto baru berhasil ditambahkan!";
         else if ("<?= $_GET['status_sukses'] ?>" == 'edit') msg = "Data paket foto berhasil diperbarui!";
         else if ("<?= $_GET['status_sukses'] ?>" == 'toggle_status') { msg = "Status paket foto berhasil diubah!"; t_title = "Status Diubah"; }
-        else if ("<?= $_GET['status_sukses'] ?>" == 'hard_delete') { msg = "Paket foto berhasil dihapus permanen!"; t_title = "Hard Delete Berhasil"; }
+        else if ("<?= $_GET['status_sukses'] ?>" == 'hard_delete') { msg = "Paket foto berhasil dihapus!"; t_title = "Data Dihapus"; }
         else if ("<?= $_GET['status_sukses'] ?>" == 'error') { msg = "<?= $_GET['message'] ?? 'Terjadi kesalahan!' ?>"; t_icon = "error"; t_title = "Gagal!"; }
 
         Swal.fire({

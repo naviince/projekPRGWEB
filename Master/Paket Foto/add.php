@@ -3,12 +3,6 @@ ob_start();
 session_start();
 include '../../koneksi.php';
 
-// =====================================================
-// KONSTANTA STATUS
-// =====================================================
-define('STATUS_DATA_AKTIF', 1);
-define('STATUS_DATA_NONAKTIF', 0);
-
 // --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Admin') {
     header("Location: ../../login.php");
@@ -26,9 +20,15 @@ $nama_admin = $d_admin['nama_karyawan'] ?? 'Administrator';
 $foto_admin = $d_admin['foto_profil'] ?? 'default.jpg';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
-$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_admin)) 
-    ? "../../assets/img/pelanggan/" . $foto_admin 
-    : $default_svg_avatar;
+
+// Deteksi berkas foto di folder /karyawan/ maupun /pelanggan/ agar gambar profil tetap tampil sempurna
+if ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) {
+    $foto_admin_src = "../../assets/img/karyawan/" . $foto_admin;
+} elseif ($foto_admin != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_admin)) {
+    $foto_admin_src = "../../assets/img/pelanggan/" . $foto_admin;
+} else {
+    $foto_admin_src = $default_svg_avatar;
+}
 
 // =====================================================
 // HELPER FUNCTIONS
@@ -67,21 +67,21 @@ if (isset($_POST['simpan'])) {
     $harga_paket = isset($_POST['harga_paket']) ? (float)$_POST['harga_paket'] : 0;
     $deskripsi = isset($_POST['deskripsi']) ? trim($_POST['deskripsi']) : '';
     $kapasitas_orang = isset($_POST['kapasitas_orang']) ? (int)$_POST['kapasitas_orang'] : 0;
-    $status = isset($_POST['status']) ? (int)$_POST['status'] : STATUS_DATA_AKTIF;
 
-    // --- VALIDASI NAMA PAKET ---
+    // --- VALIDASI NAMA PAKET DENGAN STORED PROCEDURE SP_CEKDUPLIKATPAKETFOTO ---
     if (empty($nama_paket)) {
         $errors['nama_paket'] = "Nama paket wajib diisi!";
     } elseif (strlen($nama_paket) > 100) {
         $errors['nama_paket'] = "Nama paket maksimal 100 karakter!";
     } else {
-        // Cek duplikat nama
-        $cek_nama = safe_sqlsrv_fetch($conn,
-            "SELECT ID_Paket FROM Paket_Foto WHERE Nama_Paket = ? AND Is_Deleted = 0",
-            [$nama_paket]
-        );
-        if ($cek_nama) {
-            $errors['nama_paket'] = "Nama paket sudah digunakan!";
+        $sql_dup = "{CALL sp_CekDuplikatPaketFoto(?, NULL)}";
+        $stmt_dup = sqlsrv_query($conn, $sql_dup, array($nama_paket));
+        if ($stmt_dup !== false) {
+            $row_dup = sqlsrv_fetch_array($stmt_dup, SQLSRV_FETCH_ASSOC);
+            if ($row_dup && ($row_dup['Total'] ?? 0) > 0) {
+                $errors['nama_paket'] = "Nama paket sudah digunakan!";
+            }
+            sqlsrv_free_stmt($stmt_dup);
         }
     }
 
@@ -100,14 +100,9 @@ if (isset($_POST['simpan'])) {
         $errors['kapasitas_orang'] = "Kapasitas orang harus lebih dari 0!";
     }
 
-    // --- VALIDASI STATUS ---
-    if (!in_array($status, [STATUS_DATA_AKTIF, STATUS_DATA_NONAKTIF])) {
-        $errors['status'] = "Status tidak valid!";
-    }
-
     // --- VALIDASI & UPLOAD FOTO PAKET ---
     $foto_paket = 'default_paket.jpg';
-    if (isset($_FILES['foto_paket']) && $_FILES['foto_paket']['error'] === UPLOAD_ERR_OK) {
+    if (empty($errors) && isset($_FILES['foto_paket']) && $_FILES['foto_paket']['error'] === UPLOAD_ERR_OK) {
         $file = $_FILES['foto_paket'];
         $allowed_ext = ['jpg', 'jpeg', 'png', 'webp'];
         $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
@@ -133,40 +128,54 @@ if (isset($_POST['simpan'])) {
     }
 
     // =====================================================
-    // INSERT DATA
+    // EKSEKUSI PENYIMPANAN DATA DENGAN SP & TRANSAKSI
     // =====================================================
     if (empty($errors)) {
         if (!sqlsrv_begin_transaction($conn)) {
             $errors['general'] = "Gagal memulai transaksi database!";
         } else {
-            $sql = "INSERT INTO Paket_Foto 
-                    (Nama_Paket, Durasi_Waktu, Harga_Paket, Deskripsi, Kapasitas_Orang, Foto_Paket, Status, Created_By, Created_Date) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, GETDATE())";
-
-            $params = [
+            // Memanggil sp_InsertPaketFoto untuk menyimpan paket utama & mengambil SCOPE_IDENTITY()
+            $sql_ins_paket = "{CALL sp_InsertPaketFoto(?, ?, ?, ?, ?, ?, ?)}";
+            $params_ins_paket = [
                 $nama_paket,
                 $durasi_waktu,
                 $harga_paket,
                 !empty($deskripsi) ? $deskripsi : null,
                 $kapasitas_orang,
                 $foto_paket,
-                $status,
                 $nama_admin
             ];
 
-            $stmt = sqlsrv_query($conn, $sql, $params);
+            $stmt_ins_paket = sqlsrv_query($conn, $sql_ins_paket, $params_ins_paket);
 
-            if ($stmt) {
-                sqlsrv_commit($conn);
-                $success = true;
-                $old_values = []; // Clear form on success
+            if ($stmt_ins_paket) {
+                $row_id = sqlsrv_fetch_array($stmt_ins_paket, SQLSRV_FETCH_ASSOC);
+                $new_paket_id = $row_id['ID_Paket'] ?? null;
+
+                if ($new_paket_id) {
+                    sqlsrv_commit($conn);
+                    $success = true;
+                    $old_values = [];
+                } else {
+                    sqlsrv_rollback($conn);
+                    $errors['general'] = "Sistem gagal mengidentifikasi ID paket baru!";
+                    if ($foto_paket != 'default_paket.jpg' && file_exists('../../assets/img/paket/' . $foto_paket)) {
+                        @unlink('../../assets/img/paket/' . $foto_paket);
+                    }
+                }
+                sqlsrv_free_stmt($stmt_ins_paket);
             } else {
                 sqlsrv_rollback($conn);
-                $errors['general'] = "Gagal menyimpan paket foto. Silakan coba lagi!";
+                $errors['general'] = "Gagal menyimpan paket foto ke dalam database. Silakan periksa kembali data Anda!";
+                if ($foto_paket != 'default_paket.jpg' && file_exists('../../assets/img/paket/' . $foto_paket)) {
+                    @unlink('../../assets/img/paket/' . $foto_paket);
+                }
             }
         }
     }
 }
+$csrf_token = bin2hex(random_bytes(32));
+$_SESSION['csrf_token'] = $csrf_token;
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -330,15 +339,6 @@ if (isset($_POST['simpan'])) {
 
         textarea.form-input-custom { resize: vertical; min-height: 100px; }
 
-        select.form-input-custom {
-            cursor: pointer;
-            appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 18px center;
-            padding-right: 44px;
-        }
-
         .error-text {
             color: #ef4444;
             font-size: 0.8rem;
@@ -444,13 +444,14 @@ if (isset($_POST['simpan'])) {
             border-top: 2px solid #f1f5f9;
         }
 
-        .form-grid {
+        /* PREMIUM 3-COLUMN NUMERIC GRID */
+        .form-grid-3 {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 20px;
         }
         @media (max-width: 768px) {
-            .form-grid { grid-template-columns: 1fr; }
+            .form-grid-3 { grid-template-columns: 1fr; }
         }
 
         .upload-zone {
@@ -644,7 +645,8 @@ if (isset($_POST['simpan'])) {
                     </div>
                 </div>
 
-                <div class="form-grid mb-4">
+                <!-- PREMIUM 3-COLUMN NUMERIC GRID -->
+                <div class="form-grid-3 mb-4">
                     <!-- DURASI WAKTU -->
                     <div>
                         <label class="form-label-custom">Durasi Waktu (Menit) <span class="text-danger">*</span></label>
@@ -657,7 +659,7 @@ if (isset($_POST['simpan'])) {
                         <?php endif; ?>
                         <div class="helper-text">
                             <i class="bi bi-info-circle"></i>
-                            Minimal <strong>10 menit</strong>. Durasi menentukan jumlah slot per hari (12 jam / durasi).
+                            Minimal <strong>10 menit</strong>.
                         </div>
                     </div>
 
@@ -676,12 +678,10 @@ if (isset($_POST['simpan'])) {
                         <?php endif; ?>
                         <div class="helper-text">
                             <i class="bi bi-info-circle"></i>
-                            Harga utama layanan. Ruangan tidak menambah biaya.
+                            Biaya utama layanan.
                         </div>
                     </div>
-                </div>
 
-                <div class="form-grid mb-4">
                     <!-- KAPASITAS ORANG -->
                     <div>
                         <label class="form-label-custom">Kapasitas Orang <span class="text-danger">*</span></label>
@@ -694,24 +694,7 @@ if (isset($_POST['simpan'])) {
                         <?php endif; ?>
                         <div class="helper-text">
                             <i class="bi bi-info-circle"></i>
-                            Maksimal jumlah orang per sesi foto.
-                        </div>
-                    </div>
-
-                    <!-- STATUS -->
-                    <div>
-                        <label class="form-label-custom">Status Paket</label>
-                        <select name="status" class="form-input-custom">
-                            <option value="<?= STATUS_DATA_AKTIF ?>" <?= (!isset($old_values['status']) || $old_values['status'] == STATUS_DATA_AKTIF) ? 'selected' : '' ?>>
-                                🟢 Aktif (Bisa Dipesan)
-                            </option>
-                            <option value="<?= STATUS_DATA_NONAKTIF ?>" <?= (isset($old_values['status']) && $old_values['status'] == STATUS_DATA_NONAKTIF) ? 'selected' : '' ?>>
-                                🔴 Nonaktif (Tidak Tersedia)
-                            </option>
-                        </select>
-                        <div class="helper-text">
-                            <i class="bi bi-info-circle"></i>
-                            Paket nonaktif tidak akan muncul di halaman pelanggan.
+                            Maksimal orang per sesi.
                         </div>
                     </div>
                 </div>
