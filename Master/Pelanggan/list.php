@@ -84,6 +84,7 @@ if ($sort == "nama_desc") { $order_clause = "Nama_Pelanggan DESC"; }
 elseif ($sort == "baru") { $order_clause = "Created_Date DESC"; }
 elseif ($sort == "lama") { $order_clause = "Created_Date ASC"; }
 
+// Mengambil Total Records
 $sql_count = "SELECT COUNT(*) AS total FROM Pelanggan " . $where_clause;
 $query_count = sqlsrv_query($conn, $sql_count, $params);
 $total_records = 0;
@@ -94,17 +95,15 @@ if ($query_count !== false) {
     $total_halaman = ceil($total_records / $limit);
 }
 
+// FIX ANTI-CRASH: Menyematkan parameter integer $offset dan $limit langsung di dalam query SQL Server
 $sql_list = "SELECT *, 
     DATEDIFF(YEAR, Tanggal_Lahir, GETDATE()) - 
     CASE WHEN MONTH(Tanggal_Lahir) > MONTH(GETDATE()) 
          OR (MONTH(Tanggal_Lahir) = MONTH(GETDATE()) AND DAY(Tanggal_Lahir) > DAY(GETDATE())) 
     THEN 1 ELSE 0 END as Umur 
-FROM Pelanggan " . $where_clause . " ORDER BY " . $order_clause . " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
-$params_list = $params;
-$params_list[] = $offset;
-$params_list[] = $limit;
+FROM Pelanggan " . $where_clause . " ORDER BY " . $order_clause . " OFFSET $offset ROWS FETCH NEXT $limit ROWS ONLY";
 
-$query = sqlsrv_query($conn, $sql_list, $params_list);
+$query = sqlsrv_query($conn, $sql_list, $params);
 
 function safe_has_rows($q) {
     if ($q === false) return false;
@@ -326,7 +325,7 @@ function format_date_sqlsrv($date_obj) {
         <div class="stats-scroll-wrapper animate-fade-in">
             <div class="stats-row">
                 <div class="stat-card-item"><div class="card-3d"><div class="stat-card"><div class="stat-icon stat-icon-pink"><i class="bi bi-people-fill"></i></div><div class="stat-content"><div class="stat-title">Total Pelanggan</div><div class="stat-val"><?= $stats['total'] ?? 0 ?> Orang</div><div class="stat-subtitle">Terdaftar di sistem</div></div></div></div></div>
-                <div class="stat-card-item"><div class="card-3d"><div class="stat-card"><div class="stat-icon stat-icon-green"><i class="bi bi-person-check-fill"></i></div><div class="stat-content"><div class="stat-title">Pelanggan Aktif</div><div class="stat-val"><?= $stats['aktif'] ?? 0 ?> Orang</div><div class="stat-subtitle">Dapat melakukan booking</div></div></div></div></div>
+                <div class="stat-card-item"><div class="card-3d"><div class="stat-card"><div class="stat-icon stat-icon-green"><i class="bi bi-person-check-fill"></i></div><div class="stat-content"><div class="stat-title">Pelanggan Sesi</div><div class="stat-val"><?= $stats['aktif'] ?? 0 ?> Orang</div><div class="stat-subtitle">Dapat melakukan booking</div></div></div></div></div>
                 <div class="stat-card-item"><div class="card-3d"><div class="stat-card"><div class="stat-icon stat-icon-red"><i class="bi bi-person-x-fill"></i></div><div class="stat-content"><div class="stat-title">Pelanggan Nonaktif</div><div class="stat-val"><?= $stats['nonaktif'] ?? 0 ?> Orang</div><div class="stat-subtitle">Tidak dapat booking</div></div></div></div></div>
                 <div class="stat-card-item"><div class="card-3d"><div class="stat-card"><div class="stat-icon stat-icon-gray"><i class="bi bi-archive-fill"></i></div><div class="stat-content"><div class="stat-title">Data Dihapus</div><div class="stat-val"><?= $stats['dihapus'] ?? 0 ?> Orang</div><div class="stat-subtitle">Diarsipkan (soft delete)</div></div></div></div></div>
             </div>
@@ -410,6 +409,7 @@ function format_date_sqlsrv($date_obj) {
         </div>
     </div>
 
+    <!-- MODAL DETAIL -->
     <div class="modal fade" id="modalDetailPelanggan" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); background: #fff;">
@@ -432,6 +432,28 @@ function format_date_sqlsrv($date_obj) {
               </div>
             </div>
             <button class="btn btn-reg-header shadow-sm py-3 mt-0 w-100" data-bs-dismiss="modal" style="border-radius: 14px !important; background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #fff; border: none; font-weight: 700;">Tutup Detail</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL PROFILE BIODATA -->
+    <div class="modal fade" id="modalBiodataAdmin" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); background: #fff;">
+          <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center"><h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-badge-fill text-danger me-2"></i>Profil Anda</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+          <div class="modal-body px-4 pb-4 pt-3">
+            <div class="text-center mb-4">
+              <div class="profile-preview-box" style="width: 100px; height: 100px; border: 3px solid var(--s-pink); margin: 0 auto; border-radius: 50%; overflow: hidden;"><img src="<?= $foto_admin_src ?>" alt="Foto Profil" style="width: 100%; height: 100%; object-fit: cover;"></div>
+              <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_admin) ?></h5><span class="badge bg-danger px-3 py-1 text-white text-uppercase" style="font-size: 0.72rem; border-radius: 50px; font-weight: 700;">Admin</span>
+            </div>
+            <div class="card-3d p-3 border-0 mb-3" style="border-radius: 20px; background-color: #f8fafc;">
+              <div class="row g-3">
+                <div class="col-12"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Email Karyawan</small><span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($email_admin) ?></span></div>
+                <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Hak Akses Sistem</small><span class="fw-bold text-dark" style="font-size: 0.85rem;">Administrator (Admin)</span></div>
+              </div>
+            </div>
+            <button class="btn btn-reg-header shadow-sm py-3 mt-0 w-100" data-bs-dismiss="modal" style="border-radius: 14px !important; background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #fff; border: none; font-weight: 700;">Tutup</button>
           </div>
         </div>
       </div>
@@ -484,6 +506,10 @@ function format_date_sqlsrv($date_obj) {
             document.getElementById('d_foto').src = ds.foto;
             var modalDetail = new bootstrap.Modal(document.getElementById('modalDetailPelanggan'));
             modalDetail.show();
+        }
+        function bukaModalBiodata() {
+            var modalBiodata = new bootstrap.Modal(document.getElementById('modalBiodataAdmin'));
+            modalBiodata.show();
         }
         function softDelete(id, nama) {
             Swal.fire({
@@ -545,6 +571,7 @@ function format_date_sqlsrv($date_obj) {
         if ("<?= $_GET['status_sukses'] ?>" == "soft_delete") { msg = "Pelanggan berhasil diarsipkan!"; t_title = "Diarsipkan"; }
         else if ("<?= $_GET['status_sukses'] ?>" == "restore") { msg = "Pelanggan berhasil dipulihkan!"; t_title = "Dipulihkan"; }
         else if ("<?= $_GET['status_sukses'] ?>" == "hard_delete") { msg = "Pelanggan berhasil dihapus permanen!"; t_title = "Hard Delete Berhasil"; }
+        else if ("<?= $_GET['status_sukses'] ?>" == "error_relasi") { msg = "Tidak bisa hapus! Pelanggan masih memiliki data transaksi order."; t_icon = "error"; t_title = "Gagal!"; }
         else if ("<?= $_GET['status_sukses'] ?>" == "error") { msg = "<?= $_GET['message'] ?? 'Terjadi kesalahan!' ?>"; t_icon = "error"; t_title = "Gagal!"; }
         Swal.fire({ icon: t_icon, title: t_title, text: msg, confirmButtonColor: '#D53D66' });
     </script>

@@ -63,7 +63,7 @@ if (isset($_POST['login'])) {
                     ]);
                     session_write_close();
 
-                    // === REDIRECT LOGIC: Kalau dari index.php klik "Pilih Paket" ===
+                    // === REDIRECT LOGIC ===
                     $redirect = $_GET['redirect'] ?? '';
                     $id_paket_redirect = $_GET['id_paket'] ?? '';
 
@@ -71,8 +71,6 @@ if (isset($_POST['login'])) {
                         header("Location: Transaksi/booking.php?id_paket=" . (int)$id_paket_redirect);
                         exit();
                     }
-                    // === AKHIR REDIRECT LOGIC ===
-
                     header("Location: Role/Customer/index.php");
                     exit();
                 } else {
@@ -128,26 +126,28 @@ if (isset($_POST['register'])) {
         $confirm_pass = $_POST['confirm_password'] ?? '';
         $panel_aktif = "ke-daftar";
 
-        // VALIDASI
+        // VALIDASI NAMA
         if (empty($nama) || strlen($nama) < 3) $error_nama = "Nama min 3 karakter!";
         elseif (!preg_match("/^[a-zA-Z\s]+$/", $nama)) $error_nama = "Hanya huruf dan spasi!";
 
+        // VALIDASI USERNAME
         if (empty($username) || strlen($username) < 5) $error_username = "Username min 5 karakter!";
         elseif (!preg_match("/^[a-zA-Z0-9_]+$/", $username)) $error_username = "Hanya huruf, angka, underscore!";
         elseif (strlen($username) > 50) $error_username = "Max 50 karakter!";
         else {
-            $cek = sqlsrv_query($conn, "SELECT 1 FROM Pelanggan WHERE LOWER(Username_Pelanggan)=LOWER(?)", [$username]);
+            $cek = sqlsrv_query($conn, "SELECT 1 FROM Pelanggan WHERE LOWER(Username_Pelanggan)=LOWER(?) AND Is_Deleted = 0", [$username]);
             if ($cek && sqlsrv_has_rows($cek)) $error_username = "Username sudah digunakan!";
         }
 
+        // VALIDASI EMAIL (Sesuai CHK_Pelanggan_Email)
         if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) $error_email_reg = "Email tidak valid!";
         elseif (strlen($email) > 100) $error_email_reg = "Email max 100 karakter!";
         else {
-            $cek = sqlsrv_query($conn, "SELECT 1 FROM Pelanggan WHERE LOWER(Email_Pelanggan)=LOWER(?)", [$email]);
+            $cek = sqlsrv_query($conn, "SELECT 1 FROM Pelanggan WHERE LOWER(Email_Pelanggan)=LOWER(?) AND Is_Deleted = 0", [$email]);
             if ($cek && sqlsrv_has_rows($cek)) $error_email_reg = "Email sudah terdaftar!";
         }
 
-        // NO HP: +62 + max 12 digit = 15 chars total
+        // VALIDASI NO HP (Sesuai CHK_Pelanggan_NoHp: +62 + 9-13 digit)
         $hp_digits = preg_replace('/[^0-9]/', '', $hp_raw);
         $hp_clean = '+62' . $hp_digits;
         if (empty($hp_raw)) $error_hp = "No HP wajib diisi!";
@@ -155,12 +155,14 @@ if (isset($_POST['register'])) {
         elseif (strlen($hp_digits) > 12) $error_hp = "Max 12 digit setelah +62!";
         elseif (!preg_match("/^8[1-9][0-9]{7,11}$/", $hp_digits)) $error_hp = "Format: 81234567890";
         else {
-            $cek = sqlsrv_query($conn, "SELECT 1 FROM Pelanggan WHERE No_Hp=?", [$hp_clean]);
+            $cek = sqlsrv_query($conn, "SELECT 1 FROM Pelanggan WHERE No_Hp=? AND Is_Deleted = 0", [$hp_clean]);
             if ($cek && sqlsrv_has_rows($cek)) $error_hp = "No HP sudah terdaftar!";
         }
 
+        // VALIDASI JENIS KELAMIN (Sesuai CHK_Pelanggan_JK)
         if (empty($jk) || !in_array($jk, ['Laki-laki', 'Perempuan'])) $error_jk = "Pilih jenis kelamin!";
 
+        // VALIDASI TANGGAL LAHIR
         if (empty($dob)) $error_dob = "Tanggal lahir wajib diisi!";
         else {
             $dob_date = DateTime::createFromFormat('Y-m-d', $dob);
@@ -173,14 +175,16 @@ if (isset($_POST['register'])) {
             }
         }
 
+        // VALIDASI ALAMAT
         if (empty($alamat) || strlen($alamat) < 10) $error_alamat = "Alamat min 10 karakter!";
         elseif (strlen($alamat) > 255) $error_alamat = "Alamat max 255 karakter!";
 
+        // VALIDASI KATA SANDI (Sesuai CHK_Pelanggan_Password)
         if (strlen($pass) < 8 || !preg_match("/[A-Za-z]/", $pass) || !preg_match("/[0-9]/", $pass) || !preg_match("/[^A-Za-z0-9]/", $pass))
             $error_pass = "Min 8: huruf+angka+simbol!";
         if ($pass !== $confirm_pass) $error_confirm_pass = "Kata sandi tidak cocok!";
 
-        // FOTO: Preserve if already uploaded
+        // VALIDASI & UNGGAH FOTO PROFIL
         $foto_name = isset($_POST['existing_foto_profil']) ? trim($_POST['existing_foto_profil']) : 'default.jpg';
         if (isset($_FILES['foto_profil']) && $_FILES['foto_profil']['error'] === UPLOAD_ERR_OK) {
             $ext = strtolower(pathinfo($_FILES['foto_profil']['name'], PATHINFO_EXTENSION));
@@ -201,18 +205,21 @@ if (isset($_POST['register'])) {
                 } else {
                     move_uploaded_file($_FILES['foto_profil']['tmp_name'], $dir . $foto_name);
                 }
-                $foto_profil = $foto_name; // Update for re-render
+                $foto_profil = $foto_name;
             }
         }
 
-        // INSERT KE DATABASE
+        // INSERT KE DATABASE MENGGUNAKAN STORED PROCEDURE (sp_InsertPelanggan)
         if (empty($error_nama) && empty($error_username) && empty($error_email_reg) && empty($error_hp) &&
             empty($error_jk) && empty($error_dob) && empty($error_alamat) && empty($error_pass) &&
             empty($error_confirm_pass) && empty($error_foto)) {
 
+            // Enkripsi kata sandi (Akan menghasilkan hash 60 karakter yang memenuhi CHK_Pelanggan_Password)
             $pass_hash = password_hash($pass, PASSWORD_BCRYPT);
-            $sql = "INSERT INTO Pelanggan (Nama_Pelanggan, Username_Pelanggan, Email_Pelanggan, Password_Pelanggan, Jenis_Kelamin, Tanggal_Lahir, No_Hp, Alamat, Foto_Profil, Status, Created_By, Created_Date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'system', GETDATE())";
-            $params = [$nama, $username, $email, $pass_hash, $jk, $dob, $hp_clean, $alamat, $foto_name];
+            
+            // Format panggilan Stored Procedure SQL Server
+            $sql = "{CALL sp_InsertPelanggan(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)}";
+            $params = [$nama, $username, $email, $pass_hash, $jk, $dob, $hp_clean, $alamat, $foto_name, 'system'];
             $stmt = sqlsrv_query($conn, $sql, $params);
 
             if ($stmt) {
@@ -221,7 +228,6 @@ if (isset($_POST['register'])) {
                 $registered_password = $pass;
 
                 // === AUTO-LOGIN SETELAH REGISTER + REDIRECT ===
-                // Ambil data user yang baru dibuat untuk auto-login
                 $sql_new = "SELECT * FROM Pelanggan WHERE Email_Pelanggan = ? AND Is_Deleted = 0 AND Status = 1";
                 $stmt_new = sqlsrv_query($conn, $sql_new, [$email]);
                 $user_new = ($stmt_new !== false) ? sqlsrv_fetch_array($stmt_new, SQLSRV_FETCH_ASSOC) : null;
@@ -235,7 +241,6 @@ if (isset($_POST['register'])) {
                         'nama' => $user_new['Nama_Pelanggan']
                     ]);
 
-                    // Cek redirect parameter dari index.php
                     $redirect_reg = $_GET['redirect'] ?? '';
                     $id_paket_reg = $_GET['id_paket'] ?? '';
 
@@ -244,10 +249,9 @@ if (isset($_POST['register'])) {
                         exit();
                     }
                 }
-                // === AKHIR AUTO-LOGIN ===
             } else {
                 $err = sqlsrv_errors();
-                $error_email_reg = "Database error: " . ($err[0]['message'] ?? 'Unknown');
+                $error_email_reg = "Gagal mendaftarkan akun: " . ($err[0]['message'] ?? 'Kesalahan tidak diketahui');
             }
         }
     }
@@ -564,9 +568,7 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
         }
         .toggle-eye:hover { color: var(--p-pink); }
 
-
-
-        /* Radio Buttons - Compact Layout */
+        /* Radio Buttons */
         .radio-group-fix {
             display: flex;
             gap: 10px;
@@ -620,27 +622,6 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
         }
         .radio-fix input:checked + .radio-box .radio-icon {
             color: var(--p-pink);
-        }
-
-        /* Reduce row gap for compact layout */
-        .forms-panel .row {
-            --bs-gutter-x: 12px;
-        }
-
-        /* Date Picker */
-        .date-wrap {
-            position: relative;
-        }
-        .date-wrap .input-field {
-            cursor: pointer;
-        }
-        .date-icon {
-            position: absolute;
-            right: 18px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #94a3b8;
-            pointer-events: none;
         }
 
         /* File Upload */
@@ -785,40 +766,6 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
         @keyframes fadeInUp {
             from { opacity: 0; transform: translateY(30px); }
             to { opacity: 1; transform: translateY(0); }
-        }
-
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateX(30px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-
-        /* Responsive */
-        @media (max-width: 991px) {
-            .main-card {
-                flex-direction: column;
-                max-width: 500px;
-            }
-            .visual-panel {
-                width: 100%;
-                min-height: 200px;
-                padding: 30px;
-            }
-            .forms-panel {
-                width: 100%;
-                min-height: auto;
-            }
-            .form-container {
-                position: relative;
-                padding: 30px;
-                transform: none;
-                opacity: 1;
-                pointer-events: auto;
-                display: none;
-            }
-            .form-container.active {
-                display: block;
-            }
-            .visual-title { font-size: 1.8rem; }
         }
 
         /* Scrollbar */
@@ -1097,15 +1044,13 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
         };
 
         function switchPanel(forceToLogin = false) {
-            // If forceToLogin is true, always switch to login regardless of current state
             if (forceToLogin) {
-                isRegister = true; // Set to true so toggling will make it false (login)
+                isRegister = true;
             }
 
             isRegister = !isRegister;
             const data = isRegister ? visualData.register : visualData.login;
 
-            // Animate visual panel content
             visualBadge.style.opacity = '0';
             visualTitle.style.opacity = '0';
             visualText.style.opacity = '0';
@@ -1126,7 +1071,6 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
                 visualBtn.style.opacity = '1';
             }, 300);
 
-            // Switch forms
             if (isRegister) {
                 loginForm.classList.remove('active');
                 loginForm.classList.add('hidden');
@@ -1148,7 +1092,6 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
         switchPanel();
         <?php endif; ?>
 
-        // Password toggle
         function togglePassword(inputId, icon) {
             const input = document.getElementById(inputId);
             const type = input.type === 'password' ? 'text' : 'password';
@@ -1157,20 +1100,17 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
             icon.classList.toggle('bi-eye-slash');
         }
 
-        // Image preview
         function previewImage(input) {
             if (input.files && input.files[0]) {
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     document.getElementById('previewFoto').src = e.target.result;
-                    // Update hidden field with new photo name placeholder
                     document.getElementById('existingFoto').value = 'new_upload';
                 };
                 reader.readAsDataURL(input.files[0]);
             }
         }
 
-        // Real-time validation
         document.getElementById('inputNama')?.addEventListener('input', function() {
             this.value = this.value.replace(/[^a-zA-Z\s]/g, '');
         });
@@ -1189,7 +1129,6 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
             this.value = val;
         });
 
-        // Loading state
         function showLoading(btn) {
             btn.classList.add('loading');
             setTimeout(() => {
@@ -1197,10 +1136,7 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
             }, 3000);
         }
 
-
-        // Success register - Auto switch to login with countdown
         <?php if($success_register && !isset($_SESSION['status'])): ?>
-        let countdown = 3;
         Swal.fire({
             icon: 'success',
             title: 'Yeay, Akun Berhasil Dibuat! 🎉✨',
@@ -1212,24 +1148,19 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
             timerProgressBar: true,
             allowOutsideClick: false,
             willClose: () => {
-                // Switch panel when SweetAlert closes
                 if (!isRegister) {
-                    switchPanel(); // Switch to login if currently on register
+                    switchPanel();
                 }
             }
         }).then((result) => {
-            // Auto-fill login form with registered credentials
             const emailField = document.querySelector('input[name="email_login"]');
             const passField = document.querySelector('input[name="password_login"]');
             if (emailField) emailField.value = '<?= htmlspecialchars($registered_email ?? '') ?>';
             if (passField) passField.value = '<?= htmlspecialchars($registered_password ?? '') ?>';
-
-            // Force switch to login panel
             switchPanel(true);
         });
         <?php endif; ?>
 
-        // Error alerts - Show all validation errors with guidance
         <?php if(!empty($all_errors)): ?>
         Swal.fire({
             icon: 'warning',

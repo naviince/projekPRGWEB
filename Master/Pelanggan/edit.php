@@ -56,9 +56,11 @@ if (!empty($data['Tanggal_Lahir'])) {
     }
 }
 
-// Format No HP untuk tampilan (hapus 62 di depan jika ada)
+// Format No HP untuk tampilan (hapus +62 di depan jika ada untuk penyesuaian form input)
 $hp_display = $data['No_Hp'] ?? '';
-if (strpos($hp_display, '62') === 0) {
+if (strpos($hp_display, '+62') === 0) {
+    $hp_display = substr($hp_display, 3);
+} elseif (strpos($hp_display, '62') === 0) {
     $hp_display = substr($hp_display, 2);
 }
 
@@ -101,12 +103,12 @@ if (isset($_POST['update'])) {
         $error_username = "Username minimal 5 karakter!";
     } elseif (!preg_match("/^[a-zA-Z0-9_]*$/", $username)) {
         $error_username = "Username hanya boleh huruf, angka, dan underscore!";
-    } elseif (strlen($username) > 20) {
-        $error_username = "Username maksimal 20 karakter!";
+    } elseif (strlen($username) > 50) {
+        $error_username = "Username maksimal 50 karakter!";
     } else {
-        $cek_user = sqlsrv_query($conn, "SELECT ID_Pelanggan FROM Pelanggan WHERE Username_Pelanggan = ? AND ID_Pelanggan != ?", [$username, $id_pelanggan]);
+        $cek_user = sqlsrv_query($conn, "SELECT ID_Pelanggan FROM Pelanggan WHERE Username_Pelanggan = ? AND ID_Pelanggan != ? AND Is_Deleted = 0", [$username, $id_pelanggan]);
         if (sqlsrv_has_rows($cek_user)) {
-            $error_username = "Username sudah digunakan!";
+            $error_username = "Username sudah digunakan oleh pelanggan lain!";
         }
     }
 
@@ -118,38 +120,40 @@ if (isset($_POST['update'])) {
     } elseif (strlen($email) > 100) {
         $error_email = "Email terlalu panjang (maks 100 karakter)!";
     } else {
-        $cek_email = sqlsrv_query($conn, "SELECT ID_Pelanggan FROM Pelanggan WHERE Email_Pelanggan = ? AND ID_Pelanggan != ?", [$email, $id_pelanggan]);
+        $cek_email = sqlsrv_query($conn, "SELECT ID_Pelanggan FROM Pelanggan WHERE Email_Pelanggan = ? AND ID_Pelanggan != ? AND Is_Deleted = 0", [$email, $id_pelanggan]);
         if (sqlsrv_has_rows($cek_email)) {
-            $error_email = "Email sudah digunakan!";
+            $error_email = "Email sudah digunakan oleh pelanggan lain!";
         }
     }
 
-    // === VALIDASI PASSWORD ===
-    if (!empty($password) && strlen($password) < 8) {
-        $error_password = "Kata sandi minimal 8 karakter!";
+    // === VALIDASI PASSWORD (MIROR CHK_Pelanggan_Password) ===
+    if (!empty($password)) {
+        if (strlen($password) < 8 || !preg_match("/[A-Za-z]/", $password) || !preg_match("/[0-9]/", $password) || !preg_match("/[^A-Za-z0-9]/", $password)) {
+            $error_password = "Kata sandi minimal 8 karakter, serta harus mengandung kombinasi huruf, angka, dan simbol!";
+        }
     }
 
-    // === VALIDASI NO HP ===
+    // === VALIDASI & STANDARISASI NO HP (Sesuai CHK_Pelanggan_NoHp) ===
     $hp_digits = preg_replace('/[^0-9]/', '', $hp_raw);
     if (strpos($hp_raw, '62') === 0 || strpos($hp_raw, '+62') === 0) {
         $hp_digits = preg_replace('/^62/', '', $hp_digits);
     }
-    $hp_clean = '62' . $hp_digits;
+    $hp_clean = '+62' . $hp_digits;
 
     if (empty($hp_raw)) {
         $error_hp = "Nomor telepon wajib diisi!";
     } elseif (!ctype_digit($hp_digits)) {
         $error_hp = "Nomor telepon hanya boleh angka!";
-    } elseif (strlen($hp_digits) < 10) {
-        $error_hp = "Minimal 10 digit (setelah +62)!";
+    } elseif (strlen($hp_digits) < 9) {
+        $error_hp = "Minimal 9 digit (setelah +62)!";
     } elseif (strlen($hp_digits) > 13) {
         $error_hp = "Maksimal 13 digit (setelah +62)!";
-    } elseif (!preg_match("/^8[1-9][0-9]{8,11}$/", $hp_digits)) {
+    } elseif (!preg_match("/^8[1-9][0-9]{7,11}$/", $hp_digits)) {
         $error_hp = "Format tidak valid. Contoh: 81234567890";
     } else {
-        $cek_hp = sqlsrv_query($conn, "SELECT ID_Pelanggan FROM Pelanggan WHERE No_Hp = ? AND ID_Pelanggan != ?", [$hp_clean, $id_pelanggan]);
+        $cek_hp = sqlsrv_query($conn, "SELECT ID_Pelanggan FROM Pelanggan WHERE No_Hp = ? AND ID_Pelanggan != ? AND Is_Deleted = 0", [$hp_clean, $id_pelanggan]);
         if (sqlsrv_has_rows($cek_hp)) {
-            $error_hp = "Nomor telepon sudah digunakan!";
+            $error_hp = "Nomor telepon sudah digunakan oleh pelanggan lain!";
         }
     }
 
@@ -208,7 +212,7 @@ if (isset($_POST['update'])) {
                 $foto_changed = true;
                 $old_foto = $data['Foto_Profil'] ?? 'default.jpg';
                 if ($old_foto != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $old_foto)) {
-                    unlink("../../assets/img/pelanggan/" . $old_foto);
+                    @unlink("../../assets/img/pelanggan/" . $old_foto);
                 }
             } else {
                 $error_foto = "Gagal mengupload foto!";
@@ -239,9 +243,11 @@ if (isset($_POST['update'])) {
             ];
             $params = [$username, $nama, $email, $hp_clean, $jk, $dob, $alamat, $status, $foto_name, $nama_admin];
 
+            // Hashing password baru sebelum diupdate (FIX KEAMANAN & BATASAN)
             if (!empty($password)) {
+                $pass_hash = password_hash($password, PASSWORD_BCRYPT);
                 $update_fields[] = "Password_Pelanggan = ?";
-                $params[] = $password;
+                $params[] = $pass_hash;
             }
 
             $params[] = $id_pelanggan;
@@ -252,36 +258,18 @@ if (isset($_POST['update'])) {
             if ($stmt_update) {
                 sqlsrv_commit($conn);
                 $success = true;
-
-                $stmt = sqlsrv_query($conn, $sql, [$id_pelanggan]);
-                $data = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
-                $foto_pelanggan = $data['Foto_Profil'] ?? 'default.jpg';
-                $foto_src = ($foto_pelanggan != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_pelanggan)) 
-                    ? "../../assets/img/pelanggan/" . $foto_pelanggan 
-                    : $default_svg_avatar;
-                $hp_display = $data['No_Hp'] ?? '';
-                if (strpos($hp_display, '62') === 0) {
-                    $hp_display = substr($hp_display, 2);
-                }
-                if (!empty($data['Tanggal_Lahir'])) {
-                    if ($data['Tanggal_Lahir'] instanceof DateTime) {
-                        $dob_value = $data['Tanggal_Lahir']->format('Y-m-d');
-                    } else {
-                        $dob_value = date('Y-m-d', strtotime($data['Tanggal_Lahir']));
-                    }
-                }
             } else {
                 sqlsrv_rollback($conn);
                 $error_general = "Gagal memperbarui data!";
                 if ($foto_changed && $foto_name != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_name)) {
-                    unlink("../../assets/img/pelanggan/" . $foto_name);
+                    @unlink("../../assets/img/pelanggan/" . $foto_name);
                 }
             }
         } catch (Exception $e) {
             sqlsrv_rollback($conn);
             $error_general = "Terjadi kesalahan sistem!";
             if ($foto_changed && $foto_name != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_name)) {
-                unlink("../../assets/img/pelanggan/" . $foto_name);
+                @unlink("../../assets/img/pelanggan/" . $foto_name);
             }
         }
     }
@@ -295,8 +283,8 @@ $nama_admin = $d_admin['nama_karyawan'] ?? 'Administrator';
 $foto_admin = $d_admin['foto_profil'] ?? 'default.jpg';
 $email_admin = $d_admin['email_karyawan'] ?? 'admin@spotlight.com';
 
-$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_admin)) 
-    ? "../../assets/img/pelanggan/" . $foto_admin 
+$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
+    ? "../../assets/img/karyawan/" . $foto_admin 
     : $default_svg_avatar;
 ?>
 
@@ -486,7 +474,7 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
             display: flex; align-items: center; gap: 5px;
         }
 
-        /* HP Input with +62 prefix - COMPACT */
+        /* HP Input with +62 prefix */
         .hp-input-wrapper {
             display: flex;
             align-items: stretch;
@@ -524,7 +512,7 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
         }
         .hp-input::placeholder { color: #cbd5e1; font-weight: 500; }
 
-        /* Radio Buttons - Compact */
+        /* Radio Buttons */
         .radio-group { display: flex; gap: 10px; }
         .radio-card {
             flex: 1;
@@ -919,6 +907,28 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
 
     </div>
 
+    <!-- MODAL PROFILE BIODATA -->
+    <div class="modal fade" id="modalBiodataAdmin" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); background: #fff;">
+          <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center"><h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-badge-fill text-danger me-2"></i>Profil Anda</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+          <div class="modal-body px-4 pb-4 pt-3">
+            <div class="text-center mb-4">
+              <div class="profile-preview-box" style="width: 100px; height: 100px; border: 3px solid var(--s-pink); margin: 0 auto; border-radius: 50%; overflow: hidden;"><img src="<?= $foto_admin_src ?>" alt="Foto Profil" style="width: 100%; height: 100%; object-fit: cover;"></div>
+              <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_admin) ?></h5><span class="badge bg-danger px-3 py-1 text-white text-uppercase" style="font-size: 0.72rem; border-radius: 50px; font-weight: 700;">Admin</span>
+            </div>
+            <div class="card-3d p-3 border-0 mb-3" style="border-radius: 20px; background-color: #f8fafc;">
+              <div class="row g-3">
+                <div class="col-12"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Email Karyawan</small><span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($email_admin) ?></span></div>
+                <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Hak Akses Sistem</small><span class="fw-bold text-dark" style="font-size: 0.85rem;">Administrator (Admin)</span></div>
+              </div>
+            </div>
+            <button class="btn btn-reg-header shadow-sm py-3 mt-0 w-100" data-bs-dismiss="modal" style="border-radius: 14px !important; background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #fff; border: none; font-weight: 700;">Tutup</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
     <script>
@@ -999,6 +1009,12 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
             const display = parts[2] + ' ' + bulan[parts[1]] + ' ' + parts[0];
             document.getElementById('dateDisplay').value = display;
             document.getElementById('dateValue').value = value;
+        }
+
+        // Buka Modal Biodata
+        function bukaModalBiodata() {
+            var modalBiodata = new bootstrap.Modal(document.getElementById('modalBiodataAdmin'));
+            modalBiodata.show();
         }
 
         // Konfirmasi Logout
