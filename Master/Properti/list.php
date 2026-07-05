@@ -89,11 +89,11 @@ $stats = safe_sqlsrv_fetch($conn,
     FROM Properti WHERE Is_Deleted = 0"
 ) ?? ['total' => 0, 'aktif' => 0, 'nonaktif' => 0];
 
-// Kategori terbanyak
+// Kategori terbanyak (Penyesuaian: Mengabaikan nilai NULL agar label nama kategori selalu valid)
 $top_kategori = safe_sqlsrv_fetch($conn,
     "SELECT TOP 1 Kategori_Properti, COUNT(*) as total_kategori 
     FROM Properti 
-    WHERE Is_Deleted = 0 AND Status = 1
+    WHERE Is_Deleted = 0 AND Status = 1 AND Kategori_Properti IS NOT NULL
     GROUP BY Kategori_Properti 
     ORDER BY total_kategori DESC"
 );
@@ -503,10 +503,10 @@ $properti_list = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
                     </a>
                     <div class="submenu" id="submenuTransaksi">
                         <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                            <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                         </ul>
                     </div>
                 </li>

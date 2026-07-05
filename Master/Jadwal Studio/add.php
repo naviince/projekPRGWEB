@@ -12,19 +12,50 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
     exit();
 }
 
-$id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
+$id_admin   = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 $nama_admin = $_SESSION['nama'] ?? 'Administrator';
 
-// Ambil Profil Admin
-$q_admin = sqlsrv_query($conn, "SELECT * FROM Karyawan WHERE ID_Karyawan = ?", [$id_admin]);
-$d_admin = sqlsrv_fetch_array($q_admin, SQLSRV_FETCH_ASSOC);
-if ($d_admin) { $d_admin = array_change_key_case($d_admin, CASE_LOWER); }
-$nama_admin = $d_admin['nama_karyawan'] ?? 'Administrator';
-$foto_admin = $d_admin['foto_profil'] ?? 'default.jpg';
+// =====================================================
+// HELPER FUNCTIONS
+// =====================================================
+function safe_sqlsrv_fetch($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) {
+        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        return null;
+    }
+    $result = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $result;
+}
+
+function safe_sqlsrv_fetch_all($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) {
+        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        return [];
+    }
+    $results = [];
+    while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+        $results[] = $row;
+    }
+    sqlsrv_free_stmt($stmt);
+    return $results;
+}
+
+// =====================================================
+// AMBIL PROFIL ADMIN
+// =====================================================
+$admin_data = safe_sqlsrv_fetch($conn,
+    "SELECT Nama_Karyawan, Foto_Profil FROM Karyawan WHERE ID_Karyawan = ? AND Status = 1 AND Is_Deleted = 0",
+    [$id_admin]
+);
+$nama_admin    = $admin_data['Nama_Karyawan'] ?? 'Administrator';
+$foto_admin    = $admin_data['Foto_Profil']   ?? 'default.jpg';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
-$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_admin)) 
-    ? "../../assets/img/pelanggan/" . $foto_admin 
+$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin))
+    ? "../../assets/img/karyawan/" . $foto_admin
     : $default_svg_avatar;
 
 // =====================================================
@@ -40,14 +71,13 @@ $old_values = $_POST ?? [];
 $success = false;
 
 if (isset($_POST['simpan'])) {
-    $id_paket = isset($_POST['id_paket']) ? (int)$_POST['id_paket'] : 0;
-    $id_ruangan = isset($_POST['id_ruangan']) ? (int)$_POST['id_ruangan'] : 0;
+    $id_paket       = isset($_POST['id_paket']) ? (int)$_POST['id_paket'] : 0;
+    $id_ruangan     = isset($_POST['id_ruangan']) ? (int)$_POST['id_ruangan'] : 0;
     $tanggal_jadwal = isset($_POST['tanggal_jadwal']) ? trim($_POST['tanggal_jadwal']) : '';
-    $jam_mulai = isset($_POST['jam_mulai']) ? trim($_POST['jam_mulai']) : '';
-    $keterangan = isset($_POST['keterangan']) ? trim($_POST['keterangan']) : '';
-    $status = isset($_POST['status']) ? (int)$_POST['status'] : STATUS_DATA_AKTIF;
+    $jam_mulai      = isset($_POST['jam_mulai']) ? trim($_POST['jam_mulai']) : '';
+    $keterangan     = isset($_POST['keterangan']) ? trim($_POST['keterangan']) : '';
 
-    // --- VALIDASI PAKET ---
+    // --- VALIDASI SERVER-SIDE ---
     if ($id_paket <= 0) {
         $errors['id_paket'] = "Pilih paket foto!";
     } else {
@@ -58,7 +88,6 @@ if (isset($_POST['simpan'])) {
         }
     }
 
-    // --- VALIDASI RUANGAN ---
     if ($id_ruangan <= 0) {
         $errors['id_ruangan'] = "Pilih ruangan!";
     } else {
@@ -69,7 +98,6 @@ if (isset($_POST['simpan'])) {
         }
     }
 
-    // --- VALIDASI PAKET_RUANGAN (JUNCTION) ---
     if (empty($errors['id_paket']) && empty($errors['id_ruangan'])) {
         $cek_junction = sqlsrv_fetch_array(sqlsrv_query($conn,
             "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ?",
@@ -79,14 +107,12 @@ if (isset($_POST['simpan'])) {
         }
     }
 
-    // --- VALIDASI TANGGAL ---
     if (empty($tanggal_jadwal)) {
         $errors['tanggal_jadwal'] = "Tanggal jadwal wajib diisi!";
     } elseif (strtotime($tanggal_jadwal) < strtotime(date('Y-m-d'))) {
         $errors['tanggal_jadwal'] = "Tanggal tidak boleh di masa lalu!";
     }
 
-    // --- VALIDASI JAM MULAI ---
     if (empty($jam_mulai)) {
         $errors['jam_mulai'] = "Jam mulai wajib diisi!";
     } else {
@@ -97,77 +123,85 @@ if (isset($_POST['simpan'])) {
         }
     }
 
-    // --- HITUNG JAM SELESAI OTOMATIS DARI DURASI PAKET ---
-    $jam_selesai = '';
-    $durasi = 0;
+    // --- HITUNG JAM SELESAI & SINKRONISASI FORMAT 24-JAM INDONESIA (WIB) ---
+    $jam_mulai_24h = '';
+    $jam_selesai_24h = '';
     if (empty($errors['id_paket']) && !empty($jam_mulai)) {
         $durasi = $cek_paket['Durasi_Waktu'] ?? 30;
+        
         $jam_mulai_obj = new DateTime($jam_mulai);
+        $jam_mulai_24h = $jam_mulai_obj->format('H:i'); // Paksa format 24 jam (Indonesian Style)
+        
         $jam_selesai_obj = clone $jam_mulai_obj;
         $jam_selesai_obj->modify("+{$durasi} minutes");
-        $jam_selesai = $jam_selesai_obj->format('H:i:s');
+        $jam_selesai_24h = $jam_selesai_obj->format('H:i'); // Paksa format 24 jam (Indonesian Style)
 
         // Validasi jam selesai tidak melebihi 20:00
         $jam_selesai_int = (int)$jam_selesai_obj->format('Hi');
         if ($jam_selesai_int > 2000) {
-            $errors['jam_mulai'] = "Slot melebihi jam 20:00! Pilih jam mulai yang lebih awal.";
+            $errors['jam_mulai'] = "Slot melebihi jam 20:00 WIB! Pilih jam mulai yang lebih awal.";
         }
     }
 
-    // --- VALIDASI BENTROK (1 ruangan, 1 tanggal, jam tumpang tindih) ---
-    if (empty($errors['id_ruangan']) && empty($errors['tanggal_jadwal']) && empty($errors['jam_mulai'])) {
-        $cek_bentrok = sqlsrv_query($conn, "
-            SELECT ID_Jadwal, Jam_Mulai, Jam_Selesai 
-            FROM Jadwal_Studio 
-            WHERE ID_Ruangan = ? AND Tanggal_Jadwal = ? AND Status = 1 AND Is_Deleted = 0
-            AND ID_Jadwal != ?
-            AND (
-                (CAST(? AS TIME) >= Jam_Mulai AND CAST(? AS TIME) < Jam_Selesai) OR
-                (CAST(? AS TIME) > Jam_Mulai AND CAST(? AS TIME) <= Jam_Selesai) OR
-                (CAST(? AS TIME) <= Jam_Mulai AND CAST(? AS TIME) >= Jam_Selesai)
-            )
-        ", [$id_ruangan, $tanggal_jadwal, 0, $jam_mulai, $jam_mulai, $jam_selesai, $jam_selesai, $jam_mulai, $jam_selesai]);
-
-        if ($cek_bentrok && sqlsrv_has_rows($cek_bentrok)) {
-            $errors['jam_mulai'] = "Jadwal bentrok! Ruangan ini sudah ada slot di waktu tersebut.";
-        }
-    }
-
-    // --- VALIDASI STATUS ---
-    if (!in_array($status, [STATUS_DATA_AKTIF, STATUS_DATA_NONAKTIF])) {
-        $errors['status'] = "Status tidak valid!";
-    }
-
-    // --- INSERT DATA ---
+    // --- PROSES SIMPAN TUNGGAL ---
     if (empty($errors)) {
-        if (!sqlsrv_begin_transaction($conn)) {
-            $errors['general'] = "Gagal memulai transaksi database!";
-        } else {
-            $sql = "INSERT INTO Jadwal_Studio 
-                    (ID_Ruangan, ID_Paket, Tanggal_Jadwal, Jam_Mulai, Jam_Selesai, Keterangan, Status_Jadwal, Status, Created_By, Created_Date) 
-                    VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, GETDATE())";
+        // Eksekusi Stored Procedure secara atomic tanpa transaksi ganda yang menghambat koneksi
+        $sql = "EXEC sp_InsertJadwalStudio ?, ?, ?, ?, ?, ?, ?";
+        $params = [
+            $id_ruangan,
+            $id_paket,
+            $tanggal_jadwal,
+            $jam_mulai_24h,
+            $jam_selesai_24h,
+            !empty($keterangan) ? $keterangan : null,
+            $nama_admin
+        ];
 
-            $params = [
-                $id_ruangan,
-                $id_paket,
-                $tanggal_jadwal,
-                $jam_mulai,
-                $jam_selesai,
-                !empty($keterangan) ? $keterangan : null,
-                $status,
-                $nama_admin
-            ];
+        $stmt = sqlsrv_query($conn, $sql, $params);
 
-            $stmt = sqlsrv_query($conn, $sql, $params);
+        if ($stmt) {
+            // Ambil ID Jadwal baru hasil return SP
+            $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+            $id_jadwal_baru = $row['ID_Jadwal'] ?? null;
+            sqlsrv_free_stmt($stmt);
 
-            if ($stmt) {
-                sqlsrv_commit($conn);
-                $success = true;
-                $old_values = [];
-            } else {
-                sqlsrv_rollback($conn);
-                $errors['general'] = "Gagal menyimpan jadwal. Silakan coba lagi!";
+            if ($id_jadwal_baru) {
+                // Update Status_Jadwal ke 0 (Tersedia) agar langsung aktif untuk dibooking pelanggan
+                sqlsrv_query($conn, "UPDATE Jadwal_Studio SET Status_Jadwal = 0 WHERE ID_Jadwal = ?", [$id_jadwal_baru]);
             }
+
+            $success = true;
+            $old_values = [];
+        } else {
+            $sql_errors = sqlsrv_errors();
+            $error_msg = "Gagal menyimpan jadwal.";
+            if (!empty($sql_errors)) {
+                // Menangkap pesan RAISERROR asli dari database jika ada bentrok jadwal
+                $error_msg = $sql_errors[0]['message'];
+                if (strpos($error_msg, '[SQL Server]') !== false) {
+                    $error_msg = substr($error_msg, strpos($error_msg, '[SQL Server]') + 12);
+                }
+            }
+            $errors['general'] = $error_msg;
+        }
+    }
+}
+
+// --- PRE-LOAD RUANGAN SAAT VALIDASI GAGAL (UX PREMIUM) ---
+$old_ruangan_list = [];
+if (isset($old_values['id_paket']) && (int)$old_values['id_paket'] > 0) {
+    $old_paket_id = (int)$old_values['id_paket'];
+    $q_old_ruangan = sqlsrv_query($conn, 
+        "SELECT r.ID_Ruangan, r.Nama_Ruangan 
+         FROM Ruangan r
+         JOIN Paket_Ruangan pr ON r.ID_Ruangan = pr.ID_Ruangan
+         WHERE pr.ID_Paket = ? AND r.Status = 1 AND r.Is_Deleted = 0 
+         ORDER BY r.Nama_Ruangan", 
+        [$old_paket_id]
+    );
+    if ($q_old_ruangan) {
+        while ($r = sqlsrv_fetch_array($q_old_ruangan, SQLSRV_FETCH_ASSOC)) {
+            $old_ruangan_list[] = $r;
         }
     }
 }
@@ -274,10 +308,10 @@ select.form-input-custom { cursor: pointer; appearance: none; background-image: 
                 </a>
                 <div class="submenu" id="submenuTransaksi">
                     <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                        <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                        <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                        <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                        <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                     </ul>
                 </div>
             </li>
@@ -297,12 +331,22 @@ select.form-input-custom { cursor: pointer; appearance: none; background-image: 
         </div>
     </div>
 
+    <!-- UI DESIGN SINKRON SESUAI STRUKTUR KODE PROGRAM AWAL ANDA -->
     <div class="form-card fade-in-up">
         <div class="info-card"><i class="bi bi-info-circle-fill"></i><div class="info-text"><strong>Perhatian:</strong> Pilih <strong>Paket Foto</strong> dulu, lalu <strong>Ruangan</strong> yang valid akan muncul. Sistem otomatis menghitung <strong>Jam Selesai</strong> dari durasi paket. Jam operasional: <strong>08:00 - 20:00 WIB</strong>.</div></div>
 
-        <?php if(isset($errors['general'])): ?><div class="alert-error"><i class="bi bi-exclamation-octagon-fill"></i><?= htmlspecialchars($errors['general']) ?></div><?php endif; ?>
+        <!-- Tampilan Pesan Error Sinkron Sesuai Desain Awal Anda -->
+        <?php if(isset($errors['general'])): ?>
+            <div class="alert-error">
+                <i class="bi bi-exclamation-octagon-fill"></i>
+                <?= htmlspecialchars($errors['general']) ?>
+            </div>
+        <?php endif; ?>
 
         <form method="POST" id="formJadwal">
+            <h4 class="section-title"><i class="bi bi-calendar-event-fill"></i> Form Jadwal Baru</h4>
+            <p class="text-muted small mb-4">Lengkapi informasi jadwal, tentukan paket foto, dan ruangan terkait.</p>
+
             <div class="form-grid mb-4">
                 <div>
                     <label class="form-label-custom">Paket Foto <span class="text-danger">*</span></label>
@@ -322,8 +366,17 @@ select.form-input-custom { cursor: pointer; appearance: none; background-image: 
                 <div>
                     <label class="form-label-custom">Ruangan <span class="text-danger">*</span></label>
                     <select name="id_ruangan" id="idRuangan" class="form-input-custom <?= isset($errors['id_ruangan']) ? 'is-invalid' : '' ?>" required>
-                        <option value="">-- Pilih Paket Dulu --</option>
-                    </select>
+                        <?php if (!empty($old_ruangan_list)): ?>
+                            <option value="">-- Pilih Ruangan --</option>
+                            <?php foreach ($old_ruangan_list as $r_old): ?>
+                                <option value="<?= $r_old['ID_Ruangan'] ?>" <?= (isset($old_values['id_ruangan']) && $old_values['id_ruangan'] == $r_old['ID_Ruangan']) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($r_old['Nama_Ruangan']) ?>
+                                </option>
+                                <?php endforeach; ?>
+                        <?php else: ?>
+                            <option value="">-- Pilih Ruangan Dulu --</option>
+                        <?php endif; ?>
+                        </select>
                     <?php if(isset($errors['id_ruangan'])): ?><span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['id_ruangan'] ?></span><?php endif; ?>
                     <div class="helper-text"><i class="bi bi-info-circle"></i>Ruangan akan muncul sesuai paket yang dipilih.</div>
                 </div>
@@ -339,8 +392,9 @@ select.form-input-custom { cursor: pointer; appearance: none; background-image: 
                     <div class="helper-text"><i class="bi bi-info-circle"></i>Tidak boleh di masa lalu.</div>
                 </div>
                 <div>
+                    <!-- Menggunakan step="60" untuk membantu kompatibilitas input waktu format 24 jam (Indonesia) -->
                     <label class="form-label-custom">Jam Mulai <span class="text-danger">*</span></label>
-                    <input type="time" name="jam_mulai" id="jamMulai" class="form-input-custom <?= isset($errors['jam_mulai']) ? 'is-invalid' : '' ?>" value="<?= htmlspecialchars($old_values['jam_mulai'] ?? '') ?>" required>
+                    <input type="time" name="jam_mulai" id="jamMulai" class="form-input-custom <?= isset($errors['jam_mulai']) ? 'is-invalid' : '' ?>" value="<?= htmlspecialchars($old_values['jam_mulai'] ?? '') ?>" step="60" required>
                     <?php if(isset($errors['jam_mulai'])): ?><span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['jam_mulai'] ?></span><?php endif; ?>
                     <div class="helper-text"><i class="bi bi-info-circle"></i>Jam operasional: 08:00 - 20:00 WIB.</div>
                 </div>
@@ -377,6 +431,21 @@ document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
             if (!isShown) { targetEl.classList.add('show'); if (chevron) chevron.style.transform = 'rotate(180deg)'; }
         }
     });
+});
+
+// Jalankan saat halaman selesai dimuat untuk menampilkan preview durasi jika paket sudah terpilih (pasca-reload error)
+window.addEventListener('DOMContentLoaded', (event) => {
+    const paketSelect = document.getElementById('idPaket');
+    if (paketSelect.value) {
+        const selectedOption = paketSelect.options[paketSelect.selectedIndex];
+        const durasi = selectedOption.getAttribute('data-durasi');
+        const durasiPreview = document.getElementById('durasiPreview');
+        const durasiText = document.getElementById('durasiText');
+        if (durasi) {
+            durasiText.textContent = durasi;
+            durasiPreview.classList.add('show');
+        }
+    }
 });
 
 // Cascade Paket → Ruangan
@@ -426,7 +495,7 @@ document.getElementById('formJadwal').addEventListener('submit', function(e) {
     if (!jam) { e.preventDefault(); Swal.fire({ icon: 'warning', title: 'Jam Mulai Kosong', text: 'Silakan pilih jam mulai.', confirmButtonColor: '#D53D66' }); return false; }
 });
 
-// Jam Real-Time
+// Jam Real-Time 24-Jam WIB
 function updateLiveClock() {
     var clockEl = document.getElementById('live-clock');
     if (!clockEl) return;

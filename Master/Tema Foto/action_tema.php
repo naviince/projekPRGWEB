@@ -69,12 +69,9 @@ if ($aksi == 'toggle_status') {
     $current_status = (int)($tema['Status'] ?? 1);
     $new_status = $current_status === 1 ? 0 : 1;
 
-    $sql = "UPDATE Tema_Foto SET 
-        Status = ?, 
-        Modified_By = ?, 
-        Modified_Date = GETDATE() 
-        WHERE ID_Tema = ?";
-    $params = [$new_status, $nama_admin, $id];
+    // Memanggil Stored Procedure sp_UpdateStatusTemaFoto
+    $sql = "EXEC sp_UpdateStatusTemaFoto ?, ?, ?";
+    $params = [$id, $new_status, $nama_admin];
     $stmt = sqlsrv_query($conn, $sql, $params);
 
     if ($stmt === false) {
@@ -89,7 +86,7 @@ if ($aksi == 'toggle_status') {
 }
 
 // =====================================================
-// 2. HARD DELETE (Soft Delete - Is_Deleted = 1)
+// 2. HARD DELETE (Menerapkan Stored Procedure sp_DeleteTemaFoto)
 // =====================================================
 if ($aksi == 'hard_delete') {
     // --- CEK RELASI YANG MASIH AKTIF ---
@@ -131,14 +128,9 @@ if ($aksi == 'hard_delete') {
         if ($stmt1 === false) throw new Exception("Gagal hapus relasi ruangan");
         sqlsrv_free_stmt($stmt1);
 
-        // 2. Soft delete Tema (Is_Deleted = 1)
-        $sql_soft = "UPDATE Tema_Foto SET 
-            Is_Deleted = 1, 
-            Status = 0, 
-            Deleted_By = ?, 
-            Deleted_Date = GETDATE() 
-            WHERE ID_Tema = ?";
-        $stmt2 = sqlsrv_query($conn, $sql_soft, [$nama_admin, $id]);
+        // 2. Soft delete Tema menggunakan Stored Procedure sp_DeleteTemaFoto
+        $sql_soft = "EXEC sp_DeleteTemaFoto ?, ?";
+        $stmt2 = sqlsrv_query($conn, $sql_soft, [$id, $nama_admin]);
         if ($stmt2 === false) throw new Exception("Gagal soft delete tema foto");
         sqlsrv_free_stmt($stmt2);
 

@@ -88,11 +88,11 @@ $stats = safe_sqlsrv_fetch($conn,
     FROM Tema_Foto WHERE Is_Deleted = 0"
 ) ?? ['total' => 0, 'aktif' => 0, 'nonaktif' => 0];
 
-// Tema terpopuler (dari Order)
+// Tema terpopuler (Penyesuaian: Menggunakan INNER JOIN agar merespon 'Belum ada data' secara akurat jika belum ada order)
 $top_tema = safe_sqlsrv_fetch($conn,
     "SELECT TOP 1 t.Nama_Tema, COUNT(o.ID_Order) as total_booked 
     FROM Tema_Foto t 
-    LEFT JOIN [Order] o ON t.ID_Tema = o.ID_Tema AND o.Status = 1 AND o.Status_Order <> 4
+    INNER JOIN [Order] o ON t.ID_Tema = o.ID_Tema AND o.Status = 1 AND o.Status_Order <> 4
     WHERE t.Is_Deleted = 0 AND t.Status = 1
     GROUP BY t.Nama_Tema 
     ORDER BY total_booked DESC"
@@ -513,10 +513,10 @@ if (!empty($tema_list)) {
                     </a>
                     <div class="submenu" id="submenuTransaksi">
                         <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                            <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                         </ul>
                     </div>
                 </li>

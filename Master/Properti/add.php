@@ -58,9 +58,10 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
 
 // =====================================================
 // AMBIL DAFTAR RUANGAN (UNTUK DROPDOWN)
+// *Penyesuaian: Menggunakan Deskripsi, Kapasitas_Ruangan dihapus sesuai skema DB baru
 // =====================================================
 $daftar_ruangan = safe_sqlsrv_fetch_all($conn,
-    "SELECT ID_Ruangan, Nama_Ruangan, Kapasitas_Ruangan 
+    "SELECT ID_Ruangan, Nama_Ruangan, Deskripsi 
      FROM Ruangan 
      WHERE Status = 1 AND Is_Deleted = 0 
      ORDER BY Nama_Ruangan ASC"
@@ -153,10 +154,16 @@ if (isset($_POST['simpan'])) {
                 }
 
                 if ($error == "") {
-                    // --- INSERT PROPERTI ---
-                    $sql_properti = "INSERT INTO Properti (ID_Ruangan, Nama_Properti, Kategori_Properti, Deskripsi, Foto_Properti, Status, Is_Deleted, Created_By, Created_Date) 
-                                    VALUES (?, ?, ?, ?, ?, ?, 0, ?, GETDATE())";
-                    $params_properti = [$id_ruangan, $nama, $kategori, $deskripsi, $new_filename, $status, $nama_admin];
+                    // --- INSERT PROPERTI MENGGUNAKAN STORED PROCEDURE (sp_InsertProperti) ---
+                    $sql_properti = "EXEC sp_InsertProperti ?, ?, ?, ?, ?, ?";
+                    $params_properti = [
+                        $id_ruangan, 
+                        $nama, 
+                        $kategori, 
+                        empty($deskripsi) ? null : $deskripsi, 
+                        $new_filename, 
+                        $nama_admin
+                    ];
                     $stmt_properti = sqlsrv_query($conn, $sql_properti, $params_properti);
 
                     if ($stmt_properti === false) {
@@ -462,10 +469,10 @@ if (isset($_POST['simpan'])) {
                     </a>
                     <div class="submenu" id="submenuTransaksi">
                         <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                            <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                         </ul>
                     </div>
                 </li>
@@ -545,7 +552,7 @@ if (isset($_POST['simpan'])) {
                                 <?php foreach ($daftar_ruangan as $r): 
                                     $sel = (isset($_POST['id_ruangan']) && $_POST['id_ruangan'] == $r['ID_Ruangan']) ? 'selected' : '';
                                 ?>
-                                    <option value="<?= $r['ID_Ruangan'] ?>" data-kapasitas="<?= $r['Kapasitas_Ruangan'] ?>" <?= $sel ?>>
+                                    <option value="<?= $r['ID_Ruangan'] ?>" data-deskripsi="<?= htmlspecialchars($r['Deskripsi'] ?? '') ?>" <?= $sel ?>>
                                         <?= htmlspecialchars($r['Nama_Ruangan']) ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -668,6 +675,7 @@ if (isset($_POST['simpan'])) {
         }
 
         // Update Info Ruangan Terpilih
+        // *Penyesuaian: Mengambil data-deskripsi menggantikan data-kapasitas yang sudah dihapus dari DB
         function updateRuanganInfo() {
             const select = document.getElementById('id_ruangan');
             const box = document.getElementById('ruanganInfoBox');
@@ -675,7 +683,8 @@ if (isset($_POST['simpan'])) {
 
             if (select.value) {
                 document.getElementById('riNama').textContent = opt.text.trim();
-                document.getElementById('riKapasitas').textContent = opt.getAttribute('data-kapasitas') + ' orang kapasitas';
+                const deskripsi = opt.getAttribute('data-deskripsi');
+                document.getElementById('riKapasitas').textContent = deskripsi ? deskripsi : 'Tidak ada deskripsi ruangan';
                 box.classList.add('show');
             } else {
                 box.classList.remove('show');

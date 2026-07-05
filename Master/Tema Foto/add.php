@@ -58,9 +58,10 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
 
 // =====================================================
 // AMBIL DAFTAR RUANGAN (UNTUK CHECKBOX)
+// *Penyesuaian: Menggunakan Deskripsi, Kapasitas_Ruangan dihapus sesuai skema DB baru
 // =====================================================
 $daftar_ruangan = safe_sqlsrv_fetch_all($conn,
-    "SELECT ID_Ruangan, Nama_Ruangan, Kapasitas_Ruangan, Foto_Ruangan 
+    "SELECT ID_Ruangan, Nama_Ruangan, Deskripsi, Foto_Ruangan 
      FROM Ruangan 
      WHERE Status = 1 AND Is_Deleted = 0 
      ORDER BY Nama_Ruangan ASC"
@@ -148,11 +149,15 @@ if (isset($_POST['simpan'])) {
                 sqlsrv_begin_transaction($conn);
 
                 try {
-                    // 1. INSERT TEMA_FOTO dengan OUTPUT INSERTED.ID_Tema (cara SQL Server native)
-                    $sql_tema = "INSERT INTO Tema_Foto (Nama_Tema, Kategori_Tema, Deskripsi, Foto_Tema, Status, Is_Deleted, Created_By, Created_Date) 
-                                 OUTPUT INSERTED.ID_Tema
-                                 VALUES (?, ?, ?, ?, ?, 0, ?, GETDATE())";
-                    $params_tema = [$nama, $kategori, $deskripsi, $new_filename, $status, $nama_admin];
+                    // 1. INSERT TEMA_FOTO MENGGUNAKAN STORED PROCEDURE (sp_InsertTemaFoto)
+                    $sql_tema = "EXEC sp_InsertTemaFoto ?, ?, ?, ?, ?";
+                    $params_tema = [
+                        $nama, 
+                        $kategori, 
+                        empty($deskripsi) ? null : $deskripsi, 
+                        $new_filename, 
+                        $nama_admin
+                    ];
                     $stmt_tema = sqlsrv_query($conn, $sql_tema, $params_tema);
 
                     if ($stmt_tema === false) {
@@ -160,34 +165,25 @@ if (isset($_POST['simpan'])) {
                         $error_msg = "Gagal menyimpan tema foto ke database.";
                         if (!empty($sql_errors)) {
                             foreach ($sql_errors as $err) {
-                                $error_msg .= " [SQL State: " . ($err['SQLSTATE'] ?? 'N/A') . ", Code: " . ($err['code'] ?? 'N/A') . ", Message: " . ($err['message'] ?? 'N/A') . "]";
+                                $error_msg .= " [SQL State: " . ($err['SQLSTATE'] ?? 'N/A') . ", Code: " . ($err['code'] ?? 'N/A') . ", Message: " . ($err['message'] ?? 'Terjadi kesalahan') . "]";
                             }
                         }
                         throw new Exception($error_msg);
                     }
 
+                    // Ambil ID Baru yang di-return dari Stored Procedure
                     $row_tema = sqlsrv_fetch_array($stmt_tema, SQLSRV_FETCH_ASSOC);
                     $id_tema_baru = $row_tema['ID_Tema'] ?? null;
                     sqlsrv_free_stmt($stmt_tema);
 
-                    // Fallback: kalau OUTPUT gagal, coba @@IDENTITY
                     if (!$id_tema_baru) {
-                        $stmt_identity = sqlsrv_query($conn, "SELECT @@IDENTITY AS ID_Tema");
-                        if ($stmt_identity) {
-                            $row_identity = sqlsrv_fetch_array($stmt_identity, SQLSRV_FETCH_ASSOC);
-                            $id_tema_baru = $row_identity['ID_Tema'] ?? null;
-                            sqlsrv_free_stmt($stmt_identity);
-                        }
+                        throw new Exception("Gagal mendapatkan ID Tema baru dari database.");
                     }
 
-                    if (!$id_tema_baru) {
-                        throw new Exception("Gagal mendapatkan ID Tema baru. Kemungkinan penyebab: (1) Kolom ID_Tema bukan IDENTITY di database, (2) Ada trigger yang mengubah INSERT, atau (3) Koneksi database terputus. Silakan cek struktur tabel Tema_Foto.");
-                    }
-
-                    // 2. INSERT RUANGAN_TEMA (Junction)
+                    // 2. INSERT RUANGAN_TEMA MENGGUNAKAN STORED PROCEDURE (sp_InsertRuanganTema)
                     foreach ($ruangan_terpilih as $id_ruangan) {
                         $id_ruangan = (int)$id_ruangan;
-                        $sql_junction = "INSERT INTO Ruangan_Tema (ID_Ruangan, ID_Tema) VALUES (?, ?)";
+                        $sql_junction = "EXEC sp_InsertRuanganTema ?, ?";
                         $stmt_junction = sqlsrv_query($conn, $sql_junction, [$id_ruangan, $id_tema_baru]);
                         if ($stmt_junction === false) {
                             throw new Exception("Gagal menghubungkan ke ruangan ID {$id_ruangan}.");
@@ -429,6 +425,7 @@ if (isset($_POST['simpan'])) {
         }
         .ruangan-checkbox-item .ruangan-kapasitas {
             font-size: 0.75rem; color: var(--text-muted);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .ruangan-checkbox-item .ruangan-check-icon {
             display: none; color: var(--p-pink); font-size: 1.2rem;
@@ -543,10 +540,10 @@ if (isset($_POST['simpan'])) {
                     </a>
                     <div class="submenu" id="submenuTransaksi">
                         <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                            <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                         </ul>
                     </div>
                 </li>
@@ -691,7 +688,7 @@ if (isset($_POST['simpan'])) {
                                                    <?= $is_checked ?> onchange="updateRuanganCount()">
                                             <div class="ruangan-info">
                                                 <div class="ruangan-nama"><?= htmlspecialchars($ruangan['Nama_Ruangan']) ?></div>
-                                                <div class="ruangan-kapasitas"><?= $ruangan['Kapasitas_Ruangan'] ?> orang kapasitas</div>
+                                                <div class="ruangan-kapasitas"><?= htmlspecialchars($ruangan['Deskripsi'] ?? 'Tidak ada deskripsi ruangan') ?></div>
                                             </div>
                                             <i class="bi bi-check-circle-fill ruangan-check-icon"></i>
                                         </div>
@@ -851,6 +848,7 @@ if (isset($_POST['simpan'])) {
             }).then((result) => { if (result.isConfirmed) window.location.href = '../../logout.php'; });
         }
 
+        // Konfirmasi Landing Page
         function confirmLandingPage(e) {
             e.preventDefault();
             Swal.fire({

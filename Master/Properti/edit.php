@@ -79,10 +79,10 @@ if (!$properti) {
 
 // =====================================================
 // AMBIL DAFTAR RUANGAN (UNTUK DROPDOWN)
-// Termasuk ruangan ID nya sendiri walau statusnya nonaktif, agar tetap muncul saat edit
+// *Penyesuaian: Menggunakan Deskripsi, Kapasitas_Ruangan dihapus sesuai skema DB baru
 // =====================================================
 $daftar_ruangan = safe_sqlsrv_fetch_all($conn,
-    "SELECT ID_Ruangan, Nama_Ruangan, Kapasitas_Ruangan 
+    "SELECT ID_Ruangan, Nama_Ruangan, Deskripsi 
      FROM Ruangan 
      WHERE (Status = 1 OR ID_Ruangan = ?) AND Is_Deleted = 0 
      ORDER BY Nama_Ruangan ASC",
@@ -109,7 +109,9 @@ if (isset($_POST['update'])) {
     $nama       = trim($_POST['nama_properti'] ?? '');
     $kategori   = trim($_POST['kategori'] ?? '');
     $deskripsi  = trim($_POST['deskripsi'] ?? '');
-    $status     = (int)($_POST['status'] ?? 1);
+    
+    // Keamanan status: Menjaga status lama jika input status tidak dikirim lewat form
+    $status     = isset($_POST['status']) ? (int)$_POST['status'] : (int)$properti['Status'];
 
     // --- VALIDASI SERVER-SIDE (KUAT) ---
     if ($id_ruangan <= 0) {
@@ -185,12 +187,18 @@ if (isset($_POST['update'])) {
                 }
 
                 if ($error == "") {
-                    // --- UPDATE PROPERTI ---
-                    $sql_update = "UPDATE Properti SET 
-                        ID_Ruangan = ?, Nama_Properti = ?, Kategori_Properti = ?, Deskripsi = ?, 
-                        Foto_Properti = ?, Status = ?, Modified_By = ?, Modified_Date = GETDATE() 
-                        WHERE ID_Properti = ?";
-                    $params_update = [$id_ruangan, $nama, $kategori, $deskripsi, $foto_baru, $status, $nama_admin, $id];
+                    // --- UPDATE PROPERTI MENGGUNAKAN STORED PROCEDURE (sp_UpdateProperti) ---
+                    $sql_update = "EXEC sp_UpdateProperti ?, ?, ?, ?, ?, ?, ?, ?";
+                    $params_update = [
+                        $id,
+                        $id_ruangan, 
+                        $nama, 
+                        $kategori, 
+                        empty($deskripsi) ? null : $deskripsi, 
+                        $foto_baru, 
+                        $status, 
+                        $nama_admin
+                    ];
                     $stmt_update = sqlsrv_query($conn, $sql_update, $params_update);
 
                     if ($stmt_update === false) {
@@ -521,10 +529,10 @@ if (isset($_POST['update'])) {
                     </a>
                     <div class="submenu" id="submenuTransaksi">
                         <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                            <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                         </ul>
                     </div>
                 </li>
@@ -597,7 +605,7 @@ if (isset($_POST['update'])) {
                                 <?php foreach ($daftar_ruangan as $r): 
                                     $sel = ($properti['ID_Ruangan'] == $r['ID_Ruangan']) ? 'selected' : '';
                                 ?>
-                                    <option value="<?= $r['ID_Ruangan'] ?>" data-kapasitas="<?= $r['Kapasitas_Ruangan'] ?>" <?= $sel ?>>
+                                    <option value="<?= $r['ID_Ruangan'] ?>" data-deskripsi="<?= htmlspecialchars($r['Deskripsi'] ?? '') ?>" <?= $sel ?>>
                                         <?= htmlspecialchars($r['Nama_Ruangan']) ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -735,6 +743,7 @@ if (isset($_POST['update'])) {
         }
 
         // Update Info Ruangan Terpilih
+        // *Penyesuaian: Mengambil data-deskripsi menggantikan data-kapasitas yang sudah dihapus dari DB
         function updateRuanganInfo() {
             const select = document.getElementById('id_ruangan');
             const box = document.getElementById('ruanganInfoBox');
@@ -742,7 +751,8 @@ if (isset($_POST['update'])) {
 
             if (select.value) {
                 document.getElementById('riNama').textContent = opt.text.trim();
-                document.getElementById('riKapasitas').textContent = opt.getAttribute('data-kapasitas') + ' orang kapasitas';
+                const deskripsi = opt.getAttribute('data-deskripsi');
+                document.getElementById('riKapasitas').textContent = deskripsi ? deskripsi : 'Tidak ada deskripsi ruangan';
                 box.classList.add('show');
             } else {
                 box.classList.remove('show');

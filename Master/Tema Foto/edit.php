@@ -87,8 +87,9 @@ $ruangan_terhubung_raw = safe_sqlsrv_fetch_all($conn,
 $ruangan_terhubung = array_column($ruangan_terhubung_raw, 'ID_Ruangan');
 
 // Semua ruangan aktif
+// *Penyesuaian: Menggunakan Deskripsi, Kapasitas_Ruangan dihapus sesuai skema DB baru
 $daftar_ruangan = safe_sqlsrv_fetch_all($conn,
-    "SELECT ID_Ruangan, Nama_Ruangan, Kapasitas_Ruangan 
+    "SELECT ID_Ruangan, Nama_Ruangan, Deskripsi 
      FROM Ruangan 
      WHERE Status = 1 AND Is_Deleted = 0 
      ORDER BY Nama_Ruangan ASC"
@@ -125,17 +126,17 @@ if (isset($_POST['simpan'])) {
     } else {
         // Cek duplikat nama (kecuali record ini sendiri)
         $cek_dup = safe_sqlsrv_fetch($conn,
-            "SELECT COUNT(*) AS total FROM Tema_Foto WHERE Nama_Tema = ? AND Is_Deleted = 0 AND ID_Tema <> ?",
-            [$nama, $id_tema]
+            "SELECT COUNT(*) as total FROM Tema_Foto WHERE Nama_Tema = ? AND Is_Deleted = 0",
+            [$nama]
         );
         if (($cek_dup['total'] ?? 0) > 0) {
-            $error = "Nama tema foto '{$nama}' sudah digunakan. Gunakan nama lain.";
+            $error = "Nama tema foto '{$nama}' sudah ada! Gunakan nama lain.";
         } else {
-            // --- HANDLE UPLOAD FOTO (OPSIONAL) ---
-            $foto_error  = $_FILES['foto']['error']    ?? UPLOAD_ERR_NO_FILE;
-            $foto_name   = $_FILES['foto']['name']     ?? '';
-            $foto_tmp    = $_FILES['foto']['tmp_name'] ?? '';
-            $foto_size   = $_FILES['foto']['size']     ?? 0;
+            // --- VALIDASI UPLOAD GAMBAR (OPSIONAL) ---
+            $foto_name = $_FILES['foto']['name'] ?? '';
+            $foto_tmp  = $_FILES['foto']['tmp_name'] ?? '';
+            $foto_size = $_FILES['foto']['size'] ?? 0;
+            $foto_error = $_FILES['foto']['error'] ?? UPLOAD_ERR_NO_FILE;
 
             $foto_lama      = $tema['Foto_Tema'] ?? 'default_tema.jpg';
             $new_filename   = $foto_lama; // default: pakai foto lama
@@ -185,17 +186,17 @@ if (isset($_POST['simpan'])) {
                 sqlsrv_begin_transaction($conn);
 
                 try {
-                    // 1. UPDATE TEMA_FOTO
-                    $sql_update = "UPDATE Tema_Foto SET
-                        Nama_Tema      = ?,
-                        Kategori_Tema  = ?,
-                        Deskripsi      = ?,
-                        Foto_Tema      = ?,
-                        Status         = ?,
-                        Modified_By    = ?,
-                        Modified_Date  = GETDATE()
-                        WHERE ID_Tema  = ?";
-                    $params_update = [$nama, $kategori, $deskripsi, $new_filename, $status, $nama_admin, $id_tema];
+                    // 1. UPDATE TEMA_FOTO MENGGUNAKAN STORED PROCEDURE (sp_UpdateTemaFoto)
+                    $sql_update = "EXEC sp_UpdateTemaFoto ?, ?, ?, ?, ?, ?, ?";
+                    $params_update = [
+                        $id_tema,
+                        $nama,
+                        $kategori,
+                        empty($deskripsi) ? null : $deskripsi,
+                        $new_filename,
+                        $status,
+                        $nama_admin
+                    ];
                     $stmt_update   = sqlsrv_query($conn, $sql_update, $params_update);
                     if ($stmt_update === false) {
                         throw new Exception("Gagal memperbarui data tema foto.");
@@ -221,7 +222,7 @@ if (isset($_POST['simpan'])) {
                         }
                     }
 
-                    // Hapus semua relasi lama lalu insert yang baru (replace strategy)
+                    // Hapus semua relasi lama lalu insert yang baru menggunakan Stored Procedure (sp_InsertRuanganTema)
                     $stmt_del = sqlsrv_query($conn, "DELETE FROM Ruangan_Tema WHERE ID_Tema = ?", [$id_tema]);
                     if ($stmt_del === false) throw new Exception("Gagal memperbarui relasi ruangan.");
                     sqlsrv_free_stmt($stmt_del);
@@ -229,7 +230,7 @@ if (isset($_POST['simpan'])) {
                     foreach ($ruangan_terpilih as $id_ruangan) {
                         $id_ruangan    = (int)$id_ruangan;
                         $stmt_junction = sqlsrv_query($conn,
-                            "INSERT INTO Ruangan_Tema (ID_Ruangan, ID_Tema) VALUES (?, ?)",
+                            "EXEC sp_InsertRuanganTema ?, ?",
                             [$id_ruangan, $id_tema]
                         );
                         if ($stmt_junction === false) {
@@ -366,7 +367,7 @@ if (isset($_POST['simpan'])) {
         .ruangan-checkbox-item input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--p-pink); cursor: pointer; flex-shrink: 0; }
         .ruangan-checkbox-item .ruangan-info { flex: 1; min-width: 0; }
         .ruangan-checkbox-item .ruangan-nama { font-weight: 700; font-size: .85rem; color: var(--text-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .ruangan-checkbox-item .ruangan-kapasitas { font-size: .72rem; color: var(--text-muted); }
+        .ruangan-checkbox-item .ruangan-kapasitas { font-size: .72rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .ruangan-checkbox-item .ruangan-check-icon { display: none; color: var(--p-pink); font-size: 1.2rem; }
         .ruangan-checkbox-item.selected .ruangan-check-icon { display: block; }
         .ruangan-empty { text-align: center; padding: 30px; color: var(--text-muted); font-size: .85rem; }
@@ -434,10 +435,10 @@ if (isset($_POST['simpan'])) {
                 </a>
                 <div class="submenu" id="submenuTransaksi">
                     <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                        <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                        <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                        <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                        <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                     </ul>
                 </div>
             </li>
@@ -616,7 +617,7 @@ if (isset($_POST['simpan'])) {
                                                onchange="updateRuanganCount()">
                                         <div class="ruangan-info">
                                             <div class="ruangan-nama"><?= htmlspecialchars($ruangan['Nama_Ruangan']) ?></div>
-                                            <div class="ruangan-kapasitas"><?= $ruangan['Kapasitas_Ruangan'] ?> orang kapasitas</div>
+                                            <div class="ruangan-kapasitas"><?= htmlspecialchars($ruangan['Deskripsi'] ?? 'Tidak ada deskripsi ruangan') ?></div>
                                         </div>
                                         <i class="bi bi-check-circle-fill ruangan-check-icon"></i>
                                     </div>
@@ -676,11 +677,15 @@ if (isset($_POST['simpan'])) {
         el.querySelector('input').checked = true;
     }
 
-    // Ruangan Checkbox
+    // Ruangan Checkbox Toggle
     function toggleRuangan(el) {
         const checkbox = el.querySelector('input[type="checkbox"]');
         checkbox.checked = !checkbox.checked;
-        el.classList.toggle('selected', checkbox.checked);
+        if (checkbox.checked) {
+            el.classList.add('selected');
+        } else {
+            el.classList.remove('selected');
+        }
         updateRuanganCount();
     }
 

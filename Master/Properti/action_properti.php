@@ -81,22 +81,16 @@ if ($aksi == 'toggle_status') {
 }
 
 // =====================================================
-// 2. HARD DELETE (Soft Delete - Is_Deleted = 1)
+// 2. HARD DELETE (Menerapkan Stored Procedure sp_DeleteProperti)
 // =====================================================
 if ($aksi == 'hard_delete') {
-    // --- SOFT DELETE (Is_Deleted = 1) ---
     sqlsrv_begin_transaction($conn);
 
     try {
-        // 1. Soft delete Properti (Is_Deleted = 1)
-        $sql_soft = "UPDATE Properti SET 
-            Is_Deleted = 1, 
-            Status = 0, 
-            Deleted_By = ?, 
-            Deleted_Date = GETDATE() 
-            WHERE ID_Properti = ?";
-        $stmt_soft = sqlsrv_query($conn, $sql_soft, [$nama_admin, $id]);
-        if ($stmt_soft === false) throw new Exception("Gagal soft delete properti");
+        // 1. Soft delete Properti menggunakan Stored Procedure sp_DeleteProperti
+        $sql_soft = "EXEC sp_DeleteProperti ?, ?";
+        $stmt_soft = sqlsrv_query($conn, $sql_soft, [$id, $nama_admin]);
+        if ($stmt_soft === false) throw new Exception("Gagal menghapus properti");
         sqlsrv_free_stmt($stmt_soft);
 
         // 2. Hapus foto dari server (opsional, tapi direkomendasikan)
