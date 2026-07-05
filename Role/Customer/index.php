@@ -1032,6 +1032,10 @@ function fmtTgl($d) {
                 <div class="step-number inactive">6</div>
                 <div class="step-text inactive">Konfirmasi</div>
             </div>
+            <div class="step-item">
+                <div class="step-number inactive">7</div>
+                <div class="step-text inactive">Bayar DP</div>
+            </div>
         </div>
     </section>
 
@@ -1191,8 +1195,6 @@ function fmtTgl($d) {
                                 <div class="info-sub">Rp<?= $harga_barang ?></div>
                             </div>
                         </div>
-                        <a href="Barang/Katalog/index.php" class="info-btn">Lihat</a>
-                    </div>
                 <?php endwhile; else: ?>
                     <div class="text-center py-4">
                         <i class="bi bi-inbox fs-2 mb-2" style="color: #cbd5e1;"></i>

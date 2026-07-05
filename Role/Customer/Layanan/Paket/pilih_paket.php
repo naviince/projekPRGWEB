@@ -2,6 +2,9 @@
 session_start();
 include '../../../../koneksi.php';
 
+// Atur zona waktu ke WIB (Waktu Indonesia Barat) agar deteksi jam lampau akurat
+date_default_timezone_set('Asia/Jakarta');
+
 // =====================================================
 // KONSTANTA STATUS
 // =====================================================
@@ -12,6 +15,33 @@ define('STATUS_ORDER_LUNAS', 3);
 define('STATUS_ORDER_DIBATALKAN', 4);
 define('STATUS_JADWAL_TERSEDIA', 0);
 define('STATUS_DATA_AKTIF', 1);
+
+// =====================================================
+// INISIALISASI VARIABEL WAKTU & JAM SEKARANG (SINKRON WIB)
+// =====================================================
+$today = date('Y-m-d');
+$tomorrow = date('Y-m-d', strtotime('+1 day'));
+$current_time = date('H:i:s');
+
+// --- Fungsi Pembantu Format Tanggal Indonesia ---
+if (!function_exists('fmtTgl')) {
+    function fmtTgl($date_str) {
+        if (empty($date_str)) return '-';
+        $timestamp = strtotime($date_str);
+        if (!$timestamp) return $date_str;
+        
+        $months = [
+            1 => 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+            'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+        ];
+        
+        $d = date('j', $timestamp);
+        $m = (int)date('n', $timestamp);
+        $y = date('Y', $timestamp);
+        
+        return "$d " . ($months[$m] ?? '') . " $y";
+    }
+}
 
 // --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Customer') {
@@ -81,7 +111,7 @@ if (!$d_paket) {
     exit();
 }
 
-// Path foto paket (Sesuai dengan logika index.php agar tidak memicu broken image jika tidak ada gambar asli)
+// Path foto paket
 $foto_paket = ($d_paket['Foto_Paket'] != 'default_paket.jpg' && file_exists("../../../../assets/img/paket/" . $d_paket['Foto_Paket'])) 
     ? "../../../../assets/img/paket/" . $d_paket['Foto_Paket'] 
     : null;
@@ -107,7 +137,7 @@ while ($row = sqlsrv_fetch_array($q_ruangan, SQLSRV_FETCH_ASSOC)) {
 }
 
 // =====================================================
-// AMBIL PROPERTI UNTUK SETIAP RUANGAN (langsung via Properti.ID_Ruangan)
+// AMBIL PROPERTI UNTUK SETIAP RUANGAN
 // =====================================================
 $properti_map = [];
 foreach ($ruangan_list as $ruangan) {
@@ -130,7 +160,7 @@ foreach ($ruangan_list as $ruangan) {
 }
 
 // =====================================================
-// AMBIL TEMA FOTO YANG TERHUBUNG DENGAN SETIAP RUANGAN (via Ruangan_Tema)
+// AMBIL TEMA FOTO YANG TERHUBUNG DENGAN SETIAP RUANGAN
 // =====================================================
 $tema_map = [];
 foreach ($ruangan_list as $ruangan) {
@@ -154,7 +184,7 @@ foreach ($ruangan_list as $ruangan) {
 }
 
 // =====================================================
-// AMBIL JADWAL TERSEDIA HARI INI & BESOK UNTUK SETIAP RUANGAN
+// AMBIL JADWAL TERSEDIA (FILTER JAM EXPIRED, LIBUR, & MAINTENANCE)
 // =====================================================
 $q_ruangan_count = sqlsrv_query($conn, 
     "SELECT COUNT(*) as total FROM Paket_Ruangan WHERE ID_Paket = ?", 
@@ -171,9 +201,16 @@ foreach ($ruangan_list as $ruangan) {
          FROM Jadwal_Studio j
          WHERE j.ID_Ruangan = ? AND j.ID_Paket = ? 
            AND j.Tanggal_Jadwal IN (?, ?)
-           AND j.Status_Jadwal = ? AND j.Status = ? AND j.Is_Deleted = 0
+           -- VALIDASI JAM EXPIRED: Jika tanggal hari ini, jam mulai wajib lebih besar dari jam sekarang
+           AND (j.Tanggal_Jadwal > ? OR (j.Tanggal_Jadwal = ? AND j.Jam_Mulai > ?))
+           AND j.Status_Jadwal = ? 
+           AND j.Status = ? 
+           AND j.Is_Deleted = 0
+           -- VALIDASI KETERANGAN: Menyaring slot libur / perawatan secara otomatis
+           AND j.Keterangan NOT LIKE '%libur%'
+           AND j.Keterangan NOT LIKE '%maintenance%'
          ORDER BY j.Tanggal_Jadwal, j.Jam_Mulai",
-        array($id_ruangan, $id_paket, $today, $tomorrow, STATUS_JADWAL_TERSEDIA, STATUS_DATA_AKTIF)
+        array($id_ruangan, $id_paket, $today, $tomorrow, $today, $today, $current_time, STATUS_JADWAL_TERSEDIA, STATUS_DATA_AKTIF)
     );
     if ($q_jadwal === false) {
         die("Error query Jadwal: " . print_r(sqlsrv_errors(), true));
@@ -231,11 +268,9 @@ foreach ($ruangan_list as $ruangan) {
             --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
-        * { margin: 0; padding: 0; box-spacing: border-box; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        html {
-            scroll-behavior: smooth;
-        }
+        html { scroll-behavior: smooth; }
 
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
@@ -400,7 +435,7 @@ foreach ($ruangan_list as $ruangan) {
             margin: 0 auto;
         }
 
-        /* ===== PROGRESS BAR (6 LANGKAH REVISI SINKRON SUNTUK KESELURUHAN) ===== */
+        /* ===== PROGRESS BAR ===== */
         .progress-container {
             background: #ffffff;
             border-radius: 20px;
@@ -477,7 +512,7 @@ foreach ($ruangan_list as $ruangan) {
             border: 1px solid #f1f5f9;
         }
         
-        /* DESIGN PREMIUM GAMBAR HERO PAKET (SINKRON PLAYLIST LOGIKA INDEX.PHP) */
+        /* DESIGN PREMIUM GAMBAR HERO PAKET */
         .package-banner-container {
             position: relative;
             height: 340px;
@@ -888,7 +923,7 @@ foreach ($ruangan_list as $ruangan) {
 </head>
 <body>
 
-    <!-- NAVBAR ATAS (Penyempurnaan: Navigasi Menu Barang Cetak Dihapus Sesuai Urutan Revisi) -->
+    <!-- NAVBAR ATAS -->
     <nav class="top-navbar">
         <a href="../../index.php" class="nav-logo">
             SpotLight.<span>StudioFoto</span>
@@ -940,7 +975,7 @@ foreach ($ruangan_list as $ruangan) {
     <!-- MAIN CONTENT -->
     <main class="main-container">
 
-        <!-- PROGRESS BAR: 1.Paket -> 2.Ruangan -> 3.Tema -> 4.Barang Cetak -> 5.Jadwal -> 6.Konfirmasi -->
+        <!-- PROGRESS BAR -->
         <div class="progress-container">
             <div class="progress-step active">
                 <div class="progress-step-circle">1</div>
@@ -971,18 +1006,22 @@ foreach ($ruangan_list as $ruangan) {
                 <div class="progress-step-circle">6</div>
                 <div class="progress-step-label">Konfirmasi</div>
             </div>
+            <div class="progress-line"></div>
+            <div class="progress-step">
+                <div class="progress-step-circle">7</div>
+                <div class="progress-step-label">Bayar DP</div>
+            </div>
         </div>
 
         <!-- DETAIL SECTION -->
         <div class="detail-section">
             <!-- Left: Info -->
             <div class="detail-left">
-                <!-- DESIGNED HERO BANNER PAKET FOTO (DENGAN EFEK SINKRONISASI LOGIKA KAMERA INDEX.PHP) -->
+                <!-- DESIGNED HERO BANNER PAKET FOTO -->
                 <div class="package-banner-container">
                     <?php if ($foto_paket): ?>
                         <img src="<?= $foto_paket ?>" class="package-banner-img" alt="<?= htmlspecialchars($d_paket['Nama_Paket']) ?>">
                     <?php else: ?>
-                        <!-- Kamera Placeholder Berwarna Merah Muda Sinkron dengan index.php -->
                         <div class="package-banner-placeholder">
                             <i class="bi bi-camera-fill"></i>
                         </div>
@@ -1031,7 +1070,6 @@ foreach ($ruangan_list as $ruangan) {
                     <div class="price-label">Mulai dari</div>
                     <div class="price-value">Rp <?= $harga_format ?></div>
                     <div class="price-unit">Per Sesi</div>
-                    <!-- SINKRON ALUR AWAL: Tombol Mengarah ke Bagian Ruangan di Bawah -->
                     <a href="#ruangan-section" class="btn-cek" onclick="event.preventDefault(); document.querySelector('#ruangan-section').scrollIntoView({ behavior: 'smooth' });">
                         <i class="bi bi-door-open-fill"></i>
                         Pilih Ruangan
@@ -1042,10 +1080,6 @@ foreach ($ruangan_list as $ruangan) {
                     <div class="benefit-item">
                         <div class="benefit-icon"><i class="bi bi-credit-card"></i></div>
                         <div class="benefit-text">Pembayaran DP hanya 65%</div>
-                    </div>
-                    <div class="benefit-item">
-                        <div class="benefit-icon"><i class="bi bi-calendar-event"></i></div>
-                        <div class="benefit-text">Reschedule jadwal H-3</div>
                     </div>
                     <div class="benefit-item">
                         <div class="benefit-icon"><i class="bi bi-gift"></i></div>
@@ -1059,7 +1093,7 @@ foreach ($ruangan_list as $ruangan) {
             </div>
         </div>
 
-        <!-- RUANGAN SECTION (SINKRON ALUR AWAL) -->
+        <!-- RUANGAN SECTION -->
         <div class="ruangan-section" id="ruangan-section">
             <div class="ruangan-section-title">
                 <i class="bi bi-door-open-fill"></i>
@@ -1076,7 +1110,6 @@ foreach ($ruangan_list as $ruangan) {
                     $tema_list = $tema_map[$id_ruangan] ?? [];
                     $jadwal_list = $jadwal_map[$id_ruangan] ?? [];
                 ?>
-                    <!-- Link Kartu Ruangan Dialihkan Sesuai Alur Awal Anda ke Langkah 2: Pilih Ruangan -->
                     <a href="../Ruangan/pilih_ruangan.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>" class="ruangan-card">
                         <div class="ruangan-img-wrapper">
                             <?php if ($foto_ruangan): ?>
@@ -1098,7 +1131,7 @@ foreach ($ruangan_list as $ruangan) {
                                 foreach ($properti_list as $prop): 
                                     if ($count++ >= 3) break;
                                 ?>
-                                    <span class="tag-properti"><i class="bi bi-box-seam me-1"></i><?= htmlspecialchars($prop['Nama_Properti']) ?></span>
+                                        <span class="tag-properti"><i class="bi bi-box-seam me-1"></i><?= htmlspecialchars($prop['Nama_Properti']) ?></span>
                                 <?php endforeach; ?>
                                 <?php if (count($properti_list) > 3): ?>
                                     <span class="tag-more">+<?= count($properti_list) - 3 ?> properti</span>
@@ -1114,7 +1147,7 @@ foreach ($ruangan_list as $ruangan) {
                                 foreach ($tema_list as $tema): 
                                     if ($count++ >= 2) break;
                                 ?>
-                                    <span class="tag-tema"><i class="bi bi-palette me-1"></i><?= htmlspecialchars($tema['Nama_Tema']) ?></span>
+                                        <span class="tag-tema"><i class="bi bi-palette me-1"></i><?= htmlspecialchars($tema['Nama_Tema']) ?></span>
                                 <?php endforeach; ?>
                                 <?php if (count($tema_list) > 2): ?>
                                     <span class="tag-more">+<?= count($tema_list) - 2 ?> tema</span>
@@ -1122,7 +1155,7 @@ foreach ($ruangan_list as $ruangan) {
                             </div>
                             <?php endif; ?>
 
-                            <!-- Jadwal Tags (Menampilkan format jam 24 jam Indonesia tanpa AM/PM) -->
+                            <!-- Jadwal Tags -->
                             <?php if (!empty($jadwal_list)): ?>
                             <div class="ruangan-tags">
                                 <?php foreach ($jadwal_list as $jadwal): ?>
@@ -1164,7 +1197,7 @@ foreach ($ruangan_list as $ruangan) {
     </main>
 
     <!-- =====================================================
-    MODAL DETAIL PROFIL & KATA SANDI (SINKRON DASBOR CUSTOMER)
+    MODAL DETAIL PROFIL & KATA SANDI
     ===================================================== -->
     <div class="modal fade" id="modalProfil" data-bs-backdrop="static" tabindex="-1" aria-labelledby="modalProfilLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -1176,7 +1209,6 @@ foreach ($ruangan_list as $ruangan) {
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 
-                <!-- Tab Menu Navigasi Moderen -->
                 <div class="bg-light px-4 pt-3">
                     <ul class="nav profile-nav-tabs" id="profileTabs" role="tablist">
                         <li class="nav-item" role="presentation">
@@ -1263,7 +1295,6 @@ foreach ($ruangan_list as $ruangan) {
                                         <label class="form-label form-label-custom">Kata Sandi Baru</label>
                                         <input type="password" name="pass_baru" id="pass_baru" class="form-control form-control-custom" placeholder="Masukkan kata sandi baru" oninput="checkPasswordStrength()" required>
                                         
-                                        <!-- Indikator Validasi Kekuatan Kata Sandi Realtime -->
                                         <div class="mt-2">
                                             <span class="pwd-requirement" id="req-len">
                                                 <i class="bi bi-x-circle-fill text-danger" id="icon-len"></i> Minimal 8 Karakter
@@ -1331,12 +1362,10 @@ foreach ($ruangan_list as $ruangan) {
 
     <script src="../../../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Toggle dropdown menu
         function toggleDropdown() {
             document.getElementById('navDropdown').classList.toggle('show');
         }
 
-        // Close dropdown when clicking outside
         document.addEventListener('click', function(e) {
             const wrapper = document.querySelector('.nav-avatar-wrapper');
             if (wrapper && !wrapper.contains(e.target)) {
@@ -1344,7 +1373,6 @@ foreach ($ruangan_list as $ruangan) {
             }
         });
 
-        // Realtime Image Preview ketika memilih foto profil baru
         function previewImage(event) {
             const reader = new FileReader();
             reader.onload = function() {
@@ -1354,7 +1382,6 @@ foreach ($ruangan_list as $ruangan) {
             reader.readAsDataURL(event.target.files[0]);
         }
 
-        // Verifikasi Realtime Kekuatan Password sesuai aturan Constraint di Database
         function checkPasswordStrength() {
             const password = document.getElementById('pass_baru').value;
             const isLenValid = password.length >= 8;
@@ -1371,7 +1398,6 @@ foreach ($ruangan_list as $ruangan) {
             checkPasswordMatch();
         }
 
-        // Verifikasi kecocokan Sandi Baru dan Sandi Konfirmasi
         function checkPasswordMatch() {
             const password = document.getElementById('pass_baru').value;
             const confirmPassword = document.getElementById('pass_konfirmasi').value;
@@ -1379,7 +1405,6 @@ foreach ($ruangan_list as $ruangan) {
             const isMatch = password === confirmPassword && confirmPassword.length > 0;
             updateIndicator('req-match', 'icon-match', isMatch);
 
-            // Validasi tombol submit jika semua syarat terpenuhi
             const isLenValid = password.length >= 8;
             const hasLetter = /[A-Za-z]/.test(password);
             const hasDigit = /[0-9]/.test(password);
@@ -1393,7 +1418,6 @@ foreach ($ruangan_list as $ruangan) {
             }
         }
 
-        // Fungsi pembantu memperbarui visual indikator checklist form
         function updateIndicator(elementId, iconId, isValid) {
             const element = document.getElementById(elementId);
             const icon = document.getElementById(iconId);

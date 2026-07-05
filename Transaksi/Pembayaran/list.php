@@ -262,7 +262,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 <div class="card-3d mb-4" style="padding:24px;">
 <div class="table-scroll-wrapper">
 <table class="data-table">
-<thead><tr><th>No. Pembayaran</th><th>Customer</th><th>No. Order</th><th>Metode</th><th>Jumlah</th><th>Bukti</th><th>Tanggal Upload</th><th>Status</th><th>Verifikator</th><th class="text-center">Aksi</th></tr></thead>
+<thead><tr><th>No. Pembayaran</th><th>Customer</th><th>No. Order</th><th>Metode</th><th>Jumlah DP</th><th>Bukti</th><th>Tanggal Upload</th><th>Status</th><th class="text-center">Aksi</th></tr></thead>
 <tbody>
 <?php
 if($query&&sqlsrv_has_rows($query)):
@@ -279,7 +279,6 @@ $orderStatusInfo=getStatusOrderLabel((int)$row['Status_Order']);
 <td><?php if(!empty($row['Bukti_Transfer'])):?><img src="../../assets/img/bukti/<?= htmlspecialchars($row['Bukti_Transfer']) ?>" class="bukti-thumb" onclick="window.open(this.src,'_blank')" title="Klik untuk memperbesar"><?php else:?><span class="td-detail" style="color:#94a3b8">Tidak ada</span><?php endif;?></td>
 <td><div class="td-detail"><?= (is_object($row['Tanggal_Upload'])&&method_exists($row['Tanggal_Upload'],'format'))?$row['Tanggal_Upload']->format('d M Y H:i'):date('d M Y H:i',strtotime($row['Tanggal_Upload'])) ?></div></td>
 <td><span class="badge-status" style="background:<?= $statusInfo[2] ?>;color:<?= $statusInfo[1] ?>"><span class="badge-dot" style="background:<?= $statusInfo[1] ?>"></span><?= $statusInfo[0] ?></span></td>
-<td><div class="td-detail"><?= htmlspecialchars($row['Nama_Verifikator']??'-') ?></div></td>
 <td>
 <?php if((int)$row['Status_Pembayaran']===0):?>
 <button class="btn-action-circle btn-action-terima" onclick="konfirmasiTerima(<?= (int)$row['ID_Pembayaran'] ?>)" title="Terima Pembayaran"><i class="bi bi-check-lg"></i></button>

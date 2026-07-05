@@ -24,7 +24,7 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 
 $id_customer = $_SESSION['id_user'];
 
-// --- Fungsi Pembantu Format Tanggal Indonesia (Antisipasi Fatal Error) ---
+// --- Fungsi Pembantu Format Tanggal Indonesia ---
 if (!function_exists('fmtTgl')) {
     function fmtTgl($date_str) {
         if (empty($date_str)) return '-';
@@ -45,101 +45,89 @@ if (!function_exists('fmtTgl')) {
 }
 
 // =====================================================
-// AMBIL ID PAKET & ID RUANGAN DARI URL (WAJIB ADA)
+// AMBIL ID PARAMETER DARI URL (WAJIB ADA)
 // =====================================================
 if (!isset($_GET['id_paket']) || empty($_GET['id_paket']) ||
-    !isset($_GET['id_ruangan']) || empty($_GET['id_ruangan'])) {
-    header("Location: ../../index.php?error=pilih_paket_dulu");
+    !isset($_GET['id_ruangan']) || empty($_GET['id_ruangan']) ||
+    !isset($_GET['id_tema']) || empty($_GET['id_tema'])) {
+    header("Location: ../../index.php?error=lengkapi_langkah_sebelumnya");
     exit();
 }
 
 $id_paket = (int)$_GET['id_paket'];
 $id_ruangan = (int)$_GET['id_ruangan'];
+$id_tema = (int)$_GET['id_tema'];
 
 // =====================================================
-// AMBIL DATA PAKET
+// KONTROLLER CART (KERANJANG BARANG CETAK)
 // =====================================================
-$q_paket = sqlsrv_query($conn, 
-    "SELECT ID_Paket, Nama_Paket, Durasi_Waktu, Harga_Paket, Deskripsi, Kapasitas_Orang, Foto_Paket 
-     FROM Paket_Foto 
-     WHERE ID_Paket = ? AND Status = ? AND Is_Deleted = 0", 
-    array($id_paket, STATUS_DATA_AKTIF)
-);
-if ($q_paket === false) {
-    die("Error query Paket: " . print_r(sqlsrv_errors(), true));
+if (!isset($_SESSION['booking_cart_cetak'])) {
+    $_SESSION['booking_cart_cetak'] = []; // Array bentuk [ID_Barang => Kuantitas]
 }
+
+// Proses jika tombol "Lanjut" (POST) ditekan
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'simpan_cetak') {
+    $_SESSION['booking_cart_cetak'] = [];
+    if (isset($_POST['qty']) && is_array($_POST['qty'])) {
+        foreach ($_POST['qty'] as $id_brg => $qty) {
+            $qty = (int)$qty;
+            if ($qty > 0) {
+                $_SESSION['booking_cart_cetak'][(int)$id_brg] = $qty;
+            }
+        }
+    }
+    // Lanjut ke Langkah 5: Pilih Jadwal
+    header("Location: ../Jadwal/pilih_jadwal.php?id_paket=$id_paket&id_ruangan=$id_ruangan&id_tema=$id_tema");
+    exit();
+}
+
+// Proses jika tombol "Lewati" (GET) ditekan
+if (isset($_GET['action']) && $_GET['action'] === 'lewati') {
+    $_SESSION['booking_cart_cetak'] = []; // Kosongkan keranjang cetak
+    header("Location: ../Jadwal/pilih_jadwal.php?id_paket=$id_paket&id_ruangan=$id_ruangan&id_tema=$id_tema");
+    exit();
+}
+
+// =====================================================
+// AMBIL DATA TRANSAKSI SEBELUMNYA
+// =====================================================
+// 1. Paket Foto
+$q_paket = sqlsrv_query($conn, "SELECT ID_Paket, Nama_Paket, Durasi_Waktu, Harga_Paket, Kapasitas_Orang FROM Paket_Foto WHERE ID_Paket = ? AND Status = ? AND Is_Deleted = 0", array($id_paket, STATUS_DATA_AKTIF));
 $d_paket = sqlsrv_fetch_array($q_paket, SQLSRV_FETCH_ASSOC);
 
-if (!$d_paket) {
-    header("Location: ../../index.php?error=paket_tidak_ditemukan");
-    exit();
-}
-
-// =====================================================
-// AMBIL DATA RUANGAN
-// =====================================================
-$q_ruangan = sqlsrv_query($conn, 
-    "SELECT ID_Ruangan, Nama_Ruangan, Deskripsi, Foto_Ruangan 
-     FROM Ruangan 
-     WHERE ID_Ruangan = ? AND Status = 1 AND Is_Deleted = 0", 
-    array($id_ruangan)
-);
-if ($q_ruangan === false) {
-    die("Error query Ruangan: " . print_r(sqlsrv_errors(), true));
-}
+// 2. Ruangan
+$q_ruangan = sqlsrv_query($conn, "SELECT ID_Ruangan, Nama_Ruangan FROM Ruangan WHERE ID_Ruangan = ? AND Status = 1 AND Is_Deleted = 0", array($id_ruangan));
 $d_ruangan = sqlsrv_fetch_array($q_ruangan, SQLSRV_FETCH_ASSOC);
 
-if (!$d_ruangan) {
-    header("Location: ../Paket/pilih_paket.php?id_paket=$id_paket&error=ruangan_tidak_ditemukan");
+// 3. Tema Foto
+$q_tema = sqlsrv_query($conn, "SELECT ID_Tema, Nama_Tema FROM Tema_Foto WHERE ID_Tema = ? AND Status = 1 AND Is_Deleted = 0", array($id_tema));
+$d_tema = sqlsrv_fetch_array($q_tema, SQLSRV_FETCH_ASSOC);
+
+if (!$d_paket || !$d_ruangan || !$d_tema) {
+    header("Location: ../../index.php?error=data_transaksi_tidak_valid");
     exit();
 }
 
 // =====================================================
-// VALIDASI: RUANGAN HARUS TERHUBUNG DENGAN PAKET
+// AMBIL DAFTAR BARANG CETAK YANG AKTIF & READY STOK
 // =====================================================
-$q_validasi = sqlsrv_query($conn, 
-    "SELECT COUNT(*) as total FROM Paket_Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ?", 
-    array($id_paket, $id_ruangan)
+$q_barang = sqlsrv_query($conn, 
+    "SELECT ID_Barang, Nama_Barang, Deskripsi, Harga_Barang, Stok_Barang, Foto_Barang 
+     FROM Barang_Cetak 
+     WHERE Status = 1 AND Is_Deleted = 0 AND Stok_Barang > 0 
+     ORDER BY Nama_Barang ASC"
 );
-if ($q_validasi === false) {
-    die("Error query Validasi: " . print_r(sqlsrv_errors(), true));
-}
-$d_validasi = sqlsrv_fetch_array($q_validasi, SQLSRV_FETCH_ASSOC);
-
-if ($d_validasi['total'] == 0) {
-    header("Location: ../Paket/pilih_paket.php?id_paket=$id_paket&error=ruangan_tidak_valid");
-    exit();
+if ($q_barang === false) {
+    die("Error query Barang Cetak: " . print_r(sqlsrv_errors(), true));
 }
 
-// =====================================================
-// AMBIL TEMA YANG TERHUBUNG DENGAN RUANGAN (VIA Ruangan_Tema)
-// =====================================================
-$q_tema = sqlsrv_query($conn, 
-    "SELECT 
-        t.ID_Tema,
-        t.Nama_Tema,
-        t.Kategori_Tema,
-        t.Deskripsi,
-        t.Foto_Tema
-     FROM Tema_Foto t
-     INNER JOIN Ruangan_Tema rt ON t.ID_Tema = rt.ID_Tema
-     WHERE rt.ID_Ruangan = ?
-       AND t.Status = 1
-       AND t.Is_Deleted = 0
-     ORDER BY t.Nama_Tema ASC", 
-    array($id_ruangan)
-);
-if ($q_tema === false) {
-    die("Error query Tema: " . print_r(sqlsrv_errors(), true));
-}
-
-$tema_list = [];
-while ($row = sqlsrv_fetch_array($q_tema, SQLSRV_FETCH_ASSOC)) {
-    $tema_list[] = $row;
+$barang_list = [];
+while ($row = sqlsrv_fetch_array($q_barang, SQLSRV_FETCH_ASSOC)) {
+    $barang_list[] = $row;
 }
 
 // =====================================================
-// AMBIL PROFIL CUSTOMER LENGKAP
+// AMBIL PROFIL CUSTOMER LENGKAP SINKRON
 // =====================================================
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23d83f67'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
@@ -147,9 +135,6 @@ $q_profile = sqlsrv_query($conn,
     "SELECT Nama_Pelanggan, Foto_Profil, Username_Pelanggan, Email_Pelanggan, No_Hp, Alamat, Jenis_Kelamin, Tanggal_Lahir FROM Pelanggan WHERE ID_Pelanggan = ? AND Is_Deleted = 0 AND Status = ?", 
     array($id_customer, STATUS_DATA_AKTIF)
 );
-if ($q_profile === false) {
-    die("Error query Profil: " . print_r(sqlsrv_errors(), true));
-}
 $d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
 
 $nama_customer = $d_profile['Nama_Pelanggan'] ?? 'Customer';
@@ -171,23 +156,14 @@ $foto_customer_src = ($foto_customer != 'default.jpg' && file_exists("../../../.
     ? "../../../../assets/img/pelanggan/" . $foto_customer 
     : $default_svg_avatar;
 
-// Path foto paket & ruangan
-$foto_paket = ($d_paket['Foto_Paket'] != 'default_paket.jpg' && file_exists("../../../../assets/img/paket/" . $d_paket['Foto_Paket'])) 
-    ? "../../../../assets/img/paket/" . $d_paket['Foto_Paket'] 
-    : null;
-
-$foto_ruangan = ($d_ruangan['Foto_Ruangan'] != 'default_ruangan.jpg' && file_exists("../../../../assets/img/ruangan/" . $d_ruangan['Foto_Ruangan'])) 
-    ? "../../../../assets/img/ruangan/" . $d_ruangan['Foto_Ruangan'] 
-    : null;
-
-$harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
+$harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pilih Tema Foto - SpotLight Studio</title>
+    <title>Pilih Barang Cetak (Opsional) - SpotLight Studio</title>
     <link href="../../../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -283,9 +259,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             box-shadow: 0 8px 25px rgba(216, 63, 103, 0.35);
             color: #fff;
         }
-        .nav-avatar-wrapper {
-            position: relative;
-        }
+        .nav-avatar-wrapper { position: relative; }
         .nav-avatar {
             width: 40px;
             height: 40px;
@@ -295,10 +269,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             cursor: pointer;
             transition: all 0.3s;
         }
-        .nav-avatar:hover {
-            transform: scale(1.1);
-            border-color: var(--p-pink);
-        }
+        .nav-avatar:hover { transform: scale(1.1); border-color: var(--p-pink); }
         .nav-dropdown {
             position: absolute;
             top: 55px;
@@ -342,91 +313,20 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
         }
 
         /* ===== PROFILE MODAL CSS SINKRON ===== */
-        .modal-content-custom {
-            border-radius: 24px;
-            border: none;
-            overflow: hidden;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
-        }
-        .modal-header-custom {
-            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            color: #ffffff;
-            padding: 20px 30px;
-            border: none;
-        }
+        .modal-content-custom { border-radius: 24px; border: none; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.15); }
+        .modal-header-custom { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; padding: 20px 30px; border: none; }
         .modal-body-custom { padding: 30px; }
-        .form-control-custom {
-            border-radius: 12px;
-            padding: 12px 16px;
-            border: 1px solid #e2e8f0;
-            font-size: 0.9rem;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        .form-control-custom:focus {
-            border-color: var(--p-pink);
-            box-shadow: 0 0 0 3px rgba(216, 63, 103, 0.1);
-        }
-        .form-label-custom {
-            font-weight: 700;
-            font-size: 0.85rem;
-            color: var(--text-dark);
-            margin-bottom: 8px;
-        }
+        .form-control-custom { border-radius: 12px; padding: 12px 16px; border: 1px solid #e2e8f0; font-size: 0.9rem; font-weight: 600; transition: all 0.3s; }
+        .form-control-custom:focus { border-color: var(--p-pink); box-shadow: 0 0 0 3px rgba(216, 63, 103, 0.1); }
+        .form-label-custom { font-weight: 700; font-size: 0.85rem; color: var(--text-dark); margin-bottom: 8px; }
         .profile-nav-tabs { border: none; gap: 10px; }
-        .profile-nav-tabs .nav-link {
-            border: none;
-            color: var(--text-muted);
-            font-weight: 700;
-            font-size: 0.9rem;
-            padding: 10px 20px;
-            border-radius: 12px;
-            transition: all 0.3s;
-        }
-        .profile-nav-tabs .nav-link.active {
-            background: var(--light-pink);
-            color: var(--p-pink);
-        }
-        .img-preview-container {
-            position: relative;
-            width: 120px;
-            height: 120px;
-            margin: 0 auto 30px;
-        }
-        .img-preview {
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 4px solid var(--light-pink);
-        }
-        .btn-upload-trigger {
-            position: absolute;
-            bottom: 0;
-            right: 0;
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: var(--p-pink);
-            color: #ffffff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            border: 3px solid #ffffff;
-            transition: all 0.3s;
-        }
-        .btn-upload-trigger:hover {
-            background: var(--d-pink);
-            transform: scale(1.1);
-        }
-        .pwd-requirement {
-            display: block;
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: #dc2626;
-            margin-top: 4px;
-        }
+        .profile-nav-tabs .nav-link { border: none; color: var(--text-muted); font-weight: 700; font-size: 0.9rem; padding: 10px 20px; border-radius: 12px; transition: all 0.3s; }
+        .profile-nav-tabs .nav-link.active { background: var(--light-pink); color: var(--p-pink); }
+        .img-preview-container { position: relative; width: 120px; height: 120px; margin: 0 auto 30px; }
+        .img-preview { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 4px solid var(--light-pink); }
+        .btn-upload-trigger { position: absolute; bottom: 0; right: 0; width: 36px; height: 36px; border-radius: 50%; background: var(--p-pink); color: #ffffff; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 3px solid #ffffff; transition: all 0.3s; }
+        .btn-upload-trigger:hover { background: var(--d-pink); transform: scale(1.1); }
+        .pwd-requirement { display: block; font-size: 0.75rem; font-weight: 600; color: #dc2626; margin-top: 4px; }
         .pwd-requirement.valid { color: #059669; }
 
         /* ===== BREADCRUMB BAR ===== */
@@ -452,13 +352,6 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
         .breadcrumb-inner a:hover { color: var(--p-pink); }
         .breadcrumb-inner .separator { color: #cbd5e1; }
         .breadcrumb-inner .current { color: var(--p-pink); font-weight: 700; }
-
-        /* ===== MAIN CONTENT ===== */
-        .main-container {
-            padding: 40px;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
 
         /* ===== PROGRESS BAR SINKRON ===== */
         .progress-container {
@@ -523,63 +416,70 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
         }
         .progress-line.completed { background: #059669; }
 
-        /* ===== TEMA SECTION ===== */
-        .tema-section {
+        /* ===== MAIN SECTION LAYOUT ===== */
+        .cetak-section {
             display: grid;
             grid-template-columns: 1fr 380px;
             gap: 40px;
             margin-bottom: 40px;
         }
-        .tema-main {
+        .cetak-main {
             background: #ffffff;
             border-radius: 24px;
             padding: 30px;
             border: 1px solid #f1f5f9;
         }
-        .tema-section-title {
+        .cetak-section-title {
             font-size: 1.3rem;
             font-weight: 800;
             color: var(--text-dark);
-            margin-bottom: 24px;
+            margin-bottom: 8px;
             display: flex;
             align-items: center;
             gap: 10px;
         }
-        .tema-section-title i { color: var(--p-pink); }
-        .tema-grid {
+        .cetak-section-title i { color: var(--p-pink); }
+        .cetak-section-subtitle {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+            font-weight: 600;
+        }
+
+        /* ===== CATALOG GRID ===== */
+        .cetak-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
             gap: 24px;
         }
-        .tema-card {
+        .cetak-card {
             background: #ffffff;
             border-radius: 20px;
             overflow: hidden;
             border: 1px solid #f1f5f9;
             transition: var(--transition-3d);
-            text-decoration: none;
-            color: inherit;
-            display: block;
-            cursor: pointer;
+            display: flex;
+            flex-direction: column;
         }
-        .tema-card:hover {
+        .cetak-card:hover {
             transform: translateY(-8px) scale(1.02);
             box-shadow: 0 20px 40px rgba(216, 63, 103, 0.12);
             border-color: var(--light-pink);
         }
-        .tema-img-wrapper {
+        .cetak-img-wrapper {
             position: relative;
             height: 180px;
             overflow: hidden;
+            background: var(--s-pink);
         }
-        .tema-img {
+        .cetak-img {
             width: 100%;
             height: 100%;
             object-fit: cover;
             transition: transform 0.5s;
         }
-        .tema-card:hover .tema-img { transform: scale(1.1); }
-        .tema-img-placeholder {
+        .cetak-card:hover .cetak-img { transform: scale(1.08); }
+        .cetak-img-placeholder {
             width: 100%;
             height: 100%;
             display: flex;
@@ -587,31 +487,21 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             justify-content: center;
             color: var(--p-pink);
             font-size: 3rem;
-            background: linear-gradient(135deg, var(--s-pink), #f8fafc);
         }
-        .tema-badge {
-            position: absolute;
-            top: 12px;
-            left: 12px;
-            background: rgba(255,255,255,0.95);
-            backdrop-filter: blur(10px);
-            padding: 6px 14px;
-            border-radius: 50px;
-            font-size: 0.75rem;
-            font-weight: 800;
-            color: var(--p-pink);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+        .cetak-body {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
         }
-        .tema-body { padding: 20px; }
-        .tema-nama {
-            font-size: 1.15rem;
+        .cetak-nama {
+            font-size: 1.1rem;
             font-weight: 800;
             color: var(--text-dark);
             margin-bottom: 6px;
         }
-        .tema-desc {
-            font-size: 0.85rem;
+        .cetak-desc {
+            font-size: 0.8rem;
             color: var(--text-muted);
             margin-bottom: 16px;
             line-height: 1.5;
@@ -619,41 +509,63 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
+            flex-grow: 1;
         }
-        .tema-footer {
+        .cetak-footer {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding-top: 16px;
+            padding-top: 14px;
             border-top: 1px solid #f1f5f9;
+            margin-top: auto;
         }
-        .tema-kategori {
-            font-size: 0.8rem;
+        .cetak-harga {
+            font-size: 1.1rem;
+            font-weight: 900;
+            color: var(--p-pink);
+        }
+        .stok-label {
+            font-size: 0.75rem;
             color: var(--text-muted);
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .tema-kategori i { color: var(--p-pink); }
-        .tema-btn {
-            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            color: #ffffff;
-            padding: 8px 16px;
-            border-radius: 10px;
-            font-weight: 800;
-            font-size: 0.8rem;
-            transition: all 0.3s;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .tema-card:hover .tema-btn {
-            transform: translateX(3px);
-            box-shadow: 0 4px 12px rgba(216, 63, 103, 0.2);
+            font-weight: 700;
         }
 
-        /* ===== SIDEBAR RINGKASAN BOOKING ===== */
+        /* ===== QTY SELECTOR ===== */
+        .qty-container {
+            display: flex;
+            align-items: center;
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 2px;
+        }
+        .btn-qty {
+            border: none;
+            background: none;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-dark);
+            font-weight: 800;
+            font-size: 1rem;
+            border-radius: 8px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .btn-qty:hover { background: var(--light-pink); color: var(--p-pink); }
+        .input-qty {
+            width: 38px;
+            border: none;
+            background: none;
+            text-align: center;
+            font-weight: 800;
+            font-size: 0.9rem;
+            color: var(--text-dark);
+        }
+        .input-qty:focus { outline: none; }
+
+        /* ===== SIDEBAR RINGKASAN ===== */
         .booking-summary {
             position: sticky;
             top: 90px;
@@ -665,7 +577,6 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             padding: 24px;
             border: 1px solid #f1f5f9;
             box-shadow: 0 8px 30px rgba(0,0,0,0.06);
-            margin-bottom: 20px;
         }
         .summary-title {
             font-size: 1rem;
@@ -694,6 +605,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             color: var(--p-pink);
             font-size: 1rem;
             flex-shrink: 0;
+            transition: var(--transition-3d);
         }
         .summary-icon.completed { background: #d1fae5; color: #059669; }
         .summary-text {
@@ -706,6 +618,34 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             color: var(--text-muted);
             font-weight: 600;
         }
+
+        /* ===== BELANJAAN EXTRA LIST ===== */
+        .extra-goods-list {
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px dashed #cbd5e1;
+        }
+        .extra-goods-title {
+            font-size: 0.8rem;
+            font-weight: 800;
+            color: var(--text-dark);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+        .extra-goods-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+        .extra-goods-item span:last-child {
+            color: var(--text-dark);
+            font-weight: 700;
+        }
+
         .summary-harga {
             font-size: 1.3rem;
             font-weight: 900;
@@ -714,21 +654,50 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             padding-top: 16px;
             border-top: 2px solid #f1f5f9;
         }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-5px); }
-            to { opacity: 1; transform: translateY(0); }
+        .btn-lanjut {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #ffffff;
+            border: none;
+            border-radius: 14px;
+            font-weight: 800;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            text-decoration: none;
+            margin-top: 16px;
         }
-
-        /* ===== RESPONSIVE ===== */
-        @media (max-width: 992px) {
-            .tema-section { grid-template-columns: 1fr; }
-            .booking-summary { position: static; }
-            .nav-menu-center { display: none; }
-            .main-container { padding: 20px; }
-            .top-navbar { padding: 16px 20px; }
-            .breadcrumb-bar { padding: 16px 20px; }
-            .tema-grid { grid-template-columns: 1fr; }
+        .btn-lanjut:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 30px rgba(216, 63, 103, 0.3);
+            color: #ffffff;
+        }
+        .btn-lewati {
+            width: 100%;
+            padding: 14px;
+            background: #f1f5f9;
+            color: #475569;
+            border: none;
+            border-radius: 14px;
+            font-weight: 800;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            text-decoration: none;
+            margin-top: 10px;
+        }
+        .btn-lewati:hover {
+            background: #e2e8f0;
+            color: #1e293b;
         }
     </style>
 </head>
@@ -754,12 +723,9 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                 <div class="nav-dropdown" id="navDropdown">
                     <div class="dropdown-header">Halo, <?= htmlspecialchars($nama_customer) ?></div>
                     <div class="dropdown-divider"></div>
-                    
-                    <!-- MENU: Akses Detil Profil -->
                     <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalProfil">
                         <i class="bi bi-person-circle"></i> Profil Saya
                     </button>
-                    
                     <a href="../../../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
                         <i class="bi bi-house-door"></i> Kembali ke Beranda
                     </a>
@@ -772,7 +738,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
         </div>
     </nav>
 
-    <!-- BREADCRUMB -->
+    <!-- BREADCRUMB SINKRON GAMBAR -->
     <div class="breadcrumb-bar">
         <div class="breadcrumb-inner">
             <a href="../../index.php">Home</a>
@@ -781,14 +747,16 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             <span class="separator"><i class="bi bi-chevron-right"></i></span>
             <a href="../Ruangan/pilih_ruangan.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>"><?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?></a>
             <span class="separator"><i class="bi bi-chevron-right"></i></span>
-            <span class="current">Pilih Tema</span>
+            <a href="../Tema/pilih_tema.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>"><?= htmlspecialchars($d_tema['Nama_Tema']) ?></a>
+            <span class="separator"><i class="bi bi-chevron-right"></i></span>
+            <span class="current">Pilih Barang Cetak</span>
         </div>
     </div>
 
     <!-- MAIN CONTENT -->
     <main class="main-container">
 
-        <!-- PROGRESS BAR SINKRON (Langkah 3 Active, 1 & 2 Completed) -->
+        <!-- PROGRESS BAR SINKRON -->
         <div class="progress-container">
             <div class="progress-step completed">
                 <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
@@ -800,12 +768,12 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                 <div class="progress-step-label">Pilih Ruangan</div>
             </div>
             <div class="progress-line completed"></div>
-            <div class="progress-step active">
-                <div class="progress-step-circle">3</div>
+            <div class="progress-step completed">
+                <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
                 <div class="progress-step-label">Pilih Tema</div>
             </div>
-            <div class="progress-line"></div>
-            <div class="progress-step">
+            <div class="progress-line completed"></div>
+            <div class="progress-step active">
                 <div class="progress-step-circle">4</div>
                 <div class="progress-step-label">Pilih Barang Cetak</div>
             </div>
@@ -824,106 +792,147 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                 <div class="progress-step-circle">7</div>
                 <div class="progress-step-label">Bayar DP</div>
             </div>
+
         </div>
 
-        <!-- TEMA SECTION + SIDEBAR -->
-        <div class="tema-section">
-            <!-- Left: Grid Tema -->
-            <div class="tema-main">
-                <div class="tema-section-title">
-                    <i class="bi bi-palette-fill"></i>
-                    Pilih Tema untuk <?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?>
-                </div>
-                <div class="tema-grid">
-                    <?php foreach ($tema_list as $tema): 
-                        $foto_tema = ($tema['Foto_Tema'] != 'default_tema.jpg' && file_exists("../../../../assets/img/tema/" . $tema['Foto_Tema'])) 
-                            ? "../../../../assets/img/tema/" . $tema['Foto_Tema'] 
-                            : null;
-                    ?>
-                        <div class="tema-card" onclick="konfirmasiTema(<?= $tema['ID_Tema'] ?>, '<?= htmlspecialchars(addslashes($tema['Nama_Tema'])) ?>')">
-                            <div class="tema-img-wrapper">
-                                <?php if ($foto_tema): ?>
-                                    <img src="<?= $foto_tema ?>" class="tema-img" alt="<?= htmlspecialchars($tema['Nama_Tema']) ?>">
-                                <?php else: ?>
-                                    <div class="tema-img-placeholder">
-                                        <i class="bi bi-image"></i>
+        <!-- MAIN LAYOUT -->
+        <form action="" method="POST">
+            <input type="hidden" name="action" value="simpan_cetak">
+            
+            <div class="cetak-section">
+                <!-- Left: Katalog Cetak -->
+                <div class="cetak-main">
+                    <h2 class="cetak-section-title">
+                        <i class="bi bi-printer-fill"></i> Tambah Produk Cetak Foto (Opsional)
+                    </h2>
+                    <p class="cetak-section-subtitle">Tingkatkan kenangan fisik Anda dengan mencetak foto berkualitas premium. Langkah ini sepenuhnya opsional.</p>
+                    
+                    <div class="cetak-grid">
+                        <?php 
+                        if (!empty($barang_list)):
+                            foreach ($barang_list as $brg): 
+                                $id_brg = $brg['ID_Barang'];
+                                $stok = $brg['Stok_Barang'];
+                                $foto_path = "../../../../uploads/barang/" . $brg['Foto_Barang'];
+                                $foto_src = (!empty($brg['Foto_Barang']) && file_exists($foto_path)) ? $foto_path : null;
+                                
+                                // Ambil kuantitas yang sudah tersimpan sebelumnya di sesi (jika ada)
+                                $qty_sebelumnya = $_SESSION['booking_cart_cetak'][$id_brg] ?? 0;
+                        ?>
+                            <div class="cetak-card">
+                                <div class="cetak-img-wrapper">
+                                    <?php if ($foto_src): ?>
+                                        <img src="<?= $foto_src ?>" class="cetak-img" alt="<?= htmlspecialchars($brg['Nama_Barang']) ?>">
+                                    <?php else: ?>
+                                        <div class="cetak-img-placeholder"><i class="bi bi-file-image"></i></div>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="cetak-body">
+                                    <div class="cetak-nama"><?= htmlspecialchars($brg['Nama_Barang']) ?></div>
+                                    <div class="cetak-desc"><?= htmlspecialchars($brg['Deskripsi'] ?? 'Cetak foto premium untuk melengkapi sesi pemotretan Anda.') ?></div>
+                                    <div class="cetak-footer">
+                                        <div class="cetak-harga-wrapper">
+                                            <div class="cetak-harga">Rp <?= number_format($brg['Harga_Barang'], 0, ',', '.') ?></div>
+                                            <div class="stok-label">Stok: <?= $stok ?> unit</div>
+                                        </div>
+                                        
+                                        <!-- QTY Selector Interaktif -->
+                                        <div class="qty-container">
+                                            <button type="button" class="btn-qty" onclick="adjustQty(<?= $id_brg ?>, -1, <?= $stok ?>)">-</button>
+                                            <input type="text" name="qty[<?= $id_brg ?>]" id="qty_<?= $id_brg ?>" class="input-qty" 
+                                                   value="<?= $qty_sebelumnya ?>" readonly 
+                                                   data-nama="<?= htmlspecialchars($brg['Nama_Barang']) ?>" 
+                                                   data-harga="<?= $brg['Harga_Barang'] ?>">
+                                            <button type="button" class="btn-qty" onclick="adjustQty(<?= $id_brg ?>, 1, <?= $stok ?>)">+</button>
+                                        </div>
                                     </div>
-                                <?php endif; ?>
-                                <div class="tema-badge"><?= htmlspecialchars($tema['Kategori_Tema'] ?? 'Tema') ?></div>
-                            </div>
-                            <div class="tema-body">
-                                <div class="tema-nama"><?= htmlspecialchars($tema['Nama_Tema']) ?></div>
-                                <div class="tema-desc"><?= htmlspecialchars($tema['Deskripsi'] ?? 'Tema foto ' . $tema['Nama_Tema'] . ' untuk sesi foto terbaik Anda.') ?></div>
-                                <div class="tema-footer">
-                                    <div class="tema-kategori">
-                                        <i class="bi bi-tag-fill"></i>
-                                        <?= htmlspecialchars($tema['Kategori_Tema'] ?? 'Umum') ?>
-                                    </div>
-                                    <span class="tema-btn">Pilih <i class="bi bi-arrow-right ms-1"></i></span>
                                 </div>
                             </div>
-                        </div>
-                    <?php endforeach; ?>
-                    <?php if (empty($tema_list)): ?>
-                        <div class="text-center py-5" style="grid-column: 1 / -1;">
-                            <i class="bi bi-inbox fs-1 mb-3" style="color: #cbd5e1;"></i>
-                            <p class="text-muted">Tidak ada tema tersedia untuk ruangan ini.</p>
-                            <a href="../Ruangan/pilih_ruangan.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>" class="tema-btn text-decoration-none d-inline-block mt-3" style="padding: 12px 30px;">
-                                <i class="bi bi-arrow-left me-2"></i>Kembali ke Ruangan
-                            </a>
-                        </div>
-                    <?php endif; ?>
+                        <?php 
+                            endforeach;
+                        else:
+                        ?>
+                            <div class="text-center py-5" style="grid-column: 1 / -1;">
+                                <i class="bi bi-inbox fs-1 mb-3" style="color: #cbd5e1;"></i>
+                                <p class="text-muted">Tidak ada katalog barang cetak aktif saat ini.</p>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Right: Sidebar Ringkasan -->
-            <div class="booking-summary">
-                <div class="summary-card">
-                    <div class="summary-title">Ringkasan Booking</div>
-                    <div class="summary-item">
-                        <div class="summary-icon completed"><i class="bi bi-check-lg"></i></div>
-                        <div>
-                            <div class="summary-text">Paket</div>
-                            <div class="summary-sub"><?= htmlspecialchars($d_paket['Nama_Paket']) ?> (<?= $d_paket['Durasi_Waktu'] ?> menit)</div>
+                <!-- Right: Sidebar Ringkasan SINKRON -->
+                <div class="booking-summary">
+                    <div class="summary-card">
+                        <div class="summary-title">Ringkasan Booking</div>
+                        <div class="summary-item">
+                            <div class="summary-icon completed"><i class="bi bi-check-lg"></i></div>
+                            <div>
+                                <div class="summary-text">Paket</div>
+                                <div class="summary-sub"><?= htmlspecialchars($d_paket['Nama_Paket']) ?> (<?= $d_paket['Durasi_Waktu'] ?> menit)</div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="summary-item">
-                        <div class="summary-icon completed"><i class="bi bi-check-lg"></i></div>
-                        <div>
-                            <div class="summary-text">Ruangan</div>
-                            <div class="summary-sub"><?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?></div>
+                        <div class="summary-item">
+                            <div class="summary-icon completed"><i class="bi bi-check-lg"></i></div>
+                            <div>
+                                <div class="summary-text">Ruangan</div>
+                                <div class="summary-sub"><?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?></div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="summary-item">
-                        <div class="summary-icon"><i class="bi bi-palette"></i></div>
-                        <div>
-                            <div class="summary-text">Tema</div>
-                            <div class="summary-sub">Belum dipilih</div>
+                        <div class="summary-item">
+                            <div class="summary-icon completed"><i class="bi bi-check-lg"></i></div>
+                            <div>
+                                <div class="summary-text">Tema</div>
+                                <div class="summary-sub"><?= htmlspecialchars($d_tema['Nama_Tema']) ?></div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="summary-item">
-                        <div class="summary-icon"><i class="bi bi-printer"></i></div>
-                        <div>
-                            <div class="summary-text">Barang Cetak</div>
-                            <div class="summary-sub">Belum dipilih</div>
-                        </div>                    
-                    </div>
-                    <div class="summary-item">
-                        <div class="summary-icon"><i class="bi bi-calendar"></i></div>
-                        <div>
-                            <div class="summary-text">Jadwal</div>
-                            <div class="summary-sub">Belum dipilih</div>
+                        
+                        <!-- BARANG CETAK INDIKATOR DINAMIS SINKRON -->
+                        <div class="summary-item" id="summaryCetakItem">
+                            <div class="summary-icon" id="summaryCetakIcon"><i class="bi bi-printer"></i></div>
+                            <div>
+                                <div class="summary-text">Barang Cetak</div>
+                                <div class="summary-sub" id="summaryCetakSub">Belum dipilih</div>
+                            </div>                    
                         </div>
+                        
+                        <div class="summary-item">
+                            <div class="summary-icon"><i class="bi bi-calendar"></i></div>
+                            <div>
+                                <div class="summary-text">Jadwal</div>
+                                <div class="summary-sub">Belum dipilih</div>
+                            </div>
+                        </div>
+
+                        <!-- LIST BELANJAAN BARANG CETAK TAMBAHAN (DIRECALCULATE VIA JS) -->
+                        <div class="extra-goods-list d-none" id="extraGoodsContainer">
+                            <div class="extra-goods-title"><i class="bi bi-printer-fill me-1"></i>Ekstra Cetak:</div>
+                            <div id="extraGoodsItems"></div>
+                        </div>
+
+                        <div class="summary-harga">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span style="font-size:0.95rem;color:var(--text-muted);font-weight:700;">Total Harga:</span>
+                                <span id="totalHargaLabel">Rp <?= $harga_paket_format ?></span>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn-lanjut">
+                            <i class="bi bi-arrow-right-circle-fill"></i> Lanjut Pilih Jadwal
+                        </button>
+                        
+                        <a href="?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&action=lewati" 
+                           class="btn-lewati" onclick="return confirmSkip(event)">
+                            <i class="bi bi-skip-forward-fill"></i> Lewati Langkah Ini
+                        </a>
                     </div>
-                    <div class="summary-harga">Rp <?= $harga_format ?> <span style="font-size:0.75rem;color:var(--text-muted);font-weight:600;">/ sesi</span></div>
                 </div>
             </div>
-        </div>
+        </form>
 
     </main>
 
     <!-- =====================================================
-    MODAL DETAIL PROFIL & KATA SANDI
+    MODAL DETAIL PROFIL & KATA SANDI SINKRON SUNTUK DETAIL
     ===================================================== -->
     <div class="modal fade" id="modalProfil" data-bs-backdrop="static" tabindex="-1" aria-labelledby="modalProfilLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -970,7 +979,6 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                                     <div class="col-md-6">
                                         <label class="form-label form-label-custom">Username</label>
                                         <input type="text" class="form-control form-control-custom bg-light" value="<?= htmlspecialchars($username_customer) ?>" disabled>
-                                        <small class="text-muted">Username tidak dapat diubah.</small>
                                     </div>
                                     <div class="col-md-6">
                                         <label class="form-label form-label-custom">Nama Lengkap</label>
@@ -981,7 +989,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                                         <input type="email" name="email_pelanggan" class="form-control form-control-custom" value="<?= htmlspecialchars($email_customer) ?>" required>
                                     </div>
                                     <div class="col-md-6">
-                                        <label class="form-label form-label-custom">Nomor HP (Contoh: +628211...)</label>
+                                        <label class="form-label form-label-custom">Nomor HP</label>
                                         <input type="text" name="no_hp" id="inputHPModal" class="form-control form-control-custom" value="<?= htmlspecialchars($no_hp_customer) ?>" required>
                                     </div>
                                     <div class="col-md-6">
@@ -1011,36 +1019,18 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                         <div class="tab-pane fade" id="tab-password" role="tabpanel" aria-labelledby="password-tab">
                             <form action="../../index.php" method="POST" id="formPassword">
                                 <input type="hidden" name="action_type" value="update_password">
-                                
                                 <div class="row g-3">
                                     <div class="col-12">
                                         <label class="form-label form-label-custom">Kata Sandi Saat Ini</label>
-                                        <input type="password" name="pass_lama" class="form-control form-control-custom" placeholder="Masukkan kata sandi lama Anda" required>
+                                        <input type="password" name="pass_lama" class="form-control form-control-custom" required>
                                     </div>
                                     <div class="col-md-6">
                                         <label class="form-label form-label-custom">Kata Sandi Baru</label>
-                                        <input type="password" name="pass_baru" id="pass_baru" class="form-control form-control-custom" placeholder="Masukkan kata sandi baru" oninput="checkPasswordStrength()" required>
-                                        
-                                        <div class="mt-2">
-                                            <span class="pwd-requirement" id="req-len">
-                                                <i class="bi bi-x-circle-fill text-danger" id="icon-len"></i> Minimal 8 Karakter
-                                            </span>
-                                            <span class="pwd-requirement" id="req-char">
-                                                <i class="bi bi-x-circle-fill text-danger" id="icon-char"></i> Mengandung Huruf & Angka
-                                            </span>
-                                            <span class="pwd-requirement" id="req-spec">
-                                                <i class="bi bi-x-circle-fill text-danger" id="icon-spec"></i> Mengandung Karakter Spesial (e.g. !@#$)
-                                            </span>
-                                        </div>
+                                        <input type="password" name="pass_baru" id="pass_baru" class="form-control form-control-custom" oninput="checkPasswordStrength()" required>
                                     </div>
                                     <div class="col-md-6">
                                         <label class="form-label form-label-custom">Konfirmasi Kata Sandi Baru</label>
-                                        <input type="password" name="pass_konfirmasi" id="pass_konfirmasi" class="form-control form-control-custom" placeholder="Ulangi kata sandi baru" oninput="checkPasswordMatch()" required>
-                                        <div class="mt-2">
-                                            <span class="pwd-requirement" id="req-match">
-                                                <i class="bi bi-x-circle-fill text-danger" id="icon-match"></i> Kesesuaian Kata Sandi
-                                            </span>
-                                        </div>
+                                        <input type="password" name="pass_konfirmasi" id="pass_konfirmasi" class="form-control form-control-custom" oninput="checkPasswordMatch()" required>
                                     </div>
                                 </div>
                                 <div class="modal-footer-custom mt-4 px-0 pb-0">
@@ -1049,7 +1039,6 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                                 </div>
                             </form>
                         </div>
-
                     </div>
                 </div>
             </div>
@@ -1080,7 +1069,6 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                             <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Lengkap</small><span class="fw-bold text-dark"><?= htmlspecialchars($alamat_customer) ?></span></div>
                         </div>
                     </div>
-                    <button class="btn text-white py-3 w-100" style="background: var(--p-pink); font-weight:700; border-radius:14px;" onclick="bukaModalEditDariBiodata()">Edit Profil Anda</button>
                 </div>
             </div>
         </div>
@@ -1088,10 +1076,98 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
 
     <script src="../../../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
+        const HARGA_PAKET = <?= $d_paket['Harga_Paket'] ?>;
+
+        function adjustQty(idBarang, offset, maxStok) {
+            const input = document.getElementById('qty_' + idBarang);
+            let currentQty = parseInt(input.value) || 0;
+            let newQty = currentQty + offset;
+
+            if (newQty < 0) newQty = 0;
+            if (newQty > maxStok) newQty = maxStok;
+
+            input.value = newQty;
+            recalculateSummary();
+        }
+
+        // Fungsi kalkulasi real-time sekaligus update badge & icon status cetak secara interaktif
+        function recalculateSummary() {
+            const qtyInputs = document.querySelectorAll('.input-qty');
+            let subtotalCetak = 0;
+            let itemsHtml = '';
+
+            qtyInputs.forEach(input => {
+                const qty = parseInt(input.value) || 0;
+                if (qty > 0) {
+                    const nama = input.getAttribute('data-nama');
+                    const harga = parseFloat(input.getAttribute('data-harga')) || 0;
+                    const subtotalItem = qty * harga;
+                    
+                    subtotalCetak += subtotalItem;
+                    
+                    itemsHtml += `
+                        <div class="extra-goods-item">
+                            <span>${nama} (x${qty})</span>
+                            <span>Rp ${subtotalItem.toLocaleString('id-ID')}</span>
+                        </div>
+                    `;
+                }
+            });
+
+            const extraContainer = document.getElementById('extraGoodsContainer');
+            const extraItems = document.getElementById('extraGoodsItems');
+            const totalLabel = document.getElementById('totalHargaLabel');
+            
+            // Elemen Status Cetak di Ringkasan Booking
+            const summaryIcon = document.getElementById('summaryCetakIcon');
+            const summarySub = document.getElementById('summaryCetakSub');
+
+            if (subtotalCetak > 0) {
+                extraItems.innerHTML = itemsHtml;
+                extraContainer.classList.remove('d-none');
+                
+                // Set indikator hijau (completed) secara interaktif
+                summaryIcon.classList.add('completed');
+                summaryIcon.innerHTML = '<i class="bi bi-check-lg"></i>';
+                summarySub.innerText = 'Ditambahkan';
+            } else {
+                extraContainer.classList.add('d-none');
+                extraItems.innerHTML = '';
+                
+                // Kembalikan ke status default (belum dipilih)
+                summaryIcon.classList.remove('completed');
+                summaryIcon.innerHTML = '<i class="bi bi-printer"></i>';
+                summarySub.innerText = 'Belum dipilih';
+            }
+
+            const totalAkhir = HARGA_PAKET + subtotalCetak;
+            totalLabel.innerText = 'Rp ' + totalAkhir.toLocaleString('id-ID');
+        }
+
+        function confirmSkip(e) {
+            e.preventDefault();
+            Swal.fire({
+                title: 'Lewati Langkah Ini?',
+                text: 'Anda akan melanjutkan pemesanan tanpa menambahkan produk cetak foto.',
+                icon: 'info',
+                showCancelButton: true,
+                confirmButtonColor: '#d83f67',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Lewati',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = e.target.href;
+                }
+            });
+            return false;
+        }
+
+        document.addEventListener('DOMContentLoaded', recalculateSummary);
+
         function toggleDropdown() {
             document.getElementById('navDropdown').classList.toggle('show');
         }
-
         document.addEventListener('click', function(e) {
             const wrapper = document.querySelector('.nav-avatar-wrapper');
             if (wrapper && !wrapper.contains(e.target)) {
@@ -1102,112 +1178,40 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
         function previewImage(event) {
             const reader = new FileReader();
             reader.onload = function() {
-                const output = document.getElementById('profilePreview');
-                output.src = reader.result;
+                document.getElementById('profilePreview').src = reader.result;
             }
             reader.readAsDataURL(event.target.files[0]);
-        }
-
-        function checkPasswordStrength() {
-            const password = document.getElementById('pass_baru').value;
-            const isLenValid = password.length >= 8;
-            updateIndicator('req-len', 'icon-len', isLenValid);
-
-            const hasLetter = /[A-Za-z]/.test(password);
-            const hasDigit = /[0-9]/.test(password);
-            const isCharValid = hasLetter && hasDigit;
-            updateIndicator('req-char', 'icon-char', isCharValid);
-
-            const isSpecValid = /[^A-Za-z0-9]/.test(password);
-            updateIndicator('req-spec', 'icon-spec', isSpecValid);
-
-            checkPasswordMatch();
-        }
-
-        function checkPasswordMatch() {
-            const password = document.getElementById('pass_baru').value;
-            const confirmPassword = document.getElementById('pass_konfirmasi').value;
-            
-            const isMatch = password === confirmPassword && confirmPassword.length > 0;
-            updateIndicator('req-match', 'icon-match', isMatch);
-
-            const isLenValid = password.length >= 8;
-            const hasLetter = /[A-Za-z]/.test(password);
-            const hasDigit = /[0-9]/.test(password);
-            const isSpecValid = /[^A-Za-z0-9]/.test(password);
-
-            const btnSubmit = document.getElementById('btnSubmitPassword');
-            if (isLenValid && hasLetter && hasDigit && isSpecValid && isMatch) {
-                btnSubmit.removeAttribute('disabled');
-            } else {
-                btnSubmit.setAttribute('disabled', 'true');
-            }
-        }
-
-        function updateIndicator(elementId, iconId, isValid) {
-            const element = document.getElementById(elementId);
-            const icon = document.getElementById(iconId);
-            
-            if (isValid) {
-                element.classList.add('valid');
-                icon.className = 'bi bi-check-circle-fill text-success';
-            } else {
-                element.classList.remove('valid');
-                icon.className = 'bi bi-x-circle-fill text-danger';
-            }
         }
 
         function confirmLandingPage(e) {
             e.preventDefault();
             Swal.fire({
-                title: 'Kembali ke Beranda?',
-                text: 'Anda akan meninggalkan halaman customer dan kembali ke halaman utama.',
+                title: 'Kembali?',
+                text: 'Keluar dan kembali ke beranda utama?',
                 icon: 'info',
                 showCancelButton: true,
                 confirmButtonColor: '#d83f67',
                 cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Kembali',
+                confirmButtonText: 'Ya',
                 cancelButtonText: 'Batal'
             }).then((result) => {
-                if (result.isConfirmed) {
-                    window.location.href = '../../../../index.php';
-                }
+                if (result.isConfirmed) { window.location.href = '../../../../index.php'; }
             });
             return false;
         }
 
         function confirmLogout() {
             Swal.fire({
-                title: 'Keluar Sistem?',
-                text: 'Apakah Anda yakin ingin keluar dari SpotLight Studio?',
+                title: 'Keluar?',
+                text: 'Yakin keluar dari sistem?',
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#dc2626',
                 cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Keluar',
+                confirmButtonText: 'Ya',
                 cancelButtonText: 'Batal'
             }).then((result) => {
-                if (result.isConfirmed) {
-                    window.location.href = '../../../../logout.php';
-                }
-            });
-        }
-
-        // REDIRECT MEMASUKI LANGKAH 4 (PILIH BARANG CETAK) SECARA SEBUNTUK KONSISTEN
-        function konfirmasiTema(idTema, namaTema) {
-            Swal.fire({
-                title: 'Pilih Tema Ini?',
-                text: 'Anda akan memilih tema "' + namaTema + '"',
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonColor: '#d83f67',
-                cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Pilih',
-                cancelButtonText: 'Batal'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    window.location.href = '../Barang_Cetak/pilih_barang_cetak.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=' + idTema;
-                }
+                if (result.isConfirmed) { window.location.href = '../../../../logout.php'; }
             });
         }
     </script>

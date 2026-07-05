@@ -739,6 +739,22 @@ body {
                                     <div class="td-durasi"><?= $row['Durasi_Waktu'] ?? 0 ?> menit</div>
                                 </td>
                                 <td>
+                                    <!-- BADGE SINKRON STATUS JADWAL -->
+                                    <div class="mb-2">
+                                        <?php if ($row['Status_Jadwal'] == 1): ?>
+                                            <span class="badge bg-success text-white" style="font-size: 0.7rem; font-weight: 700; padding: 5px 10px; border-radius: 6px;">
+                                                <i class="bi bi-bookmark-check-fill me-1"></i> Booked
+                                            </span>
+                                        <?php elseif ($row['Status_Jadwal'] == 2): ?>
+                                            <span class="badge bg-warning text-dark" style="font-size: 0.7rem; font-weight: 700; padding: 5px 10px; border-radius: 6px;">
+                                                <i class="bi bi-tools me-1"></i> Maintenance
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="badge bg-light text-secondary border" style="font-size: 0.7rem; font-weight: 700; padding: 5px 10px; border-radius: 6px;">
+                                                <i class="bi bi-calendar-check me-1"></i> Tersedia
+                                            </span>
+                                        <?php endif; ?>
+                                    </div>
                                     <div class="td-keterangan">
                                         <?php if ($is_libur): ?>
                                             <span class="badge badge-libur"><span class="badge-dot"></span> Libur</span>
@@ -752,10 +768,15 @@ body {
                                         <span class="badge badge-expired"><span class="badge-dot"></span> Expired</span>
                                     <?php else: ?>
                                         <label class="toggle-switch">
+                                            <!-- Proteksi: Nonaktifkan toggle jika status jadwal sudah dipesan (Booked) -->
                                             <input type="checkbox" <?= ($row['Status'] == 1) ? 'checked' : '' ?> 
+                                                   <?= ($row['Status_Jadwal'] == 1) ? 'disabled' : '' ?>
                                                    onchange="toggleStatus(<?= $row['ID_Jadwal'] ?>, <?= $row['Status'] ?>, '<?= htmlspecialchars($row['Nama_Paket']) ?> - <?= htmlspecialchars($row['Nama_Ruangan']) ?> <?= fmtTgl($row['Tanggal_Jadwal']) ?>')">
                                             <span class="toggle-slider"></span>
                                         </label>
+                                        <?php if ($row['Status_Jadwal'] == 1): ?>
+                                            <div class="small text-muted mt-1" style="font-size:0.65rem; font-weight: 700;">Sesi Terpesan</div>
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                 </td>
                                 <td>
