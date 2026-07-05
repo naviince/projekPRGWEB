@@ -62,6 +62,7 @@ $foto_admin = $admin_data['Foto_Profil'] ?? 'default.jpg';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
+// *Penyesuaian: Lokasi direktori foto Karyawan diperbaiki dari pelanggan menjadi karyawan
 $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
     ? "../../assets/img/karyawan/" . $foto_admin 
     : $default_svg_avatar;
@@ -106,7 +107,7 @@ $error = "";
 $success = false;
 $field_errors = [];
 
-// FIX: Inisialisasi awal variabel dengan data paket yang sudah terhubung dari database
+// Inisialisasi awal variabel dengan data paket yang sudah terhubung dari database
 $paket_terpilih = $paket_terhubung_ids; 
 
 // =====================================================
@@ -130,8 +131,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
         $field_errors['deskripsi'] = "Maksimal 255 karakter!";
     }
 
+    // *Penyesuaian Validasi Baru: Tidak boleh memilih lebih dari satu paket foto
     if (empty($paket_terpilih)) {
         $field_errors['paket'] = "Pilih minimal 1 paket!";
+    } elseif (count($paket_terpilih) > 1) {
+        $field_errors['paket'] = "Ruangan hanya boleh terhubung dengan maksimal 1 paket foto!";
     }
 
     // Cek Duplikat Nama Ruangan (Menggunakan Stored Procedure sp_CekDuplikatRuangan)
@@ -542,7 +546,7 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
                                         $disabled = $has_order ? 'disabled' : '';
                                         $order_badge = $has_order ? '<span class="order-badge">' . $cek_order_paket . ' order</span>' : '';
                                     ?>
-                                        <div class="paket-checkbox-item <?= $is_selected ?> <?= $has_order ? 'has-order' : '' ?>" onclick="<?= $has_order ? '' : 'togglePaket(this)' ?>">
+                                        <div class="paket-checkbox-item <?= $is_selected ?> <?= $has_order ? 'has-order' : '' ?>">
                                             <input type="checkbox" name="paket[]" value="<?= $paket['ID_Paket'] ?>" <?= $is_checked ?> <?= $disabled ?> onchange="updatePaketCount()">
                                             <div class="paket-info">
                                                 <div class="paket-nama"><?= htmlspecialchars($paket['Nama_Paket']) ?> <?= $order_badge ?></div>
@@ -611,8 +615,6 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
             });
         });
         function selectStatus(el, val) { document.querySelectorAll('.status-option').forEach(opt => opt.classList.remove('active')); el.classList.add('active'); el.querySelector('input').checked = true; }
-        function togglePaket(el) { const checkbox = el.querySelector('input[type="checkbox"]'); checkbox.checked = !checkbox.checked; if (checkbox.checked) el.classList.add('selected'); else el.classList.remove('selected'); updatePaketCount(); clearFieldError('paket'); }
-        function updatePaketCount() { const checked = document.querySelectorAll('input[name="paket[]"]:checked').length; document.getElementById('paket-count').textContent = checked; const hint = document.getElementById('paket-count-hint'); if (checked === 0) { hint.style.color = '#dc2626'; hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Pilih minimal 1 paket!'; } else { hint.style.color = '#059669'; hint.innerHTML = '<i class="bi bi-check-circle-fill"></i> ' + checked + ' paket terpilih'; } }
         function handleFileSelect(event) { const file = event.target.files[0]; const previewContainer = document.getElementById('preview-container'); const previewImg = document.getElementById('preview-img'); const uploadIcon = document.getElementById('upload-icon'); const uploadText = document.getElementById('upload-text'); if (file) { if (file.size > 2097152) { Swal.fire({ icon: 'error', title: 'Ukuran Terlalu Besar', text: 'Ukuran gambar maksimal 2MB.', confirmButtonColor: '#D53D66' }); event.target.value = ''; return; } const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']; if (!allowed.includes(file.type)) { Swal.fire({ icon: 'error', title: 'Format Tidak Valid', text: 'Format gambar harus JPG, JPEG, PNG, atau WEBP.', confirmButtonColor: '#D53D66' }); event.target.value = ''; return; } const reader = new FileReader(); reader.onload = function(e) { previewImg.src = e.target.result; previewContainer.style.display = 'block'; uploadIcon.style.display = 'none'; uploadText.textContent = 'Foto baru: ' + file.name; }; reader.readAsDataURL(file); clearFieldError('foto'); } }
         function removePreview(e) { e.stopPropagation(); const input = document.getElementById('foto-input'); const previewContainer = document.getElementById('preview-container'); const uploadIcon = document.getElementById('upload-icon'); const uploadText = document.getElementById('upload-text'); input.value = ''; previewContainer.style.display = 'none'; uploadIcon.style.display = 'block'; uploadText.textContent = 'Klik untuk ganti foto (opsional)'; }
         const dropzone = document.getElementById('dropzone');
@@ -626,17 +628,29 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
         function clearFieldError(fieldName) { const field = document.getElementById(fieldName); const errorMsg = document.getElementById('error-' + fieldName); if (field) field.classList.remove('is-error'); if (errorMsg) errorMsg.classList.remove('show'); if (fieldName === 'paket') { const section = document.getElementById('paket-section'); if (section) section.classList.remove('is-error'); } if (fieldName === 'foto') { const dropzone = document.getElementById('dropzone'); if (dropzone) dropzone.classList.remove('is-error'); } }
         document.getElementById('nama_ruangan').addEventListener('input', function() { if (this.value.trim()) clearFieldError('nama_ruangan'); });
         document.getElementById('deskripsi').addEventListener('input', function() { if (this.value.trim()) clearFieldError('deskripsi'); });
-        document.getElementById('formRuangan').addEventListener('submit', function(e) { const paketChecked = document.querySelectorAll('input[name="paket[]"]:checked').length; if (paketChecked === 0) { e.preventDefault(); Swal.fire({ icon: 'warning', title: 'Paket Belum Dipilih', text: 'Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini!', confirmButtonColor: '#D53D66' }); return false; } document.getElementById('loadingOverlay').classList.add('active'); return true; });
         
-        // Klik di item row paket checklist
+        // Single unified event listener for package selection (MUTUALLY EXCLUSIVE / RADIO BEHAVIOR)
         document.querySelectorAll('.paket-checkbox-item').forEach(item => {
             item.addEventListener('click', function(e) {
-                if (this.classList.contains('has-order')) return; // Abaikan jika terkunci transaksi aktif
+                // Abaikan jika terkunci oleh order aktif
+                if (this.classList.contains('has-order')) {
+                    return;
+                }
+                
                 if (e.target.tagName === 'INPUT') return;
                 
                 const checkbox = this.querySelector('input[type="checkbox"]');
-                checkbox.checked = !checkbox.checked;
+                const wasChecked = checkbox.checked;
                 
+                // Batalkan seleksi semua paket lain yang tidak dikunci order
+                document.querySelectorAll('.paket-checkbox-item input[type="checkbox"]').forEach(otherChk => {
+                    if (!otherChk.closest('.paket-checkbox-item').classList.contains('has-order')) {
+                        otherChk.checked = false;
+                        otherChk.closest('.paket-checkbox-item').classList.remove('selected');
+                    }
+                });
+                
+                checkbox.checked = !wasChecked;
                 if (checkbox.checked) {
                     this.classList.add('selected');
                 } else {
@@ -647,12 +661,21 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
             });
         });
 
-        // Trigger change pada checkbox
+        // Trigger change pada checkbox (MUTUALLY EXCLUSIVE / RADIO BEHAVIOR)
         document.querySelectorAll('.paket-checkbox-item input[type="checkbox"]').forEach(chk => {
             chk.addEventListener('change', function(e) {
                 e.stopPropagation();
                 const row = this.closest('.paket-checkbox-item');
+                if (row.classList.contains('has-order')) return;
+                
                 if (this.checked) {
+                    // Batalkan seleksi semua paket lain yang tidak dikunci order
+                    document.querySelectorAll('.paket-checkbox-item input[type="checkbox"]').forEach(otherChk => {
+                        if (otherChk !== this && !otherChk.closest('.paket-checkbox-item').classList.contains('has-order')) {
+                            otherChk.checked = false;
+                            otherChk.closest('.paket-checkbox-item').classList.remove('selected');
+                        }
+                    });
                     row.classList.add('selected');
                 } else {
                     row.classList.remove('selected');
@@ -660,6 +683,37 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
                 updatePaketCount();
                 clearFieldError('paket');
             });
+        });
+
+        function updatePaketCount() {
+            const checked = document.querySelectorAll('input[name="paket[]"]:checked').length;
+            document.getElementById('paket-count').textContent = checked;
+            const hint = document.getElementById('paket-count-hint');
+            if (checked === 0) {
+                hint.style.color = '#dc2626';
+                hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Pilih 1 paket foto!';
+            } else if (checked > 1) {
+                hint.style.color = '#dc2626';
+                hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Maksimal hanya boleh memilih 1 paket foto!';
+            } else {
+                hint.style.color = '#059669';
+                hint.innerHTML = '<i class="bi bi-check-circle-fill"></i> ' + checked + ' paket terpilih';
+            }
+        }
+
+        document.getElementById('formRuangan').addEventListener('submit', function(e) { 
+            const paketChecked = document.querySelectorAll('input[name="paket[]"]:checked').length; 
+            if (paketChecked === 0) { 
+                e.preventDefault(); 
+                Swal.fire({ icon: 'warning', title: 'Paket Belum Dipilih', text: 'Pilih 1 paket foto yang bisa menggunakan ruangan ini!', confirmButtonColor: '#D53D66' }); 
+                return false; 
+            } else if (paketChecked > 1) {
+                e.preventDefault(); 
+                Swal.fire({ icon: 'warning', title: 'Paket Melebihi Batas', text: 'Satu ruangan hanya boleh terhubung dengan maksimal 1 paket foto!', confirmButtonColor: '#D53D66' }); 
+                return false;
+            }
+            document.getElementById('loadingOverlay').classList.add('active'); 
+            return true; 
         });
 
         updatePaketCount();

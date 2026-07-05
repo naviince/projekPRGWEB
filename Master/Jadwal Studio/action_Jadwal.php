@@ -1,6 +1,10 @@
 <?php
+ob_start();
 session_start();
 include '../../koneksi.php';
+
+// Atur zona waktu ke WIB (Waktu Indonesia Barat)
+date_default_timezone_set('Asia/Jakarta');
 
 // --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Admin') {
@@ -11,46 +15,88 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 $nama_admin = $_SESSION['nama'] ?? 'Administrator';
 
-$aksi = isset($_GET['aksi']) ? $_GET['aksi'] : '';
+// =====================================================
+// HELPER FUNCTIONS - Safe SQLSRV (Anti-Crash)
+// =====================================================
+function safe_sqlsrv_fetch($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) {
+        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        return null;
+    }
+    $result = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $result;
+}
+
+function safe_sqlsrv_count($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) return 0;
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $row['total'] ?? 0;
+}
+
+// =====================================================
+// AMBIL PARAMETER
+// =====================================================
+$aksi = isset($_GET['aksi']) ? trim($_GET['aksi']) : '';
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 if ($id <= 0 && $aksi !== 'generate_7hari') {
-    header("Location: list.php?status_sukses=error&message=ID+tidak+valid");
+    header("Location: list.php?status_sukses=error&message=Parameter tidak valid");
     exit();
 }
 
 // =====================================================
-// TOGGLE STATUS (Aktif/Nonaktif)
+// AMBIL DATA JADWAL (jika aksi individu)
 // =====================================================
-if ($aksi === 'toggle_status') {
-    $new_status = isset($_GET['status']) ? (int)$_GET['status'] : 0;
+$current = null;
+if ($id > 0) {
+    $current = safe_sqlsrv_fetch($conn, 
+        "SELECT ID_Jadwal, Tanggal_Jadwal, Jam_Mulai, Status_Jadwal, Status, Is_Deleted FROM Jadwal_Studio WHERE ID_Jadwal = ?", 
+        [$id]
+    );
 
-    if (!in_array($new_status, [0, 1])) {
-        header("Location: list.php?status_sukses=error&message=Status+tidak+valid");
+    if (!$current) {
+        header("Location: list.php?status_sukses=error&message=Jadwal tidak ditemukan");
         exit();
     }
 
-    // Cek jadwal exists dan tidak expired
-    $cek_sql = "SELECT ID_Jadwal, Tanggal_Jadwal, Status_Jadwal FROM Jadwal_Studio WHERE ID_Jadwal = ? AND Is_Deleted = 0";
-    $cek_stmt = sqlsrv_query($conn, $cek_sql, [$id]);
-
-    if ($cek_stmt === false || !sqlsrv_has_rows($cek_stmt)) {
-        header("Location: list.php?status_sukses=error&message=Jadwal+tidak+ditemukan");
+    if ($current['Is_Deleted'] == 1) {
+        header("Location: list.php?status_sukses=error&message=Jadwal sudah dihapus");
         exit();
     }
+}
 
-    $current = sqlsrv_fetch_array($cek_stmt, SQLSRV_FETCH_ASSOC);
+// =====================================================
+// 1. TOGGLE STATUS (Aktif / Nonaktif)
+// =====================================================
+if ($aksi == 'toggle_status') {
+    $current_status = (int)($current['Status'] ?? 1);
+    $new_status = $current_status === 1 ? 0 : 1;
 
-    // Cek apakah jadwal sudah expired
+    // *Penyesuaian WIB: Memastikan jadwal belum kedaluwarsa secara tanggal dan jam
     $tgl_jadwal = is_object($current['Tanggal_Jadwal']) ? $current['Tanggal_Jadwal']->format('Y-m-d') : $current['Tanggal_Jadwal'];
-    if (strtotime($tgl_jadwal) < strtotime(date('Y-m-d'))) {
-        header("Location: list.php?status_sukses=error&message=Jadwal+sudah+expired+tidak+bisa+diubah");
+    $jam_mulai_check = is_object($current['Jam_Mulai']) ? $current['Jam_Mulai']->format('H:i:s') : $current['Jam_Mulai'];
+    $today_now = date('Y-m-d');
+    $time_now = date('H:i:s');
+
+    $is_expired = false;
+    if ($tgl_jadwal < $today_now) {
+        $is_expired = true;
+    } elseif ($tgl_jadwal == $today_now && $jam_mulai_check < $time_now) {
+        $is_expired = true;
+    }
+
+    if ($is_expired) {
+        header("Location: list.php?status_sukses=error&message=Jadwal sudah expired tidak bisa diubah");
         exit();
     }
 
     // Cek apakah jadwal sudah booked
     if ($current['Status_Jadwal'] == 1) {
-        header("Location: list.php?status_sukses=error&message=Jadwal+sudah+dipesan+tidak+bisa+diubah");
+        header("Location: list.php?status_sukses=error&message=Jadwal sudah dipesan tidak bisa diubah");
         exit();
     }
 
@@ -61,48 +107,40 @@ if ($aksi === 'toggle_status') {
         header("Location: list.php?status_sukses=toggle_status");
         exit();
     } else {
-        header("Location: list.php?status_sukses=error&message=Gagal+ubah+status");
+        header("Location: list.php?status_sukses=error&message=Gagal ubah status");
         exit();
     }
 }
 
 // =====================================================
-// SOFT DELETE
+// 2. SOFT DELETE (Menerapkan Stored Procedure sp_DeleteJadwalStudio)
 // =====================================================
 elseif ($aksi === 'soft_delete') {
-    $cek_sql = "SELECT ID_Jadwal, Status_Jadwal FROM Jadwal_Studio WHERE ID_Jadwal = ? AND Is_Deleted = 0";
-    $cek_stmt = sqlsrv_query($conn, $cek_sql, [$id]);
-
-    if ($cek_stmt === false || !sqlsrv_has_rows($cek_stmt)) {
-        header("Location: list.php?status_sukses=error&message=Jadwal+tidak+ditemukan");
-        exit();
-    }
-
-    $current = sqlsrv_fetch_array($cek_stmt, SQLSRV_FETCH_ASSOC);
-
     if ($current['Status_Jadwal'] == 1) {
-        header("Location: list.php?status_sukses=error&message=Jadwal+sudah+dipesan+tidak+bisa+dihapus");
+        header("Location: list.php?status_sukses=error&message=Jadwal sudah dipesan tidak bisa dihapus");
         exit();
     }
 
-    $delete_sql = "UPDATE Jadwal_Studio SET Is_Deleted = 1, Status = 0, Deleted_By = ?, Deleted_Date = GETDATE() WHERE ID_Jadwal = ? AND Is_Deleted = 0";
-    $delete_stmt = sqlsrv_query($conn, $delete_sql, [$nama_admin, $id]);
+    // Menggunakan Stored Procedure sp_DeleteJadwalStudio untuk menghapus secara aman
+    $delete_sql = "EXEC sp_DeleteJadwalStudio ?, ?";
+    $delete_stmt = sqlsrv_query($conn, $delete_sql, [$id, $nama_admin]);
 
     if ($delete_stmt) {
+        // Otomatis menonaktifkan status aktif data untuk sinkronisasi list data
+        sqlsrv_query($conn, "UPDATE Jadwal_Studio SET Status = 0 WHERE ID_Jadwal = ?", [$id]);
         header("Location: list.php?status_sukses=soft_delete");
         exit();
     } else {
-        header("Location: list.php?status_sukses=error&message=Gagal+hapus+jadwal");
+        header("Location: list.php?status_sukses=error&message=Gagal hapus jadwal");
         exit();
     }
 }
 
 // =====================================================
-// GENERATE JADWAL 7 HARI KE DEPAN
+// 3. GENERATE JADWAL 7 HARI KE DEPAN
 // =====================================================
 elseif ($aksi === 'generate_7hari') {
     $generated = 0;
-    $errors = [];
 
     // Ambil semua paket dan ruangan valid dari Paket_Ruangan
     $q_valid = sqlsrv_query($conn, "
@@ -142,12 +180,12 @@ elseif ($aksi === 'generate_7hari') {
             $id_ruangan = $combo['ID_Ruangan'];
             $durasi = $combo['Durasi_Waktu'];
 
-            // Generate slot dari 08:00 sampai 20:00
+            // Generate slot dari 08:00 sampai 20:00 WIB
             $jam_mulai = new DateTime('08:00');
             $jam_selesai_hari = new DateTime('20:00');
 
             while ($jam_mulai < $jam_selesai_hari) {
-                $jam_mulai_str = $jam_mulai->format('H:i:s');
+                $jam_mulai_str = $jam_mulai->format('H:i');
                 $jam_selesai = clone $jam_mulai;
                 $jam_selesai->modify("+{$durasi} minutes");
 
@@ -155,18 +193,18 @@ elseif ($aksi === 'generate_7hari') {
                     break;
                 }
 
-                $jam_selesai_str = $jam_selesai->format('H:i:s');
+                $jam_selesai_str = $jam_selesai->format('H:i');
 
-                // Cek bentrok
+                // *Penyesuaian Kueri Bentrok Akurat (Hanya Memerlukan 4 Parameter)
                 $cek_bentrok = sqlsrv_query($conn, "
                     SELECT ID_Jadwal FROM Jadwal_Studio 
-                    WHERE ID_Ruangan = ? AND Tanggal_Jadwal = ? AND Status = 1 AND Is_Deleted = 0
-                    AND (
-                        (CAST(? AS TIME) >= Jam_Mulai AND CAST(? AS TIME) < Jam_Selesai) OR
-                        (CAST(? AS TIME) > Jam_Mulai AND CAST(? AS TIME) <= Jam_Selesai) OR
-                        (CAST(? AS TIME) <= Jam_Mulai AND CAST(? AS TIME) >= Jam_Selesai)
-                    )
-                ", [$id_ruangan, $tanggal_str, $jam_mulai_str, $jam_mulai_str, $jam_selesai_str, $jam_selesai_str, $jam_mulai_str, $jam_selesai_str]);
+                    WHERE ID_Ruangan = ? 
+                      AND Tanggal_Jadwal = ? 
+                      AND Status = 1 
+                      AND Is_Deleted = 0
+                      AND CAST(? AS TIME) < Jam_Selesai 
+                      AND Jam_Mulai < CAST(? AS TIME)
+                ", [$id_ruangan, $tanggal_str, $jam_mulai_str, $jam_selesai_str]);
 
                 $bentrok = false;
                 if ($cek_bentrok && sqlsrv_has_rows($cek_bentrok)) {
@@ -174,11 +212,8 @@ elseif ($aksi === 'generate_7hari') {
                 }
 
                 if (!$bentrok) {
-                    $insert_sql = "INSERT INTO Jadwal_Studio 
-                                   (ID_Ruangan, ID_Paket, Tanggal_Jadwal, Jam_Mulai, Jam_Selesai, 
-                                    Keterangan, Status_Jadwal, Status, Created_By, Created_Date) 
-                                   VALUES (?, ?, ?, ?, ?, ?, 0, 1, ?, GETDATE())";
-
+                    // Menyimpan data jadwal baru menggunakan Stored Procedure sp_InsertJadwalStudio
+                    $insert_sql = "EXEC sp_InsertJadwalStudio ?, ?, ?, ?, ?, ?, ?";
                     $keterangan = "Slot " . $combo['Nama_Paket'] . " - " . $combo['Nama_Ruangan'];
 
                     $insert_stmt = sqlsrv_query($conn, $insert_sql, [
@@ -187,7 +222,15 @@ elseif ($aksi === 'generate_7hari') {
                     ]);
 
                     if ($insert_stmt) {
-                        $generated++;
+                        $row_new = sqlsrv_fetch_array($insert_stmt, SQLSRV_FETCH_ASSOC);
+                        $id_jadwal_baru = $row_new['ID_Jadwal'] ?? null;
+                        sqlsrv_free_stmt($insert_stmt);
+
+                        if ($id_jadwal_baru) {
+                            // Update Status_Jadwal ke 0 (Tersedia) agar langsung dapat dipesan
+                            sqlsrv_query($conn, "UPDATE Jadwal_Studio SET Status_Jadwal = 0 WHERE ID_Jadwal = ?", [$id_jadwal_baru]);
+                            $generated++;
+                        }
                     }
                 }
 

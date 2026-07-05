@@ -18,8 +18,10 @@ $nama_admin = $d_profile['nama_karyawan'] ?? 'Admin';
 $username_admin = $d_profile['username_karyawan'] ?? 'admin';
 $email_admin = $d_profile['email_karyawan'] ?? 'admin@spotlight.com';
 $foto_admin = $d_profile['foto_profil'] ?? 'default.jpg';
-$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_admin)) 
-    ? "../../assets/img/pelanggan/" . $foto_admin : $default_svg_avatar;
+
+// *Penyesuaian: Lokasi direktori foto Karyawan diperbaiki dari pelanggan menjadi karyawan
+$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
+    ? "../../assets/img/karyawan/" . $foto_admin : $default_svg_avatar;
 
 $error_profile = "";
 $success_profile = false;
@@ -28,7 +30,9 @@ if (isset($_POST['update_profil'])) {
     $nama_input = trim($_POST['nama']);
     $username_input = trim($_POST['username']);
     $email_input = trim($_POST['email']);
-    $no_hp_input = trim($_POST['no_hp']);
+    
+    // Pembersihan spasi otomatis pada input Nomor HP untuk mencegah kegagalan constraint database
+    $no_hp_input = str_replace(' ', '', trim($_POST['no_hp'])); 
     $alamat_input = trim($_POST['alamat']);
     $pass_baru = $_POST['password'];
     $confirm_pass = $_POST['confirm_password'];
@@ -40,8 +44,9 @@ if (isset($_POST['update_profil'])) {
         $error_profile = "Nama pengguna tidak valid!";
     } elseif (empty($email_input) || !filter_var($email_input, FILTER_VALIDATE_EMAIL)) {
         $error_profile = "Email tidak valid!";
-    } elseif (empty($no_hp_input) || !ctype_digit($hp_bersih_input) || strlen($hp_bersih_input) < 10) {
-        $error_profile = "Nomor telepon tidak valid!";
+    } // Penyesuaian validasi backend No HP sesuai dengan kekangan CHK_Karyawan_NoHp (+62, angka saja, panjang 12-16)
+    elseif (empty($no_hp_input) || substr($no_hp_input, 0, 3) !== '+62' || !ctype_digit($hp_bersih_input) || strlen($no_hp_input) < 12 || strlen($no_hp_input) > 16) {
+        $error_profile = "Nomor telepon tidak valid! Harus diawali dengan +62, berisi angka, dan panjang total 12-16 karakter.";
     } elseif (empty($alamat_input) || strlen($alamat_input) < 10) {
         $error_profile = "Alamat lengkap minimal harus 10 karakter!";
     } else {
@@ -81,7 +86,7 @@ if (isset($_POST['update_profil'])) {
                     $error_profile = "Ukuran foto profil maksimal 2MB!";
                 } else {
                     $foto_baru = "admin_" . time() . "_" . uniqid() . "." . $file_ext;
-                    $target_dir = "../../assets/img/pelanggan/";
+                    $target_dir = "../../assets/img/karyawan/"; // Penyesuaian direktori penyimpanan foto admin
                     if (!is_dir($target_dir)) { mkdir($target_dir, 0777, true); }
                     if (move_uploaded_file($file_tmp, $target_dir . $foto_baru)) {
                         if ($foto_admin != 'default.jpg' && file_exists($target_dir . $foto_admin)) { unlink($target_dir . $foto_admin); }
@@ -99,8 +104,8 @@ if (isset($_POST['update_profil'])) {
                     $username_admin = $username_input;
                     $email_admin = $email_input;
                     $foto_admin = $foto_baru;
-                    $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_admin)) 
-                        ? "../../assets/img/pelanggan/" . $foto_admin : $default_svg_avatar;
+                    $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
+                        ? "../../assets/img/karyawan/" . $foto_admin : $default_svg_avatar;
                     $d_profile['no_hp'] = $no_hp_input;
                     $d_profile['alamat'] = $alamat_input;
                 } else {
@@ -154,11 +159,11 @@ $q_penjualan_selesai = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Penjua
 $d_penjualan_selesai = sqlsrv_fetch_array($q_penjualan_selesai, SQLSRV_FETCH_ASSOC);
 $penjualan_selesai = $d_penjualan_selesai['total'] ?? 0;
 
-$q_total_penjualan = sqlsrv_query($conn, "SELECT SUM(Total_Penjualan) AS total FROM Penjualan WHERE Status = 1");
+$q_total_penjualan = sqlsrv_query($conn, "SELECT ISNULL(SUM(Total_Penjualan), 0) AS total FROM Penjualan WHERE Status = 1");
 $d_total_penjualan = sqlsrv_fetch_array($q_total_penjualan, SQLSRV_FETCH_ASSOC);
 $total_penjualan_rp = $d_total_penjualan['total'] ?? 0;
 
-$q_status_booking = sqlsrv_query($conn, "SELECT SUM(CASE WHEN Status_Order = 0 THEN 1 ELSE 0 END) AS menunggu_dp, SUM(CASE WHEN Status_Order = 1 THEN 1 ELSE 0 END) AS dp_verified, SUM(CASE WHEN Status_Order = 2 THEN 1 ELSE 0 END) AS tunggu_pelunasan, SUM(CASE WHEN Status_Order = 3 THEN 1 ELSE 0 END) AS lunas, SUM(CASE WHEN Status_Order = 4 THEN 1 ELSE 0 END) AS dibatalkan FROM [Order] WHERE Status = 1");
+$q_status_booking = sqlsrv_query($conn, "SELECT ISNULL(SUM(CASE WHEN Status_Order = 0 THEN 1 ELSE 0 END), 0) AS menunggu_dp, ISNULL(SUM(CASE WHEN Status_Order = 1 THEN 1 ELSE 0 END), 0) AS dp_verified, ISNULL(SUM(CASE WHEN Status_Order = 2 THEN 1 ELSE 0 END), 0) AS tunggu_pelunasan, ISNULL(SUM(CASE WHEN Status_Order = 3 THEN 1 ELSE 0 END), 0) AS lunas, ISNULL(SUM(CASE WHEN Status_Order = 4 THEN 1 ELSE 0 END), 0) AS dibatalkan FROM [Order] WHERE Status = 1");
 $d_status_booking = sqlsrv_fetch_array($q_status_booking, SQLSRV_FETCH_ASSOC);
 
 $q_booking_bulan = sqlsrv_query($conn, "SELECT MONTH(Tanggal_Booking) AS bulan, COUNT(*) AS total FROM [Order] WHERE Tanggal_Booking >= DATEADD(MONTH, -5, GETDATE()) AND Status = 1 GROUP BY MONTH(Tanggal_Booking) ORDER BY MONTH(Tanggal_Booking)");
@@ -167,7 +172,7 @@ while ($row = sqlsrv_fetch_array($q_booking_bulan, SQLSRV_FETCH_ASSOC)) {
     $booking_bulan_data[$row['bulan'] - 1] = $row['total'];
 }
 
-$q_pembayaran_status = sqlsrv_query($conn, "SELECT SUM(CASE WHEN Status_Pembayaran = 0 THEN 1 ELSE 0 END) AS menunggu, SUM(CASE WHEN Status_Pembayaran = 1 THEN 1 ELSE 0 END) AS valid, SUM(CASE WHEN Status_Pembayaran = 2 THEN 1 ELSE 0 END) AS tidak_valid FROM Pembayaran WHERE Status = 1");
+$q_pembayaran_status = sqlsrv_query($conn, "SELECT ISNULL(SUM(CASE WHEN Status_Pembayaran = 0 THEN 1 ELSE 0 END), 0) AS menunggu, ISNULL(SUM(CASE WHEN Status_Pembayaran = 1 THEN 1 ELSE 0 END), 0) AS valid, ISNULL(SUM(CASE WHEN Status_Pembayaran = 2 THEN 1 ELSE 0 END), 0) AS tidak_valid FROM Pembayaran WHERE Status = 1");
 $d_pembayaran_status = sqlsrv_fetch_array($q_pembayaran_status, SQLSRV_FETCH_ASSOC);
 
 $q_aktivitas = sqlsrv_query($conn, "SELECT TOP 5 p.ID_Pembayaran, pl.Nama_Pelanggan, p.Tipe_Pembayaran, p.Jumlah_Bayar, p.Tanggal_Upload, p.Status_Pembayaran FROM Pembayaran p JOIN [Order] o ON p.ID_Order = o.ID_Order JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan WHERE p.Status_Pembayaran = 0 AND p.Status = 1 ORDER BY p.Tanggal_Upload DESC");
@@ -198,10 +203,10 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background-color:var(--body-bg);
 .nav-link-custom{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;color:#4a5568;font-weight:700;text-decoration:none;border-radius:12px;font-size:0.9rem;transition:var(--transition-3d);}
 .nav-link-custom:hover,.nav-link-custom.active{background-color:var(--light-pink);color:var(--p-pink);transform:translateX(4px);}
 .submenu{list-style:none;padding-left:20px;margin-top:5px;display:none;transition:var(--transition-3d);}
-.submenu.show{display:block!important;}
-.submenu-link{display:flex;align-items:center;padding:8px 18px;color:#718096;font-weight:600;font-size:0.85rem;text-decoration:none;border-radius:10px;transition:0.3s;}
-.submenu-link:hover,.submenu-link.active{color:var(--p-pink);background-color:rgba(213,61,102,0.03);padding-left:22px;}
-.btn-logout{background:linear-gradient(135deg,var(--p-pink),var(--d-pink));color:#ffffff;border:none;width:100%;padding:12px;border-radius:12px;font-weight:800;font-size:0.85rem;transition:var(--transition-3d);}
+.submenu.show { display: block !important; }
+.submenu-link { display: flex; align-items: center; padding: 8px 18px; color: #718096; font-weight: 600; font-size: .85rem; text-decoration: none; border-radius: 10px; transition: .3s; }
+.submenu-link:hover, .submenu-link.active { color: var(--p-pink); background-color: rgba(213,61,102,0.03); padding-left: 22px; }
+.btn-logout { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; width: 100%; padding: 12px; border-radius: 12px; font-weight: 800; font-size: 0.85rem; transition:var(--transition-3d);}
 .btn-logout:hover{transform:translateY(-2px);box-shadow:0 6px 15px rgba(213,61,102,0.2);}
 .main-content{margin-left:260px;padding:40px;min-height:100vh;}
 .dashboard-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:35px;}
@@ -367,8 +372,8 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background-color:var(--body-bg);
 
 <!-- BARIS 2: ALERT & CHART BOOKING -->
 <div class="row g-4 mb-4">
-<div class="col-lg-4 animate-fade-in delay-1">
-<div class="chart-card">
+<div class="col-lg-4">
+<div class="chart-card" style="height: 100%;">
 <div class="chart-header"><h5 class="chart-title"><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>Peringatan Sistem</h5></div>
 <?php $has_alert=false;
 if($stok_menipis>0&&$q_stok_alert&&sqlsrv_has_rows($q_stok_alert)):$has_alert=true;while($row=sqlsrv_fetch_array($q_stok_alert,SQLSRV_FETCH_ASSOC)):?>
@@ -436,10 +441,10 @@ if($stok_menipis>0&&$q_stok_alert&&sqlsrv_has_rows($q_stok_alert)):$has_alert=tr
 <div class="chart-card">
 <div class="chart-header"><h5 class="chart-title"><i class="bi bi-lightning-charge-fill text-warning me-2"></i>Akses Cepat</h5></div>
 <div class="row g-3">
-<div class="col-lg-3 col-md-6"><a href="../../Master/Pelanggan/index.php" class="text-decoration-none"><div class="card-3d text-center p-3"><div class="stat-icon stat-icon-pink mx-auto mb-2" style="width:50px;height:50px;"><i class="bi bi-person-fill-add"></i></div><div class="fw-bold" style="font-size:0.9rem;color:var(--text-dark);">Tambah Pelanggan</div></div></a></div>
-<div class="col-lg-3 col-md-6"><a href="../../Master/Paket Foto/tambah.php" class="text-decoration-none"><div class="card-3d text-center p-3"><div class="stat-icon stat-icon-pink mx-auto mb-2" style="width:50px;height:50px;"><i class="bi bi-camera-fill"></i></div><div class="fw-bold" style="font-size:0.9rem;color:var(--text-dark);">Tambah Paket</div></div></a></div>
-<div class="col-lg-3 col-md-6"><a href="../../Master/Jadwal Studio/index.php" class="text-decoration-none"><div class="card-3d text-center p-3"><div class="stat-icon stat-icon-purple mx-auto mb-2" style="width:50px;height:50px;"><i class="bi bi-calendar-plus-fill"></i></div><div class="fw-bold" style="font-size:0.9rem;color:var(--text-dark);">Atur Jadwal</div></div></a></div>
-<div class="col-lg-3 col-md-6"><a href="../../Master/Barang Cetak/index.php" class="text-decoration-none"><div class="card-3d text-center p-3"><div class="stat-icon stat-icon-green mx-auto mb-2" style="width:50px;height:50px;"><i class="bi bi-box-seam-fill"></i></div><div class="fw-bold" style="font-size:0.9rem;color:var(--text-dark);">Kelola Stok</div></div></a></div>
+<div class="col-lg-3 col-md-6"><a href="../../Master/Pelanggan/add.php" class="text-decoration-none"><div class="card-3d text-center p-3"><div class="stat-icon stat-icon-pink mx-auto mb-2" style="width:50px;height:50px;"><i class="bi bi-person-fill-add"></i></div><div class="fw-bold" style="font-size:0.9rem;color:var(--text-dark);">Tambah Pelanggan</div></div></a></div>
+<div class="col-lg-3 col-md-6"><a href="../../Master/Paket Foto/add.php" class="text-decoration-none"><div class="card-3d text-center p-3"><div class="stat-icon stat-icon-pink mx-auto mb-2" style="width:50px;height:50px;"><i class="bi bi-camera-fill"></i></div><div class="fw-bold" style="font-size:0.9rem;color:var(--text-dark);">Tambah Paket</div></div></a></div>
+<div class="col-lg-3 col-md-6"><a href="../../Master/Jadwal Studio/add.php" class="text-decoration-none"><div class="card-3d text-center p-3"><div class="stat-icon stat-icon-purple mx-auto mb-2" style="width:50px;height:50px;"><i class="bi bi-calendar-plus-fill"></i></div><div class="fw-bold" style="font-size:0.9rem;color:var(--text-dark);">Atur Jadwal</div></div></a></div>
+<div class="col-lg-3 col-md-6"><a href="../../Master/Barang Cetak/list.php" class="text-decoration-none"><div class="card-3d text-center p-3"><div class="stat-icon stat-icon-green mx-auto mb-2" style="width:50px;height:50px;"><i class="bi bi-box-seam-fill"></i></div><div class="fw-bold" style="font-size:0.9rem;color:var(--text-dark);">Kelola Stok</div></div></a></div>
 </div>
 </div>
 </div>
@@ -524,7 +529,7 @@ const inputNamaModal=document.getElementById('inputNamaModal');if(inputNamaModal
 const inputUsernameModal=document.getElementById('inputUsernameModal');if(inputUsernameModal){inputUsernameModal.addEventListener('input',function(){this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'');});}
 function setupPasswordToggle(buttonId,inputId){const btn=document.getElementById(buttonId);const input=document.getElementById(inputId);if(btn&&input){btn.addEventListener('click',function(){const type=input.getAttribute('type')==='password'?'text':'password';input.setAttribute('type',type);this.classList.toggle('bi-eye');this.classList.toggle('bi-eye-slash');});}}
 setupPasswordToggle('btnToggleBaru','pass_baru_modal');setupPasswordToggle('btnToggleKonf','pass_konf_modal');
-const inputHPModal=document.getElementById('inputHPModal'),prefix='+62 ';if(inputHPModal){inputHPModal.addEventListener('input',function(){if(!this.value.startsWith(prefix)){this.value=prefix+this.value.replace(/[^0-9]/g,'').substring(2);}let digits=this.value.split(prefix)[1]?.replace(/[^0-9]/g,'')||'';if(digits.length>13)digits=digits.slice(0,13);this.value=prefix+digits;});}
+const inputHPModal=document.getElementById('inputHPModal'),prefix='+62';if(inputHPModal){inputHPModal.addEventListener('input',function(){if(!this.value.startsWith(prefix)){this.value=prefix+this.value.replace(/[^0-9]/g,'');}let digits=this.value.split(prefix)[1]?.replace(/[^0-9]/g,'')||'';if(digits.length>13)digits=digits.slice(0,13);this.value=prefix+digits;});}
 function updateLiveClock(){const now=new Date();const days=["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];const months=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];document.getElementById('live-clock').innerText=`${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()} - ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')} WIB`;}
 setInterval(updateLiveClock,1000);updateLiveClock();
 </script>

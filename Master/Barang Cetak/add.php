@@ -165,25 +165,21 @@ if (isset($_POST['simpan'])) {
         }
     }
 
-    // --- LAYER 10: Insert ke Database (Transaction) ---
+    // --- LAYER 10: Insert ke Database (Transaction & Stored Procedure) ---
     if (empty($errors)) {
         sqlsrv_begin_transaction($conn);
 
         try {
-            $sql_insert = "INSERT INTO Barang_Cetak (
-                Nama_Barang, Harga_Barang, Stok_Barang, Stok_Minimum, 
-                Deskripsi, Foto_Barang, Status, Is_Deleted, 
-                Created_By, Created_Date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, GETDATE())";
+            // Pemanggilan Stored Procedure sp_InsertBarangCetak
+            $sql_insert = "EXEC sp_InsertBarangCetak ?, ?, ?, ?, ?, ?, ?";
 
             $params = [
                 $nama_barang,
+                empty($deskripsi) ? null : $deskripsi,
                 (float)$harga_barang,
                 (int)$stok_barang,
                 (int)$stok_minimum,
-                $deskripsi,
                 $new_filename,
-                $status,
                 $nama_admin
             ];
 
@@ -192,7 +188,15 @@ if (isset($_POST['simpan'])) {
             if ($stmt_insert === false) {
                 throw new Exception('Gagal insert barang: '.print_r(sqlsrv_errors(), true));
             }
+            
+            $row_barang = sqlsrv_fetch_array($stmt_insert, SQLSRV_FETCH_ASSOC);
+            $id_barang_baru = $row_barang['ID_Barang'] ?? null;
             sqlsrv_free_stmt($stmt_insert);
+
+            // Opsional: Jika status di form nonaktif (0), sesuaikan statusnya lewat query update manual
+            if ($status === 0 && $id_barang_baru) {
+                sqlsrv_query($conn, "UPDATE Barang_Cetak SET Status = 0 WHERE ID_Barang = ?", [$id_barang_baru]);
+            }
 
             sqlsrv_commit($conn);
             $success = true;
@@ -363,10 +367,10 @@ if (isset($_POST['simpan'])) {
                 </a>
                 <div class="submenu" id="submenuTransaksi">
                     <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                        <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                        <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                        <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                        <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                     </ul>
                 </div>
             </li>
@@ -433,8 +437,8 @@ if (isset($_POST['simpan'])) {
                 <div>
                     <strong>Gagal menyimpan data!</strong>
                     <ul class="mb-0 mt-1 ps-3">
-                        <?php foreach ($errors as $error): ?>
-                        <li><?= $error ?></li>
+                        <?php foreach ($errors as $error_item): ?>
+                        <li><?= $error_item ?></li>
                         <?php endforeach; ?>
                     </ul>
                 </div>
@@ -478,7 +482,7 @@ if (isset($_POST['simpan'])) {
                 <div class="row">
                     <!-- Stok -->
                     <div class="col-md-6 mb-4">
-                        <label class="form-label">Stok Saat Ini <span class="required">*</span></label>
+                        <label class="form-label">Stok Gudang<span class="required">*</span></label>
                         <input type="number" name="stok_barang" class="form-control-custom" 
                                placeholder="Contoh: 20" min="0"
                                value="<?= isset($_POST['stok_barang']) ? htmlspecialchars($_POST['stok_barang']) : '' ?>"
@@ -489,13 +493,13 @@ if (isset($_POST['simpan'])) {
                     </div>
                     <!-- Stok Minimum -->
                     <div class="col-md-6 mb-4">
-                        <label class="form-label">Stok Minimum (Alert) <span class="required">*</span></label>
+                        <label class="form-label">Stok Minimum (Peringatan Jika Menipis)<span class="required">*</span></label>
                         <input type="number" name="stok_minimum" class="form-control-custom" 
                                placeholder="Contoh: 5" min="0"
                                value="<?= isset($_POST['stok_minimum']) ? htmlspecialchars($_POST['stok_minimum']) : '5' ?>"
                                required>
                         <div class="input-hint">
-                            <i class="bi bi-info-circle"></i> Alert saat stok <= nilai ini. Harus <= Stok Saat Ini.
+                            <i class="bi bi-info-circle"></i> Alert saat stok <= nilai ini. Harus <= Stok Gudang.
                         </div>
                     </div>
                 </div>

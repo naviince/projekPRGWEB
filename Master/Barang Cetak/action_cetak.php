@@ -122,7 +122,7 @@ switch ($act) {
         break;
 
     // ============================================
-    // AKSI 2: SOFT DELETE (Is_Deleted = 1)
+    // AKSI 2: SOFT DELETE (Menggunakan sp_DeleteBarangCetak)
     // ============================================
     case 'soft_delete':
         // Cek apakah sudah soft delete
@@ -146,18 +146,18 @@ switch ($act) {
 
         sqlsrv_begin_transaction($conn);
         try {
-            $sql = "UPDATE Barang_Cetak SET 
-                        Is_Deleted = 1, 
-                        Status = 0, 
-                        Deleted_By = ?, 
-                        Deleted_Date = GETDATE() 
-                    WHERE ID_Barang = ?";
-            $stmt = sqlsrv_query($conn, $sql, [$nama_admin, $id_barang]);
+            // Memanggil Stored Procedure sp_DeleteBarangCetak untuk soft-delete aman
+            $sql = "EXEC sp_DeleteBarangCetak ?, ?";
+            $stmt = sqlsrv_query($conn, $sql, [$id_barang, $nama_admin]);
 
             if ($stmt === false) {
                 throw new Exception('Gagal soft delete: ' . print_r(sqlsrv_errors(), true));
             }
             sqlsrv_free_stmt($stmt);
+
+            // Sesuaikan Status = 0 untuk sinkronisasi logika data nonaktif
+            sqlsrv_query($conn, "UPDATE Barang_Cetak SET Status = 0 WHERE ID_Barang = ?", [$id_barang]);
+
             sqlsrv_commit($conn);
 
             redirect_with_success('list.php', 'hapus', 'Barang "' . $data_barang['Nama_Barang'] . '" berhasil dihapus (soft delete)');

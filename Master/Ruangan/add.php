@@ -3,6 +3,9 @@ ob_start();
 session_start();
 include '../../koneksi.php';
 
+define('STATUS_DATA_AKTIF', 1);
+define('STATUS_DATA_NONAKTIF', 0);
+
 // --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Admin') {
     header("Location: ../../login.php");
@@ -50,6 +53,8 @@ $nama_admin = $d_admin['nama_karyawan'] ?? 'Administrator';
 $foto_admin = $d_admin['foto_profil'] ?? 'default.jpg';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
+
+// *Penyesuaian: Lokasi direktori foto Karyawan diperbaiki dari pelanggan menjadi karyawan
 $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
     ? "../../assets/img/karyawan/" . $foto_admin 
     : $default_svg_avatar;
@@ -91,8 +96,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
         $field_errors['deskripsi'] = "Maksimal 255 karakter!";
     }
 
+    // *Penyesuaian Validasi Baru: Tidak boleh memilih lebih dari satu paket foto
     if (empty($paket_terpilih)) {
-        $field_errors['paket'] = "Pilih minimal 1 paket!";
+        $field_errors['paket'] = "Pilih minimal 1 paket foto!";
+    } elseif (count($paket_terpilih) > 1) {
+        $field_errors['paket'] = "Ruangan hanya boleh terhubung dengan maksimal 1 paket foto!";
     }
 
     // Cek Duplikat Nama Ruangan (Menggunakan Stored Procedure sp_CekDuplikatRuangan)
@@ -101,47 +109,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
         $stmt_dup = safe_sqlsrv_query($conn, $sql_dup, [$nama]);
         $cek_dup = safe_sqlsrv_fetch($stmt_dup);
         
-        if (($cek_dup['Total'] ?? 0) > 0) {
-            $field_errors['nama_ruangan'] = "Nama ruangan ini sudah digunakan!";
-        }
-    }
-
-    $upload_path = null;
-    $new_filename = null;
-
-    // Proses unggah foto ruangan
-    if (empty($field_errors)) {
-        $foto_error = $_FILES['foto']['error'] ?? UPLOAD_ERR_NO_FILE;
-
-        if ($foto_error == UPLOAD_ERR_NO_FILE) {
-            $field_errors['foto'] = "Foto ruangan wajib diupload!";
-        } elseif ($foto_error != UPLOAD_ERR_OK) {
-            $field_errors['foto'] = "Upload gagal (Error: {$foto_error})";
+        if (($cek_dup['total'] ?? 0) > 0) {
+            $error = "Nama tema foto '{$nama}' sudah ada! Gunakan nama lain.";
         } else {
+            // --- VALIDASI UPLOAD GAMBAR (OPSIONAL) ---
             $foto_name = $_FILES['foto']['name'] ?? '';
             $foto_tmp  = $_FILES['foto']['tmp_name'] ?? '';
             $foto_size = $_FILES['foto']['size'] ?? 0;
+            $foto_error = $_FILES['foto']['error'] ?? UPLOAD_ERR_NO_FILE;
 
-            $ext = strtolower(pathinfo($foto_name, PATHINFO_EXTENSION));
-            $allowed = ['jpg', 'jpeg', 'png', 'webp'];
+            $new_filename = 'default_properti.jpg';
+            $upload_path = '';
 
-            if (!in_array($ext, $allowed)) {
-                $field_errors['foto'] = "Format harus JPG/PNG/WEBP!";
-            } elseif ($foto_size > 2097152) {
-                $field_errors['foto'] = "Ukuran maksimal 2MB!";
+            if ($foto_error == UPLOAD_ERR_NO_FILE) {
+                $new_filename = 'default_properti.jpg';
+            } elseif ($foto_error != UPLOAD_ERR_OK) {
+                $field_errors['foto'] = "Upload gagal (Error: {$foto_error})";
             } else {
-                $check = getimagesize($foto_tmp);
-                if ($check === false) {
-                    $field_errors['foto'] = "File bukan gambar valid!";
-                } else {
-                    $new_filename = "ruangan_" . time() . "_" . bin2hex(random_bytes(4)) . "." . $ext;
-                    $upload_dir   = "../../assets/img/ruangan/";
-                    if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
-                    $upload_path = $upload_dir . $new_filename;
+                $ext = strtolower(pathinfo($foto_name, PATHINFO_EXTENSION));
+                $allowed = ['jpg', 'jpeg', 'png', 'webp'];
 
-                    if (!move_uploaded_file($foto_tmp, $upload_path)) {
-                        $field_errors['foto'] = "Gagal simpan file ke server!";
-                        $upload_path = null;
+                if (!in_array($ext, $allowed)) {
+                    $field_errors['foto'] = "Format harus JPG/PNG/WEBP!";
+                } elseif ($foto_size > 2097152) {
+                    $field_errors['foto'] = "Ukuran maksimal 2MB!";
+                } else {
+                    $check = getimagesize($foto_tmp);
+                    if ($check === false) {
+                        $field_errors['foto'] = "File bukan gambar valid!";
+                    } else {
+                        $new_filename = "ruangan_" . time() . "_" . bin2hex(random_bytes(4)) . "." . $ext;
+                        $upload_dir   = "../../assets/img/ruangan/";
+                        if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
+                        $upload_path = $upload_dir . $new_filename;
+
+                        if (!move_uploaded_file($foto_tmp, $upload_path)) {
+                            $field_errors['foto'] = "Gagal simpan file ke server!";
+                            $upload_path = null;
+                        }
                     }
                 }
             }
@@ -366,10 +371,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                     </a>
                     <div class="submenu" id="submenuTransaksi">
                         <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                            <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                         </ul>
                     </div>
                 </li>
@@ -442,7 +447,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
 
                     <div class="mb-4">
                         <label class="form-label"><i class="bi bi-camera"></i> Pilih Paket Foto <span class="required">*</span><span class="badge-wajib">Wajib</span></label>
-                        <div class="input-hint mb-3"><i class="bi bi-info-circle"></i> Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini</div>
+                        <div class="input-hint mb-3"><i class="bi bi-info-circle"></i> Pilih maksimal 1 paket foto yang bisa menggunakan ruangan ini</div>
                         <div class="paket-section <?= isset($field_errors['paket']) ? 'is-error' : '' ?>" id="paket-section">
                             <div class="paket-section-title">
                                 <i class="bi bi-stars"></i> Daftar Paket Foto Aktif
@@ -483,7 +488,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                         <div class="input-hint mt-2" id="paket-count-hint"><i class="bi bi-check-circle"></i> <span id="paket-count">0</span> paket terpilih</div>
                     </div>
 
-                    <!-- BUTTONS (SINKRON DENGAN KELAS CSS .btn-submit DAN .btn-batal) -->
+                    <!-- BUTTONS -->
                     <div class="btn-group-bottom" style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 30px; padding-top: 25px; border-top: 2px solid #f1f5f9;">
                         <a href="list.php" class="btn-batal"><i class="bi bi-arrow-left"></i> Batal</a>
                         <button type="submit" name="simpan" class="btn-submit"><i class="bi bi-check-circle-fill"></i> Simpan Ruangan</button>
@@ -535,29 +540,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             });
         });
 
-        // Toggle class selected on table row when checkbox checked
+        // Toggle class selected on table row when checkbox checked (MUTUALLY EXCLUSIVE / RADIO BEHAVIOR)
         document.querySelectorAll('.paket-checkbox-item input[type="checkbox"]').forEach(chk => {
             chk.addEventListener('change', function(e) {
-                e.stopPropagation(); // Prevent duplicate trigger from parent div click
-                const row = this.closest('.paket-checkbox-item');
+                e.stopPropagation();
+                
                 if (this.checked) {
-                    row.classList.add('selected');
+                    // Batalkan pilihan semua checkbox lain demi validasi max 1 paket
+                    document.querySelectorAll('.paket-checkbox-item input[type="checkbox"]').forEach(otherChk => {
+                        if (otherChk !== this) {
+                            otherChk.checked = false;
+                            otherChk.closest('.paket-checkbox-item').classList.remove('selected');
+                        }
+                    });
+                    this.closest('.paket-checkbox-item').classList.add('selected');
                 } else {
-                    row.classList.remove('selected');
+                    this.closest('.paket-checkbox-item').classList.remove('selected');
                 }
                 updatePaketCount();
                 clearFieldError('paket');
             });
         });
 
-        // Parent div click handler to check the checkbox
+        // Parent div click handler to check the checkbox (MUTUALLY EXCLUSIVE / RADIO BEHAVIOR)
         document.querySelectorAll('.paket-checkbox-item').forEach(item => {
             item.addEventListener('click', function(e) {
                 if (e.target.tagName === 'INPUT') return;
                 
                 const checkbox = this.querySelector('input[type="checkbox"]');
-                checkbox.checked = !checkbox.checked;
+                const wasChecked = checkbox.checked;
                 
+                // Batalkan semua seleksi lain
+                document.querySelectorAll('.paket-checkbox-item input[type="checkbox"]').forEach(otherChk => {
+                    otherChk.checked = false;
+                    otherChk.closest('.paket-checkbox-item').classList.remove('selected');
+                });
+                
+                checkbox.checked = !wasChecked;
                 if (checkbox.checked) {
                     this.classList.add('selected');
                 } else {
@@ -574,7 +593,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             const hint = document.getElementById('paket-count-hint');
             if (checked === 0) {
                 hint.style.color = '#dc2626';
-                hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Pilih minimal 1 paket!';
+                hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Pilih 1 paket foto!';
+            } else if (checked > 1) {
+                hint.style.color = '#dc2626';
+                hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Maksimal hanya boleh memilih 1 paket foto!';
             } else {
                 hint.style.color = '#059669';
                 hint.innerHTML = '<i class="bi bi-check-circle-fill"></i> ' + checked + ' paket terpilih';
@@ -635,7 +657,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             input.value = '';
             previewContainer.style.display = 'none';
             uploadIcon.style.display = 'block';
-            uploadText.innerHTML = '<span>Klik atau seret foto ke sini</span><br>JPG, JPEG, PNG (Max 2MB)';
+            uploadText.innerHTML = '<span>Klik atau seret foto ke sini</span>';
             document.getElementById('uploadArea').classList.remove('has-image');
         }
 
@@ -713,6 +735,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                     icon: 'warning',
                     title: 'Paket Belum Dipilih',
                     text: 'Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini!',
+                    confirmButtonColor: '#D53D66'
+                });
+                return false;
+            } else if (paketChecked > 1) {
+                e.preventDefault();
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Paket Melebihi Batas',
+                    text: 'Satu ruangan hanya boleh terhubung dengan maksimal 1 paket foto!',
                     confirmButtonColor: '#D53D66'
                 });
                 return false;

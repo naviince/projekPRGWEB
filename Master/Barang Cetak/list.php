@@ -59,6 +59,9 @@ $foto_admin = $admin_data['Foto_Profil'] ?? 'default.jpg';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
+// *Penyesuaian: Menggunakan SVG berlatar pink lembut dan ikon gambar beraksen merah muda tajam sebagai fallback produk cetak yang tidak pecah
+$default_svg_item = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='100%25' height='100%25' fill='%23FFF0F3'/%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z' fill='%23D53D66' transform='scale(0.8) translate(3, 3)'/%3E%3C/svg%3e";
+
 $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
     ? "../../assets/img/karyawan/" . $foto_admin 
     : $default_svg_avatar;
@@ -82,15 +85,15 @@ $sort = isset($_GET['sort']) ? trim($_GET['sort']) : "nama_asc";
 $tab_filter = isset($_GET['tab']) ? trim($_GET['tab']) : 'aktif'; // aktif | dihapus | semua
 
 // =====================================================
-// QUERY STATISTIK (UPDATE - TAMBAH STATISTIK DIHAPUS)
+// QUERY STATISTIK (UPDATE - Menambahkan pembungkus ISNULL demi kestabilan data saat tabel kosong)
 // =====================================================
 $stats = safe_sqlsrv_fetch($conn, 
     "SELECT 
         COUNT(*) as total,
-        SUM(CASE WHEN Status = 1 AND Is_Deleted = 0 THEN 1 ELSE 0 END) as aktif,
-        SUM(CASE WHEN Status = 0 AND Is_Deleted = 0 THEN 1 ELSE 0 END) as nonaktif,
-        SUM(CASE WHEN Stok_Barang <= Stok_Minimum AND Status = 1 AND Is_Deleted = 0 THEN 1 ELSE 0 END) as stok_menipis,
-        SUM(CASE WHEN Is_Deleted = 1 THEN 1 ELSE 0 END) as dihapus
+        ISNULL(SUM(CASE WHEN Status = 1 AND Is_Deleted = 0 THEN 1 ELSE 0 END), 0) as aktif,
+        ISNULL(SUM(CASE WHEN Status = 0 AND Is_Deleted = 0 THEN 1 ELSE 0 END), 0) as nonaktif,
+        ISNULL(SUM(CASE WHEN Stok_Barang <= Stok_Minimum AND Status = 1 AND Is_Deleted = 0 THEN 1 ELSE 0 END), 0) as stok_menipis,
+        ISNULL(SUM(CASE WHEN Is_Deleted = 1 THEN 1 ELSE 0 END), 0) as dihapus
     FROM Barang_Cetak"
 ) ?? ['total' => 0, 'aktif' => 0, 'nonaktif' => 0, 'stok_menipis' => 0, 'dihapus' => 0];
 
@@ -590,7 +593,7 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
                         <div class="stat-card">
                             <div class="stat-icon stat-icon-green"><i class="bi bi-check-circle-fill"></i></div>
                             <div class="stat-content">
-                                <div class="stat-title">Produk Aktif</div>
+                                <div class="stat-title">Produk ...</div>
                                 <div class="stat-val"><?= $stats['aktif'] ?? 0 ?> Produk</div>
                                 <div class="stat-subtitle">Tampil ke pelanggan</div>
                             </div>
@@ -664,7 +667,7 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
         <div class="tab-filter-wrapper">
             <a href="list.php?tab=aktif<?= !empty($cari) ? '&cari='.urlencode($cari) : '' ?><?= !empty($status_filter) ? '&status='.$status_filter : '' ?><?= !empty($stok_filter) ? '&stok='.$stok_filter : '' ?><?= !empty($sort) ? '&sort='.$sort : '' ?>" 
                class="tab-filter-btn <?= $tab_filter === 'aktif' ? 'active' : '' ?>">
-                <i class="bi bi-check-circle-fill"></i> Data Aktif
+                <i class="bi bi-check-circle-fill"></i> Data ...
                 <span class="tab-badge"><?= ($stats['aktif'] ?? 0) + ($stats['nonaktif'] ?? 0) ?></span>
             </a>
             <a href="list.php?tab=dihapus<?= !empty($cari) ? '&cari='.urlencode($cari) : '' ?><?= !empty($status_filter) ? '&status='.$status_filter : '' ?><?= !empty($stok_filter) ? '&stok='.$stok_filter : '' ?><?= !empty($sort) ? '&sort='.$sort : '' ?>" 
@@ -710,11 +713,11 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
                                 $path_img = "../../uploads/barang/" . ($b['Foto_Barang'] ?? '');
                                 $img_src = (!empty($b['Foto_Barang']) && $b['Foto_Barang'] !== 'default_barang.jpg' && file_exists($path_img))
                                     ? $path_img 
-                                    : "../../assets/img/default_item.jpg";
+                                    : $default_svg_item;
 
                                 $low_stok = ($b['Stok_Barang'] <= $b['Stok_Minimum']);
 
-                                // KUNCI: Status badge sesuai Is_Deleted dan Status
+                                // KUNCI: Status badge sesuai Is_Deleted and Status
                                 if ($b['Is_Deleted'] == 1) {
                                     $badge_status = "badge-deleted";
                                     $text_status = "Dihapus";
@@ -747,7 +750,7 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
                                 </td>
                                 <td>
                                     <?php if ($b['Is_Deleted'] == 0): ?>
-                                        <!-- Data Aktif: Edit, Toggle, Soft Delete -->
+                                        <!-- Data ...: Edit, Toggle, Soft Delete -->
                                         <a href="edit.php?id=<?= $b['ID_Barang'] ?>" class="btn-action-circle btn-action-edit" title="Edit Barang">
                                             <i class="bi bi-pencil"></i>
                                         </a>
@@ -999,7 +1002,7 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
         function hardDelete(id, nama) {
             Swal.fire({
                 title: 'Hapus Permanen?',
-                text: 'Barang "' + nama + '" akan dihapus PERMANEN dan tidak bisa dikembalikan!',
+                text: 'Barang "' + nama + '" akan dihapus PERMANEN dari database dan tidak bisa dikembalikan!',
                 icon: 'error',
                 showCancelButton: true,
                 confirmButtonColor: '#7f1d1d',
@@ -1061,6 +1064,15 @@ $daftar_barang = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
         }
         setInterval(updateLiveClock, 1000);
         updateLiveClock();
+
+        function bukaModalBiodata() {
+            Swal.fire({
+                title: '<?= htmlspecialchars($nama_admin) ?>',
+                text: 'Administrator - SpotLight Studio',
+                icon: 'info',
+                confirmButtonColor: '#D53D66'
+            });
+        }
     </script>
 
     <!-- Notifikasi -->

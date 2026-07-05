@@ -60,6 +60,9 @@ $foto_admin = $admin_data['Foto_Profil'] ?? 'default.jpg';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
+// *Penyesuaian: Menggunakan SVG berlatar pink lembut dan ikon gambar beraksen merah muda tajam sebagai fallback produk cetak yang tidak pecah
+$default_svg_item = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='100%25' height='100%25' fill='%23FFF0F3'/%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z' fill='%23D53D66' transform='scale(0.8) translate(3, 3)'/%3E%3C/svg%3e";
+
 $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
     ? "../../assets/img/karyawan/" . $foto_admin 
     : $default_svg_avatar;
@@ -197,27 +200,24 @@ if (isset($_POST['simpan'])) {
         }
     }
 
-    // --- LAYER 10: Update Database (Transaction) ---
+    // --- LAYER 10: Update Database (Transaction & Stored Procedure) ---
     if (empty($errors)) {
         sqlsrv_begin_transaction($conn);
 
         try {
-            $sql_update = "UPDATE Barang_Cetak SET 
-                Nama_Barang = ?, Harga_Barang = ?, Stok_Barang = ?, Stok_Minimum = ?, 
-                Deskripsi = ?, Foto_Barang = ?, Status = ?, 
-                Modified_By = ?, Modified_Date = GETDATE() 
-                WHERE ID_Barang = ?";
+            // Pemanggilan Stored Procedure sp_UpdateBarangCetak
+            $sql_update = "EXEC sp_UpdateBarangCetak ?, ?, ?, ?, ?, ?, ?, ?, ?";
 
             $params = [
+                $id_barang,
                 $nama_barang,
+                empty($deskripsi) ? null : $deskripsi,
                 (float)$harga_barang,
                 (int)$stok_barang,
                 (int)$stok_minimum,
-                $deskripsi,
                 $new_filename,
                 $status,
-                $nama_admin,
-                $id_barang
+                $nama_admin
             ];
 
             $stmt_update = sqlsrv_query($conn, $sql_update, $params);
@@ -257,15 +257,14 @@ if (isset($_POST['simpan'])) {
 }
 
 // =====================================================
-// PATH FOTO BARANG
+// PATH FOTO BARANG (Penyelarasan menggunakan SVG fallback jika gambar pecah/tidak ditemukan)
 // =====================================================
 $upload_dir = '../../uploads/barang/';
-$foto_barang_src = 'default_barang.jpg';
-if (!empty($data_lama['Foto_Barang']) && $data_lama['Foto_Barang'] != 'default_barang.jpg') {
-    if (file_exists($upload_dir . $data_lama['Foto_Barang'])) {
-        $foto_barang_src = $upload_dir . $data_lama['Foto_Barang'];
-    } else {
-        $foto_barang_src = 'default_barang.jpg';
+$foto_barang_src = $default_svg_item;
+if (!empty($data_lama['Foto_Barang'])) {
+    $path_check = $upload_dir . $data_lama['Foto_Barang'];
+    if (file_exists($path_check)) {
+        $foto_barang_src = $path_check;
     }
 }
 ?>
@@ -430,10 +429,10 @@ if (!empty($data_lama['Foto_Barang']) && $data_lama['Foto_Barang'] != 'default_b
                 </a>
                 <div class="submenu" id="submenuTransaksi">
                     <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                        <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                        <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                        <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                        <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                     </ul>
                 </div>
             </li>
@@ -500,8 +499,8 @@ if (!empty($data_lama['Foto_Barang']) && $data_lama['Foto_Barang'] != 'default_b
                 <div>
                     <strong>Gagal menyimpan perubahan!</strong>
                     <ul class="mb-0 mt-1 ps-3">
-                        <?php foreach ($errors as $error): ?>
-                        <li><?= $error ?></li>
+                        <?php foreach ($errors as $error_item): ?>
+                        <li><?= $error_item ?></li>
                         <?php endforeach; ?>
                     </ul>
                 </div>
@@ -697,7 +696,7 @@ function confirmLogout(e) {
         confirmButtonColor: '#D53D66',
         cancelButtonColor: '#718096',
         confirmButtonText: 'Ya, Keluar',
-        cancelButtonText: 'Batal'
+        confirmButtonText: 'Batal'
     }).then((result) => {
         if (result.isConfirmed) {
             window.location.href = '../../logout.php';

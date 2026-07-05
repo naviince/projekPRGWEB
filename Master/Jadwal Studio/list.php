@@ -2,6 +2,9 @@
 session_start();
 include '../../koneksi.php';
 
+// Atur zona waktu ke WIB (Waktu Indonesia Barat)
+date_default_timezone_set('Asia/Jakarta');
+
 // --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Admin') {
     header("Location: ../../login.php");
@@ -19,16 +22,27 @@ $nama_admin = $d_admin['nama_karyawan'] ?? 'Administrator';
 $foto_admin = $d_admin['foto_profil'] ?? 'default.jpg';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
-$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_admin)) 
-    ? "../../assets/img/pelanggan/" . $foto_admin 
+
+// *Penyesuaian: Lokasi direktori foto Karyawan diperbaiki dari pelanggan menjadi karyawan
+$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
+    ? "../../assets/img/karyawan/" . $foto_admin 
     : $default_svg_avatar;
 
 // =====================================================
-// AUTO-NONAKTIF: Hari yang sudah lewat → Status = 0
+// AUTO-EXPIRED & AUTO-HAPUS JADWAL LAMPAU (Sesuai Validasi & Integritas DB)
 // =====================================================
-$auto_nonaktif_sql = "UPDATE Jadwal_Studio SET Status = 0, Modified_By = ?, Modified_Date = GETDATE() 
-                       WHERE Tanggal_Jadwal < CAST(GETDATE() AS DATE) AND Status = 1 AND Is_Deleted = 0";
-sqlsrv_query($conn, $auto_nonaktif_sql, [$nama_admin]);
+// 1. Hapus permanen jadwal hari kemarin/lampau yang TIDAK memiliki relasi booking (Hard Delete)
+$hard_delete_past_sql = "DELETE FROM Jadwal_Studio 
+                         WHERE Tanggal_Jadwal < CAST(GETDATE() AS DATE) 
+                           AND ID_Jadwal NOT IN (SELECT DISTINCT ID_Jadwal FROM [Order])";
+sqlsrv_query($conn, $hard_delete_past_sql);
+
+// 2. Soft delete jadwal hari kemarin/lampau yang MEMILIKI relasi booking (Is_Deleted = 1 & Status = 0)
+// demi menjaga integritas data transaksional agar database tidak error
+$soft_delete_past_sql = "UPDATE Jadwal_Studio 
+                         SET Is_Deleted = 1, Status = 0, Modified_By = ?, Modified_Date = GETDATE() 
+                         WHERE Tanggal_Jadwal < CAST(GETDATE() AS DATE) AND Is_Deleted = 0";
+sqlsrv_query($conn, $soft_delete_past_sql, [$nama_admin]);
 
 // =====================================================
 // PAGINATION & FILTER
@@ -420,6 +434,30 @@ body {
 .toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }
 .toggle-switch input:disabled + .toggle-slider { background-color: #cbd5e1; cursor: not-allowed; }
 
+.btn-submit {
+    background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+    color: #ffffff; border: none; border-radius: 14px;
+    padding: 14px 32px; font-weight: 800; font-size: 0.95rem;
+    transition: var(--transition-3d); display: inline-flex;
+    align-items: center; gap: 8px;
+}
+.btn-submit:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 28px rgba(213, 61, 102, 0.35);
+    color: #ffffff;
+}
+.btn-batal {
+    background: #f1f5f9; color: #475569; border: none;
+    border-radius: 14px; padding: 14px 32px;
+    font-weight: 800; font-size: 0.95rem;
+    transition: var(--transition-3d); display: inline-flex;
+    align-items: center; gap: 8px; text-decoration: none;
+}
+.btn-batal:hover {
+    background: #e2e8f0; color: #1e293b;
+    transform: translateY(-3px);
+}
+
 .btn-action-circle {
     width: 34px; height: 34px; border-radius: 50%;
     display: inline-flex; align-items: center; justify-content: center;
@@ -427,8 +465,6 @@ body {
     background: #ffffff; font-size: 0.85rem; text-decoration: none;
     margin: 0 2px; cursor: pointer;
 }
-.btn-action-detail { color: #D53D66; border-color: #FFE4E9; }
-.btn-action-detail:hover { background: #D53D66; color: #ffffff; transform: translateY(-2px); }
 .btn-action-edit { color: var(--p-pink); border-color: #FFE4E9; }
 .btn-action-edit:hover { background: var(--p-pink); color: #ffffff; transform: translateY(-2px); }
 .btn-action-delete { color: #dc2626; border-color: #fee2e2; }
@@ -464,32 +500,8 @@ body {
 }
 .page-link-pag.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
-/* FILTER MODAL */
-.filter-modal .modal-content {
-    border: none; border-radius: 24px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.15); overflow: hidden;
-}
-.filter-modal .modal-header {
-    border: none; padding: 24px 24px 16px; background: #ffffff;
-}
-.filter-modal .modal-body {
-    padding: 0 24px 20px; background: #ffffff;
-}
-.filter-modal .modal-footer {
-    border: none; padding: 0 24px 24px; background: #ffffff;
-    display: flex; gap: 12px;
-}
-.filter-select {
-    border: 2px solid #e2e8f0; border-radius: 14px;
-    padding: 14px 18px; font-weight: 600; font-size: 0.9rem;
-    color: #1e293b; background: #ffffff; width: 100%;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 18px center;
-    padding-right: 44px;
-}
-.filter-select:focus { outline: none; border-color: var(--p-pink); box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); }
+/* FILTER MODAL POPUP */
+.modal-dialog-centered { display: flex; align-items: center; min-height: calc(100% - 3.5rem); }
 
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-10px); }
@@ -504,576 +516,596 @@ body {
 </style>
 </head>
 <body>
-<!-- SIDEBAR -->
-<div class="sidebar">
-    <div class="sidebar-menu-wrapper">
-        <a href="../../index.php" class="sidebar-brand">
-            SpotLight.<br><span>Panel Administrator</span>
-        </a>
-        <ul class="nav-menu">
-            <li class="nav-item">
-                <a href="../../Role/Admin/index.php" class="nav-link-custom">
-                    <span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuMaster">
-                    <span><i class="bi bi-folder-fill me-2"></i> Data Master</span>
-                    <i class="bi bi-chevron-up small icon-chevron" style="transform: rotate(180deg);"></i>
-                </a>
-                <div class="submenu show" id="submenuMaster">
-                    <ul class="list-unstyled">
-                        <li><a href="../Pelanggan/list.php" class="submenu-link"><i class="bi bi-people-fill me-2"></i>Pelanggan</a></li>
-                        <li><a href="../Paket Foto/list.php" class="submenu-link"><i class="bi bi-camera-fill me-2"></i>Paket Foto</a></li>
-                        <li><a href="../Ruangan/list.php" class="submenu-link"><i class="bi bi-door-open-fill me-2"></i>Ruangan</a></li>
-                        <li><a href="../Properti/list.php" class="submenu-link"><i class="bi bi-box-seam-fill me-2"></i>Properti</a></li>
-                        <li><a href="../Tema Foto/list.php" class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
-                        <li><a href="list.php" class="submenu-link active"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Studio</a></li>
-                        <li><a href="../Barang Cetak/list.php" class="submenu-link"><i class="bi bi-printer-fill me-2"></i>Barang Cetak</a></li>
-                    </ul>
-                </div>
-            </li>
-            <li class="nav-item">
-                <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuTransaksi">
-                    <span><i class="bi bi-cart-fill me-2"></i> Transaksi</span>
-                    <i class="bi bi-chevron-down small icon-chevron"></i>
-                </a>
-                <div class="submenu" id="submenuTransaksi">
-                    <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
-                    </ul>
-                </div>
-            </li>
-            <li class="nav-item">
-                <a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)">
-                    <span><i class="bi bi-house-door-fill me-2"></i> Landing Page</span>
-                </a>
-            </li>
-        </ul>
-    </div>
-    <div>
-        <button onclick="confirmLogout(event)" class="btn btn-logout text-center d-block w-100">
-            <i class="bi bi-box-arrow-right me-2"></i> Keluar Sistem
-        </button>
-    </div>
-</div>
 
-<!-- MAIN CONTENT -->
-<div class="main-content">
-
-    <!-- HEADER -->
-    <div class="dashboard-header fade-in-up">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <div class="sidebar-menu-wrapper">
+            <a href="../../index.php" class="sidebar-brand">
+                SpotLight.<br><span>Panel Administrator</span>
+            </a>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="../../Role/Admin/index.php" class="nav-link-custom">
+                        <span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuMaster">
+                        <span><i class="bi bi-folder-fill me-2"></i> Data Master</span>
+                        <i class="bi bi-chevron-up small icon-chevron" style="transform: rotate(180deg);"></i>
+                    </a>
+                    <div class="submenu show" id="submenuMaster">
+                        <ul class="list-unstyled">
+                            <li><a href="../Pelanggan/list.php" class="submenu-link"><i class="bi bi-people-fill me-2"></i>Pelanggan</a></li>
+                            <li><a href="../Paket Foto/list.php" class="submenu-link"><i class="bi bi-camera-fill me-2"></i>Paket Foto</a></li>
+                            <li><a href="../Ruangan/list.php" class="submenu-link"><i class="bi bi-door-open-fill me-2"></i>Ruangan</a></li>
+                            <li><a href="../Properti/list.php" class="submenu-link"><i class="bi bi-box-seam-fill me-2"></i>Properti</a></li>
+                            <li><a href="../Tema Foto/list.php" class="submenu-link"><i class="bi bi-palette-fill me-2"></i>Tema Foto</a></li>
+                            <li><a href="./list.php" class="submenu-link active"><i class="bi bi-calendar-week-fill me-2"></i>Jadwal Studio</a></li>
+                            <li><a href="../Barang Cetak/list.php" class="submenu-link"><i class="bi bi-printer-fill me-2"></i>Barang Cetak</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuTransaksi">
+                        <span><i class="bi bi-cart-fill me-2"></i> Transaksi</span>
+                        <i class="bi bi-chevron-down small icon-chevron"></i>
+                    </a>
+                    <div class="submenu" id="submenuTransaksi">
+                        <ul class="list-unstyled">
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                            <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    <a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)">
+                        <span><i class="bi bi-house-door-fill me-2"></i> Landing Page</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
         <div>
-            <h3 class="fw-bold mb-1">Master Jadwal Studio</h3>
-            <p class="text-muted small mb-0">Kelola slot jadwal pemotretan per ruangan dan paket.</p>
+            <button onclick="confirmLogout(event)" class="btn btn-logout text-center d-block w-100">
+                <i class="bi bi-box-arrow-right me-2"></i> Keluar Sistem
+            </button>
         </div>
-        <div class="d-flex align-items-center gap-3">
-            <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
-                <i class="bi bi-clock-history me-1 text-danger"></i> <span id="live-clock">Memuat waktu...</span>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-content">
+
+        <!-- HEADER -->
+        <div class="dashboard-header fade-in-up">
+            <div>
+                <h3 class="fw-bold mb-1">Master Jadwal Studio</h3>
+                <p class="text-muted small mb-0">Kelola slot jadwal pemotretan per ruangan dan paket.</p>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
+                    <i class="bi bi-clock-history me-1 text-danger"></i> <span id="live-clock">Memuat waktu...</span>
+                </span>
+                <div class="profile-header-btn shadow-sm" onclick="bukaModalBiodata()" title="Klik untuk melihat profil Anda">
+                    <img src="<?= $foto_admin_src ?>" alt="Admin Profil">
+                </div>
+            </div>
+        </div>
+
+        <!-- STATISTIK CARDS -->
+        <div class="stats-scroll-wrapper animate-fade-in">
+            <div class="stats-row">
+                <div class="stat-card-item">
+                    <div class="card-3d">
+                        <div class="stat-card">
+                            <div class="stat-icon stat-icon-pink"><i class="bi bi-calendar-week-fill"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-title">Total Jadwal</div>
+                                <div class="stat-val"><?= $stats['total'] ?? 0 ?> Jadwal</div>
+                                <div class="stat-subtitle">Aktif di sistem</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="stat-card-item">
+                    <div class="card-3d">
+                        <div class="stat-card">
+                            <div class="stat-icon stat-icon-green"><i class="bi bi-check-circle-fill"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-title">Jadwal Aktif</div>
+                                <div class="stat-val"><?= $stats['aktif'] ?? 0 ?> Jadwal</div>
+                                <div class="stat-subtitle">Bisa dipesan</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="stat-card-item">
+                    <div class="card-3d">
+                        <div class="stat-card">
+                            <div class="stat-icon stat-icon-orange"><i class="bi bi-x-circle-fill"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-title">Jadwal Nonaktif</div>
+                                <div class="stat-val"><?= $stats['nonaktif'] ?? 0 ?> Jadwal</div>
+                                <div class="stat-subtitle">Sudah lewat / Dinonaktifkan</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="stat-card-item">
+                    <div class="card-3d">
+                        <div class="stat-card">
+                            <div class="stat-icon stat-icon-red"><i class="bi bi-trash-fill"></i></div>
+                            <div class="stat-content">
+                                <div class="stat-title">Terhapus</div>
+                                <div class="stat-val"><?= $stats['terhapus'] ?? 0 ?> Jadwal</div>
+                                <div class="stat-subtitle">Soft deleted</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SEARCH & FILTER BAR -->
+        <div class="search-filter-bar">
+            <form method="GET" class="search-form-flex" id="mainSearchForm">
+                <input type="hidden" name="ruangan" id="hiddenRuangan" value="<?= htmlspecialchars($filter_ruangan) ?>">
+                <input type="hidden" name="paket" id="hiddenPaket" value="<?= htmlspecialchars($filter_paket) ?>">
+                <input type="hidden" name="status" id="hiddenStatus" value="<?= htmlspecialchars($filter_status) ?>">
+                <input type="hidden" name="tanggal" id="hiddenTanggal" value="<?= htmlspecialchars($filter_tanggal) ?>">
+                <input type="hidden" name="sort" id="hiddenSort" value="<?= htmlspecialchars($sort) ?>">
+                <div class="search-input-wrapper">
+                    <i class="bi bi-search search-icon"></i>
+                    <input type="text" name="cari" class="search-input-main" placeholder="Cari ruangan, paket, keterangan..." value="<?= htmlspecialchars($cari) ?>">
+                </div>
+                <button type="button" class="btn-filter-modal" onclick="bukaModalFilter()">
+                    <i class="bi bi-funnel-fill me-2"></i>Filter
+                    <i class="bi bi-chevron-down ms-2"></i>
+                </button>
+                <button type="submit" class="btn-search-icon" title="Cari">
+                    <i class="bi bi-search"></i>
+                </button>
+            </form>
+            <a href="add.php" class="btn-reg-header text-decoration-none">
+                <i class="bi bi-plus-circle-fill me-2"></i>Tambah Jadwal
+            </a>
+            <a href="action_jadwal.php?aksi=generate_7hari" class="btn-generate text-decoration-none" onclick="confirmGenerate(event)">
+                <i class="bi bi-plus-circle-fill me-2"></i>Generate 7 Hari
+            </a>
+        </div>
+
+        <!-- INFO TEXT -->
+        <div class="alert alert-light border-2 border-dashed mb-3" style="border-color: #e2e8f0; border-radius: 14px; background: #f8fafc;">
+            <i class="bi bi-info-circle-fill me-2 text-info"></i>
+            <span class="small fw-bold text-muted">
+                <strong>Info:</strong> Tema foto akan ditampilkan kepada pelanggan berdasarkan ruangan yang dipilih. 
+                Kelola ruangan di menu <a href="../Ruangan/list.php" style="color: var(--p-pink);">Ruangan</a>.
             </span>
-            <div class="profile-header-btn shadow-sm" onclick="bukaModalBiodata()" title="Klik untuk melihat profil Anda">
-                <img src="<?= $foto_admin_src ?>" alt="Admin Profil">
-            </div>
         </div>
-    </div>
 
-    <!-- STATISTIK CARDS -->
-    <div class="stats-scroll-wrapper animate-fade-in">
-        <div class="stats-row">
-            <div class="stat-card-item">
-                <div class="card-3d">
-                    <div class="stat-card">
-                        <div class="stat-icon stat-icon-pink"><i class="bi bi-calendar-week-fill"></i></div>
-                        <div class="stat-content">
-                            <div class="stat-title">Total Jadwal</div>
-                            <div class="stat-val"><?= $stats['total'] ?? 0 ?> Jadwal</div>
-                            <div class="stat-subtitle">Aktif di sistem</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="stat-card-item">
-                <div class="card-3d">
-                    <div class="stat-card">
-                        <div class="stat-icon stat-icon-green"><i class="bi bi-check-circle-fill"></i></div>
-                        <div class="stat-content">
-                            <div class="stat-title">Jadwal Aktif</div>
-                            <div class="stat-val"><?= $stats['aktif'] ?? 0 ?> Jadwal</div>
-                            <div class="stat-subtitle">Bisa dipesan</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="stat-card-item">
-                <div class="card-3d">
-                    <div class="stat-card">
-                        <div class="stat-icon stat-icon-orange"><i class="bi bi-x-circle-fill"></i></div>
-                        <div class="stat-content">
-                            <div class="stat-title">Jadwal Nonaktif</div>
-                            <div class="stat-val"><?= $stats['nonaktif'] ?? 0 ?> Jadwal</div>
-                            <div class="stat-subtitle">Sudah lewat / Dinonaktifkan</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="stat-card-item">
-                <div class="card-3d">
-                    <div class="stat-card">
-                        <div class="stat-icon stat-icon-red"><i class="bi bi-trash-fill"></i></div>
-                        <div class="stat-content">
-                            <div class="stat-title">Terhapus</div>
-                            <div class="stat-val"><?= $stats['terhapus'] ?? 0 ?> Jadwal</div>
-                            <div class="stat-subtitle">Soft deleted</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- SEARCH & FILTER BAR -->
-    <div class="search-filter-bar">
-        <form method="GET" class="search-form-flex" id="mainSearchForm">
-            <input type="hidden" name="ruangan" id="hiddenRuangan" value="<?= htmlspecialchars($filter_ruangan) ?>">
-            <input type="hidden" name="paket" id="hiddenPaket" value="<?= htmlspecialchars($filter_paket) ?>">
-            <input type="hidden" name="status" id="hiddenStatus" value="<?= htmlspecialchars($filter_status) ?>">
-            <input type="hidden" name="tanggal" id="hiddenTanggal" value="<?= htmlspecialchars($filter_tanggal) ?>">
-            <input type="hidden" name="sort" id="hiddenSort" value="<?= htmlspecialchars($sort) ?>">
-            <div class="search-input-wrapper">
-                <i class="bi bi-search search-icon"></i>
-                <input type="text" name="cari" class="search-input-main" placeholder="Cari ruangan, paket, keterangan..." value="<?= htmlspecialchars($cari) ?>">
-            </div>
-            <button type="button" class="btn-filter-modal" onclick="bukaModalFilter()">
-                <i class="bi bi-funnel-fill me-2"></i>Filter
-                <i class="bi bi-chevron-down ms-2"></i>
-            </button>
-            <button type="submit" class="btn-search-icon" title="Cari">
-                <i class="bi bi-search"></i>
-            </button>
-        </form>
-        <a href="add.php" class="btn-reg-header text-decoration-none">
-            <i class="bi bi-plus-circle-fill me-2"></i>Tambah Jadwal
-        </a>
-        <a href="action_jadwal.php?aksi=generate_7hari" class="btn-generate text-decoration-none" onclick="return confirmGenerate(event)">
-            <i class="bi bi-magic me-2"></i>Generate 7 Hari
-        </a>
-    </div>
-
-    <!-- TABEL DATA -->
-    <div class="card-3d mb-4" style="padding: 24px;">
-        <div class="table-scroll-wrapper">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>No.</th>
-                        <th>Paket & Ruangan</th>
-                        <th>Tanggal</th>
-                        <th>Waktu</th>
-                        <th>Durasi</th>
-                        <th>Keterangan</th>
-                        <th>Aktif</th>
-                        <th class="text-center">Aksi</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php
-                    $no = $offset + 1;
-                    if ($query && sqlsrv_has_rows($query)):
-                        while($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
-                            $is_expired = false;
-                            $tgl_jadwal = is_object($row['Tanggal_Jadwal']) ? $row['Tanggal_Jadwal']->format('Y-m-d') : $row['Tanggal_Jadwal'];
-                            if (strtotime($tgl_jadwal) < strtotime(date('Y-m-d'))) {
-                                $is_expired = true;
-                            }
-                            $is_libur = (stripos($row['Keterangan'] ?? '', 'libur') !== false);
-                    ?>
-                        <tr class="fade-in-up <?= $is_expired ? 'opacity-50' : '' ?>">
-                            <td><?= $no++ ?></td>
-                            <td>
-                                <div class="td-ruangan"><?= htmlspecialchars($row['Nama_Paket']) ?></div>
-                                <div class="td-paket"><i class="bi bi-door-open-fill me-1 text-danger"></i><?= htmlspecialchars($row['Nama_Ruangan']) ?></div>
-                            </td>
-                            <td>
-                                <div class="td-tanggal"><?= fmtTgl($row['Tanggal_Jadwal']) ?></div>
-                                <div class="td-hari"><?= hariIndo($row['Tanggal_Jadwal']) ?></div>
-                            </td>
-                            <td>
-                                <div class="td-waktu"><?= fmtJam($row['Jam_Mulai']) ?> - <?= fmtJam($row['Jam_Selesai']) ?></div>
-                            </td>
-                            <td>
-                                <div class="td-durasi"><?= $row['Durasi_Waktu'] ?? 0 ?> menit</div>
-                            </td>
-                            <td>
-                                <div class="td-keterangan">
-                                    <?php if ($is_libur): ?>
-                                        <span class="badge badge-libur"><span class="badge-dot"></span> Libur</span>
-                                    <?php else: ?>
-                                        <?= htmlspecialchars($row['Keterangan'] ?? '-') ?>
-                                    <?php endif; ?>
-                                </div>
-                            </td>
-                            <td>
-                                <?php if ($is_expired): ?>
-                                    <span class="badge badge-expired"><span class="badge-dot"></span> Expired</span>
-                                <?php else: ?>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" <?= ($row['Status'] == 1) ? 'checked' : '' ?> 
-                                               onchange="toggleStatus(<?= $row['ID_Jadwal'] ?>, <?= $row['Status'] ?>, '<?= htmlspecialchars($row['Nama_Paket']) ?> - <?= htmlspecialchars($row['Nama_Ruangan']) ?> <?= fmtTgl($row['Tanggal_Jadwal']) ?>')">
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <a href="edit.php?id=<?= $row['ID_Jadwal'] ?>" class="btn-action-circle btn-action-edit" title="Edit Jadwal">
-                                    <i class="bi bi-pencil"></i>
-                                </a>
-                                <button class="btn-action-circle btn-action-delete" onclick="softDelete(<?= $row['ID_Jadwal'] ?>, '<?= htmlspecialchars($row['Nama_Paket']) ?> - <?= htmlspecialchars($row['Nama_Ruangan']) ?> <?= fmtTgl($row['Tanggal_Jadwal']) ?> <?= fmtJam($row['Jam_Mulai']) ?>')" title="Hapus Jadwal">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </td>
-                        </tr>
-                    <?php 
-                        endwhile; 
-                    else:
-                    ?>
+        <!-- TABEL DATA -->
+        <div class="card-3d mb-4" style="padding: 24px;">
+            <div class="table-scroll-wrapper">
+                <table class="data-table">
+                    <thead>
                         <tr>
-                            <td colspan="8" class="text-center text-muted py-5">
-                                <i class="bi bi-inbox fs-1 mb-3 d-block" style="color: #cbd5e1;"></i>
-                                <p class="fw-bold">Tidak ada data jadwal studio yang sesuai.</p>
-                            </td>
+                            <th>No.</th>
+                            <th>Paket & Ruangan</th>
+                            <th>Tanggal</th>
+                            <th>Waktu</th>
+                            <th>Durasi</th>
+                            <th>Keterangan</th>
+                            <th>Aktif</th>
+                            <th class="text-center">Aksi</th>
                         </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        $no = $offset + 1;
+                        if ($query && sqlsrv_has_rows($query)):
+                            while($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
+                                $is_expired = false;
+                                $tgl_jadwal = is_object($row['Tanggal_Jadwal']) ? $row['Tanggal_Jadwal']->format('Y-m-d') : $row['Tanggal_Jadwal'];
+                                
+                                // *Penyesuaian WIB: Logika expired disesuaikan agar mengecek Tanggal + Jam secara bersamaan
+                                $jam_mulai_check = is_object($row['Jam_Mulai']) ? $row['Jam_Mulai']->format('H:i:s') : $row['Jam_Mulai'];
+                                $today_now = date('Y-m-d');
+                                $time_now = date('H:i:s');
+
+                                if ($tgl_jadwal < $today_now) {
+                                    $is_expired = true;
+                                } elseif ($tgl_jadwal == $today_now && $jam_mulai_check < $time_now) {
+                                    $is_expired = true;
+                                }
+
+                                $is_libur = (stripos($row['Keterangan'] ?? '', 'libur') !== false);
+                        ?>
+                            <tr class="fade-in-up <?= $is_expired ? 'opacity-50' : '' ?>">
+                                <td><?= $no++ ?></td>
+                                <td>
+                                    <div class="td-ruangan"><?= htmlspecialchars($row['Nama_Paket']) ?></div>
+                                    <div class="td-paket"><i class="bi bi-door-open-fill me-1 text-danger"></i><?= htmlspecialchars($row['Nama_Ruangan']) ?></div>
+                                </td>
+                                <td>
+                                    <div class="td-tanggal"><?= fmtTgl($row['Tanggal_Jadwal']) ?></div>
+                                    <div class="td-hari"><?= hariIndo($row['Tanggal_Jadwal']) ?></div>
+                                </td>
+                                <td>
+                                    <!-- Menampilkan format jam 24 jam Indonesia WIB tanpa format AM/PM -->
+                                    <div class="td-waktu"><?= fmtJam($row['Jam_Mulai']) ?> - <?= fmtJam($row['Jam_Selesai']) ?></div>
+                                </td>
+                                <td>
+                                    <div class="td-durasi"><?= $row['Durasi_Waktu'] ?? 0 ?> menit</div>
+                                </td>
+                                <td>
+                                    <div class="td-keterangan">
+                                        <?php if ($is_libur): ?>
+                                            <span class="badge badge-libur"><span class="badge-dot"></span> Libur</span>
+                                        <?php else: ?>
+                                            <?= htmlspecialchars($row['Keterangan'] ?? '-') ?>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
+                                <td>
+                                    <?php if ($is_expired): ?>
+                                        <span class="badge badge-expired"><span class="badge-dot"></span> Expired</span>
+                                    <?php else: ?>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" <?= ($row['Status'] == 1) ? 'checked' : '' ?> 
+                                                   onchange="toggleStatus(<?= $row['ID_Jadwal'] ?>, <?= $row['Status'] ?>, '<?= htmlspecialchars($row['Nama_Paket']) ?> - <?= htmlspecialchars($row['Nama_Ruangan']) ?> <?= fmtTgl($row['Tanggal_Jadwal']) ?>')">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <a href="edit.php?id=<?= $row['ID_Jadwal'] ?>" class="btn-action-circle btn-action-edit" title="Edit Jadwal">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <button class="btn-action-circle btn-action-delete" onclick="softDelete(<?= $row['ID_Jadwal'] ?>, '<?= htmlspecialchars($row['Nama_Paket']) ?> - <?= htmlspecialchars($row['Nama_Ruangan']) ?> <?= fmtTgl($row['Tanggal_Jadwal']) ?> <?= fmtJam($row['Jam_Mulai']) ?>')" title="Hapus Jadwal">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php 
+                            endwhile; 
+                        else:
+                        ?>
+                            <tr>
+                                <td colspan="8" class="text-center text-muted py-5">
+                                    <i class="bi bi-inbox fs-1 mb-3 d-block" style="color: #cbd5e1;"></i>
+                                    <p class="fw-bold">Tidak ada data jadwal studio yang sesuai.</p>
+                                </td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- PAGINATION -->
+            <?php if ($total_halaman > 1): ?>
+            <div class="pagination-wrapper">
+                <div class="pagination-info">
+                    Menampilkan <span><?= $offset + 1 ?></span> - <span><?= min($offset + $limit, $total_records) ?></span> dari <span><?= $total_records ?></span> jadwal
+                </div>
+                <nav class="pagination-nav">
+                    <?php if ($halaman > 1): ?>
+                        <a class="page-link-pag" href="list.php?halaman=<?= $halaman - 1 ?>&cari=<?= urlencode($cari) ?>&ruangan=<?= $filter_ruangan ?>&paket=<?= $filter_paket ?>&status=<?= $filter_status ?>&tanggal=<?= $filter_tanggal ?>&sort=<?= $sort ?>" title="Sebelumnya">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+                    <?php else: ?>
+                        <span class="page-link-pag disabled"><i class="bi bi-chevron-left"></i></span>
                     <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
 
-        <!-- PAGINATION -->
-        <?php if ($total_halaman > 1): ?>
-        <div class="pagination-wrapper">
-            <div class="pagination-info">
-                Menampilkan <span><?= $offset + 1 ?></span> - <span><?= min($offset + $limit, $total_records) ?></span> dari <span><?= $total_records ?></span> jadwal
+                    <?php 
+                    $start_page = max(1, $halaman - 2);
+                    $end_page = min($total_halaman, $halaman + 2);
+
+                    if ($start_page > 1) {
+                        echo '<a class="page-link-pag" href="list.php?halaman=1&cari=' . urlencode($cari) . '&ruangan=' . $filter_ruangan . '&paket=' . $filter_paket . '&status=' . $filter_status . '&tanggal=' . $filter_tanggal . '&sort=' . $sort . '">1</a>';
+                        if ($start_page > 2) echo '<span class="page-link-pag disabled">...</span>';
+                    }
+
+                    for ($i = $start_page; $i <= $end_page; $i++): 
+                    ?>
+                        <a class="page-link-pag <?= ($halaman == $i) ? 'active-pag' : '' ?>" href="list.php?halaman=<?= $i ?>&cari=<?= urlencode($cari) ?>&ruangan=<?= $filter_ruangan . '&paket=' . $filter_paket . '&status=' . $filter_status . '&tanggal=' . $filter_tanggal . '&sort=' . $sort ?>">
+                            <?= $i ?>
+                        </a>
+                    <?php endfor; 
+
+                    if ($end_page < $total_halaman) {
+                        if ($end_page < $total_halaman - 1) echo '<span class="page-link-pag disabled">...</span>';
+                        echo '<a class="page-link-pag" href="list.php?halaman=' . $total_halaman . '&cari=' . urlencode($cari) . '&ruangan=' . $filter_ruangan . '&paket=' . $filter_paket . '&status=' . $filter_status . '&tanggal=' . $filter_tanggal . '&sort=' . $sort . '">' . $total_halaman . '</a>';
+                    }
+                    ?>
+
+                    <?php if ($halaman < $total_halaman): ?>
+                        <a class="page-link-pag" href="list.php?halaman=<?= $halaman + 1 ?>&cari=<?= urlencode($cari) ?>&ruangan=<?= $filter_ruangan ?>&paket=<?= $filter_paket ?>&status=<?= $filter_status ?>&tanggal=<?= $filter_tanggal ?>&sort=<?= $sort ?>" title="Selanjutnya">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    <?php else: ?>
+                        <span class="page-link-pag disabled"><i class="bi bi-chevron-right"></i></span>
+                    <?php endif; ?>
+                </nav>
             </div>
-            <nav class="pagination-nav">
-                <?php if ($halaman > 1): ?>
-                    <a class="page-link-pag" href="list.php?halaman=<?= $halaman - 1 ?>&cari=<?= urlencode($cari) ?>&ruangan=<?= $filter_ruangan ?>&paket=<?= $filter_paket ?>&status=<?= $filter_status ?>&tanggal=<?= $filter_tanggal ?>&sort=<?= $sort ?>" title="Sebelumnya">
-                        <i class="bi bi-chevron-left"></i>
-                    </a>
-                <?php else: ?>
-                    <span class="page-link-pag disabled"><i class="bi bi-chevron-left"></i></span>
-                <?php endif; ?>
-
-                <?php 
-                $start_page = max(1, $halaman - 2);
-                $end_page = min($total_halaman, $halaman + 2);
-
-                if ($start_page > 1) {
-                    echo '<a class="page-link-pag" href="list.php?halaman=1&cari=' . urlencode($cari) . '&ruangan=' . $filter_ruangan . '&paket=' . $filter_paket . '&status=' . $filter_status . '&tanggal=' . $filter_tanggal . '&sort=' . $sort . '">1</a>';
-                    if ($start_page > 2) echo '<span class="page-link-pag disabled">...</span>';
-                }
-
-                for ($i = $start_page; $i <= $end_page; $i++): 
-                ?>
-                    <a class="page-link-pag <?= ($halaman == $i) ? 'active-pag' : '' ?>" href="list.php?halaman=<?= $i ?>&cari=<?= urlencode($cari) ?>&ruangan=<?= $filter_ruangan ?>&paket=<?= $filter_paket ?>&status=<?= $filter_status ?>&tanggal=<?= $filter_tanggal ?>&sort=<?= $sort ?>">
-                        <?= $i ?>
-                    </a>
-                <?php endfor; 
-
-                if ($end_page < $total_halaman) {
-                    if ($end_page < $total_halaman - 1) echo '<span class="page-link-pag disabled">...</span>';
-                    echo '<a class="page-link-pag" href="list.php?halaman=' . $total_halaman . '&cari=' . urlencode($cari) . '&ruangan=' . $filter_ruangan . '&paket=' . $filter_paket . '&status=' . $filter_status . '&tanggal=' . $filter_tanggal . '&sort=' . $sort . '">' . $total_halaman . '</a>';
-                }
-                ?>
-
-                <?php if ($halaman < $total_halaman): ?>
-                    <a class="page-link-pag" href="list.php?halaman=<?= $halaman + 1 ?>&cari=<?= urlencode($cari) ?>&ruangan=<?= $filter_ruangan ?>&paket=<?= $filter_paket ?>&status=<?= $filter_status ?>&tanggal=<?= $filter_tanggal ?>&sort=<?= $sort ?>" title="Selanjutnya">
-                        <i class="bi bi-chevron-right"></i>
-                    </a>
-                <?php else: ?>
-                    <span class="page-link-pag disabled"><i class="bi bi-chevron-right"></i></span>
-                <?php endif; ?>
-            </nav>
-        </div>
-        <?php elseif ($total_records > 0): ?>
-        <div class="pagination-wrapper">
-            <div class="pagination-info">
-                Menampilkan <span>1</span> - <span><?= $total_records ?></span> dari <span><?= $total_records ?></span> jadwal
+            <?php elseif ($total_records > 0): ?>
+            <div class="pagination-wrapper">
+                <div class="pagination-info">
+                    Menampilkan <span>1</span> - <span><?= $total_records ?></span> dari <span><?= $total_records ?></span> jadwal
+                </div>
             </div>
+            <?php endif; ?>
         </div>
-        <?php endif; ?>
+
     </div>
 
-</div>
-
-<!-- FILTER MODAL -->
-<div class="modal fade filter-modal" id="modalFilterData" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="fw-bold mb-0"><i class="bi bi-funnel-fill me-2 text-danger"></i>Filter Data</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">PAKET</label>
-                    <select class="filter-select" id="modalPaket">
-                        <option value="0" <?= $filter_paket == 0 ? 'selected' : '' ?>>Semua Paket</option>
-                        <?php 
-                        sqlsrv_free_stmt($q_paket);
-                        $q_paket = sqlsrv_query($conn, "SELECT ID_Paket, Nama_Paket FROM Paket_Foto WHERE Status = 1 AND Is_Deleted = 0 ORDER BY Nama_Paket");
-                        while($p = sqlsrv_fetch_array($q_paket, SQLSRV_FETCH_ASSOC)): 
-                        ?>
-                            <option value="<?= $p['ID_Paket'] ?>" <?= $filter_paket == $p['ID_Paket'] ? 'selected' : '' ?>><?= htmlspecialchars($p['Nama_Paket']) ?></option>
-                        <?php endwhile; ?>
-                    </select>
+    <!-- FILTER MODAL -->
+    <div class="modal fade filter-modal" id="modalFilterData" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-funnel-fill me-2 text-danger"></i>Filter Data</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="mb-3">
-                    <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">RUANGAN</label>
-                    <select class="filter-select" id="modalRuangan">
-                        <option value="0" <?= $filter_ruangan == 0 ? 'selected' : '' ?>>Semua Ruangan</option>
-                        <?php 
-                        sqlsrv_free_stmt($q_ruangan);
-                        $q_ruangan = sqlsrv_query($conn, "SELECT ID_Ruangan, Nama_Ruangan FROM Ruangan WHERE Status = 1 AND Is_Deleted = 0 ORDER BY Nama_Ruangan");
-                        while($r = sqlsrv_fetch_array($q_ruangan, SQLSRV_FETCH_ASSOC)): 
-                        ?>
-                            <option value="<?= $r['ID_Ruangan'] ?>" <?= $filter_ruangan == $r['ID_Ruangan'] ? 'selected' : '' ?>><?= htmlspecialchars($r['Nama_Ruangan']) ?></option>
-                        <?php endwhile; ?>
-                    </select>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">PAKET</label>
+                        <select class="filter-select" id="modalPaket">
+                            <option value="0" <?= $filter_paket == 0 ? 'selected' : '' ?>>Semua Paket</option>
+                            <?php 
+                            sqlsrv_free_stmt($q_paket);
+                            $q_paket = sqlsrv_query($conn, "SELECT ID_Paket, Nama_Paket FROM Paket_Foto WHERE Status = 1 AND Is_Deleted = 0 ORDER BY Nama_Paket");
+                            while($p = sqlsrv_fetch_array($q_paket, SQLSRV_FETCH_ASSOC)): 
+                            ?>
+                                <option value="<?= $p['ID_Paket'] ?>" <?= $filter_paket == $p['ID_Paket'] ? 'selected' : '' ?>><?= htmlspecialchars($p['Nama_Paket']) ?></option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">RUANGAN</label>
+                        <select class="filter-select" id="modalRuangan">
+                            <option value="0" <?= $filter_ruangan == 0 ? 'selected' : '' ?>>Semua Ruangan</option>
+                            <?php 
+                            sqlsrv_free_stmt($q_ruangan);
+                            $q_ruangan = sqlsrv_query($conn, "SELECT ID_Ruangan, Nama_Ruangan FROM Ruangan WHERE Status = 1 AND Is_Deleted = 0 ORDER BY Nama_Ruangan");
+                            while($r = sqlsrv_fetch_array($q_ruangan, SQLSRV_FETCH_ASSOC)): 
+                            ?>
+                                <option value="<?= $r['ID_Ruangan'] ?>" <?= $filter_ruangan == $r['ID_Ruangan'] ? 'selected' : '' ?>><?= htmlspecialchars($r['Nama_Ruangan']) ?></option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">TANGGAL</label>
+                        <input type="date" class="filter-select" id="modalTanggal" value="<?= htmlspecialchars($filter_tanggal) ?>">
+                    </div>
+                    <div class="mb-3">
+                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">STATUS AKTIF</label>
+                        <select class="filter-select" id="modalStatus">
+                            <option value="" <?= $filter_status === '' ? 'selected' : '' ?>>Semua</option>
+                            <option value="1" <?= $filter_status === '1' ? 'selected' : '' ?>>Aktif</option>
+                            <option value="0" <?= $filter_status === '0' ? 'selected' : '' ?>>Nonaktif</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">URUTAN</label>
+                        <select class="filter-select" id="modalSort">
+                            <option value="tanggal_asc" <?= $sort == 'tanggal_asc' ? 'selected' : '' ?>>Tanggal ↑ (Terdekat)</option>
+                            <option value="tanggal_desc" <?= $sort == 'tanggal_desc' ? 'selected' : '' ?>>Tanggal ↓ (Terjauh)</option>
+                            <option value="ruangan_asc" <?= $sort == 'ruangan_asc' ? 'selected' : '' ?>>Ruangan A-Z</option>
+                            <option value="paket_asc" <?= $sort == 'paket_asc' ? 'selected' : '' ?>>Paket A-Z</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">TANGGAL</label>
-                    <input type="date" class="filter-select" id="modalTanggal" value="<?= htmlspecialchars($filter_tanggal) ?>">
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" style="flex: 1; background: #f1f5f9; color: #475569; border: none; border-radius: 14px; padding: 14px 20px; font-weight: 700;" onclick="resetFilter()">
+                        <i class="bi bi-arrow-counterclockwise me-2"></i>Reset
+                    </button>
+                    <button type="button" class="btn btn-danger" style="flex: 1; background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; border-radius: 14px; padding: 14px 20px; font-weight: 700;" onclick="applyFilter()">
+                        <i class="bi bi-check-lg me-2"></i>Terapkan
+                    </button>
                 </div>
-                <div class="mb-3">
-                    <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">STATUS AKTIF</label>
-                    <select class="filter-select" id="modalStatus">
-                        <option value="" <?= $filter_status === '' ? 'selected' : '' ?>>Semua</option>
-                        <option value="1" <?= $filter_status === '1' ? 'selected' : '' ?>>Aktif</option>
-                        <option value="0" <?= $filter_status === '0' ? 'selected' : '' ?>>Nonaktif</option>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">URUTAN</label>
-                    <select class="filter-select" id="modalSort">
-                        <option value="tanggal_asc" <?= $sort == 'tanggal_asc' ? 'selected' : '' ?>>Tanggal ↑ (Terdekat)</option>
-                        <option value="tanggal_desc" <?= $sort == 'tanggal_desc' ? 'selected' : '' ?>>Tanggal ↓ (Terjauh)</option>
-                        <option value="ruangan_asc" <?= $sort == 'ruangan_asc' ? 'selected' : '' ?>>Ruangan A-Z</option>
-                        <option value="paket_asc" <?= $sort == 'paket_asc' ? 'selected' : '' ?>>Paket A-Z</option>
-                    </select>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" style="flex: 1; background: #f1f5f9; color: #475569; border: none; border-radius: 14px; padding: 14px 20px; font-weight: 700;" onclick="resetFilter()">
-                    <i class="bi bi-arrow-counterclockwise me-2"></i>Reset
-                </button>
-                <button type="button" class="btn btn-danger" style="flex: 1; background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; border-radius: 14px; padding: 14px 20px; font-weight: 700;" onclick="applyFilter()">
-                    <i class="bi bi-check-lg me-2"></i>Terapkan
-                </button>
             </div>
         </div>
     </div>
-</div>
 
-<script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
-<script>
-// Toggle Submenu
-document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
-    button.addEventListener('click', function(e) {
-        e.preventDefault();
-        const targetId = this.getAttribute('data-target');
-        const targetEl = document.querySelector(targetId);
-        const chevron = this.querySelector('.icon-chevron');
-        if (targetEl) {
-            const isShown = targetEl.classList.contains('show');
-            document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
-            document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
-            if (!isShown) {
-                targetEl.classList.add('show');
-                if (chevron) chevron.style.transform = 'rotate(180deg)';
+    <script>
+    // Toggle Submenu
+    document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            const targetId = this.getAttribute('data-target');
+            const targetEl = document.querySelector(targetId);
+            const chevron = this.querySelector('.icon-chevron');
+            if (targetEl) {
+                const isShown = targetEl.classList.contains('show');
+                document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
+                document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
+                if (!isShown) {
+                    targetEl.classList.add('show');
+                    if (chevron) chevron.style.transform = 'rotate(180deg)';
+                }
             }
-        }
+        });
     });
-});
 
-// Filter Modal
-var filterModal;
-function bukaModalFilter() {
-    filterModal = new bootstrap.Modal(document.getElementById('modalFilterData'));
-    filterModal.show();
-}
-function applyFilter() {
-    document.getElementById('hiddenPaket').value = document.getElementById('modalPaket').value;
-    document.getElementById('hiddenRuangan').value = document.getElementById('modalRuangan').value;
-    document.getElementById('hiddenTanggal').value = document.getElementById('modalTanggal').value;
-    document.getElementById('hiddenStatus').value = document.getElementById('modalStatus').value;
-    document.getElementById('hiddenSort').value = document.getElementById('modalSort').value;
-    document.getElementById('mainSearchForm').submit();
-}
-function resetFilter() {
-    document.getElementById('modalPaket').value = '0';
-    document.getElementById('modalRuangan').value = '0';
-    document.getElementById('modalTanggal').value = '';
-    document.getElementById('modalStatus').value = '';
-    document.getElementById('modalSort').value = 'tanggal_asc';
-    document.getElementById('hiddenPaket').value = '0';
-    document.getElementById('hiddenRuangan').value = '0';
-    document.getElementById('hiddenTanggal').value = '';
-    document.getElementById('hiddenStatus').value = '';
-    document.getElementById('hiddenSort').value = 'tanggal_asc';
-    document.getElementById('mainSearchForm').submit();
-}
+    // Filter Modal
+    var filterModal;
+    function bukaModalFilter() {
+        filterModal = new bootstrap.Modal(document.getElementById('modalFilterData'));
+        filterModal.show();
+    }
+    function applyFilter() {
+        document.getElementById('hiddenPaket').value = document.getElementById('modalPaket').value;
+        document.getElementById('hiddenRuangan').value = document.getElementById('modalRuangan').value;
+        document.getElementById('hiddenTanggal').value = document.getElementById('modalTanggal').value;
+        document.getElementById('hiddenStatus').value = document.getElementById('modalStatus').value;
+        document.getElementById('hiddenSort').value = document.getElementById('modalSort').value;
+        document.getElementById('mainSearchForm').submit();
+    }
+    function resetFilter() {
+        document.getElementById('modalPaket').value = '0';
+        document.getElementById('modalRuangan').value = '0';
+        document.getElementById('modalTanggal').value = '';
+        document.getElementById('modalStatus').value = '';
+        document.getElementById('modalSort').value = 'tanggal_asc';
+        document.getElementById('hiddenPaket').value = '0';
+        document.getElementById('hiddenRuangan').value = '0';
+        document.getElementById('hiddenTanggal').value = '';
+        document.getElementById('hiddenStatus').value = '';
+        document.getElementById('hiddenSort').value = 'tanggal_asc';
+        document.getElementById('mainSearchForm').submit();
+    }
 
-// Toggle Status
-function toggleStatus(id, currentStatus, info) {
-    const newStatus = currentStatus === 1 ? 0 : 1;
-    const actionText = currentStatus === 1 ? 'menonaktifkan' : 'mengaktifkan';
+    // Toggle Status
+    function toggleStatus(id, currentStatus, info) {
+        const newStatus = currentStatus === 1 ? 0 : 1;
+        const actionText = currentStatus === 1 ? 'menonaktifkan' : 'mengaktifkan';
 
-    Swal.fire({
-        title: 'Ubah Status Jadwal?',
-        text: 'Anda akan ' + actionText + ' jadwal ' + info,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#D53D66',
-        cancelButtonColor: '#718096',
-        confirmButtonText: 'Ya, Ubah',
-        cancelButtonText: 'Batal'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            window.location.href = 'action_jadwal.php?aksi=toggle_status&id=' + id + '&status=' + newStatus;
-        }
-    });
-}
+        Swal.fire({
+            title: 'Ubah Status Jadwal?',
+            text: 'Anda akan ' + actionText + ' jadwal ' + info,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#D53D66',
+            cancelButtonColor: '#718096',
+            confirmButtonText: 'Ya, Ubah',
+            cancelButtonText: 'Batal'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = 'action_jadwal.php?aksi=toggle_status&id=' + id + '&status=' + newStatus;
+            }
+        });
+    }
 
-// Soft Delete
-function softDelete(id, info) {
-    Swal.fire({
-        title: 'Hapus Jadwal?',
-        text: 'Jadwal ' + info + ' akan dihapus (soft delete).',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#dc2626',
-        cancelButtonColor: '#718096',
-        confirmButtonText: 'Ya, Hapus',
-        cancelButtonText: 'Batal'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            window.location.href = 'action_jadwal.php?aksi=soft_delete&id=' + id;
-        }
-    });
-}
+    // Soft Delete
+    function softDelete(id, info) {
+        Swal.fire({
+            title: 'Hapus Jadwal?',
+            text: 'Jadwal ' + info + ' akan dihapus (soft delete).',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#dc2626',
+            cancelButtonColor: '#718096',
+            confirmButtonText: 'Ya, Hapus',
+            cancelButtonText: 'Batal'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = 'action_jadwal.php?aksi=soft_delete&id=' + id;
+            }
+        });
+    }
 
-// Generate 7 Hari
-function confirmGenerate(e) {
-    e.preventDefault();
-    Swal.fire({
-        title: 'Generate Jadwal 7 Hari?',
-        text: 'Sistem akan membuat jadwal otomatis untuk 7 hari ke depan berdasarkan paket dan ruangan yang valid.',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonColor: '#059669',
-        cancelButtonColor: '#718096',
-        confirmButtonText: 'Ya, Generate',
-        cancelButtonText: 'Batal'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            window.location.href = e.target.href || e.target.closest('a').href;
-        }
-    });
-    return false;
-}
+    // Konfirmasi Logout
+    function confirmLogout(e) {
+        e.preventDefault();
+        Swal.fire({
+            title: 'Keluar Sistem?',
+            text: 'Apakah Anda yakin ingin keluar dari sistem SpotLight Studio?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#D53D66',
+            cancelButtonColor: '#718096',
+            confirmButtonText: 'Ya, Keluar',
+            cancelButtonText: 'Batal'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = '../../logout.php';
+            }
+        });
+    }
 
-// Jam Real-Time
-function updateLiveClock() {
-    const now = new Date();
-    const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
-    const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-    const dayName = days[now.getDay()];
-    const day = now.getDate();
-    const monthName = months[now.getMonth()];
-    const year = now.getFullYear();
-    let hours = now.getHours();
-    let minutes = now.getMinutes();
-    let seconds = now.getSeconds();
-    hours = hours < 10 ? '0' + hours : hours;
-    minutes = minutes < 10 ? '0' + minutes : minutes;
-    seconds = seconds < 10 ? '0' + seconds : seconds;
-    document.getElementById('live-clock').innerText = `${dayName}, ${day} ${monthName} ${year} - ${hours}:${minutes}:${seconds} WIB`;
-}
-setInterval(updateLiveClock, 1000);
-updateLiveClock();
+    function confirmLandingPage(e) {
+        e.preventDefault();
+        Swal.fire({
+            title: 'Kembali ke Beranda?',
+            text: 'Anda akan dialihkan ke halaman utama publik.',
+            icon: 'info',
+            showCancelButton: true,
+            confirmButtonColor: '#D53D66',
+            cancelButtonColor: '#718096',
+            confirmButtonText: 'Ya, Kembali',
+            cancelButtonText: 'Batal'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = '../../index.php';
+            }
+        });
+    }
 
-// Konfirmasi Logout
-function confirmLogout(e) {
-    e.preventDefault();
-    Swal.fire({
-        title: 'Keluar Sistem?',
-        text: 'Apakah Anda yakin ingin keluar dari sistem SpotLight Studio?',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#D53D66',
-        cancelButtonColor: '#718096',
-        confirmButtonText: 'Ya, Keluar',
-        cancelButtonText: 'Batal'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            window.location.href = '../../logout.php';
-        }
-    });
-}
+    // Jam Real-Time 24-Jam WIB
+    function updateLiveClock() {
+        var clockEl = document.getElementById('live-clock');
+        if (!clockEl) return;
+        var now = new Date();
+        var days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+        var months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+        var dayName = days[now.getDay()];
+        var day = now.getDate();
+        var monthName = months[now.getMonth()];
+        var year = now.getFullYear();
+        var hours = now.getHours();
+        var minutes = now.getMinutes();
+        var seconds = now.getSeconds();
+        hours = hours < 10 ? '0' + hours : hours;
+        minutes = minutes < 10 ? '0' + minutes : minutes;
+        seconds = seconds < 10 ? '0' + seconds : seconds;
+        clockEl.innerText = dayName + ', ' + day + ' ' + monthName + ' ' + year + ' - ' + hours + ':' + minutes + ':' + seconds + ' WIB';
+    }
+    updateLiveClock();
+    setInterval(updateLiveClock, 1000);
 
-function confirmLandingPage(e) {
-    e.preventDefault();
-    Swal.fire({
-        title: 'Kembali ke Beranda?',
-        text: 'Anda akan dialihkan ke halaman utama publik.',
-        icon: 'info',
-        showCancelButton: true,
-        confirmButtonColor: '#D53D66',
-        cancelButtonColor: '#718096',
-        confirmButtonText: 'Ya, Kembali',
-        cancelButtonText: 'Batal'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            window.location.href = '../../index.php';
-        }
-    });
-}
+    function confirmGenerate(e) {
+        e.preventDefault();
+        Swal.fire({
+            title: 'Generate Jadwal 7 Hari?',
+            text: 'Sistem akan membuat jadwal otomatis untuk 7 hari ke depan berdasarkan paket dan ruangan yang valid.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#059669',
+            cancelButtonColor: '#718096',
+            confirmButtonText: 'Ya, Generate',
+            cancelButtonText: 'Batal'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = e.target.href || e.target.closest('a').href;
+            }
+        });
+        return false;
+    }
 
-function bukaModalBiodata() {
-    Swal.fire({
-        title: '<?= htmlspecialchars($nama_admin) ?>',
-        text: 'Administrator - SpotLight Studio',
-        icon: 'info',
-        confirmButtonColor: '#D53D66'
-    });
-}
-</script>
+    function bukaModalBiodata() {
+        Swal.fire({
+            title: '<?= htmlspecialchars($nama_admin) ?>',
+            text: 'Administrator - SpotLight Studio',
+            icon: 'info',
+            confirmButtonColor: '#D53D66'
+        });
+    }
+    </script>
 
-<!-- Notifikasi -->
-<?php if(isset($_GET['status_sukses'])): ?>
-<script>
-    let msg = "";
-    let t_icon = "success";
-    let t_title = "Berhasil!";
+    <!-- Notifikasi -->
+    <?php if(isset($_GET['status_sukses'])): ?>
+    <script>
+        let msg = "";
+        let t_icon = "success";
+        let t_title = "Berhasil!";
 
-    if ("<?= $_GET['status_sukses'] ?>" == 'tambah') msg = "Jadwal studio berhasil ditambahkan!";
-    else if ("<?= $_GET['status_sukses'] ?>" == 'edit') msg = "Data jadwal studio berhasil diperbarui!";
-    else if ("<?= $_GET['status_sukses'] ?>" == 'toggle_status') { msg = "Status jadwal berhasil diubah!"; t_title = "Status Diubah"; }
-    else if ("<?= $_GET['status_sukses'] ?>" == 'soft_delete') { msg = "Jadwal berhasil dihapus!"; t_title = "Hapus Berhasil"; }
-    else if ("<?= $_GET['status_sukses'] ?>" == 'generate') { msg = "<?= $_GET['message'] ?? 'Jadwal 7 hari berhasil digenerate!' ?>"; t_title = "Generate Berhasil"; }
-    else if ("<?= $_GET['status_sukses'] ?>" == 'error') { msg = "<?= $_GET['message'] ?? 'Terjadi kesalahan!' ?>"; t_icon = "error"; t_title = "Gagal!"; }
+        if ("<?= $_GET['status_sukses'] ?>" == 'tambah') msg = "Jadwal studio berhasil ditambahkan!";
+        else if ("<?= $_GET['status_sukses'] ?>" == 'edit') msg = "Data jadwal studio berhasil diperbarui!";
+        else if ("<?= $_GET['status_sukses'] ?>" == 'toggle_status') { msg = "Status jadwal berhasil diubah!"; t_title = "Status Diubah"; }
+        else if ("<?= $_GET['status_sukses'] ?>" == 'soft_delete') { msg = "Jadwal berhasil dihapus!"; t_title = "Hapus Berhasil"; }
+        else if ("<?= $_GET['status_sukses'] ?>" == 'generate') { msg = "<?= $_GET['message'] ?? 'Jadwal 7 hari berhasil digenerate!' ?>"; t_title = "Generate Berhasil"; }
+        else if ("<?= $_GET['status_sukses'] ?>" == 'error') { msg = "<?= $_GET['message'] ?? 'Terjadi kesalahan!' ?>"; t_icon = "error"; t_title = "Gagal!"; }
 
-    Swal.fire({
-        icon: t_icon,
-        title: t_title,
-        text: msg,
-        confirmButtonColor: '#D53D66'
-    });
-</script>
-<?php endif; ?>
-
+        Swal.fire({
+            icon: t_icon,
+            title: t_title,
+            text: msg,
+            confirmButtonColor: '#D53D66'
+        });
+    </script>
+    <?php endif; ?>
 </body>
 </html>
