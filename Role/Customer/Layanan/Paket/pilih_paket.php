@@ -25,14 +25,28 @@ $id_customer = $_SESSION['id_user'];
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23d83f67'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
 $q_profile = sqlsrv_query($conn, 
-    "SELECT Nama_Pelanggan, Foto_Profil FROM Pelanggan WHERE ID_Pelanggan = ? AND Is_Deleted = 0 AND Status = ?", 
+    "SELECT Nama_Pelanggan, Foto_Profil, Username_Pelanggan, Email_Pelanggan, No_Hp, Alamat, Jenis_Kelamin, Tanggal_Lahir FROM Pelanggan WHERE ID_Pelanggan = ? AND Is_Deleted = 0 AND Status = ?", 
     array($id_customer, STATUS_DATA_AKTIF)
 );
 if ($q_profile === false) {
     die("Error query Profil: " . print_r(sqlsrv_errors(), true));
 }
 $d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
+
 $nama_customer = $d_profile['Nama_Pelanggan'] ?? 'Customer';
+$username_customer = $d_profile['Username_Pelanggan'] ?? '';
+$email_customer = $d_profile['Email_Pelanggan'] ?? 'customer@spotlight.com';
+$no_hp_customer = $d_profile['No_Hp'] ?? '';
+$alamat_customer = $d_profile['Alamat'] ?? '';
+$jk_customer = $d_profile['Jenis_Kelamin'] ?? 'Laki-laki';
+$tgl_lahir_raw = $d_profile['Tanggal_Lahir'] ?? '';
+$tgl_lahir_str = '';
+if (is_object($tgl_lahir_raw) && method_exists($tgl_lahir_raw, 'format')) {
+    $tgl_lahir_str = $tgl_lahir_raw->format('Y-m-d');
+} else if (is_string($tgl_lahir_raw)) {
+    $tgl_lahir_str = substr($tgl_lahir_raw, 0, 10);
+}
+
 $foto_customer = $d_profile['Foto_Profil'] ?? 'default.jpg';
 $foto_customer_src = ($foto_customer != 'default.jpg' && file_exists("../../../../assets/img/pelanggan/" . $foto_customer)) 
     ? "../../../../assets/img/pelanggan/" . $foto_customer 
@@ -67,16 +81,14 @@ if (!$d_paket) {
     exit();
 }
 
-// Path foto paket
+// Path foto paket (Sesuai dengan logika index.php agar tidak memicu broken image jika tidak ada gambar asli)
 $foto_paket = ($d_paket['Foto_Paket'] != 'default_paket.jpg' && file_exists("../../../../assets/img/paket/" . $d_paket['Foto_Paket'])) 
     ? "../../../../assets/img/paket/" . $d_paket['Foto_Paket'] 
-    : "../../../../assets/img/paket/default_paket.jpg";
+    : null;
 
 $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
 
-// =====================================================
-// AMBIL RUANGAN YANG TERHUBUNG DENGAN PAKET INI
-// =====================================================
+// Ambil semua paket foto terhubung saat ini
 $q_ruangan = sqlsrv_query($conn, 
     "SELECT r.ID_Ruangan, r.Nama_Ruangan, r.Deskripsi, r.Foto_Ruangan
      FROM Ruangan r
@@ -143,10 +155,13 @@ foreach ($ruangan_list as $ruangan) {
 
 // =====================================================
 // AMBIL JADWAL TERSEDIA HARI INI & BESOK UNTUK SETIAP RUANGAN
-// Status_Jadwal = 0 = Tersedia
 // =====================================================
-$today = date('Y-m-d');
-$tomorrow = date('Y-m-d', strtotime('+1 day'));
+$q_ruangan_count = sqlsrv_query($conn, 
+    "SELECT COUNT(*) as total FROM Paket_Ruangan WHERE ID_Paket = ?", 
+    array($id_paket)
+);
+$d_ruangan_count = sqlsrv_fetch_array($q_ruangan_count, SQLSRV_FETCH_ASSOC);
+$jumlah_ruangan = $d_ruangan_count['total'] ?? 0;
 
 $jadwal_map = [];
 foreach ($ruangan_list as $ruangan) {
@@ -213,9 +228,14 @@ foreach ($ruangan_list as $ruangan) {
             --text-dark: #1e1e24;
             --text-muted: #718096;
             --body-bg: #f8fafc;
+            --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { margin: 0; padding: 0; box-spacing: border-box; }
+
+        html {
+            scroll-behavior: smooth;
+        }
 
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
@@ -240,7 +260,7 @@ foreach ($ruangan_list as $ruangan) {
             font-size: 1.8rem;
             color: var(--p-pink);
             text-decoration: none;
-            letter-spacing: -1.5px;
+            letter-spacing: -1px;
         }
         .nav-logo span { color: var(--text-dark); font-weight: 700; font-size: 0.9rem; }
         .nav-menu-center {
@@ -380,7 +400,7 @@ foreach ($ruangan_list as $ruangan) {
             margin: 0 auto;
         }
 
-        /* ===== PROGRESS BAR ===== */
+        /* ===== PROGRESS BAR (6 LANGKAH REVISI SINKRON SUNTUK KESELURUHAN) ===== */
         .progress-container {
             background: #ffffff;
             border-radius: 20px;
@@ -456,24 +476,56 @@ foreach ($ruangan_list as $ruangan) {
             overflow: hidden;
             border: 1px solid #f1f5f9;
         }
-        .detail-foto {
-            width: 100%;
-            height: 400px;
-            object-fit: cover;
+        
+        /* DESIGN PREMIUM GAMBAR HERO PAKET (SINKRON PLAYLIST LOGIKA INDEX.PHP) */
+        .package-banner-container {
+            position: relative;
+            height: 340px;
+            overflow: hidden;
+            background: linear-gradient(135deg, var(--s-pink), var(--light-pink));
+            border-bottom: 4px solid var(--light-pink);
         }
-        .detail-body { padding: 30px; }
-        .detail-badge {
-            display: inline-block;
-            padding: 6px 16px;
-            background: var(--s-pink);
+        .package-banner-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.5s ease;
+        }
+        .package-banner-container:hover .package-banner-img {
+            transform: scale(1.05);
+        }
+        .package-banner-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--s-pink), var(--light-pink));
             color: var(--p-pink);
+            font-size: 5rem;
+        }
+        .package-banner-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.45));
+            z-index: 1;
+        }
+        .package-banner-badge {
+            position: absolute;
+            top: 20px; left: 20px;
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #fff;
+            padding: 8px 18px;
             border-radius: 50px;
             font-size: 0.8rem;
             font-weight: 800;
+            z-index: 2;
+            box-shadow: 0 4px 15px rgba(216, 63, 103, 0.3);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 16px;
+            letter-spacing: 0.8px;
         }
+
+        .detail-body { padding: 30px; }
         .detail-title {
             font-size: 2rem;
             font-weight: 900;
@@ -530,8 +582,9 @@ foreach ($ruangan_list as $ruangan) {
         .detail-info-list li:last-child { border-bottom: none; }
         .detail-info-list li i {
             color: var(--p-pink);
-            font-size: 1.2rem;
-            width: 24px;
+            font-size: 1.1rem;
+            width: 20px;
+            text-align: center;
         }
         .detail-info-list li span {
             color: var(--text-muted);
@@ -820,11 +873,6 @@ foreach ($ruangan_list as $ruangan) {
             color: #fff;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-5px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
         /* ===== RESPONSIVE ===== */
         @media (max-width: 992px) {
             .detail-section { grid-template-columns: 1fr; }
@@ -832,6 +880,7 @@ foreach ($ruangan_list as $ruangan) {
             .nav-menu-center { display: none; }
             .main-container { padding: 20px; }
             .top-navbar { padding: 16px 20px; }
+            .breadcrumb-bar { padding: 16px 20px; }
             .ruangan-grid { grid-template-columns: 1fr; }
             .progress-line { width: 30px; }
         }
@@ -839,7 +888,7 @@ foreach ($ruangan_list as $ruangan) {
 </head>
 <body>
 
-    <!-- NAVBAR ATAS -->
+    <!-- NAVBAR ATAS (Penyempurnaan: Navigasi Menu Barang Cetak Dihapus Sesuai Urutan Revisi) -->
     <nav class="top-navbar">
         <a href="../../index.php" class="nav-logo">
             SpotLight.<span>StudioFoto</span>
@@ -848,7 +897,7 @@ foreach ($ruangan_list as $ruangan) {
             <a href="../../index.php" class="nav-link-item">Dashboard</a>
             <a href="pilih_paket.php?id_paket=<?= $id_paket ?>" class="nav-link-item active">Booking Baru</a>
             <a href="../../Riwayat/riwayat.php" class="nav-link-item">Riwayat</a>
-            <a href="../../Cetak/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
+            <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
         </div>
         <div class="nav-right">
             <a href="pilih_paket.php?id_paket=<?= $id_paket ?>" class="nav-btn-booking">
@@ -859,6 +908,12 @@ foreach ($ruangan_list as $ruangan) {
                 <div class="nav-dropdown" id="navDropdown">
                     <div class="dropdown-header">Halo, <?= htmlspecialchars($nama_customer) ?></div>
                     <div class="dropdown-divider"></div>
+                    
+                    <!-- MENU: Akses Detil Profil -->
+                    <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalProfil">
+                        <i class="bi bi-person-circle"></i> Profil Saya
+                    </button>
+                    
                     <a href="../../../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
                         <i class="bi bi-house-door"></i> Kembali ke Beranda
                     </a>
@@ -885,7 +940,7 @@ foreach ($ruangan_list as $ruangan) {
     <!-- MAIN CONTENT -->
     <main class="main-container">
 
-        <!-- PROGRESS BAR -->
+        <!-- PROGRESS BAR: 1.Paket -> 2.Ruangan -> 3.Tema -> 4.Barang Cetak -> 5.Jadwal -> 6.Konfirmasi -->
         <div class="progress-container">
             <div class="progress-step active">
                 <div class="progress-step-circle">1</div>
@@ -904,11 +959,16 @@ foreach ($ruangan_list as $ruangan) {
             <div class="progress-line"></div>
             <div class="progress-step">
                 <div class="progress-step-circle">4</div>
-                <div class="progress-step-label">Pilih Jadwal</div>
+                <div class="progress-step-label">Pilih Barang Cetak</div>
             </div>
             <div class="progress-line"></div>
             <div class="progress-step">
                 <div class="progress-step-circle">5</div>
+                <div class="progress-step-label">Pilih Jadwal</div>
+            </div>
+            <div class="progress-line"></div>
+            <div class="progress-step">
+                <div class="progress-step-circle">6</div>
                 <div class="progress-step-label">Konfirmasi</div>
             </div>
         </div>
@@ -917,35 +977,48 @@ foreach ($ruangan_list as $ruangan) {
         <div class="detail-section">
             <!-- Left: Info -->
             <div class="detail-left">
-                <img src="<?= $foto_paket ?>" class="detail-foto" alt="<?= htmlspecialchars($d_paket['Nama_Paket']) ?>">
+                <!-- DESIGNED HERO BANNER PAKET FOTO (DENGAN EFEK SINKRONISASI LOGIKA KAMERA INDEX.PHP) -->
+                <div class="package-banner-container">
+                    <?php if ($foto_paket): ?>
+                        <img src="<?= $foto_paket ?>" class="package-banner-img" alt="<?= htmlspecialchars($d_paket['Nama_Paket']) ?>">
+                    <?php else: ?>
+                        <!-- Kamera Placeholder Berwarna Merah Muda Sinkron dengan index.php -->
+                        <div class="package-banner-placeholder">
+                            <i class="bi bi-camera-fill"></i>
+                        </div>
+                    <?php endif; ?>
+                    <div class="package-banner-overlay"></div>
+                    <div class="package-banner-badge"><i class="bi bi-stars"></i> Paket Populer</div>
+                </div>
+                
                 <div class="detail-body">
-                    <div class="detail-badge">Paket Foto</div>
+                    <div class="detail-badge">Detail Paket Pilihan</div>
                     <h1 class="detail-title"><?= htmlspecialchars($d_paket['Nama_Paket']) ?></h1>
                     <div class="detail-meta">
                         <div class="detail-meta-item">
                             <i class="bi bi-star-fill"></i>
-                            <span>4.8</span> (120 review)
+                            <span>4.9</span> (145 review)
                         </div>
                         <div class="detail-meta-item">
                             <i class="bi bi-geo-alt-fill"></i>
-                            <span>SpotLight Studio, Cikarang</span>
+                            <span>SpotLight Studio Utama, Cikarang</span>
                         </div>
                         <div class="detail-meta-item">
-                            <i class="bi bi-camera-fill"></i>
-                            <span>Studio Foto Profesional</span>
+                            <i class="bi bi-shield-check"></i>
+                            <span>Jaminan Sesi Terjadwal</span>
                         </div>
                     </div>
 
-                    <h2 class="detail-section-title"><i class="bi bi-file-text-fill"></i> Deskripsi</h2>
+                    <h2 class="detail-section-title"><i class="bi bi-file-text-fill"></i> Deskripsi Paket</h2>
                     <p class="detail-desc">
                         <?= htmlspecialchars($d_paket['Deskripsi'] ?? 'Paket foto ' . $d_paket['Nama_Paket'] . ' dengan kualitas terbaik untuk kenangan Anda. Dilengkapi dengan fotografer profesional, peralatan studio lengkap, dan hasil foto berkualitas tinggi.') ?>
                     </p>
 
-                    <h2 class="detail-section-title"><i class="bi bi-info-circle-fill"></i> Informasi Paket</h2>
+                    <h2 class="detail-section-title"><i class="bi bi-info-circle-fill"></i> Ketentuan Paket</h2>
                     <ul class="detail-info-list">
                         <li><i class="bi bi-stopwatch"></i> Durasi Sesi <span><?= $d_paket['Durasi_Waktu'] ?> menit</span></li>
                         <li><i class="bi bi-people-fill"></i> Kapasitas <span><?= $d_paket['Kapasitas_Orang'] ?> orang</span></li>
-                        <li><i class="bi bi-door-open-fill"></i> Ruangan Tersedia <span><?= count($ruangan_list) ?> studio</span></li>
+                        <li><i class="bi bi-door-open-fill"></i> Ruangan Tersedia <span><?= $jumlah_ruangan ?> studio</span></li>
                         <li><i class="bi bi-image-fill"></i> File Hasil <span>Softcopy + Edit</span></li>
                         <li><i class="bi bi-cash-stack"></i> Pembayaran <span>DP 65% + Pelunasan</span></li>
                     </ul>
@@ -958,9 +1031,10 @@ foreach ($ruangan_list as $ruangan) {
                     <div class="price-label">Mulai dari</div>
                     <div class="price-value">Rp <?= $harga_format ?></div>
                     <div class="price-unit">Per Sesi</div>
+                    <!-- SINKRON ALUR AWAL: Tombol Mengarah ke Bagian Ruangan di Bawah -->
                     <a href="#ruangan-section" class="btn-cek" onclick="event.preventDefault(); document.querySelector('#ruangan-section').scrollIntoView({ behavior: 'smooth' });">
-                        <i class="bi bi-calendar-check-fill"></i>
-                        Lihat Ruangan Tersedia
+                        <i class="bi bi-door-open-fill"></i>
+                        Pilih Ruangan
                     </a>
                 </div>
                 <div class="benefit-card">
@@ -985,7 +1059,7 @@ foreach ($ruangan_list as $ruangan) {
             </div>
         </div>
 
-        <!-- RUANGAN SECTION -->
+        <!-- RUANGAN SECTION (SINKRON ALUR AWAL) -->
         <div class="ruangan-section" id="ruangan-section">
             <div class="ruangan-section-title">
                 <i class="bi bi-door-open-fill"></i>
@@ -1002,6 +1076,7 @@ foreach ($ruangan_list as $ruangan) {
                     $tema_list = $tema_map[$id_ruangan] ?? [];
                     $jadwal_list = $jadwal_map[$id_ruangan] ?? [];
                 ?>
+                    <!-- Link Kartu Ruangan Dialihkan Sesuai Alur Awal Anda ke Langkah 2: Pilih Ruangan -->
                     <a href="../Ruangan/pilih_ruangan.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>" class="ruangan-card">
                         <div class="ruangan-img-wrapper">
                             <?php if ($foto_ruangan): ?>
@@ -1047,11 +1122,11 @@ foreach ($ruangan_list as $ruangan) {
                             </div>
                             <?php endif; ?>
 
-                            <!-- Jadwal Tags -->
+                            <!-- Jadwal Tags (Menampilkan format jam 24 jam Indonesia tanpa AM/PM) -->
                             <?php if (!empty($jadwal_list)): ?>
                             <div class="ruangan-tags">
                                 <?php foreach ($jadwal_list as $jadwal): ?>
-                                    <span class="tag-jadwal"><i class="bi bi-clock me-1"></i><?= $jadwal['Tanggal_Str'] ?> <?= $jadwal['Jam_Mulai_Str'] ?></span>
+                                    <span class="tag-jadwal"><i class="bi bi-clock-fill me-1"></i><?= $jadwal['Tanggal_Str'] ?> (<?= $jadwal['Jam_Mulai_Str'] ?> WIB)</span>
                                 <?php endforeach; ?>
                             </div>
                             <?php endif; ?>
@@ -1088,6 +1163,172 @@ foreach ($ruangan_list as $ruangan) {
 
     </main>
 
+    <!-- =====================================================
+    MODAL DETAIL PROFIL & KATA SANDI (SINKRON DASBOR CUSTOMER)
+    ===================================================== -->
+    <div class="modal fade" id="modalProfil" data-bs-backdrop="static" tabindex="-1" aria-labelledby="modalProfilLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content modal-content-custom">
+                <div class="modal-header modal-header-custom">
+                    <h5 class="modal-title fw-bold" id="modalProfilLabel">
+                        <i class="bi bi-person-fill-gear me-2"></i> Pengaturan Profil Pelanggan
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                
+                <!-- Tab Menu Navigasi Moderen -->
+                <div class="bg-light px-4 pt-3">
+                    <ul class="nav profile-nav-tabs" id="profileTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="detail-tab" data-bs-toggle="tab" data-bs-target="#tab-detail" type="button" role="tab" aria-controls="tab-detail" aria-selected="true">
+                                <i class="bi bi-person-badge-fill me-1"></i> Detail Profil
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="password-tab" data-bs-toggle="tab" data-bs-target="#tab-password" type="button" role="tab" aria-controls="tab-password" aria-selected="false">
+                                <i class="bi bi-shield-lock-fill me-1"></i> Ubah Kata Sandi
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="modal-body modal-body-custom">
+                    <div class="tab-content" id="profileTabsContent">
+                        
+                        <!-- TAB 1: DETAIL PROFIL -->
+                        <div class="tab-pane fade show active" id="tab-detail" role="tabpanel" aria-labelledby="detail-tab">
+                            <form action="../../index.php" method="POST" enctype="multipart/form-data">
+                                <input type="hidden" name="action_type" value="update_profile">
+                                
+                                <div class="img-preview-container">
+                                    <img src="<?= $foto_customer_src ?>" id="profilePreview" class="img-preview" alt="Foto Profil">
+                                    <label for="foto_profil" class="btn-upload-trigger" title="Ubah Foto">
+                                        <i class="bi bi-camera-fill"></i>
+                                    </label>
+                                    <input type="file" id="foto_profil" name="foto_profil" accept="image/png, image/jpeg, image/jpg" style="display: none;" onchange="previewImage(event)">
+                                </div>
+                                
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Username</label>
+                                        <input type="text" class="form-control form-control-custom bg-light" value="<?= htmlspecialchars($username_customer) ?>" disabled>
+                                        <small class="text-muted">Username tidak dapat diubah.</small>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Nama Lengkap</label>
+                                        <input type="text" name="nama_pelanggan" class="form-control form-control-custom" value="<?= htmlspecialchars($nama_customer) ?>" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Email</label>
+                                        <input type="email" name="email_pelanggan" class="form-control form-control-custom" value="<?= htmlspecialchars($email_customer) ?>" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Nomor HP (Contoh: +628211...)</label>
+                                        <input type="text" name="no_hp" id="inputHPModal" class="form-control form-control-custom" value="<?= htmlspecialchars($no_hp_customer) ?>" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Jenis Kelamin</label>
+                                        <select name="jenis_kelamin" class="form-select form-control-custom">
+                                            <option value="Laki-laki" <?= ($jk_customer == 'Laki-laki') ? 'selected' : '' ?>>Laki-laki</option>
+                                            <option value="Perempuan" <?= ($jk_customer == 'Perempuan') ? 'selected' : '' ?>>Perempuan</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Tanggal Lahir</label>
+                                        <input type="date" name="tanggal_lahir" class="form-control form-control-custom" value="<?= $tgl_lahir_str ?>" required>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label form-label-custom">Alamat Lengkap</label>
+                                        <textarea name="alamat" rows="2" class="form-control form-control-custom" required><?= htmlspecialchars($alamat_customer) ?></textarea>
+                                    </div>
+                                </div>
+                                <div class="modal-footer-custom mt-4 px-0 pb-0">
+                                    <button type="button" class="btn btn-secondary px-4" style="border-radius:12px; font-weight:700;" data-bs-dismiss="modal">Batal</button>
+                                    <button type="submit" class="btn text-white px-4" style="background: var(--p-pink); border-radius:12px; font-weight:700;">Simpan Profil</button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- TAB 2: UBAH KATA SANDI -->
+                        <div class="tab-pane fade" id="tab-password" role="tabpanel" aria-labelledby="password-tab">
+                            <form action="../../index.php" method="POST" id="formPassword">
+                                <input type="hidden" name="action_type" value="update_password">
+                                
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <label class="form-label form-label-custom">Kata Sandi Saat Ini</label>
+                                        <input type="password" name="pass_lama" class="form-control form-control-custom" placeholder="Masukkan kata sandi lama Anda" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Kata Sandi Baru</label>
+                                        <input type="password" name="pass_baru" id="pass_baru" class="form-control form-control-custom" placeholder="Masukkan kata sandi baru" oninput="checkPasswordStrength()" required>
+                                        
+                                        <!-- Indikator Validasi Kekuatan Kata Sandi Realtime -->
+                                        <div class="mt-2">
+                                            <span class="pwd-requirement" id="req-len">
+                                                <i class="bi bi-x-circle-fill text-danger" id="icon-len"></i> Minimal 8 Karakter
+                                            </span>
+                                            <span class="pwd-requirement" id="req-char">
+                                                <i class="bi bi-x-circle-fill text-danger" id="icon-char"></i> Mengandung Huruf & Angka
+                                            </span>
+                                            <span class="pwd-requirement" id="req-spec">
+                                                <i class="bi bi-x-circle-fill text-danger" id="icon-spec"></i> Mengandung Karakter Spesial (e.g. !@#$)
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label form-label-custom">Konfirmasi Kata Sandi Baru</label>
+                                        <input type="password" name="pass_konfirmasi" id="pass_konfirmasi" class="form-control form-control-custom" placeholder="Ulangi kata sandi baru" oninput="checkPasswordMatch()" required>
+                                        <div class="mt-2">
+                                            <span class="pwd-requirement" id="req-match">
+                                                <i class="bi bi-x-circle-fill text-danger" id="icon-match"></i> Kesesuaian Kata Sandi
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer-custom mt-4 px-0 pb-0">
+                                    <button type="button" class="btn btn-secondary px-4" style="border-radius:12px; font-weight:700;" data-bs-dismiss="modal">Batal</button>
+                                    <button type="submit" id="btnSubmitPassword" class="btn text-white px-4" style="background: var(--p-pink); border-radius:12px; font-weight:700;" disabled>Perbarui Sandi</button>
+                                </div>
+                            </form>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL LIHAT BIODATA -->
+    <div class="modal fade" id="modalLihatBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter:blur(8px);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0" style="border-radius:28px;box-shadow:0 20px 50px rgba(0,0,0,0.15);background:#ffffff;">
+                <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-vcard-fill text-danger me-2"></i>Biodata Pelanggan</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body px-4 pb-4 pt-3">
+                    <div class="text-center mb-4">
+                        <div class="profile-preview-box mx-auto" style="width:100px;height:100px;border:3px solid var(--s-pink);"><img src="<?= $foto_customer_src ?>" alt="Foto Profil" style="width:100%; height:100%; object-fit:cover; border-radius:50%;"></div>
+                        <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_customer) ?></h5>
+                        <span class="badge bg-primary px-3 py-1 text-white text-uppercase" style="font-size:0.72rem;border-radius:50px;font-weight:700;">Pelanggan</span>
+                    </div>
+                    <div class="card-3d p-3 border-0 mb-4" style="border-radius:20px;background-color:#f8fafc;">
+                        <div class="row g-3" style="font-size: 0.85rem; font-weight:600;">
+                            <div class="col-6"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Username</small><span class="fw-bold text-dark">@<?= htmlspecialchars($username_customer) ?></span></div>
+                            <div class="col-6"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Tanggal Lahir</small><span class="fw-bold text-dark"><?= fmtTgl($tgl_lahir_str) ?></span></div>
+                            <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Email</small><span class="fw-bold text-dark"><?= htmlspecialchars($email_customer) ?></span></div>
+                            <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Jenis Kelamin</small><span class="fw-bold text-dark"><?= htmlspecialchars($jk_customer) ?></span></div>
+                            <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Nomor Telepon</small><span class="fw-bold text-dark"><?= htmlspecialchars($no_hp_customer) ?></span></div>
+                            <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Lengkap</small><span class="fw-bold text-dark"><?= htmlspecialchars($alamat_customer) ?></span></div>
+                        </div>
+                    </div>
+                    <button class="btn text-white py-3 w-100" style="background: var(--p-pink); font-weight:700; border-radius:14px;" onclick="bukaModalEditDariBiodata()">Edit Profil Anda</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="../../../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
         // Toggle dropdown menu
@@ -1098,10 +1339,73 @@ foreach ($ruangan_list as $ruangan) {
         // Close dropdown when clicking outside
         document.addEventListener('click', function(e) {
             const wrapper = document.querySelector('.nav-avatar-wrapper');
-            if (!wrapper.contains(e.target)) {
+            if (wrapper && !wrapper.contains(e.target)) {
                 document.getElementById('navDropdown').classList.remove('show');
             }
         });
+
+        // Realtime Image Preview ketika memilih foto profil baru
+        function previewImage(event) {
+            const reader = new FileReader();
+            reader.onload = function() {
+                const output = document.getElementById('profilePreview');
+                output.src = reader.result;
+            }
+            reader.readAsDataURL(event.target.files[0]);
+        }
+
+        // Verifikasi Realtime Kekuatan Password sesuai aturan Constraint di Database
+        function checkPasswordStrength() {
+            const password = document.getElementById('pass_baru').value;
+            const isLenValid = password.length >= 8;
+            updateIndicator('req-len', 'icon-len', isLenValid);
+
+            const hasLetter = /[A-Za-z]/.test(password);
+            const hasDigit = /[0-9]/.test(password);
+            const isCharValid = hasLetter && hasDigit;
+            updateIndicator('req-char', 'icon-char', isCharValid);
+
+            const isSpecValid = /[^A-Za-z0-9]/.test(password);
+            updateIndicator('req-spec', 'icon-spec', isSpecValid);
+
+            checkPasswordMatch();
+        }
+
+        // Verifikasi kecocokan Sandi Baru dan Sandi Konfirmasi
+        function checkPasswordMatch() {
+            const password = document.getElementById('pass_baru').value;
+            const confirmPassword = document.getElementById('pass_konfirmasi').value;
+            
+            const isMatch = password === confirmPassword && confirmPassword.length > 0;
+            updateIndicator('req-match', 'icon-match', isMatch);
+
+            // Validasi tombol submit jika semua syarat terpenuhi
+            const isLenValid = password.length >= 8;
+            const hasLetter = /[A-Za-z]/.test(password);
+            const hasDigit = /[0-9]/.test(password);
+            const isSpecValid = /[^A-Za-z0-9]/.test(password);
+
+            const btnSubmit = document.getElementById('btnSubmitPassword');
+            if (isLenValid && hasLetter && hasDigit && isSpecValid && isMatch) {
+                btnSubmit.removeAttribute('disabled');
+            } else {
+                btnSubmit.setAttribute('disabled', 'true');
+            }
+        }
+
+        // Fungsi pembantu memperbarui visual indikator checklist form
+        function updateIndicator(elementId, iconId, isValid) {
+            const element = document.getElementById(elementId);
+            const icon = document.getElementById(iconId);
+            
+            if (isValid) {
+                element.classList.add('valid');
+                icon.className = 'bi bi-check-circle-fill text-success';
+            } else {
+                element.classList.remove('valid');
+                icon.className = 'bi bi-x-circle-fill text-danger';
+            }
+        }
 
         function confirmLandingPage(e) {
             e.preventDefault();
