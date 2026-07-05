@@ -518,7 +518,7 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
             display: block;
             font-size: 0.75rem;
             font-weight: 700;
-            color: #8a99a8;
+            color: #475569;
             text-transform: uppercase;
             letter-spacing: 1px;
             margin-bottom: 8px;
@@ -532,10 +532,14 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
             border-radius: 16px;
             background: #f8fafc;
             font-size: 0.95rem;
-            font-weight: 500;
-            color: var(--text-dark);
+            font-weight: 600;
+            color: #000000;
             transition: var(--transition-soft);
             outline: none;
+        }
+        .input-field[type="date"] {
+            color: #334155;
+            font-weight: 500;
         }
         .input-field:focus {
             border-color: var(--p-pink);
@@ -547,7 +551,7 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
             border-color: #ef4444;
             background: #fff1f2;
         }
-        .input-field::placeholder { color: #cbd5e1; }
+        .input-field::placeholder { color: #94a3b8; font-weight: 500; }
 
         /* Password Group */
         .password-wrap {
@@ -568,60 +572,38 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
         }
         .toggle-eye:hover { color: var(--p-pink); }
 
-        /* Radio Buttons */
-        .radio-group-fix {
-            display: flex;
-            gap: 10px;
-            width: 100%;
+        /* Select Dropdown */
+        .select-wrap {
+            position: relative;
         }
-        .radio-fix {
-            flex: 1;
+        .select-wrap .input-field {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            padding-right: 45px;
             cursor: pointer;
-            margin: 0;
         }
-        .radio-fix input {
+        .select-icon {
             position: absolute;
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-        .radio-box {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            padding: 10px 8px;
-            background: #f8fafc;
-            border: 2px solid #eef2f6;
-            border-radius: 12px;
-            font-weight: 600;
-            font-size: 0.8rem;
-            color: #64748b;
-            transition: var(--transition-soft);
-            text-align: center;
-            min-height: 42px;
-        }
-        .radio-box .radio-icon {
+            right: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #94a3b8;
             font-size: 1rem;
-            flex-shrink: 0;
+            pointer-events: none;
+            transition: var(--transition-soft);
         }
-        .radio-box .radio-text {
-            white-space: nowrap;
-        }
-        .radio-fix:hover .radio-box {
-            border-color: #ffd1dc;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(216, 63, 103, 0.08);
-        }
-        .radio-fix input:checked + .radio-box {
-            background: linear-gradient(135deg, #fff5f6, #ffe4e9);
-            border-color: var(--p-pink);
+        .select-wrap:focus-within .select-icon {
             color: var(--p-pink);
-            box-shadow: 0 6px 20px rgba(216, 63, 103, 0.12);
-            transform: translateY(-1px);
+            transform: translateY(-50%) rotate(180deg);
         }
-        .radio-fix input:checked + .radio-box .radio-icon {
-            color: var(--p-pink);
+        .select-wrap .input-field option {
+            color: #000000;
+            font-weight: 500;
+            padding: 10px;
+        }
+        .select-wrap .input-field option:first-child {
+            color: #94a3b8;
         }
 
         /* File Upload */
@@ -901,8 +883,8 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
                             <div class="input-group-custom">
                                 <label class="input-label">No. Telepon <span class="required">*</span></label>
                                 <div class="d-flex align-items-stretch" style="border: 2px solid #eef2f6; border-radius: 16px; overflow: hidden; background: #f8fafc; transition: all 0.3s ease;">
-                                    <span style="display: flex; align-items: center; padding: 14px 16px; font-weight: 700; color: #d83f67; font-size: 0.9rem; border-right: 2px solid #eef2f6; background: #f8fafc; white-space: nowrap;">+62</span>
-                                    <input type="text" name="no_hp" id="inputHP" class="flex-grow-1" style="border: none; background: transparent; padding: 14px 18px; font-size: 0.95rem; font-weight: 500; color: #1e1e24; outline: none; min-width: 0;" placeholder="81234567890" value="<?= htmlspecialchars(@$_POST['no_hp'] ?? '') ?>" required>
+                                    <span style="display: flex; align-items: center; padding: 14px 16px; font-weight: 700; color: #000000; font-size: 0.9rem; border-right: 2px solid #eef2f6; background: #f8fafc; white-space: nowrap;">+62</span>
+                                    <input type="text" name="no_hp" id="inputHP" class="flex-grow-1" style="border: none; background: transparent; padding: 14px 18px; font-size: 0.95rem; font-weight: 600; color: #000000; outline: none; min-width: 0;" placeholder="81234567890" value="<?= htmlspecialchars(@$_POST['no_hp'] ?? '') ?>" required>
                                 </div>
                                 <?php if($error_hp): ?><div class="error-msg"><i class="bi bi-x-circle-fill"></i> <?= $error_hp ?></div><?php endif; ?>
                                 <small style="color: #94a3b8; font-size: 0.75rem; display: block; margin-top: 6px;">Format: 81234567890 (tanpa angka 0 di depan) 📱</small>
@@ -914,21 +896,13 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
                         <div class="col-md-6">
                             <div class="input-group-custom">
                                 <label class="input-label">Jenis Kelamin <span class="required">*</span></label>
-                                <div class="radio-group-fix">
-                                    <label class="radio-fix" for="jk_laki">
-                                        <input type="radio" name="jenis_kelamin" id="jk_laki" value="Laki-laki" <?= (@$_POST['jenis_kelamin'] == 'Laki-laki') ? 'checked' : '' ?> required>
-                                        <span class="radio-box">
-                                            <i class="bi bi-gender-male radio-icon"></i>
-                                            <span class="radio-text">Laki-laki</span>
-                                        </span>
-                                    </label>
-                                    <label class="radio-fix" for="jk_perempuan">
-                                        <input type="radio" name="jenis_kelamin" id="jk_perempuan" value="Perempuan" <?= (@$_POST['jenis_kelamin'] == 'Perempuan') ? 'checked' : '' ?> required>
-                                        <span class="radio-box">
-                                            <i class="bi bi-gender-female radio-icon"></i>
-                                            <span class="radio-text">Perempuan</span>
-                                        </span>
-                                    </label>
+                                <div class="select-wrap">
+                                    <select name="jenis_kelamin" id="inputJK" class="input-field <?= $error_jk ? 'is-invalid' : '' ?>" required>
+                                        <option value="" disabled <?= empty(@$_POST['jenis_kelamin']) ? 'selected' : '' ?>>Pilih jenis kelamin</option>
+                                        <option value="Laki-laki" <?= (@$_POST['jenis_kelamin'] == 'Laki-laki') ? 'selected' : '' ?>>Laki-laki</option>
+                                        <option value="Perempuan" <?= (@$_POST['jenis_kelamin'] == 'Perempuan') ? 'selected' : '' ?>>Perempuan</option>
+                                    </select>
+                                    <i class="bi bi-chevron-down select-icon"></i>
                                 </div>
                                 <?php if($error_jk): ?><div class="error-msg"><i class="bi bi-x-circle-fill"></i> <?= $error_jk ?></div><?php endif; ?>
                             </div>

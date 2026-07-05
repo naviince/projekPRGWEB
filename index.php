@@ -162,7 +162,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       .feature-icon-box { width: 55px; height: 55px; font-size: 1.5rem; }
     }
 
-    /* ========== LAYANAN KAMI - LAYOUT BARU (BUKAN BUTTON) ========== */
+    /* ========== LAYANAN KAMI - BACKGROUND GAMBAR + OVERLAY ========== */
     .services-section { padding: 80px 0; background: linear-gradient(135deg, #ffffff 0%, var(--light-pink) 50%, #ffffff 100%); position: relative; overflow: hidden; }
     .services-section::before {
       content: '';
@@ -194,11 +194,11 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       height: 280px;
       cursor: pointer;
       transition: var(--transition-3d);
-      box-shadow: 0 8px 25px rgba(0,0,0,0.06);
+      box-shadow: 0 8px 25px rgba(0,0,0,0.1);
     }
     .service-item:hover {
       transform: translateY(-10px) scale(1.02);
-      box-shadow: 0 20px 45px rgba(216, 63, 103, 0.18);
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.2);
     }
     .service-item:nth-child(1) { grid-column: span 2; grid-row: span 2; height: 100%; }
     .service-item:nth-child(2) { grid-column: span 1; }
@@ -209,24 +209,43 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
     .service-item:nth-child(7) { grid-column: span 1; }
     .service-item:nth-child(8) { grid-column: span 1; }
 
+    /* BACKGROUND IMAGE dengan overlay gelap */
     .service-bg {
       position: absolute;
       inset: 0;
-      background: linear-gradient(135deg, var(--primary-pink), #ff6694);
+      background-size: cover;
+      background-position: center;
       transition: var(--transition-3d);
     }
+    .service-bg::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(30,30,36,0.3) 0%, rgba(30,30,36,0.75) 60%, rgba(30,30,36,0.9) 100%);
+      transition: var(--transition-3d);
+      z-index: 1;
+    }
+    .service-item:hover .service-bg::before {
+      background: linear-gradient(180deg, rgba(30,30,36,0.2) 0%, rgba(30,30,36,0.6) 60%, rgba(30,30,36,0.8) 100%);
+    }
     .service-item:hover .service-bg {
-      background: linear-gradient(135deg, #ff6694, var(--primary-pink));
+      transform: scale(1.1);
     }
-    .service-bg-alt {
-      background: linear-gradient(135deg, #ff8fab, var(--primary-pink)) !important;
+
+    /* Border accent pink saat hover */
+    .service-item::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 24px;
+      border: 3px solid transparent;
+      transition: var(--transition-3d);
+      z-index: 3;
+      pointer-events: none;
     }
-    .service-bg-soft {
-      background: linear-gradient(135deg, #fff0f3, #ffe0e6) !important;
+    .service-item:hover::after {
+      border-color: var(--primary-pink);
     }
-    .service-bg-soft .service-title,
-    .service-bg-soft .service-desc,
-    .service-bg-soft .service-icon { color: var(--primary-pink) !important; }
 
     .service-content {
       position: absolute;
@@ -243,10 +262,12 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       margin-bottom: 15px;
       opacity: 0.9;
       transition: var(--transition-3d);
+      text-shadow: 0 2px 10px rgba(0,0,0,0.3);
     }
     .service-item:hover .service-icon {
       transform: scale(1.2) rotate(-5deg);
       opacity: 1;
+      color: var(--accent-pink);
     }
     .service-title {
       font-size: 1.3rem;
@@ -254,12 +275,14 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       color: #ffffff;
       margin-bottom: 8px;
       line-height: 1.2;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.3);
     }
     .service-desc {
       font-size: 0.85rem;
       color: rgba(255,255,255,0.85);
       line-height: 1.5;
       margin: 0;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.3);
     }
 
     /* Decorative pattern overlay */
@@ -268,14 +291,15 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       top: 20px;
       right: 20px;
       font-size: 6rem;
-      color: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.1);
       transform: rotate(-15deg);
       transition: var(--transition-3d);
-      z-index: 1;
+      z-index: 2;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.2);
     }
     .service-item:hover .service-pattern {
       transform: rotate(0deg) scale(1.1);
-      color: rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.2);
     }
 
     @media (max-width: 992px) {
@@ -713,7 +737,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
         <div class="service-grid" data-aos="fade-up">
           <!-- Item 1: Foto Studio (Besar) -->
           <div class="service-item">
-            <div class="service-bg"></div>
+            <div class="service-bg" style="background-image: url('https://images.unsplash.com/photo-1471341971476-ae15ff5dd4ea?w=800&q=80');"></div>
             <i class="bi bi-camera-fill service-pattern"></i>
             <div class="service-content">
               <i class="bi bi-camera-fill service-icon"></i>
@@ -724,7 +748,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
           <!-- Item 2: Prewedding -->
           <div class="service-item">
-            <div class="service-bg service-bg-alt"></div>
+            <div class="service-bg" style="background-image: url('https://images.unsplash.com/photo-1519741497674-611481863552?w=800&q=80');"></div>
             <i class="bi bi-suit-heart-fill service-pattern"></i>
             <div class="service-content">
               <i class="bi bi-suit-heart-fill service-icon"></i>
@@ -735,7 +759,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
           <!-- Item 3: Family -->
           <div class="service-item">
-            <div class="service-bg service-bg-soft"></div>
+            <div class="service-bg" style="background-image: url('https://images.unsplash.com/photo-1511895426328-dc8714191300?w=800&q=80');"></div>
             <i class="bi bi-people-fill service-pattern"></i>
             <div class="service-content">
               <i class="bi bi-people-fill service-icon"></i>
@@ -746,7 +770,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
           <!-- Item 4: Baby -->
           <div class="service-item">
-            <div class="service-bg service-bg-alt"></div>
+            <div class="service-bg" style="background-image: url('https://images.unsplash.com/photo-1519689680058-324335c77eba?w=800&q=80');"></div>
             <i class="bi bi-balloon-fill service-pattern"></i>
             <div class="service-content">
               <i class="bi bi-balloon-fill service-icon"></i>
@@ -757,7 +781,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
           <!-- Item 5: Graduation -->
           <div class="service-item">
-            <div class="service-bg"></div>
+            <div class="service-bg" style="background-image: url('https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=800&q=80');"></div>
             <i class="bi bi-mortarboard-fill service-pattern"></i>
             <div class="service-content">
               <i class="bi bi-mortarboard-fill service-icon"></i>
@@ -768,7 +792,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
           <!-- Item 6: Event (Lebar) -->
           <div class="service-item">
-            <div class="service-bg service-bg-alt"></div>
+            <div class="service-bg" style="background-image: url('https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=800&q=80');"></div>
             <i class="bi bi-calendar-event-fill service-pattern"></i>
             <div class="service-content">
               <i class="bi bi-calendar-event-fill service-icon"></i>
@@ -779,7 +803,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
           <!-- Item 7: Personal Branding -->
           <div class="service-item">
-            <div class="service-bg service-bg-soft"></div>
+            <div class="service-bg" style="background-image: url('https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=800&q=80');"></div>
             <i class="bi bi-person-badge-fill service-pattern"></i>
             <div class="service-content">
               <i class="bi bi-person-badge-fill service-icon"></i>
@@ -790,7 +814,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
           <!-- Item 8: Dan Lainnya -->
           <div class="service-item">
-            <div class="service-bg"></div>
+            <div class="service-bg" style="background-image: url('https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&q=80');"></div>
             <i class="bi bi-plus-circle-fill service-pattern"></i>
             <div class="service-content">
               <i class="bi bi-plus-circle-fill service-icon"></i>
