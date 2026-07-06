@@ -386,75 +386,117 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
     .jam-operasional-badge i { font-size: 1.2rem; animation: pulse-clock 2s ease-in-out infinite; }
     @keyframes pulse-clock { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
 
-    /* ========== GALERI PHOTOCARD GANTUNG - BENANG MELENGKUNG ========== */
+    /* ========== GALERI PHOTOCARD GANTUNG - V3 (Klip Menjepit Tali) ========== */
     .gallery-string-section { padding: 100px 0 80px; background: linear-gradient(180deg, var(--light-pink) 0%, #ffffff 40%, #ffffff 60%, var(--light-pink) 100%); overflow: hidden; position: relative; }
 
-    .string-container { position: relative; width: 100%; min-height: 520px; display: flex; justify-content: center; align-items: flex-start; padding-top: 60px; }
-
-    /* SVG Tali Melengkung */
-    .curved-string-svg {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100px;
-      z-index: 1;
-      pointer-events: none;
+    .string-container { 
+      position: relative; 
+      width: 100%; 
+      min-height: 520px; 
+      display: flex; 
+      justify-content: center; 
+      align-items: flex-start; 
+      padding-top: 90px; 
     }
-    .curved-string-svg path {
-      fill: none;
-      stroke: url(#stringGradient);
-      stroke-width: 3;
-      stroke-linecap: round;
-      filter: drop-shadow(0 2px 3px rgba(0,0,0,0.1));
+
+    /* Tali Lurus - Positioned so clips can grip it */
+    .straight-string {
+      position: absolute;
+      top: 68px;
+      left: 8%;
+      right: 8%;
+      height: 5px;
+      background: linear-gradient(90deg, rgba(160,130,100,0.25), #b08d65, #c4a484, #b08d65, rgba(160,130,100,0.25));
+      border-radius: 3px;
+      z-index: 4;
+      box-shadow: 
+        0 3px 6px rgba(0,0,0,0.12),
+        0 1px 0 rgba(255,255,255,0.3) inset,
+        0 -1px 0 rgba(0,0,0,0.15) inset;
     }
 
     .photocard-wrapper {
       position: relative;
       display: inline-block;
-      margin: 0 20px;
-      z-index: 2;
+      margin: 0 24px;
+      z-index: 5;
       transform-origin: top center;
       animation: sway 3.5s ease-in-out infinite;
     }
-    .photocard-wrapper:nth-child(2) { animation-delay: 0.4s; margin-top: 20px; }
-    .photocard-wrapper:nth-child(3) { animation-delay: 0.9s; margin-top: 8px; }
-    .photocard-wrapper:nth-child(4) { animation-delay: 1.4s; margin-top: 25px; }
-    .photocard-wrapper:nth-child(5) { animation-delay: 0.7s; margin-top: 12px; }
+    .photocard-wrapper:nth-child(2) { animation-delay: 0.4s; }
+    .photocard-wrapper:nth-child(3) { animation-delay: 0.9s; }
+    .photocard-wrapper:nth-child(4) { animation-delay: 1.4s; }
+    .photocard-wrapper:nth-child(5) { animation-delay: 0.7s; }
+    .photocard-wrapper:nth-child(6) { animation-delay: 1.1s; }
 
+    /* Klip yang Jelas Menjepit Tali - Hook menggantung di tali */
     .photoclip {
       position: absolute;
-      top: -10px;
+      top: 52px;
       left: 50%;
       transform: translateX(-50%);
-      width: 26px;
-      height: 34px;
-      background: linear-gradient(135deg, #e8c4a0, #c4956a);
-      border-radius: 4px 4px 2px 2px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.3);
-      z-index: 3;
+      width: 32px;
+      height: 42px;
+      z-index: 6;
     }
+    /* Hook atas - bentuk U terbalik yang menggigit tali dari atas */
     .photoclip::before {
       content: '';
       position: absolute;
-      top: 8px;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 14px;
+      height: 18px;
+      border: 4px solid #b8956a;
+      border-bottom: 4px solid #b8956a;
+      border-radius: 0 0 12px 12px;
+      background: transparent;
+      z-index: 7;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    }
+    /* Pegangan klip */
+    .photoclip::after {
+      content: '';
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 28px;
+      height: 24px;
+      background: linear-gradient(180deg, #e8c4a0 0%, #c4956a 50%, #b8956a 100%);
+      border-radius: 4px 4px 3px 3px;
+      box-shadow: 
+        0 4px 10px rgba(0,0,0,0.2),
+        inset 0 1px 0 rgba(255,255,255,0.35),
+        inset 0 -2px 0 rgba(0,0,0,0.1);
+      z-index: 6;
+    }
+    /* Detail garis pada pegangan */
+    .photoclip-inner {
+      position: absolute;
+      top: 24px;
       left: 50%;
       transform: translateX(-50%);
       width: 18px;
       height: 5px;
       background: #a67c52;
       border-radius: 2px;
-      box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.25);
+      z-index: 8;
     }
-    .photoclip::after {
-      content: '';
+
+    /* Benang dari klip ke foto */
+    .photo-string {
       position: absolute;
-      top: -5px;
+      top: -42px;
       left: 50%;
       transform: translateX(-50%);
-      width: 2px;
-      height: 6px;
-      background: #c4a484;
+      width: 2.5px;
+      height: 42px;
+      background: linear-gradient(to bottom, #b8956a, #c4a484 40%, #d4b896);
+      z-index: 3;
+      border-radius: 1px;
     }
 
     .photocard {
@@ -465,36 +507,11 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       box-shadow: 0 8px 25px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
       transition: var(--transition-3d);
       cursor: pointer;
-      margin-top: 28px;
+      margin-top: 88px;
       position: relative;
     }
-    .photocard::before {
-      content: '';
-      position: absolute;
-      top: -28px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 1.5px;
-      height: 28px;
-      background: linear-gradient(to bottom, #c4a484, #d4b896);
-      z-index: 0;
-    }
-    /* Benang melengkung dari tali ke foto */
-    .photocard::after {
-      content: '';
-      position: absolute;
-      top: -32px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 20px;
-      height: 20px;
-      border-left: 1.5px solid #c4a484;
-      border-bottom: 1.5px solid #c4a484;
-      border-radius: 0 0 0 14px;
-      z-index: 0;
-    }
     .photocard:hover {
-      transform: translateY(-15px) scale(1.05) rotate(0deg) !important;
+      transform: translateY(-12px) scale(1.03) rotate(0deg) !important;
       box-shadow: 0 20px 50px rgba(216, 63, 103, 0.25), 0 5px 15px rgba(0,0,0,0.1);
       z-index: 10;
     }
@@ -514,32 +531,42 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
     }
 
     @keyframes sway {
-      0%, 100% { transform: rotate(-2.5deg); }
-      50% { transform: rotate(2.5deg); }
+      0%, 100% { transform: rotate(-1.5deg); }
+      50% { transform: rotate(1.5deg); }
     }
 
     @media (max-width: 1200px) {
       .photocard { width: 170px; }
       .photocard img { height: 200px; }
+      .photocard-wrapper { margin: 0 18px; }
     }
     @media (max-width: 992px) {
-      .string-container { min-height: 480px; flex-wrap: wrap; gap: 25px; padding-top: 50px; }
+      .string-container { min-height: 480px; flex-wrap: wrap; gap: 20px; padding-top: 70px; }
       .photocard-wrapper { margin: 0 15px; }
-      .photocard { width: 150px; }
+      .photocard { width: 150px; margin-top: 80px; }
       .photocard img { height: 180px; }
+      .straight-string { top: 60px; }
+      .photoclip { top: 46px; }
+      .photo-string { top: -38px; height: 38px; }
     }
     @media (max-width: 768px) {
       .gallery-string-section { padding: 60px 0 50px; }
-      .string-container { min-height: 400px; padding-top: 40px; }
-      .photocard { width: 130px; padding: 8px 8px 20px 8px; }
+      .string-container { min-height: 400px; padding-top: 55px; }
+      .straight-string { top: 52px; }
+      .photocard { width: 130px; padding: 8px 8px 20px 8px; margin-top: 72px; }
       .photocard img { height: 150px; }
       .photocard-caption { font-size: 0.75rem; }
-      .photoclip { width: 20px; height: 26px; top: -8px; }
+      .photoclip { width: 26px; height: 36px; top: 40px; }
+      .photoclip::before { width: 10px; height: 14px; border-width: 3px; }
+      .photoclip::after { width: 22px; height: 20px; top: 12px; }
+      .photoclip-inner { width: 14px; height: 4px; top: 20px; }
+      .photo-string { top: -32px; height: 32px; }
     }
     @media (max-width: 576px) {
-      .string-container { gap: 12px; padding-top: 35px; }
-      .photocard-wrapper { margin: 0 8px; }
-      .photocard { width: 110px; }
+      .string-container { gap: 15px; padding-top: 45px; }
+      .photocard-wrapper { margin: 0 10px; }
+      .straight-string { top: 44px; left: 2%; right: 2%; }
+      .photocard { width: 110px; margin-top: 62px; }
       .photocard img { height: 130px; }
       .photocard-wrapper:nth-child(4), .photocard-wrapper:nth-child(5) { display: none; }
     }
@@ -895,22 +922,12 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
         </div>
 
         <div class="string-container" data-aos="fade-up">
-          <!-- SVG Tali Melengkung -->
-          <svg class="curved-string-svg" viewBox="0 0 1200 80" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="stringGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" style="stop-color:#c4a484;stop-opacity:0.3" />
-                <stop offset="20%" style="stop-color:#d4b896;stop-opacity:1" />
-                <stop offset="50%" style="stop-color:#c4956a;stop-opacity:1" />
-                <stop offset="80%" style="stop-color:#d4b896;stop-opacity:1" />
-                <stop offset="100%" style="stop-color:#c4a484;stop-opacity:0.3" />
-              </linearGradient>
-            </defs>
-            <path d="M 0,40 Q 150,10 300,40 T 600,40 T 900,40 T 1200,40" />
-          </svg>
+          <!-- Tali Lurus -->
+          <div class="straight-string"></div>
 
           <div class="photocard-wrapper">
-            <div class="photoclip"></div>
+            <div class="photoclip"><div class="photoclip-inner"></div></div>
+            <div class="photo-string"></div>
             <div class="photocard" style="transform: rotate(-3deg);">
               <img src="assets/img/Landing/foto7.png" alt="Foto Pernikahan">
               <div class="photocard-caption">Wedding</div>
@@ -918,7 +935,8 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
           </div>
 
           <div class="photocard-wrapper">
-            <div class="photoclip"></div>
+            <div class="photoclip"><div class="photoclip-inner"></div></div>
+            <div class="photo-string"></div>
             <div class="photocard" style="transform: rotate(2deg);">
               <img src="assets/img/Landing/foto8.png" alt="Foto Bayi">
               <div class="photocard-caption">Baby & Kids</div>
@@ -926,7 +944,8 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
           </div>
 
           <div class="photocard-wrapper">
-            <div class="photoclip"></div>
+            <div class="photoclip"><div class="photoclip-inner"></div></div>
+            <div class="photo-string"></div>
             <div class="photocard" style="transform: rotate(-2deg);">
               <img src="assets/img/Landing/foto9.png" alt="Foto Wisuda">
               <div class="photocard-caption">Graduation</div>
@@ -934,7 +953,8 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
           </div>
 
           <div class="photocard-wrapper">
-            <div class="photoclip"></div>
+            <div class="photoclip"><div class="photoclip-inner"></div></div>
+            <div class="photo-string"></div>
             <div class="photocard" style="transform: rotate(3deg);">
               <img src="assets/img/Landing/foto10.png" alt="Foto Anak Kecil">
               <div class="photocard-caption">Family</div>
@@ -942,7 +962,8 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
           </div>
 
           <div class="photocard-wrapper">
-            <div class="photoclip"></div>
+            <div class="photoclip"><div class="photoclip-inner"></div></div>
+            <div class="photo-string"></div>
             <div class="photocard" style="transform: rotate(-1deg);">
               <img src="assets/img/Landing/foto6.png" alt="Foto Keluarga">
               <div class="photocard-caption">Portrait</div>
