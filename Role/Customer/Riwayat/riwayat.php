@@ -2,6 +2,9 @@
 session_start();
 include '../../../koneksi.php';
 
+// Atur zona waktu ke WIB (Waktu Indonesia Barat)
+date_default_timezone_set('Asia/Jakarta');
+
 // =====================================================
 // PROTEKSI HALAMAN - HANYA CUSTOMER
 // =====================================================
@@ -113,7 +116,7 @@ define('STATUS_PENJUALAN_PROSES', 0);
 define('STATUS_PENJUALAN_SELESAI', 1);
 
 // =====================================================
-// QUERY RIWAYAT ORDER LENGKAP
+// QUERY RIWAYAT ORDER LENGKAP (REVISI SINKRON o.Status = 1)
 // =====================================================
 $sql = "
 SELECT 
@@ -175,7 +178,7 @@ LEFT JOIN Sesi_Foto sf ON o.ID_Order = sf.ID_Order
 LEFT JOIN Karyawan k ON sf.ID_Karyawan = k.ID_Karyawan
 LEFT JOIN Pembayaran dp ON o.ID_Order = dp.ID_Order AND dp.Tipe_Pembayaran = 'DP'
 LEFT JOIN Pembayaran pl ON o.ID_Order = pl.ID_Order AND pl.Tipe_Pembayaran = 'Pelunasan'
-WHERE o.ID_Pelanggan = ? AND o.Is_Deleted = 0
+WHERE o.ID_Pelanggan = ? AND o.Status = 1
 ORDER BY o.Tanggal_Booking DESC
 ";
 
@@ -204,7 +207,7 @@ if ($q_riwayat !== false) {
 }
 
 // =====================================================
-// AMBIL BARANG CETAK PER ORDER
+// AMBIL BARANG CETAK PER ORDER (REVISI SINKRON Kategori_Barang DIHAPUS)
 // =====================================================
 $barang_per_order = [];
 if (!empty($riwayat_list)) {
@@ -222,8 +225,7 @@ if (!empty($riwayat_list)) {
             d.Harga_Satuan,
             d.Subtotal,
             b.Nama_Barang,
-            b.Foto_Barang,
-            b.Kategori_Barang
+            b.Foto_Barang
         FROM Penjualan pen
         INNER JOIN Detail_Penjualan_Barang_Cetak d ON pen.ID_Penjualan = d.ID_Penjualan
         INNER JOIN Barang_Cetak b ON d.ID_Barang = b.ID_Barang
@@ -352,10 +354,16 @@ function getAksiButtons($item) {
     $id_sesi = $item['ID_Sesi_Foto'] ?? 0;
     $buttons = '';
 
+    // Perhitungan total harga setelah diskon produk cetak 5% agar presisi
+    $total_paket = (float)($item['Total_Paket'] ?? 0);
+    $total_cetak = (float)($item['Total_Barang_Cetak'] ?? 0);
+    $diskon_cetak = $total_cetak > 0 ? $total_cetak * 0.05 : 0;
+    $total_harga_diskon = $total_paket + ($total_cetak - $diskon_cetak);
+
     switch ($status) {
         case STATUS_ORDER_MENUNGGU_DP:
             // SINKRONISASI: DP bernilai 65% berdasarkan logika pembayaran_dp.php Anda
-            $dp_amount = $item['Total_Paket'] * 0.65;
+            $dp_amount = $total_harga_diskon * 0.65;
             $buttons .= '<button onclick="bukaModalPembayaran(' . $id_order . ', \'DP\', ' . $dp_amount . ')" class="btn-aksi btn-upload"><i class="fas fa-upload"></i> Upload Bukti DP</button>';
             $buttons .= '<a href="javascript:void(0)" onclick="batalkanOrder(' . $id_order . ')" class="btn-aksi btn-batal"><i class="fas fa-times"></i> Batalkan</a>';
             break;
@@ -369,7 +377,7 @@ function getAksiButtons($item) {
 
         case STATUS_ORDER_SELESAI_FOTO:
             // Sisa pembayaran pelunasan = Total Harga Order keseluruhan - Jumlah DP yang telah dibayar
-            $remaining_amount = $item['Total_Harga'] - ($item['Jumlah_DP'] ?? 0);
+            $remaining_amount = $total_harga_diskon - ($item['Jumlah_DP'] ?? 0);
             $buttons .= '<button onclick="bukaModalPembayaran(' . $id_order . ', \'Pelunasan\', ' . $remaining_amount . ')" class="btn-aksi btn-upload" style="background:#388E3C;color:#fff;"><i class="fas fa-upload"></i> Upload Pelunasan</button>';
             if ($has_file && $id_sesi > 0) {
                 $buttons .= '<a href="../../../assets/img/bukti/' . rawurlencode($item['File_Hasil']) . '" class="btn-aksi btn-preview" download><i class="fas fa-images"></i> Lihat Preview Hasil</a>';
@@ -594,7 +602,7 @@ function getAksiButtons($item) {
 
         .detail-section { display: flex; flex-direction: column; gap: 12px; }
         .detail-item {
-            display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px;
+            display: flex align-items: flex-start; gap: 12px; padding: 10px 14px;
             background: #FAFAFA; border-radius: 10px;
         }
         .detail-item i {
@@ -761,59 +769,50 @@ function getAksiButtons($item) {
             .top-navbar { padding: 12px 20px; }
             .nav-menu-center { display: none; }
             .main-content { padding: 80px 20px 20px; }
-            .page-header { flex-direction: column; align-items: flex-start; gap: 10px; }
-            .tabs-header { overflow-x: auto; }
-            .order-grid { grid-template-columns: 1fr; }
-            .pembayaran-grid { grid-template-columns: 1fr; }
-            .barang-cetak-grid { grid-template-columns: 1fr; }
-        }
-
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #f0f0f0; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--primary-dark); }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-5px); }
-            to { opacity: 1; transform: translateY(0); }
+            .page-header { flex-direction: column; }
+            .page-header { flex-direction: column; }
         }
     </style>
 </head>
 <body>
 
-<!-- TOP NAVBAR -->
-<nav class="top-navbar">
-    <a href="../index.php" class="nav-logo">
-        SpotLight.<span>StudioFoto</span>
-    </a>
-    <div class="nav-menu-center">
-        <a href="../index.php" class="nav-link-item">Dashboard</a>
-        <a href="../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
-        <a href="index.php" class="nav-link-item active">Riwayat</a>
-        <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
-    </div>
-    <div class="nav-right">
-        <a href="../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
-            <i class="bi bi-plus-lg"></i> Booking
-        </a>
-        <div class="nav-avatar-wrapper">
-            <img src="<?php echo $foto_pelanggan_src; ?>" alt="Profil" class="nav-avatar" onclick="toggleDropdown()">
-            <div class="nav-dropdown" id="navDropdown">
-                <div class="dropdown-header">Halo, <?php echo htmlspecialchars($nama_pelanggan); ?></div>
-                <div class="dropdown-divider"></div>
-                <a href="../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
-                    <i class="bi bi-house-door"></i> Kembali ke Beranda
-                </a>
-                <div class="dropdown-divider"></div>
-                <button class="dropdown-item logout" onclick="confirmLogout()">
-                    <i class="bi bi-box-arrow-right"></i> Keluar Sistem
-                </button>
-            </div>
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <div class="sidebar-menu-wrapper">
+            <a href="../index.php" class="sidebar-brand">
+                SpotLight.<br><span>Customer Panel</span>
+            </a>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="../index.php" class="nav-link-custom">
+                        <span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="index.php" class="nav-link-custom active">
+                        <span><i class="bi bi-history me-2"></i> Riwayat Transaksi</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-custom">
+                        <span><i class="bi bi-images me-2"></i> Hasil Foto Sesi</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="../Layanan/Paket/pilih_paket.php" class="nav-link-custom">
+                        <span><i class="bi bi-plus-circle me-2"></i> Booking Baru</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+        <div>
+            <button onclick="confirmLogout()" class="btn btn-logout text-center d-block w-100">
+                <i class="bi bi-box-arrow-right me-2"></i> Keluar Sistem
+            </button>
         </div>
     </div>
-</nav>
 
-<div class="main-content">
+<div class="main-content" style="margin-left: 260px;">
     <div class="page-header">
         <div class="page-title">
             <h1><i class="fas fa-history" style="color:var(--primary);margin-right:10px;"></i>Riwayat Transaksi</h1>
@@ -873,10 +872,7 @@ function getAksiButtons($item) {
                 <div class="empty-state">
                     <i class="fas fa-inbox"></i>
                     <h3>Belum Ada Riwayat</h3>
-                    <p>Anda belum memiliki transaksi. Yuk, pesan paket foto atau barang cetak sekarang!</p>
-                    <a href="../Layanan/Paket/pilih_paket.php" class="btn-primary">
-                        <i class="fas fa-camera"></i> Pesan Sekarang
-                    </a>
+                    <p>Anda belum memiliki transaksi pada kategori ini.</p>
                 </div>
             <?php else: ?>
                 <div class="orders-container">
@@ -905,9 +901,9 @@ function getAksiButtons($item) {
                                 <div class="paket-section">
                                     <?php 
                                     $foto_paket = $item['Foto_Paket'] ?? 'default_paket.jpg';
-                                    $foto_src = file_exists("../../assets/img/paket/" . $foto_paket) 
-                                        ? "../../assets/img/paket/" . $foto_paket 
-                                        : "../../assets/img/paket/default_paket.jpg";
+                                    $foto_src = file_exists("../../../assets/img/paket/" . $foto_paket) 
+                                        ? "../../../assets/img/paket/" . $foto_paket 
+                                        : "../../../assets/img/paket/default_paket.jpg";
                                     ?>
                                     <img src="<?php echo $foto_src; ?>" alt="Paket" class="paket-img">
                                     <div class="paket-info">
@@ -984,7 +980,7 @@ function getAksiButtons($item) {
                                 <div class="barang-cetak-grid">
                                     <?php foreach ($barang_order as $b): 
                                         $foto_barang = $b['Foto_Barang'] ?? 'default_barang.jpg';
-                                        $foto_barang_src = file_exists("../../assets/img/barang/" . $foto_barang) 
+                                        $foto_barang_src = file_exists("../../../assets/img/barang/" . $foto_barang) 
                                             ? "../../assets/img/barang/" . $foto_barang 
                                             : "../../assets/img/barang/default_barang.jpg";
                                     ?>
@@ -1085,7 +1081,7 @@ function getAksiButtons($item) {
     </div>
 </div>
 
-<!-- MODAL UPLOAD PEMBAYARAN (DP / PELUNASAN) - SINKRON DENGAN DIREKTORI REFERENSI -->
+<!-- MODAL UPLOAD PEMBAYARAN (DP / PELUNASAN) -->
 <div class="modal-overlay" id="modalPembayaran">
     <div class="modal-content" style="max-width: 500px;">
         <h3><i class="fas fa-credit-card" style="color:var(--primary);margin-right:8px;"></i>Upload Pembayaran</h3>
@@ -1107,7 +1103,7 @@ function getAksiButtons($item) {
             
             <div class="mb-3 text-start">
                 <label class="form-label d-block fw-bold mb-1" style="font-size: 14px; text-align: left;">Metode Pembayaran</label>
-                <select name="metode_pembayaran" id="payMetode" class="form-control w-100 p-2" style="border: 2px solid #f0f0f0; border-radius: 12px; height: 42px;" required>
+                <select name="metode_pembayaran" id="payMetode" class="form-select w-100" required>
                     <option value="">-- Pilih Metode Pembayaran --</option>
                     <option value="Transfer Bank BCA">Transfer Bank BCA (123-456-7890 a/n SpotLight Studio)</option>
                     <option value="Transfer Bank BNI">Transfer Bank BNI (098-765-4321 a/n SpotLight Studio)</option>
@@ -1118,8 +1114,12 @@ function getAksiButtons($item) {
             
             <div class="mb-4 text-start">
                 <label class="form-label d-block fw-bold mb-1" style="font-size: 14px; text-align: left;">Unggah Bukti Transfer</label>
-                <input type="file" name="bukti_transfer" id="payBukti" class="form-control w-100 p-2" style="border: 2px solid #f0f0f0; border-radius: 12px;" accept=".jpg,.jpeg,.png,.pdf" required>
-                <small class="text-muted d-block mt-1" style="font-size: 11px;">Format yang diperbolehkan: JPG, JPEG, PNG, PDF (Maksimal 5MB)</small>
+                <div class="file-upload-area" id="fileUploadArea" onclick="document.getElementById('payBukti').click()">
+                    <div class="file-upload-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                    <div class="file-upload-text" id="fileText">Klik untuk upload bukti transfer</div>
+                    <div class="file-upload-note">Format: JPG, PNG, PDF (Max 5MB)</div>
+                </div>
+                <input type="file" name="bukti_transfer" id="payBukti" style="display: none;" accept=".jpg,.jpeg,.png,.pdf" required onchange="handleFileSelect(this)">
             </div>
             
             <div class="modal-actions">
@@ -1140,7 +1140,7 @@ function toggleDropdown() {
 
 document.addEventListener('click', function(e) {
     const wrapper = document.querySelector('.nav-avatar-wrapper');
-    if (!wrapper.contains(e.target)) {
+    if (wrapper && !wrapper.contains(e.target)) {
         document.getElementById('navDropdown').classList.remove('show');
     }
 });
@@ -1273,16 +1273,14 @@ function submitRating() {
 }
 
 // =====================================================
-// FUNGSI MODAL PEMBAYARAN (AJAX) - SELARAS LOGIKA REFERENSI DP
+// FUNGSI MODAL PEMBAYARAN (AJAX) - SINKRON DESAIN PREMIUM
 // =====================================================
 function bukaModalPembayaran(id_order, tipe, jumlah) {
     document.getElementById('payOrderId').value = id_order;
     document.getElementById('payTipe').value = tipe;
     
-    // Penamaan tipe disesuaikan logika Anda
     document.getElementById('payTipeLabel').value = tipe === 'DP' ? 'Uang Muka (DP 65%)' : 'Pelunasan Sesi Foto';
     
-    // Format mata uang rupiah ke label tampilan
     const formatter = new Intl.NumberFormat('id-ID', {
         style: 'currency',
         currency: 'IDR',
@@ -1295,11 +1293,60 @@ function bukaModalPembayaran(id_order, tipe, jumlah) {
     document.getElementById('payMetode').value = '';
     document.getElementById('payBukti').value = '';
     
+    const area = document.getElementById('fileUploadArea');
+    const text = document.getElementById('fileText');
+    area.classList.remove('has-file');
+    text.innerHTML = 'Klik untuk upload bukti transfer';
+    
+    const oldPreview = document.getElementById('previewBukti');
+    if (oldPreview) oldPreview.remove();
+    
     document.getElementById('modalPembayaran').classList.add('active');
 }
 
 function tutupModalPembayaran() {
     document.getElementById('modalPembayaran').classList.remove('active');
+}
+
+function handleFileSelect(input) {
+    const area = document.getElementById('fileUploadArea');
+    const text = document.getElementById('fileText');
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (file.size > maxSize) {
+            Swal.fire({
+                icon: 'error',
+                title: 'File terlalu besar',
+                text: 'Ukuran file maksimal 5MB.',
+                confirmButtonColor: '#D53D66'
+            });
+            input.value = '';
+            area.classList.remove('has-file');
+            text.innerHTML = 'Klik untuk upload bukti transfer';
+            
+            const oldPreview = document.getElementById('previewBukti');
+            if (oldPreview) oldPreview.remove();
+            return;
+        }
+
+        area.classList.add('has-file');
+        text.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i> ' + file.name;
+
+        // Preview gambar
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const oldPreview = document.getElementById('previewBukti');
+            if (oldPreview) oldPreview.remove();
+
+            const previewDiv = document.createElement('div');
+            previewDiv.id = 'previewBukti';
+            previewDiv.style.cssText = 'margin-top:16px;text-align:center;';
+            previewDiv.innerHTML = '<div style="font-size:0.8rem;font-weight:700;color:var(--text-muted);margin-bottom:8px;"><i class="fas fa-eye me-1"></i> Preview Bukti Transfer</div><img src="' + e.target.result + '" style="max-width:100%;max-height:180px;border-radius:12px;border:2px solid #e2e8f0;box-shadow:0 4px 12px rgba(0,0,0,0.08);" alt="Preview">';
+            area.parentNode.appendChild(previewDiv);
+        };
+        reader.readAsDataURL(file);
+    }
 }
 
 document.getElementById('formPembayaran').addEventListener('submit', function(e) {
@@ -1403,7 +1450,7 @@ function batalkanOrder(id_order) {
 
 function lihatDetail(id_order) {
     Swal.fire({
-        title: 'Detail Pesanan #' + String(id_order).padStart(4, '0'),
+        title: 'Detail Sesi Pesanan #' + String(id_order).padStart(4, '0'),
         html: 'Sesi foto Anda sudah terverifikasi dan dijadwalkan.<br>Silakan hubungi admin via WhatsApp untuk koordinasi properti/tambahan: <br><a href="https://wa.me/6287871438459" target="_blank" class="btn btn-success mt-2" style="background:#25D366; border:none; color:white;"><i class="fab fa-whatsapp"></i> Hubungi Admin</a>',
         icon: 'info',
         confirmButtonColor: '#D53D66'
