@@ -216,7 +216,7 @@ $q_jadwal = sqlsrv_query($conn,
 
 // --- Barang Cetak Populer ---
 $q_barang = sqlsrv_query($conn, 
-    "SELECT TOP 4 ID_Barang, Nama_Barang, Harga_Barang, Foto_Barang 
+    "SELECT TOP 10 ID_Barang, Nama_Barang, Harga_Barang, Foto_Barang 
      FROM Barang_Cetak WHERE Is_Deleted = 0 AND Status = ? AND Stok_Barang > 0
      ORDER BY Stok_Barang DESC",
     array(STATUS_DATA_AKTIF)
@@ -347,7 +347,7 @@ function fmtTgl($d) {
             height: 40px;
             border-radius: 50%;
             object-fit: cover;
-            border: 2px solid #light-pink;
+            border: 2px solid var(--light-pink);
             cursor: pointer;
             transition: all 0.3s;
         }
@@ -475,7 +475,7 @@ function fmtTgl($d) {
             color: var(--d-pink);
         }
 
-        /* ===== ALUR BOOKING STEPS (6 LANGKAH REVISI BARU!) ===== */
+        /* ===== ALUR BOOKING STEPS ===== */
         .booking-steps {
             background: #ffffff;
             padding: 30px 40px;
@@ -791,6 +791,23 @@ function fmtTgl($d) {
             color: #fff;
         }
 
+        /* KUSTOMISASI SCROLL BARANG CETAK POPULER (DENGAN SCROLL VERTIKAL) */
+        .barang-cetak-scroll-container {
+            max-height: 250px;
+            overflow-y: auto;
+            padding-right: 8px;
+        }
+        .barang-cetak-scroll-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        .barang-cetak-scroll-container::-webkit-scrollbar-thumb {
+            background-color: var(--light-pink);
+            border-radius: 10px;
+        }
+        .barang-cetak-scroll-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
         /* ===== QUICK STATS BAR ===== */
         .stats-bar {
             display: flex;
@@ -955,7 +972,7 @@ function fmtTgl($d) {
 </head>
 <body>
 
-    <!-- NAVBAR ATAS (Penyempurnaan: Navigasi Menu Barang Cetak Dihapus Sesuai Instruksi) -->
+    <!-- NAVBAR ATAS -->
     <nav class="top-navbar">
         <a href="index.php" class="nav-logo">
             SpotLight.<span>StudioFoto</span>
@@ -976,7 +993,7 @@ function fmtTgl($d) {
                     <div class="dropdown-header">Halo, <?= htmlspecialchars($nama_customer) ?></div>
                     <div class="dropdown-divider"></div>
                     
-                    <!-- MENU: Akses Detil Profil -->
+                    <!-- MENU: Akses Detil Profil (Berhasil dipicu setelah pemanggilan Bootstrap JS diperbaiki) -->
                     <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalProfil">
                         <i class="bi bi-person-circle"></i> Profil Saya
                     </button>
@@ -1005,7 +1022,7 @@ function fmtTgl($d) {
         </div>
     </section>
 
-    <!-- ALUR BOOKING STEPS (6 LANGKAH REVISI BARU!) -->
+    <!-- ALUR BOOKING STEPS -->
     <section class="booking-steps">
         <div class="steps-container">
             <div class="step-item">
@@ -1074,14 +1091,33 @@ function fmtTgl($d) {
             </div>
         </div>
 
-        <!-- PAKET FOTO -->
-        <div class="section-header" id="section-paket" style="scroll-margin-top: 100px;">
-            <div class="section-title">
-                <i class="bi bi-fire text-danger me-2"></i>
-                Paket Foto <span>Populer</span>
+        <!-- PAKET FOTO (Penyempurnaan: Penambahan Search & Filter secara Real-time) -->
+        <div class="d-flex flex-column gap-3 mb-4" id="section-paket" style="scroll-margin-top: 100px;">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                <div class="section-title mb-0">
+                    <i class="bi bi-fire text-danger me-2"></i>
+                    Paket Foto <span>Populer</span>
+                </div>
+                
+                <!-- Kolom Input Pencarian & Filter Urutan Harga -->
+                <div class="d-flex flex-wrap align-items-center gap-2" style="flex: 1; max-width: 600px; justify-content: flex-end;">
+                    <div class="position-relative" style="flex: 1; min-width: 180px; max-width: 300px;">
+                        <i class="bi bi-search position-absolute text-muted" style="left: 14px; top: 50%; transform: translateY(-50%);"></i>
+                        <input type="text" id="searchPaket" class="form-control form-control-custom ps-5" placeholder="Cari nama paket..." onkeyup="filterPaketGrid()">
+                    </div>
+                    <div style="min-width: 150px;">
+                        <select id="sortPaket" class="form-select form-control-custom" onchange="filterPaketGrid()">
+                            <option value="all">Urutkan Harga</option>
+                            <option value="murah">Termurah</option>
+                            <option value="mahal">Termahal</option>
+                        </select>
+                    </div>
+                </div>
             </div>
-            <div class="section-count">
-                Harga <strong>per sesi</strong> • <?= sqlsrv_num_rows($q_paket) ?> paket tersedia
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="section-count text-muted" style="font-size: 0.85rem; font-weight: 600;">
+                    Harga <strong>per sesi</strong> • <span id="active-paket-count"><?= sqlsrv_num_rows($q_paket) ?></span> paket tersedia
+                </div>
             </div>
         </div>
 
@@ -1095,7 +1131,8 @@ function fmtTgl($d) {
                     $harga = number_format($row['Harga_Paket'], 0, ',', '.');
                     $jumlah_ruangan = $row['jumlah_ruangan'] ?? 0;
             ?>
-                <a href="Layanan/Paket/pilih_paket.php?id_paket=<?= $row['ID_Paket'] ?>" class="paket-card">
+                <!-- Menambahkan atribut data-nama dan data-harga untuk mempermudah manipulasi DOM Filter -->
+                <a href="Layanan/Paket/pilih_paket.php?id_paket=<?= $row['ID_Paket'] ?>" class="paket-card" data-nama="<?= strtolower(htmlspecialchars($row['Nama_Paket'])) ?>" data-harga="<?= (int)$row['Harga_Paket'] ?>">
                     <div class="paket-img-wrapper">
                         <?php if ($foto_paket): ?>
                             <img src="<?= $foto_paket ?>" class="paket-img" alt="<?= htmlspecialchars($row['Nama_Paket']) ?>">
@@ -1142,7 +1179,7 @@ function fmtTgl($d) {
             <?php endif; ?>
         </div>
 
-        <!-- INFO SECTION: Jadwal + Barang -->
+        <!-- INFO SECTION: Jadwal + Barang Cetak -->
         <div class="info-section">
             <!-- Jadwal Hari Ini -->
             <div class="info-card">
@@ -1176,37 +1213,44 @@ function fmtTgl($d) {
                 <?php endif; ?>
             </div>
 
-            <!-- Barang Cetak -->
+            <!-- Barang Cetak (Perbaikan tag penutup div & fungsionalitas scroll vertikal) -->
             <div class="info-card">
                 <div class="info-card-title">
                     <i class="bi bi-bag-heart-fill"></i>
                     Barang Cetak Populer
                 </div>
-                <?php
-                if ($q_barang && sqlsrv_has_rows($q_barang)):
-                    while ($row = sqlsrv_fetch_array($q_barang, SQLSRV_FETCH_ASSOC)):
-                        $harga_barang = number_format($row['Harga_Barang'], 0, ',', '.');
-                ?>
-                    <div class="info-item">
-                        <div class="info-item-left">
-                            <div class="info-icon" style="background: #dbeafe; color: #2563eb;"><i class="bi bi-printer-fill"></i></div>
-                            <div>
-                                <div class="info-text"><?= htmlspecialchars($row['Nama_Barang']) ?></div>
-                                <div class="info-sub">Rp<?= $harga_barang ?></div>
+                <div class="barang-cetak-scroll-container">
+                    <?php
+                    if ($q_barang && sqlsrv_has_rows($q_barang)):
+                        while ($row = sqlsrv_fetch_array($q_barang, SQLSRV_FETCH_ASSOC)):
+                            $harga_barang = number_format($row['Harga_Barang'], 0, ',', '.');
+                    ?>
+                        <div class="info-item">
+                            <div class="info-item-left">
+                                <div class="info-icon" style="background: #dbeafe; color: #2563eb;"><i class="bi bi-printer-fill"></i></div>
+                                <div>
+                                    <div class="info-text"><?= htmlspecialchars($row['Nama_Barang']) ?></div>
+                                    <div class="info-sub">Rp<?= $harga_barang ?></div>
+                                </div>
                             </div>
-                <?php endwhile; else: ?>
-                    <div class="text-center py-4">
-                        <i class="bi bi-inbox fs-2 mb-2" style="color: #cbd5e1;"></i>
-                        <p class="text-muted small">Belum ada barang cetak tersedia.</p>
-                    </div>
-                <?php endif; ?>
+                        </div>
+                    <?php 
+                        endwhile; 
+                    else: 
+                    ?>
+                        <div class="text-center py-4">
+                            <i class="bi bi-inbox fs-2 mb-2" style="color: #cbd5e1;"></i>
+                            <p class="text-muted small">Belum ada barang cetak tersedia.</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
         </div>
 
     </main>
 
     <!-- =====================================================
-    MODAL DETAIL PROFIL & KATA SANDI (BARU & MODEREN)
+    MODAL DETAIL PROFIL & KATA SANDI
     ===================================================== -->
     <div class="modal fade" id="modalProfil" data-bs-backdrop="static" tabindex="-1" aria-labelledby="modalProfilLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -1371,6 +1415,8 @@ function fmtTgl($d) {
         </div>
     </div>
 
+    <!-- MENAMBAHKAN FILE BOOTSTRAP BUNDLE JS UNTUK MEMICU MODAL KEMBALI SECARA SEMPURNA -->
+    <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
             <?php if (isset($_SESSION['profile_msg'])): ?>
@@ -1383,6 +1429,62 @@ function fmtTgl($d) {
                 <?php unset($_SESSION['profile_msg']); ?>
             <?php endif; ?>
         });
+
+        // FUNGSI UNTUK MENCARI DAN MENGURUTKAN PAKET SECARA REAL-TIME (CLIENT-SIDE)
+        function filterPaketGrid() {
+            const searchVal = document.getElementById('searchPaket').value.toLowerCase().trim();
+            const sortVal = document.getElementById('sortPaket').value;
+            const grid = document.querySelector('.paket-grid');
+            const cards = Array.from(grid.querySelectorAll('.paket-card:not(.no-data-card)'));
+            
+            let visibleCount = 0;
+
+            // 1. Filter Berdasarkan Pencarian
+            cards.forEach(card => {
+                const name = card.getAttribute('data-nama');
+                if (name.includes(searchVal)) {
+                    card.style.display = 'block';
+                    visibleCount++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            // 2. Sort Berdasarkan Urutan Harga
+            if (sortVal === 'murah') {
+                cards.sort((a, b) => parseInt(a.getAttribute('data-harga')) - parseInt(b.getAttribute('data-harga')));
+            } else if (sortVal === 'mahal') {
+                cards.sort((a, b) => parseInt(b.getAttribute('data-harga')) - parseInt(a.getAttribute('data-harga')));
+            }
+
+            // Kembalikan elemen kartu yang telah diurutkan ke dalam kontainer grid
+            cards.forEach(card => grid.appendChild(card));
+
+            // Perbarui indikator jumlah data paket yang aktif
+            document.getElementById('active-paket-count').innerText = visibleCount;
+
+            // Tampilkan / Sembunyikan pesan kesalahan jika tidak ada data yang cocok
+            let noDataMsg = grid.querySelector('.no-data-card');
+            if (visibleCount === 0) {
+                if (!noDataMsg) {
+                    noDataMsg = document.createElement('div');
+                    noDataMsg.className = 'text-center py-5 no-data-card';
+                    noDataMsg.style.gridColumn = '1 / -1';
+                    noDataMsg.innerHTML = `
+                        <i class="bi bi-search fs-1 mb-3" style="color: #cbd5e1; display: block;"></i>
+                        <p class="text-muted">Paket "${searchVal}" tidak ditemukan.</p>
+                    `;
+                    grid.appendChild(noDataMsg);
+                } else {
+                    noDataMsg.querySelector('p').innerText = `Paket "${searchVal}" tidak ditemukan.`;
+                    noDataMsg.style.display = 'block';
+                }
+            } else {
+                if (noDataMsg) {
+                    noDataMsg.style.display = 'none';
+                }
+            }
+        }
 
         function previewImage(event) {
             const reader = new FileReader();
@@ -1511,8 +1613,12 @@ function fmtTgl($d) {
                 days[now.getDay()] + ', ' + now.getDate() + ' ' + months[now.getMonth()] + ' ' + now.getFullYear() + ' - ' + 
                 String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0') + ' WIB';
         }
-        setInterval(updateLiveClock, 1000);
-        updateLiveClock();
+        // Pastikan halaman tidak error saat jam dinonaktifkan di sidebar kustom Anda
+        const clockEl = document.getElementById('live-clock');
+        if (clockEl) {
+            setInterval(updateLiveClock, 1000);
+            updateLiveClock();
+        }
 
         document.addEventListener("DOMContentLoaded", function() {
             const urlParams = new URLSearchParams(window.location.search);
