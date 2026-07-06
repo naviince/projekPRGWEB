@@ -1194,7 +1194,6 @@ function fmtTgl($d) {
                                 <div class="info-text"><?= htmlspecialchars($row['Nama_Barang']) ?></div>
                                 <div class="info-sub">Rp<?= $harga_barang ?></div>
                             </div>
-                        </div>
                 <?php endwhile; else: ?>
                     <div class="text-center py-4">
                         <i class="bi bi-inbox fs-2 mb-2" style="color: #cbd5e1;"></i>

@@ -74,7 +74,7 @@ if (isset($_POST['login'])) {
                     header("Location: Role/Customer/index.php");
                     exit();
                 } else {
-                    $error_email_login = "Kata sandi tidak cocok!";
+                    $error_email_login = "Ada yang tidak sesuai nih🤷‍♂️!";
                 }
             } else {
                 // CEK KARYAWAN
@@ -98,10 +98,10 @@ if (isset($_POST['login'])) {
                             exit();
                         }
                     } else {
-                        $error_email_login = "Kata sandi tidak cocok!";
+                        $error_email_login = "Ada yang tidak sesuai nih🤷‍♂️!";
                     }
                 } else {
-                    $error_email_login = "Akun tidak ditemukan!";
+                    $error_email_login = "Ada yang tidak sesuai nih🤷‍♂️!";
                 }
             }
         }
@@ -829,14 +829,14 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
                     <div class="logo-text">Spot<span>Light</span></div>
                 </div>
 
-                <h2 class="form-title">Halo Kak, Welcome Back! 👋✨</h2>
+                <h2 class="form-title">Halo Kak, Selamat Datang! 👋✨</h2>
                 <p class="form-subtitle">Masukkan akun terdaftar Anda untuk melanjutkan kisah indah bersama SpotLight Studio! 📸💖</p>
 
                 <form method="POST" id="formLogin" action="login.php<?= !empty($redirect_query) ? '?' . ltrim($redirect_query, '&') : '' ?>">
                     <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
 
                     <div class="input-group-custom">
-                        <label class="input-label">Email / Username <span class="required">*</span></label>
+                        <label class="input-label">Email / Nama Pengguna <span class="required">*</span></label>
                         <input type="text" name="email_login" class="input-field" placeholder="nama@email.com atau username" value="<?= htmlspecialchars(@$_POST['email_login'] ?? '') ?>" required>
                     </div>
 

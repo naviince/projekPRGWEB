@@ -49,13 +49,13 @@ if (isset($_POST['action_upload_pembayaran'])) {
         exit();
     }
     
-    // Sesuaikan direktori upload ke assets/img/bukti/ seperti referensi Anda
+    // Sesuaikan direktori upload ke assets/img/bukti/
     $upload_dir = '../../../assets/img/bukti/';
     if (!is_dir($upload_dir)) {
         mkdir($upload_dir, 0777, true);
     }
     
-    // Penamaan file diselaraskan dengan pola referensi Anda
+    // Penamaan file diselaraskan dengan pola referensi
     $prefix = ($tipe_pembayaran === 'DP') ? 'bukti_dp_' : 'bukti_pelunasan_';
     $new_file_name = $prefix . $id_order . '_' . time() . '_' . uniqid() . '.' . $file_ext;
     $target_path = $upload_dir . $new_file_name;
@@ -207,7 +207,7 @@ if ($q_riwayat !== false) {
 }
 
 // =====================================================
-// AMBIL BARANG CETAK PER ORDER (REVISI SINKRON Kategori_Barang DIHAPUS)
+// AMBIL BARANG CETAK PER ORDER
 // =====================================================
 $barang_per_order = [];
 if (!empty($riwayat_list)) {
@@ -362,7 +362,6 @@ function getAksiButtons($item) {
 
     switch ($status) {
         case STATUS_ORDER_MENUNGGU_DP:
-            // SINKRONISASI: DP bernilai 65% berdasarkan logika pembayaran_dp.php Anda
             $dp_amount = $total_harga_diskon * 0.65;
             $buttons .= '<button onclick="bukaModalPembayaran(' . $id_order . ', \'DP\', ' . $dp_amount . ')" class="btn-aksi btn-upload"><i class="fas fa-upload"></i> Upload Bukti DP</button>';
             $buttons .= '<a href="javascript:void(0)" onclick="batalkanOrder(' . $id_order . ')" class="btn-aksi btn-batal"><i class="fas fa-times"></i> Batalkan</a>';
@@ -376,7 +375,6 @@ function getAksiButtons($item) {
             break;
 
         case STATUS_ORDER_SELESAI_FOTO:
-            // Sisa pembayaran pelunasan = Total Harga Order keseluruhan - Jumlah DP yang telah dibayar
             $remaining_amount = $total_harga_diskon - ($item['Jumlah_DP'] ?? 0);
             $buttons .= '<button onclick="bukaModalPembayaran(' . $id_order . ', \'Pelunasan\', ' . $remaining_amount . ')" class="btn-aksi btn-upload" style="background:#388E3C;color:#fff;"><i class="fas fa-upload"></i> Upload Pelunasan</button>';
             if ($has_file && $id_sesi > 0) {
@@ -500,13 +498,13 @@ function getAksiButtons($item) {
         .main-content { padding: 100px 40px 40px; max-width: 1400px; margin: 0 auto; }
         .page-header {
             display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 30px;
+            margin-bottom: 35px;
         }
         .page-title h1 { color: var(--secondary); font-size: 28px; font-weight: 800; }
         .page-title p { color: #888; font-size: 14px; margin-top: 4px; }
 
         .stats-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
             gap: 20px; margin-bottom: 30px;
         }
         .stat-card {
@@ -521,7 +519,7 @@ function getAksiButtons($item) {
             background: var(--primary-light); opacity: 0.5;
         }
         .stat-card .stat-icon {
-            width: 44px; height: 44px; border-radius: 12px;
+            width: 48px; height: 48px; border-radius: 14px;
             display: flex; align-items: center; justify-content: center;
             font-size: 20px; margin-bottom: 12px;
         }
@@ -602,7 +600,7 @@ function getAksiButtons($item) {
 
         .detail-section { display: flex; flex-direction: column; gap: 12px; }
         .detail-item {
-            display: flex align-items: flex-start; gap: 12px; padding: 10px 14px;
+            display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px;
             background: #FAFAFA; border-radius: 10px;
         }
         .detail-item i {
@@ -747,7 +745,7 @@ function getAksiButtons($item) {
         .star-rating i {
             font-size: 36px; color: #DDD; cursor: pointer; transition: all 0.2s;
         }
-        .star-rating i:hover, .star-rating i.active { color: #F9A825; transform: scale(1.1); }
+        .star-rating i.active { color: #F9A825; transform: scale(1.1); }
         .modal-content textarea {
             width: 100%; padding: 14px; border: 2px solid #f0f0f0; border-radius: 12px;
             font-size: 14px; resize: vertical; min-height: 100px; margin-bottom: 20px;
@@ -770,49 +768,44 @@ function getAksiButtons($item) {
             .nav-menu-center { display: none; }
             .main-content { padding: 80px 20px 20px; }
             .page-header { flex-direction: column; }
-            .page-header { flex-direction: column; }
         }
     </style>
 </head>
 <body>
 
-    <!-- SIDEBAR -->
-    <div class="sidebar">
-        <div class="sidebar-menu-wrapper">
-            <a href="../index.php" class="sidebar-brand">
-                SpotLight.<br><span>Customer Panel</span>
-            </a>
-            <ul class="nav-menu">
-                <li class="nav-item">
-                    <a href="../index.php" class="nav-link-custom">
-                        <span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="index.php" class="nav-link-custom active">
-                        <span><i class="bi bi-history me-2"></i> Riwayat Transaksi</span>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-custom">
-                        <span><i class="bi bi-images me-2"></i> Hasil Foto Sesi</span>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="../Layanan/Paket/pilih_paket.php" class="nav-link-custom">
-                        <span><i class="bi bi-plus-circle me-2"></i> Booking Baru</span>
-                    </a>
-                </li>
-            </ul>
-        </div>
-        <div>
-            <button onclick="confirmLogout()" class="btn btn-logout text-center d-block w-100">
-                <i class="bi bi-box-arrow-right me-2"></i> Keluar Sistem
-            </button>
+<!-- TOP NAVBAR -->
+<nav class="top-navbar">
+    <a href="../index.php" class="nav-logo">
+        SpotLight.<span>StudioFoto</span>
+    </a>
+    <div class="nav-menu-center">
+        <a href="../index.php" class="nav-link-item">Dashboard</a>
+        <a href="../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
+        <a href="index.php" class="nav-link-item active">Riwayat</a>
+        <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
+    </div>
+    <div class="nav-right">
+        <a href="../Layanan/Paket/pilih_paket.php" class="nav-btn-booking">
+            <i class="bi bi-plus-lg"></i> Booking
+        </a>
+        <div class="nav-avatar-wrapper">
+            <img src="<?php echo $foto_pelanggan_src; ?>" alt="Profil" class="nav-avatar" onclick="toggleDropdown()">
+            <div class="nav-dropdown" id="navDropdown">
+                <div class="dropdown-header">Halo, <?php echo htmlspecialchars($nama_pelanggan); ?></div>
+                <div class="dropdown-divider"></div>
+                <a href="../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
+                    <i class="bi bi-house-door"></i> Kembali ke Beranda
+                </a>
+                <div class="dropdown-divider"></div>
+                <button class="dropdown-item logout" onclick="confirmLogout()">
+                    <i class="bi bi-box-arrow-right"></i> Keluar Sistem
+                </button>
+            </div>
         </div>
     </div>
+</nav>
 
-<div class="main-content" style="margin-left: 260px;">
+<div class="main-content" style="padding-top: 100px;">
     <div class="page-header">
         <div class="page-title">
             <h1><i class="fas fa-history" style="color:var(--primary);margin-right:10px;"></i>Riwayat Transaksi</h1>

@@ -334,7 +334,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       justify-content: center;
       cursor: pointer;
       z-index: 10;
-      transition: var(--transition-3d);
+      transition: var(--transition-3d), opacity 0.3s ease, visibility 0.3s ease;
       box-shadow: 0 4px 15px rgba(216, 63, 103, 0.15);
     }
     .slider-arrow:hover {
@@ -586,6 +586,15 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
     @media (max-width: 768px) {
       .section-heading { font-size: 1.8rem !important; }
       .section-subtitle { font-size: 0.9rem; }
+    }
+
+    /* EFEK HOVER GLOW / BAYANGAN UNTUK TULISAN JUDUL */
+    .section-heading, .hero h1 {
+      transition: text-shadow 0.3s ease, color 0.3s ease;
+    }
+    .section-heading:hover, .hero h1:hover {
+      text-shadow: 0px 4px 15px rgba(216, 63, 103, 0.35);
+      color: var(--primary-pink);
     }
   </style>
 </head>
@@ -1072,7 +1081,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       });
     });
 
-    // ========== PACKAGE SLIDER ARROWS ==========
+    // ========== PACKAGE SLIDER ARROWS & VISIBILITY CONTROL ==========
     const slider = document.getElementById('packageSlider');
     const prevBtn = document.getElementById('sliderPrev');
     const nextBtn = document.getElementById('sliderNext');
@@ -1082,24 +1091,64 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       return item ? item.offsetWidth + 30 : 390;
     }
 
+    // Fungsi untuk memperbarui tampilan/keberadaan tombol panah navigasi slider secara mutlak
+    function updateSliderArrows() {
+      if (!slider || !prevBtn || !nextBtn) return;
+
+      const scrollLeft = slider.scrollLeft;
+      const maxScrollLeft = slider.scrollWidth - slider.clientWidth;
+
+      // Menggunakan toleransi 15px untuk sub-pixel rendering pada layar resolusi tinggi (HP/tablet)
+      // Menggunakan display 'none' dan 'flex' agar elemen benar-benar disembunyikan secara fisik
+      if (scrollLeft <= 15) {
+        prevBtn.style.display = 'none';
+      } else {
+        prevBtn.style.display = 'flex';
+      }
+
+      if (scrollLeft >= maxScrollLeft - 15) {
+        nextBtn.style.display = 'none';
+      } else {
+        nextBtn.style.display = 'flex';
+      }
+    }
+
     prevBtn.addEventListener('click', () => {
       slider.scrollBy({ left: -getScrollAmount(), behavior: 'smooth' });
+      // Berikan sedikit jeda setelah animasi scroll selesai untuk memperbarui status tombol
+      setTimeout(updateSliderArrows, 350);
     });
 
     nextBtn.addEventListener('click', () => {
       slider.scrollBy({ left: getScrollAmount(), behavior: 'smooth' });
+      // Berikan sedikit jeda setelah animasi scroll selesai untuk memperbarui status tombol
+      setTimeout(updateSliderArrows, 350);
     });
+
+    // Daftarkan event listener untuk memonitor perubahan posisi scroll secara real-time
+    slider.addEventListener('scroll', updateSliderArrows);
+    window.addEventListener('resize', updateSliderArrows);
+    
+    // Jalankan fungsi di berbagai lifecycle untuk menjamin akurasi deteksi saat halaman pertama kali dibuka
+    updateSliderArrows();
+    document.addEventListener('DOMContentLoaded', updateSliderArrows);
+    window.addEventListener('load', updateSliderArrows);
+
+    // Timer tambahan untuk mengantisipasi layout-shifting akibat gambar/font yang lambat dimuat
+    setTimeout(updateSliderArrows, 50);
+    setTimeout(updateSliderArrows, 300);
+    setTimeout(updateSliderArrows, 800);
 
     // Touch swipe support
     let isDown = false;
     let startX;
-    let scrollLeft;
+    let scrollLeftState;
 
     slider.addEventListener('mousedown', (e) => {
       isDown = true;
       slider.style.cursor = 'grabbing';
       startX = e.pageX - slider.offsetLeft;
-      scrollLeft = slider.scrollLeft;
+      scrollLeftState = slider.scrollLeft;
     });
 
     slider.addEventListener('mouseleave', () => {
@@ -1117,7 +1166,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       e.preventDefault();
       const x = e.pageX - slider.offsetLeft;
       const walk = (x - startX) * 2;
-      slider.scrollLeft = scrollLeft - walk;
+      slider.scrollLeft = scrollLeftState - walk;
     });
 
     slider.style.cursor = 'grab';
