@@ -574,7 +574,7 @@ $_SESSION['csrf_token'] = $csrf_token;
                 </li>
                 <li class="nav-item">
                     <a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)">
-                        <span><i class="bi bi-house-door-fill me-2"></i> Landing Page</span>
+                        <span><i class="bi bi-house-door-fill me-2"></i>Beranda</span>
                     </a>
                 </li>
             </ul>

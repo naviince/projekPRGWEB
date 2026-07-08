@@ -724,7 +724,7 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
                 </li>
                 <li class="nav-item">
                     <a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)">
-                        <span><i class="bi bi-house-door-fill me-2"></i> Landing Page</span>
+                        <span><i class="bi bi-house-door-fill me-2"></i>Beranda</span>
                     </a>
                 </li>
             </ul>
