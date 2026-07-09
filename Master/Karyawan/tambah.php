@@ -794,16 +794,14 @@ function hasError($field, $error_fields) { return isset($error_fields[$field]) &
         <ul class="nav-menu">
             <li class="nav-item"><a href="../../Role/Owner/index.php" class="nav-link-custom"><span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span></a></li>
             <li class="nav-item">
-                <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuMaster">
-                    <span><i class="bi bi-folder-fill me-2"></i> Data Master</span>
-                    <i class="bi bi-chevron-down small icon-chevron" style="transform: rotate(180deg);"></i>
-                </a>
-                <div class="submenu show" id="submenuMaster">
-                    <ul class="list-unstyled">
-                        <li><a href="index.php" class="submenu-link active"><i class="bi bi-person-badge-fill me-2"></i>Kelola Karyawan</a></li>
-                    </ul>
-                </div>
-            </li>
+                <li class="nav-item">
+    <a href="../../Master/Karyawan/index.php" class="nav-link-custom">
+        <span>
+            <i class="bi bi-person-badge-fill me-2"></i>
+            Kelola Karyawan
+        </span>
+    </a>
+</li>
             <li class="nav-item">
                 <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuLaporan">
                     <span><i class="bi bi-file-earmark-bar-graph-fill me-2"></i> Laporan Bisnis</span>

@@ -722,17 +722,14 @@ while ($row = sqlsrv_fetch_array($q_pendapatan_bulan, SQLSRV_FETCH_ASSOC)) {
                     </a>
                 </li>
                 
-                <li class="nav-item">
-                    <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuMaster">
-                        <span><i class="bi bi-folder-fill me-2"></i> Data Master</span>
-                        <i class="bi bi-chevron-down small icon-chevron"></i>
-                    </a>
-                    <div class="submenu" id="submenuMaster">
-                        <ul class="list-unstyled">
-                            <li><a href="../../Master/Karyawan/index.php" class="submenu-link"><i class="bi bi-person-badge-fill me-2"></i>Kelola Karyawan</a></li>
-                        </ul>
-                    </div>
-                </li>
+               <li class="nav-item">
+    <a href="../../Master/Karyawan/index.php" class="nav-link-custom">
+        <span>
+            <i class="bi bi-person-badge-fill me-2"></i>
+            Kelola Karyawan
+        </span>
+    </a>
+</li>
 
                 <li class="nav-item">
                     <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuLaporan">
