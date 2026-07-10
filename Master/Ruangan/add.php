@@ -96,11 +96,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
         $field_errors['deskripsi'] = "Maksimal 255 karakter!";
     }
 
-    // *Penyesuaian Validasi Baru: Tidak boleh memilih lebih dari satu paket foto
+    // Memilih satu atau lebih paket foto diperbolehkan sesuai skema many-to-many
     if (empty($paket_terpilih)) {
         $field_errors['paket'] = "Pilih minimal 1 paket foto!";
-    } elseif (count($paket_terpilih) > 1) {
-        $field_errors['paket'] = "Ruangan hanya boleh terhubung dengan maksimal 1 paket foto!";
     }
 
     // Cek Duplikat Nama Ruangan (Diubah ke SQL Langsung karena sp_CekDuplikatRuangan tidak tersedia)
@@ -161,23 +159,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             if ($upload_path && file_exists($upload_path)) @unlink($upload_path);
         } else {
             try {
-                // Ambil ID Paket tunggal karena Ruangan hanya terikat pada satu paket di database
-                $id_paket = (int)$paket_terpilih[0];
-
-                // Validasi paket harus aktif dan terdaftar di database
-                $cek_paket_sql = "SELECT ID_Paket FROM Paket_Foto WHERE ID_Paket = ? AND Is_Deleted = 0";
-                $cek_paket_stmt = safe_sqlsrv_query($conn, $cek_paket_sql, [$id_paket]);
-                $cek_paket = safe_sqlsrv_fetch($cek_paket_stmt);
-                
-                if (!$cek_paket) {
-                    throw new Exception("Paket ID {$id_paket} tidak valid atau tidak terdaftar.");
-                }
-
                 // Simpan Ruangan Baru via Stored Procedure sp_InsertRuangan
-                // Format Parameter: @ID_Paket, @Nama, @Deskripsi, @Foto, @CreatedBy
-                $sql_ruangan = "{CALL sp_InsertRuangan(?, ?, ?, ?, ?)}";
+                // Format Parameter: @Nama, @Deskripsi, @Foto, @CreatedBy
+                $sql_ruangan = "{CALL sp_InsertRuangan(?, ?, ?, ?)}";
                 $params_ruangan = [
-                    $id_paket, 
                     $nama, 
                     !empty($deskripsi) ? $deskripsi : null, 
                     $new_filename, 
@@ -199,6 +184,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                     throw new Exception("Gagal mengambil ID Ruangan baru dari database.");
                 }
 
+                // Simpan Relasi Paket Ruangan ke Tabel Junction Paket_Ruangan via sp_InsertPaketRuangan
+                foreach ($paket_terpilih as $id_paket) {
+                    $id_paket = (int)$id_paket;
+                    
+                    // Validasi paket harus aktif dan terdaftar di database
+                    $cek_paket_sql = "SELECT ID_Paket FROM Paket_Foto WHERE ID_Paket = ? AND Is_Deleted = 0";
+                    $cek_paket_stmt = safe_sqlsrv_query($conn, $cek_paket_sql, [$id_paket]);
+                    $cek_paket = safe_sqlsrv_fetch($cek_paket_stmt);
+                    
+                    if (!$cek_paket) {
+                        throw new Exception("Paket ID {$id_paket} tidak valid.");
+                    }
+
+                    $sql_junction = "{CALL sp_InsertPaketRuangan(?, ?)}";
+                    $stmt_junction = sqlsrv_query($conn, $sql_junction, [$id_paket, $id_ruangan_baru]);
+                    if ($stmt_junction === false) {
+                        throw new Exception("Gagal menghubungkan Paket ke Ruangan: " . json_encode(sqlsrv_errors()));
+                    }
+                }
+
                 if (sqlsrv_commit($conn) === false) {
                     throw new Exception("Gagal melakukan commit transaksi database.");
                 }
@@ -207,7 +212,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             } catch (Exception $e) {
                 sqlsrv_rollback($conn);
                 if ($upload_path && file_exists($upload_path)) @unlink($upload_path);
-                $error = $e->getMessage();
+                $error = $e->getmessage();
             }
         }
     }
@@ -340,7 +345,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                 <li class="nav-item">
                     <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuMaster">
                         <span><i class="bi bi-folder-fill me-2"></i> Data Master</span>
-                        <i class="bi bi-chevron-up small icon-chevron" style="transform: rotate(180deg);"></i>
+                        <i class="bi bi-chevron-up small icon-chevron" style="transform: rotate(180deg)"></i>
                     </a>
                     <div class="submenu show" id="submenuMaster">
                         <ul class="list-unstyled">
@@ -437,7 +442,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
 
                     <div class="mb-4">
                         <label class="form-label"><i class="bi bi-camera"></i> Pilih Paket Foto <span class="required">*</span><span class="badge-wajib">Wajib</span></label>
-                        <div class="input-hint mb-3"><i class="bi bi-info-circle"></i> Pilih maksimal 1 paket foto yang bisa menggunakan ruangan ini</div>
+                        <div class="input-hint mb-3"><i class="bi bi-info-circle"></i> Pilih paket-paket foto yang bisa menggunakan ruangan ini</div>
                         <div class="paket-section <?= isset($field_errors['paket']) ? 'is-error' : '' ?>" id="paket-section">
                             <div class="paket-section-title">
                                 <i class="bi bi-stars"></i> Daftar Paket Foto Aktif
@@ -452,7 +457,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                                         $is_checked = in_array($pkt['ID_Paket'], $paket_terpilih) ? 'checked' : '';
                                         $is_selected = $is_checked ? 'selected' : '';
                                     ?>
-                                        <div class="paket-checkbox-item <?= $is_selected ?>" onclick="togglePaket(this)">
+                                        <div class="paket-checkbox-item <?= $is_selected ?>">
                                             <input type="checkbox" name="paket[]" value="<?= $pkt['ID_Paket'] ?>" <?= $is_checked ?> onchange="updatePaketCount()">
                                             <div class="d-flex align-items-center gap-3 w-100">
                                                 <img src="<?= $foto_p_src ?>" style="width: 45px; height: 45px; object-fit: cover; border-radius: 8px; flex-shrink: 0;">
@@ -530,19 +535,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             });
         });
 
-        // Toggle class selected on table row when checkbox checked (MUTUALLY EXCLUSIVE / RADIO BEHAVIOR)
+        // Toggle class selected on table row when checkbox checked (MUTIPLE CHECKBOXES ALLOWED)
         document.querySelectorAll('.paket-checkbox-item input[type="checkbox"]').forEach(chk => {
             chk.addEventListener('change', function(e) {
                 e.stopPropagation();
-                
                 if (this.checked) {
-                    // Batalkan pilihan semua checkbox lain demi validasi max 1 paket
-                    document.querySelectorAll('.paket-checkbox-item input[type="checkbox"]').forEach(otherChk => {
-                        if (otherChk !== this) {
-                            otherChk.checked = false;
-                            otherChk.closest('.paket-checkbox-item').classList.remove('selected');
-                        }
-                    });
                     this.closest('.paket-checkbox-item').classList.add('selected');
                 } else {
                     this.closest('.paket-checkbox-item').classList.remove('selected');
@@ -552,19 +549,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             });
         });
 
-        // Parent div click handler to check the checkbox (MUTUALLY EXCLUSIVE / RADIO BEHAVIOR)
+        // Parent div click handler to check the checkbox (MUTIPLE CHECKBOXES ALLOWED)
         document.querySelectorAll('.paket-checkbox-item').forEach(item => {
             item.addEventListener('click', function(e) {
                 if (e.target.tagName === 'INPUT') return;
                 
                 const checkbox = this.querySelector('input[type="checkbox"]');
                 const wasChecked = checkbox.checked;
-                
-                // Batalkan semua seleksi lain
-                document.querySelectorAll('.paket-checkbox-item input[type="checkbox"]').forEach(otherChk => {
-                    otherChk.checked = false;
-                    otherChk.closest('.paket-checkbox-item').classList.remove('selected');
-                });
                 
                 checkbox.checked = !wasChecked;
                 if (checkbox.checked) {
@@ -583,10 +574,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             const hint = document.getElementById('paket-count-hint');
             if (checked === 0) {
                 hint.style.color = '#dc2626';
-                hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Pilih 1 paket foto!';
-            } else if (checked > 1) {
-                hint.style.color = '#dc2626';
-                hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Maksimal hanya boleh memilih 1 paket foto!';
+                hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Pilih minimal 1 paket foto!';
             } else {
                 hint.style.color = '#059669';
                 hint.innerHTML = '<i class="bi bi-check-circle-fill"></i> ' + checked + ' paket terpilih';
@@ -716,7 +704,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             if (this.value.trim()) clearFieldError('deskripsi');
         });
 
-        // Form Submit
+        // Form Submit (VALIDATION REVISED FOR MANY-TO-MANY MODE)
         document.getElementById('formRuangan').addEventListener('submit', function(e) {
             const paketChecked = document.querySelectorAll('input[name="paket[]"]:checked').length;
             if (paketChecked === 0) {
@@ -725,15 +713,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                     icon: 'warning',
                     title: 'Paket Belum Dipilih',
                     text: 'Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini!',
-                    confirmButtonColor: '#D53D66'
-                });
-                return false;
-            } else if (paketChecked > 1) {
-                e.preventDefault();
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'Paket Melebihi Batas',
-                    text: 'Satu ruangan hanya boleh terhubung dengan maksimal 1 paket foto!',
                     confirmButtonColor: '#D53D66'
                 });
                 return false;

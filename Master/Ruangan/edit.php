@@ -1,6 +1,10 @@
 <?php
+ob_start();
 session_start();
 include '../../koneksi.php';
+
+define('STATUS_DATA_AKTIF', 1);
+define('STATUS_DATA_NONAKTIF', 0);
 
 // --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Admin') {
@@ -9,6 +13,7 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 }
 
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
+$nama_admin = $_SESSION['nama'] ?? 'Administrator';
 
 // =====================================================
 // HELPER FUNCTIONS - SAFE SQLSRV ANTI-CRASH
@@ -94,12 +99,12 @@ if ($q_daftar_paket) {
     }
 }
 
-// Ambil paket foto terhubung saat ini
+// Ambil semua paket foto terhubung saat ini langsung dari tabel junction Paket_Ruangan
 $paket_terhubung_ids = [];
 $q_terhubung = safe_sqlsrv_query($conn, "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?", [$id]);
 if ($q_terhubung) {
     while ($row = safe_sqlsrv_fetch($q_terhubung)) {
-        $paket_terhubung_ids[] = $row['ID_Paket'];
+        $paket_terhubung_ids[] = (int)$row['ID_Paket'];
     }
 }
 
@@ -131,20 +136,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
         $field_errors['deskripsi'] = "Maksimal 255 karakter!";
     }
 
-    // *Penyesuaian Validasi Baru: Tidak boleh memilih lebih dari satu paket foto
+    // Memilih satu atau lebih paket foto diperbolehkan sesuai skema many-to-many
     if (empty($paket_terpilih)) {
         $field_errors['paket'] = "Pilih minimal 1 paket!";
-    } elseif (count($paket_terpilih) > 1) {
-        $field_errors['paket'] = "Ruangan hanya boleh terhubung dengan maksimal 1 paket foto!";
     }
 
-    // Cek Duplikat Nama Ruangan (Menggunakan Stored Procedure sp_CekDuplikatRuangan)
+    // Cek Duplikat Nama Ruangan (Diubah ke SQL Langsung karena sp_CekDuplikatRuangan tidak tersedia)
     if (empty($field_errors)) {
-        $sql_dup = "{CALL sp_CekDuplikatRuangan(?, ?)}";
+        $sql_dup = "SELECT COUNT(*) AS total FROM Ruangan WHERE Nama_Ruangan = ? AND ID_Ruangan <> ? AND Is_Deleted = 0";
         $stmt_dup = safe_sqlsrv_query($conn, $sql_dup, [$nama, $id]);
         $cek_dup = safe_sqlsrv_fetch($stmt_dup);
-        if (($cek_dup['Total'] ?? 0) > 0) {
+        if (($cek_dup['total'] ?? 0) > 0) {
             $field_errors['nama_ruangan'] = "Nama ini sudah digunakan ruangan lain!";
+        }
+    }
+
+    // Ambil relasi paket ruangan saat ini di database untuk proses sinkronisasi
+    $paket_sekarang = [];
+    $q_now = safe_sqlsrv_query($conn, "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?", [$id]);
+    if ($q_now) {
+        while ($row = safe_sqlsrv_fetch($q_now)) {
+            $paket_sekarang[] = (int)$row['ID_Paket'];
+        }
+    }
+
+    // Pengaman: Jika admin menghapus relasi paket lama, pastikan tidak ada order aktif yang mengikat kombinasi paket-ruangan tersebut
+    if (empty($field_errors)) {
+        foreach ($paket_sekarang as $id_paket_lama) {
+            if (!in_array($id_paket_lama, $paket_terpilih)) {
+                $cek_order_sql = "SELECT COUNT(*) as total FROM [Order] 
+                                  WHERE ID_Paket = ? AND ID_Ruangan = ? AND Status = 1 AND Status_Order <> 4";
+                $cek_order = safe_sqlsrv_fetch(safe_sqlsrv_query($conn, $cek_order_sql, [$id_paket_lama, $id]));
+
+                if (($cek_order['total'] ?? 0) > 0) {
+                    $pkg_info = safe_sqlsrv_fetch(safe_sqlsrv_query($conn, "SELECT Nama_Paket FROM Paket_Foto WHERE ID_Paket = ?", [$id_paket_lama]));
+                    $nama_paket_error = $pkg_info['Nama_Paket'] ?? "Paket #{$id_paket_lama}";
+                    $field_errors['paket'] = "Gagal mengubah relasi! Paket '{$nama_paket_error}' masih terikat dengan transaksi order aktif pada ruangan ini.";
+                    break;
+                }
+            }
         }
     }
 
@@ -199,7 +229,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
             if (!empty($upload_path) && file_exists($upload_path)) @unlink($upload_path);
         } else {
             try {
-                // Kolom Status dihapus sepenuhnya dari kueri pembaruan data
+                // Update Ruangan tanpa menyertakan kolom ID_Paket (many-to-many)
                 $sql_update = "UPDATE Ruangan SET 
                     Nama_Ruangan = ?, Deskripsi = ?, 
                     Foto_Ruangan = ?, Modified_By = ?, Modified_Date = GETDATE() 
@@ -211,15 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
                     throw new Exception("Gagal update ruangan: " . json_encode(sqlsrv_errors()));
                 }
 
-                // Ambil relasi paket ruangan saat ini untuk sinkronisasi
-                $paket_sekarang = [];
-                $sql_now = "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?";
-                $stmt_now = sqlsrv_query($conn, $sql_now, [$id]);
-                while ($row = safe_sqlsrv_fetch($stmt_now)) {
-                    $paket_sekarang[] = $row['ID_Paket'];
-                }
-
-                // Tambahkan relasi baru menggunakan Stored Procedure sp_InsertPaketRuangan
+                // Tambahkan relasi baru ke tabel junction Paket_Ruangan via sp_InsertPaketRuangan
                 foreach ($paket_terpilih as $id_paket) {
                     $id_paket = (int)$id_paket;
                     if (!in_array($id_paket, $paket_sekarang)) {
@@ -239,17 +261,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
                     }
                 }
 
-                // Hapus relasi lama yang tidak terpilih (kecuali jika ada transaksi order aktif)
+                // Hapus relasi lama yang tidak terpilih kembali
                 foreach ($paket_sekarang as $id_paket_lama) {
                     if (!in_array($id_paket_lama, $paket_terpilih)) {
-                        $cek_order_sql = "SELECT COUNT(*) as total FROM [Order] 
-                                          WHERE ID_Paket = ? AND ID_Ruangan = ? AND Status = 1 AND Status_Order <> 4";
-                        $cek_order = safe_sqlsrv_fetch(safe_sqlsrv_query($conn, $cek_order_sql, [$id_paket_lama, $id]));
-
-                        if (($cek_order['total'] ?? 0) > 0) {
-                            continue; // Abaikan jika paket lama masih terikat transaksi aktif
-                        }
-
                         $sql_delete = "DELETE FROM Paket_Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ?";
                         $stmt_delete = sqlsrv_query($conn, $sql_delete, [$id_paket_lama, $id]);
                         if ($stmt_delete === false) {
@@ -275,7 +289,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
                 $q_reload_ids = safe_sqlsrv_query($conn, "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?", [$id]);
                 if ($q_reload_ids) {
                     while ($row = safe_sqlsrv_fetch($q_reload_ids)) {
-                        $paket_terhubung_ids[] = $row['ID_Paket'];
+                        $paket_terhubung_ids[] = (int)$row['ID_Paket'];
                     }
                 }
                 $paket_terpilih = $paket_terhubung_ids;
@@ -445,10 +459,10 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
                     </a>
                     <div class="submenu" id="submenuTransaksi">
                         <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                            <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                         </ul>
                     </div>
                 </li>

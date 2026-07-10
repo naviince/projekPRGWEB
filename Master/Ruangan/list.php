@@ -48,13 +48,13 @@ $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/s
 if (isset($_GET['ajax_id'])) {
     $id_ajax = (int)$_GET['ajax_id'];
     
-    // Ambil data ruangan spesifik bergabung dengan Paket_Foto langsung
+    // Ambil data ruangan spesifik bergabung dengan Paket_Ruangan (many-to-many)
     $ruangan_ajax = safe_sqlsrv_fetch($conn, 
-        "SELECT r.*, pf.Nama_Paket,
+        "SELECT r.*, 
+            (SELECT COUNT(*) FROM Paket_Ruangan pr WHERE pr.ID_Ruangan = r.ID_Ruangan) as total_paket,
             (SELECT COUNT(*) FROM Properti p WHERE p.ID_Ruangan = r.ID_Ruangan AND p.Is_Deleted = 0) as total_properti,
             (SELECT COUNT(*) FROM Ruangan_Tema rt WHERE rt.ID_Ruangan = r.ID_Ruangan) as total_tema
         FROM Ruangan r 
-        LEFT JOIN Paket_Foto pf ON r.ID_Paket = pf.ID_Paket
         WHERE r.ID_Ruangan = ? AND r.Is_Deleted = 0", 
         [$id_ajax]
     );
@@ -64,12 +64,13 @@ if (isset($_GET['ajax_id'])) {
         exit();
     }
 
-    // Ambil paket foto terhubung secara langsung dari kolom ID_Paket
+    // Ambil semua paket foto terhubung secara aman dari tabel junction Paket_Ruangan
     $paket_terhubung = safe_sqlsrv_fetch_all($conn,
         "SELECT p.ID_Paket, p.Nama_Paket, p.Harga_Paket, p.Kapasitas_Orang, p.Durasi_Waktu, p.Foto_Paket
-        FROM Ruangan r
-        JOIN Paket_Foto p ON r.ID_Paket = p.ID_Paket
-        WHERE r.ID_Ruangan = ? AND p.Is_Deleted = 0",
+        FROM Paket_Ruangan pr
+        JOIN Paket_Foto p ON pr.ID_Paket = p.ID_Paket
+        WHERE pr.ID_Ruangan = ? AND p.Is_Deleted = 0
+        ORDER BY p.Harga_Paket ASC",
         [$id_ajax]
     );
 
@@ -111,17 +112,17 @@ if (isset($_GET['ajax_id'])) {
 
     <!-- Info Grid -->
     <div class="detail-info-grid mb-4">
-        <div class="detail-info-item" style="grid-column: span 2;">
+        <div class="detail-info-item">
             <div class="detail-icon"><i class="bi bi-camera-fill"></i></div>
             <div class="detail-label">Paket Terhubung</div>
-            <div class="detail-value" style="font-size: 1rem;"><?= htmlspecialchars($ruangan_ajax['Nama_Paket'] ?? 'Belum terhubung') ?></div>
+            <div class="detail-value"><?= $ruangan_ajax['total_paket'] ?? 0 ?></div>
         </div>
         <div class="detail-info-item">
             <div class="detail-icon"><i class="bi bi-box-seam-fill"></i></div>
             <div class="detail-label">Total Properti</div>
             <div class="detail-value"><?= $ruangan_ajax['total_properti'] ?? 0 ?></div>
         </div>
-        <div class="detail-info-item">
+        <div class="detail-info-item" style="grid-column: span 2;">
             <div class="detail-icon"><i class="bi bi-palette-fill"></i></div>
             <div class="detail-label">Tema Foto Terkait</div>
             <div class="detail-value"><?= $ruangan_ajax['total_tema'] ?? 0 ?></div>
@@ -130,7 +131,7 @@ if (isset($_GET['ajax_id'])) {
 
     <!-- Paket Foto Terhubung -->
     <div class="mb-4">
-        <div class="detail-section-title"><i class="bi bi-stars"></i> Detail Paket Foto</div>
+        <div class="detail-section-title"><i class="bi bi-stars"></i> Detail Paket Foto Terhubung</div>
         <?php if (!empty($paket_terhubung)): foreach ($paket_terhubung as $pkt): 
             $foto_p = $pkt['Foto_Paket'] ?? 'default_paket.jpg';
             $foto_p_src = ($foto_p != 'default_paket.jpg' && file_exists("../../assets/img/paket/" . $foto_p)) ? "../../assets/img/paket/" . $foto_p : $default_svg_avatar;
@@ -251,8 +252,8 @@ $where_clause = !empty($conditions) ? "WHERE " . implode(" AND ", $conditions) :
 
 $order_clause = "r.Nama_Ruangan ASC";
 if ($sort == "nama_desc") { $order_clause = "r.Nama_Ruangan DESC"; }
-elseif ($sort == "paket_asc") { $order_clause = "pf.Nama_Paket ASC"; }
-elseif ($sort == "paket_desc") { $order_clause = "pf.Nama_Paket DESC"; }
+elseif ($sort == "paket_asc") { $order_clause = "total_paket ASC"; }
+elseif ($sort == "paket_desc") { $order_clause = "total_paket DESC"; }
 
 // FIX: Variabel diperbaiki dari $where_sql yang tidak terdefinisi menjadi $where_clause
 $count_sql = "SELECT COUNT(*) AS total FROM Ruangan r {$where_clause}";
@@ -260,17 +261,30 @@ $total_records = safe_sqlsrv_count($conn, $count_sql, $params);
 $total_halaman = ceil($total_records / $limit);
 
 // FIX ANTI-CRASH: Menyematkan parameter integer $offset dan $limit langsung di dalam query SQL Server
-// Menggabungkan langsung tabel Paket_Foto untuk efisiensi kueri satu-ke-satu
+// Dan membaca total_paket melalui subquery Paket_Ruangan (many-to-many)
 $list_sql = "SELECT 
-    r.ID_Ruangan, r.Nama_Ruangan, r.Deskripsi, r.Foto_Ruangan, r.Is_Deleted, pf.Nama_Paket,
+    r.ID_Ruangan, r.Nama_Ruangan, r.Deskripsi, r.Foto_Ruangan, r.Is_Deleted,
+    (SELECT COUNT(*) FROM Paket_Ruangan pr WHERE pr.ID_Ruangan = r.ID_Ruangan) as total_paket,
     (SELECT COUNT(*) FROM Properti p WHERE p.ID_Ruangan = r.ID_Ruangan AND p.Is_Deleted = 0) as total_properti,
     (SELECT COUNT(*) FROM Ruangan_Tema rt WHERE rt.ID_Ruangan = r.ID_Ruangan) as total_tema
-FROM Ruangan r 
-LEFT JOIN Paket_Foto pf ON r.ID_Paket = pf.ID_Paket
-{$where_clause} 
-ORDER BY {$order_clause} OFFSET $offset ROWS FETCH NEXT $limit ROWS ONLY";
+FROM Ruangan r {$where_clause} ORDER BY {$order_clause} OFFSET $offset ROWS FETCH NEXT $limit ROWS ONLY";
 
 $ruangan_list = safe_sqlsrv_fetch_all($conn, $list_sql, $params);
+
+// Memuat data relasi Paket_Foto yang terhubung ke setiap ruangan secara batch (Mencegah N+1 Query Problem)
+$paket_per_ruangan = [];
+if (!empty($ruangan_list)) {
+    $ruangan_ids = array_column($ruangan_list, 'ID_Ruangan');
+    $placeholders = implode(',', array_fill(0, count($ruangan_ids), '?'));
+    $paket_sql = "SELECT pr.ID_Ruangan, p.Nama_Paket, p.Kapasitas_Orang, p.Durasi_Waktu, p.Harga_Paket 
+                  FROM Paket_Ruangan pr 
+                  JOIN Paket_Foto p ON pr.ID_Paket = p.ID_Paket 
+                  WHERE pr.ID_Ruangan IN ($placeholders) AND p.Is_Deleted = 0";
+    $paket_data = safe_sqlsrv_fetch_all($conn, $paket_sql, $ruangan_ids);
+    foreach ($paket_data as $p) {
+        $paket_per_ruangan[$p['ID_Ruangan']][] = $p;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">

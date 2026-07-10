@@ -11,28 +11,6 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 $nama_admin = $_SESSION['nama'] ?? 'Administrator';
 
-// =====================================================
-// HELPER FUNCTIONS - SAFE SQLSRV
-// =====================================================
-function safe_sqlsrv_fetch($conn, $sql, $params = []) {
-    $stmt = sqlsrv_query($conn, $sql, $params);
-    if ($stmt === false) return null;
-    $result = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
-    sqlsrv_free_stmt($stmt);
-    return $result;
-}
-
-function safe_sqlsrv_count($conn, $sql, $params = []) {
-    $stmt = sqlsrv_query($conn, $sql, $params);
-    if ($stmt === false) return 0;
-    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
-    sqlsrv_free_stmt($stmt);
-    return $row['total'] ?? 0;
-}
-
-// =====================================================
-// GET PARAMETERS
-// =====================================================
 $aksi = isset($_GET['aksi']) ? trim($_GET['aksi']) : '';
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
@@ -50,6 +28,25 @@ $ruangan = safe_sqlsrv_fetch($conn,
 if (!$ruangan) {
     header("Location: list.php?status_sukses=error&message=Ruangan tidak ditemukan");
     exit();
+}
+
+// =====================================================
+// HELPER FUNCTIONS - SAFE SQLSRV
+// =====================================================
+function safe_sqlsrv_fetch($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) return null;
+    $result = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $result;
+}
+
+function safe_sqlsrv_count($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) return 0;
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $row['total'] ?? 0;
 }
 
 // =====================================================
