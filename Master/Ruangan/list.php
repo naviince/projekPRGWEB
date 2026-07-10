@@ -48,13 +48,13 @@ $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/s
 if (isset($_GET['ajax_id'])) {
     $id_ajax = (int)$_GET['ajax_id'];
     
-    // Ambil data ruangan spesifik (Kapasitas_Ruangan ditiadakan sesuai skema database Anda)
+    // Ambil data ruangan spesifik bergabung dengan Paket_Foto langsung
     $ruangan_ajax = safe_sqlsrv_fetch($conn, 
-        "SELECT r.*, 
-            (SELECT COUNT(*) FROM Paket_Ruangan pr WHERE pr.ID_Ruangan = r.ID_Ruangan) as total_paket,
+        "SELECT r.*, pf.Nama_Paket,
             (SELECT COUNT(*) FROM Properti p WHERE p.ID_Ruangan = r.ID_Ruangan AND p.Is_Deleted = 0) as total_properti,
             (SELECT COUNT(*) FROM Ruangan_Tema rt WHERE rt.ID_Ruangan = r.ID_Ruangan) as total_tema
         FROM Ruangan r 
+        LEFT JOIN Paket_Foto pf ON r.ID_Paket = pf.ID_Paket
         WHERE r.ID_Ruangan = ? AND r.Is_Deleted = 0", 
         [$id_ajax]
     );
@@ -64,13 +64,12 @@ if (isset($_GET['ajax_id'])) {
         exit();
     }
 
-    // Ambil paket foto terhubung
+    // Ambil paket foto terhubung secara langsung dari kolom ID_Paket
     $paket_terhubung = safe_sqlsrv_fetch_all($conn,
         "SELECT p.ID_Paket, p.Nama_Paket, p.Harga_Paket, p.Kapasitas_Orang, p.Durasi_Waktu, p.Foto_Paket
-        FROM Paket_Ruangan pr
-        JOIN Paket_Foto p ON pr.ID_Paket = p.ID_Paket
-        WHERE pr.ID_Ruangan = ? AND p.Is_Deleted = 0
-        ORDER BY p.Harga_Paket ASC",
+        FROM Ruangan r
+        JOIN Paket_Foto p ON r.ID_Paket = p.ID_Paket
+        WHERE r.ID_Ruangan = ? AND p.Is_Deleted = 0",
         [$id_ajax]
     );
 
@@ -112,17 +111,17 @@ if (isset($_GET['ajax_id'])) {
 
     <!-- Info Grid -->
     <div class="detail-info-grid mb-4">
-        <div class="detail-info-item">
+        <div class="detail-info-item" style="grid-column: span 2;">
             <div class="detail-icon"><i class="bi bi-camera-fill"></i></div>
             <div class="detail-label">Paket Terhubung</div>
-            <div class="detail-value"><?= $ruangan_ajax['total_paket'] ?? 0 ?></div>
+            <div class="detail-value" style="font-size: 1rem;"><?= htmlspecialchars($ruangan_ajax['Nama_Paket'] ?? 'Belum terhubung') ?></div>
         </div>
         <div class="detail-info-item">
             <div class="detail-icon"><i class="bi bi-box-seam-fill"></i></div>
             <div class="detail-label">Total Properti</div>
             <div class="detail-value"><?= $ruangan_ajax['total_properti'] ?? 0 ?></div>
         </div>
-        <div class="detail-info-item" style="grid-column: span 2;">
+        <div class="detail-info-item">
             <div class="detail-icon"><i class="bi bi-palette-fill"></i></div>
             <div class="detail-label">Tema Foto Terkait</div>
             <div class="detail-value"><?= $ruangan_ajax['total_tema'] ?? 0 ?></div>
@@ -131,7 +130,7 @@ if (isset($_GET['ajax_id'])) {
 
     <!-- Paket Foto Terhubung -->
     <div class="mb-4">
-        <div class="detail-section-title"><i class="bi bi-stars"></i> Paket Foto Terhubung</div>
+        <div class="detail-section-title"><i class="bi bi-stars"></i> Detail Paket Foto</div>
         <?php if (!empty($paket_terhubung)): foreach ($paket_terhubung as $pkt): 
             $foto_p = $pkt['Foto_Paket'] ?? 'default_paket.jpg';
             $foto_p_src = ($foto_p != 'default_paket.jpg' && file_exists("../../assets/img/paket/" . $foto_p)) ? "../../assets/img/paket/" . $foto_p : $default_svg_avatar;
@@ -252,8 +251,8 @@ $where_clause = !empty($conditions) ? "WHERE " . implode(" AND ", $conditions) :
 
 $order_clause = "r.Nama_Ruangan ASC";
 if ($sort == "nama_desc") { $order_clause = "r.Nama_Ruangan DESC"; }
-elseif ($sort == "paket_asc") { $order_clause = "total_paket ASC"; }
-elseif ($sort == "paket_desc") { $order_clause = "total_paket DESC"; }
+elseif ($sort == "paket_asc") { $order_clause = "pf.Nama_Paket ASC"; }
+elseif ($sort == "paket_desc") { $order_clause = "pf.Nama_Paket DESC"; }
 
 // FIX: Variabel diperbaiki dari $where_sql yang tidak terdefinisi menjadi $where_clause
 $count_sql = "SELECT COUNT(*) AS total FROM Ruangan r {$where_clause}";
@@ -261,27 +260,17 @@ $total_records = safe_sqlsrv_count($conn, $count_sql, $params);
 $total_halaman = ceil($total_records / $limit);
 
 // FIX ANTI-CRASH: Menyematkan parameter integer $offset dan $limit langsung di dalam query SQL Server
+// Menggabungkan langsung tabel Paket_Foto untuk efisiensi kueri satu-ke-satu
 $list_sql = "SELECT 
-    r.ID_Ruangan, r.Nama_Ruangan, r.Deskripsi, r.Foto_Ruangan, r.Is_Deleted,
-    (SELECT COUNT(*) FROM Paket_Ruangan pr WHERE pr.ID_Ruangan = r.ID_Ruangan) as total_paket,
+    r.ID_Ruangan, r.Nama_Ruangan, r.Deskripsi, r.Foto_Ruangan, r.Is_Deleted, pf.Nama_Paket,
     (SELECT COUNT(*) FROM Properti p WHERE p.ID_Ruangan = r.ID_Ruangan AND p.Is_Deleted = 0) as total_properti,
     (SELECT COUNT(*) FROM Ruangan_Tema rt WHERE rt.ID_Ruangan = r.ID_Ruangan) as total_tema
-FROM Ruangan r {$where_clause} ORDER BY {$order_clause} OFFSET $offset ROWS FETCH NEXT $limit ROWS ONLY";
+FROM Ruangan r 
+LEFT JOIN Paket_Foto pf ON r.ID_Paket = pf.ID_Paket
+{$where_clause} 
+ORDER BY {$order_clause} OFFSET $offset ROWS FETCH NEXT $limit ROWS ONLY";
 
 $ruangan_list = safe_sqlsrv_fetch_all($conn, $list_sql, $params);
-
-$paket_per_ruangan = [];
-if (!empty($ruangan_list)) {
-    $ruangan_ids = array_column($ruangan_list, 'ID_Ruangan');
-    $placeholders = implode(',', array_fill(0, count($ruangan_ids), '?'));
-    $paket_sql = "SELECT pr.ID_Ruangan, p.Nama_Paket, p.Kapasitas_Orang, p.Durasi_Waktu, p.Harga_Paket 
-                  FROM Paket_Ruangan pr JOIN Paket_Foto p ON pr.ID_Paket = p.ID_Paket 
-                  WHERE pr.ID_Ruangan IN ($placeholders) AND p.Is_Deleted = 0";
-    $paket_data = safe_sqlsrv_fetch_all($conn, $paket_sql, $ruangan_ids);
-    foreach ($paket_data as $p) {
-        $paket_per_ruangan[$p['ID_Ruangan']][] = $p;
-    }
-}
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -475,10 +464,10 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--bod
                     </a>
                     <div class="submenu" id="submenuTransaksi">
                         <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                            <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                         </ul>
                     </div>
                 </li>
@@ -544,27 +533,32 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--bod
                             $path_img = "../../assets/img/ruangan/" . ($row['Foto_Ruangan'] ?? '');
                             $img_src = (!empty($row['Foto_Ruangan']) && file_exists($path_img)) ? $path_img : $default_svg_avatar;
                             $is_deleted = ($row['Is_Deleted'] ?? 0) == 1;
-                            $paket_list = $paket_per_ruangan[$row['ID_Ruangan']] ?? [];
                         ?>
                         <tr class="fade-in-up <?= $is_deleted ? 'row-deleted' : '' ?>">
                             <td><div class="d-flex align-items-center gap-3"><img src="<?= $img_src ?>" class="ruangan-preview" alt="<?= htmlspecialchars($row['Nama_Ruangan']) ?>"><div><div class="td-nama"><?= htmlspecialchars($row['Nama_Ruangan']) ?></div><div class="td-deskripsi"><?= htmlspecialchars($row['Deskripsi'] ?? '-') ?></div></div></div></td>
-                            <td><?php if (!empty($paket_list)): foreach (array_slice($paket_list, 0, 2) as $paket): ?><span class="badge-paket"><?= htmlspecialchars($paket['Nama_Paket']) ?></span><?php endforeach; if (count($paket_list) > 2): ?><span class="badge-paket">+<?= count($paket_list) - 2 ?></span><?php endif; else: ?><span class="text-muted small">Belum terhubung</span><?php endif; ?></td>
+                            <td>
+                                <?php if (!empty($row['Nama_Paket'])): ?>
+                                    <span class="badge-paket"><?= htmlspecialchars($row['Nama_Paket']) ?></span>
+                                <?php else: ?>
+                                    <span class="text-muted small">Belum terhubung</span>
+                                <?php endif; ?>
+                            </td>
                             <td class="td-relasi"><i class="bi bi-box-seam me-1 text-warning"></i><?= $row['total_properti'] ?? 0 ?> properti</td>
                             <td class="td-relasi"><i class="bi bi-palette me-1 text-info"></i><?= $row['total_tema'] ?? 0 ?> tema</td>
                             <td><?php if ($is_deleted): ?><span class="badge-status badge-terhapus"><span class="badge-dot"></span>Terhapus</span><?php else: ?><span class="badge-status badge-aktif"><span class="badge-dot"></span>Aktif</span><?php endif; ?></td>
                             <td class="text-center">
                                 <?php if (!$is_deleted): ?>
-                                    <!-- DETAIL (BULAT PERSIS SEPERTI GAMBAR) -->
+                                    <!-- DETAIL -->
                                     <button class="btn-action-circle btn-action-detail" onclick="bukaDetailModal(<?= $row['ID_Ruangan'] ?>)" title="Lihat Detail Ruangan">
                                         <i class="bi bi-eye"></i>
                                     </button>
                                     
-                                    <!-- EDIT (BULAT PERSIS SEPERTI GAMBAR) -->
+                                    <!-- EDIT -->
                                     <a href="edit.php?id=<?= $row['ID_Ruangan'] ?>" class="btn-action-circle btn-action-edit" title="Edit Ruangan">
                                         <i class="bi bi-pencil"></i>
                                     </a>
                                     
-                                    <!-- ARSIPKAN / TOGGLE SOFT DELETE (BULAT PERSIS SEPERTI GAMBAR) -->
+                                    <!-- ARSIPKAN / TOGGLE SOFT DELETE -->
                                     <button class="btn-action-circle btn-action-soft-delete" onclick="softDeleteConfirm(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" title="Arsipkan Ruangan">
                                         <i class="bi bi-archive"></i>
                                     </button>
@@ -573,12 +567,12 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--bod
                                     <!-- DETAIL DISABLED -->
                                     <button class="btn-action-circle btn-action-detail" style="opacity: 0.35; cursor: not-allowed;" disabled title="Data diarsipkan (Pulihkan dahulu untuk melihat detail)"><i class="bi bi-eye"></i></button>
                                     
-                                    <!-- PULIHKAN / TOGGLE RESTORE (BULAT PERSIS SEPERTI GAMBAR) -->
+                                    <!-- PULIHKAN / TOGGLE RESTORE -->
                                     <button class="btn-action-circle btn-action-restore" onclick="restoreConfirm(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" title="Pulihkan Ruangan">
                                         <i class="bi bi-arrow-counterclockwise"></i>
                                     </button>
                                     
-                                    <!-- HAPUS PERMANEN (BULAT PERSIS SEPERTI GAMBAR) -->
+                                    <!-- HAPUS PERMANEN -->
                                     <button class="btn-action-circle btn-action-hard-delete" onclick="hardDeleteConfirm(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" title="Hapus Permanen">
                                         <i class="bi bi-trash-fill"></i>
                                     </button>
@@ -631,7 +625,7 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--bod
             <div class="modal-content" style="border:none;border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,0.15);overflow:hidden">
                 <div class="modal-header" style="border:none;padding:24px 24px 16px;background:#fff"><h5 class="fw-bold mb-0"><i class="bi bi-funnel-fill me-2 text-danger"></i>Filter Data</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
                 <div class="modal-body" style="padding:0 24px 20px;background:#fff">
-                    <div class="mb-3"><label style="display:block;font-size:0.75rem;font-weight:800;color:var(--text-dark);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">URUT BERDASARKAN</label><select class="form-select" id="modalSort" style="border:2px solid #e2e8f0;border-radius:14px;padding:14px 18px;font-weight:600"><option value="nama_asc" <?= $sort == 'nama_asc' ? 'selected' : '' ?>>Nama A - Z</option><option value="nama_desc" <?= $sort == 'nama_desc' ? 'selected' : '' ?>>Nama Z - A</option><option value="paket_asc" <?= $sort == 'paket_asc' ? 'selected' : '' ?>>Paket Terhubung (Sedikit)</option><option value="paket_desc" <?= $sort == 'paket_desc' ? 'selected' : '' ?>>Paket Terhubung (Banyak)</option></select></div>
+                    <div class="mb-3"><label style="display:block;font-size:0.75rem;font-weight:800;color:var(--text-dark);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">URUT BERDASARKAN</label><select class="form-select" id="modalSort" style="border:2px solid #e2e8f0;border-radius:14px;padding:14px 18px;font-weight:600"><option value="nama_asc" <?= $sort == 'nama_asc' ? 'selected' : '' ?>>Nama A - Z</option><option value="nama_desc" <?= $sort == 'nama_desc' ? 'selected' : '' ?>>Nama Z - A</option><option value="paket_asc" <?= $sort == 'paket_asc' ? 'selected' : '' ?>>Paket Terhubung (A - Z)</option><option value="paket_desc" <?= $sort == 'paket_desc' ? 'selected' : '' ?>>Paket Terhubung (Z - A)</option></select></div>
                 </div>
                 <div class="modal-footer" style="border:none;padding:0 24px 24px;background:#fff;display:flex;gap:12px">
                     <button type="button" class="btn btn-secondary" style="flex:1;background:#f1f5f9;color:#475569;border:none;border-radius:14px;padding:14px 20px;font-weight:700" onclick="resetFilter()"><i class="bi bi-arrow-counterclockwise me-2"></i>Reset</button>
@@ -674,7 +668,6 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--bod
         function softDeleteConfirm(id,nama){Swal.fire({title:'Arsipkan Ruangan?',html:'Ruangan <b>"'+nama+'"</b> akan diarsipkan (soft delete).<br><br><span style="color:#059669"><i class="bi bi-info-circle-fill"></i> Data masih tersimpan di arsip dan bisa dipulihkan.</span>',icon:'warning',showCancelButton:true,confirmButtonColor:'#dc2626',cancelButtonColor:'#718096',confirmButtonText:'<i class="bi bi-archive-fill"></i> Ya, Arsipkan',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed)window.location.href='action_ruangan.php?aksi=soft_delete&id='+id})}
         function restoreConfirm(id,nama){Swal.fire({title:'Pulihkan Ruangan?',html:'Ruangan <b>"'+nama+'"</b> akan dikembalikan ke daftar aktif studio.',icon:'question',showCancelButton:true,confirmButtonColor:'#059669',cancelButtonColor:'#718096',confirmButtonText:'<i class="bi bi-arrow-counterclockwise"></i> Ya, Pulihkan',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed)window.location.href='action_ruangan.php?aksi=restore&id='+id})}
         
-        // BUG FIX: Kunci ID parameter kueri diperbaiki dari ID_Karyawan yang salah kirim menjadi ID_Ruangan yang benar
         function hardDeleteConfirm(id,nama){Swal.fire({title:'HAPUS PERMANEN?',html:'Ruangan <b>"'+nama+'"</b> akan dihapus <span style="color:#dc2626;font-weight:800">PERMANEN</span> dari database!<br><br><i class="bi bi-exclamation-triangle-fill" style="color:#dc2626"></i> Tindakan tidak bisa dibatalkan!',icon:'error',showCancelButton:true,confirmButtonColor:'#7c2d12',cancelButtonColor:'#718096',confirmButtonText:'<i class="bi bi-trash-fill"></i> Ya, Hapus Permanen',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed)window.location.href='action_ruangan.php?aksi=hard_delete&id='+id})}
         
         var detailModal;

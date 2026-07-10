@@ -53,6 +53,71 @@ if (!function_exists('fmtTgl')) {
 }
 
 // =====================================================
+// INISIALISASI KERANJANG JADWAL MULTI-SLOT (SESSION)
+// =====================================================
+if (!isset($_SESSION['booking_cart_jadwal'])) {
+    $_SESSION['booking_cart_jadwal'] = [];
+}
+
+// Handle AJAX request untuk toggle slot
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'toggle_jadwal') {
+    header('Content-Type: application/json');
+
+    $id_jadwal = (int)$_POST['id_jadwal'];
+    $tanggal = $_POST['tanggal'] ?? '';
+    $jam_mulai = $_POST['jam_mulai'] ?? '';
+    $jam_selesai = $_POST['jam_selesai'] ?? '';
+    $hari = $_POST['hari'] ?? '';
+    $tgl_format = $_POST['tgl_format'] ?? '';
+
+    $found_key = -1;
+    foreach ($_SESSION['booking_cart_jadwal'] as $key => $item) {
+        if ($item['id_jadwal'] == $id_jadwal) {
+            $found_key = $key;
+            break;
+        }
+    }
+
+    if ($found_key >= 0) {
+        array_splice($_SESSION['booking_cart_jadwal'], $found_key, 1);
+        echo json_encode(['status' => 'removed', 'cart' => $_SESSION['booking_cart_jadwal']]);
+    } else {
+        $new_start = strtotime($tanggal . ' ' . $jam_mulai);
+        $new_end = strtotime($tanggal . ' ' . $jam_selesai);
+
+        foreach ($_SESSION['booking_cart_jadwal'] as $item) {
+            $exist_start = strtotime($item['tanggal'] . ' ' . $item['jam_mulai']);
+            $exist_end = strtotime($item['tanggal'] . ' ' . $item['jam_selesai']);
+
+            if ($tanggal == $item['tanggal'] && 
+                !(($new_end <= $exist_start) || ($new_start >= $exist_end))) {
+                echo json_encode(['status' => 'overlap', 'message' => 'Slot bertabrakan dengan jadwal yang sudah dipilih']);
+                exit();
+            }
+        }
+
+        $_SESSION['booking_cart_jadwal'][] = [
+            'id_jadwal' => $id_jadwal,
+            'tanggal' => $tanggal,
+            'jam_mulai' => $jam_mulai,
+            'jam_selesai' => $jam_selesai,
+            'hari' => $hari,
+            'tgl_format' => $tgl_format
+        ];
+        echo json_encode(['status' => 'added', 'cart' => $_SESSION['booking_cart_jadwal']]);
+    }
+    exit();
+}
+
+// Handle clear all slots
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'clear_jadwal') {
+    header('Content-Type: application/json');
+    $_SESSION['booking_cart_jadwal'] = [];
+    echo json_encode(['status' => 'cleared']);
+    exit();
+}
+
+// =====================================================
 // AMBIL ID PAKET, ID RUANGAN, ID TEMA DARI URL (WAJIB ADA)
 // =====================================================
 if (!isset($_GET['id_paket']) || empty($_GET['id_paket']) ||
@@ -127,7 +192,7 @@ if (!$d_tema) {
 // VALIDASI: RUANGAN HARUS TERHUBUNG DENGAN PAKET
 // =====================================================
 $q_validasi = sqlsrv_query($conn, 
-    "SELECT COUNT(*) as total FROM Paket_Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ?", 
+    "SELECT COUNT(*) as total FROM Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ? AND Status = 1 AND Is_Deleted = 0", 
     array($id_paket, $id_ruangan)
 );
 if ($q_validasi === false) {
@@ -187,26 +252,25 @@ $q_jadwal = sqlsrv_query($conn,
         j.Status
      FROM Jadwal_Studio j
      WHERE j.ID_Ruangan = ?
-       AND j.ID_Paket = ?
        AND j.Tanggal_Jadwal BETWEEN ? AND ?
        AND j.Status = ?
        AND j.Is_Deleted = 0
      ORDER BY j.Tanggal_Jadwal ASC, j.Jam_Mulai ASC",
-    array($id_ruangan, $id_paket, $date_start_str, $date_end_str, STATUS_DATA_AKTIF)
+    array($id_ruangan, $date_start_str, $date_end_str, STATUS_DATA_AKTIF)
 );
 if ($q_jadwal === false) {
     die("Error query Jadwal: " . print_r(sqlsrv_errors(), true));
 }
 
 // =====================================================
-// CEK JADWAL YANG SUDAH DIBOOKING (dari tabel [Order])
+// CEK JADWAL YANG SUDAH DIBOOKING (dari tabel Order_Jadwal + [Order])
 // =====================================================
 $q_booked = sqlsrv_query($conn, 
-    "SELECT DISTINCT o.ID_Jadwal
-     FROM [Order] o
+    "SELECT DISTINCT oj.ID_Jadwal
+     FROM Order_Jadwal oj
+     JOIN [Order] o ON oj.ID_Order = o.ID_Order
      WHERE o.ID_Ruangan = ?
        AND o.ID_Paket = ?
-       AND o.ID_Jadwal IS NOT NULL
        AND o.Status = 1
        AND o.Status_Order NOT IN (?, ?)",
     array($id_ruangan, $id_paket, STATUS_ORDER_DIBATALKAN, STATUS_ORDER_SELESAI)
@@ -370,7 +434,11 @@ if (isset($_SESSION['booking_cart_cetak']) && !empty($_SESSION['booking_cart_cet
     }
 }
 
-$total_biaya_akhir = $d_paket['Harga_Paket'] + $total_cetak_harga;
+// Hitung jumlah slot yang dipilih dari keranjang
+$jumlah_slot_dipilih = count($_SESSION['booking_cart_jadwal'] ?? []);
+$harga_paket = $d_paket['Harga_Paket'];
+$total_harga_jadwal = $jumlah_slot_dipilih * $harga_paket;
+$total_biaya_akhir = $total_harga_jadwal + $total_cetak_harga;
 $total_biaya_akhir_format = number_format($total_biaya_akhir, 0, ',', '.');
 
 // Hitung jumlah slot tersedia hari ini
@@ -411,6 +479,11 @@ for ($i = 0; $i < 7; $i++) {
     $temp_date->modify('+1 day');
 }
 ?>
+// ID jadwal yang sudah dipilih (untuk mark selected di UI)
+$selected_jadwal_ids = array_map(function($item) {
+    return (int)$item['id_jadwal'];
+}, $_SESSION['booking_cart_jadwal'] ?? []);
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -1477,6 +1550,251 @@ for ($i = 0; $i < 7; $i++) {
             .summary-card { padding: 20px; }
             .date-nav-container { padding: 16px; }
         }
+
+        /* ===== BACK BUTTON ===== */
+        .back-nav-container {
+            margin-bottom: 20px;
+        }
+        .btn-back-step {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: #ffffff;
+            border: 2px solid #e2e8f0;
+            border-radius: var(--radius-md);
+            color: var(--text-muted);
+            font-weight: 700;
+            font-size: 0.85rem;
+            text-decoration: none;
+            transition: var(--transition-smooth);
+            cursor: pointer;
+        }
+        .btn-back-step:hover {
+            border-color: var(--p-pink);
+            color: var(--p-pink);
+            background: var(--s-pink);
+            transform: translateX(-4px);
+        }
+
+        /* ===== PROGRESS BAR CLICKABLE ===== */
+        .progress-step-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: inherit;
+            transition: var(--transition-smooth);
+            cursor: default;
+        }
+        .progress-step-wrapper.clickable {
+            cursor: pointer;
+        }
+        .progress-step-wrapper.clickable:hover .progress-step-circle {
+            transform: scale(1.1);
+            box-shadow: 0 4px 16px rgba(5, 150, 105, 0.3);
+        }
+        .progress-step-wrapper.clickable:hover .progress-step-label {
+            color: #059669;
+        }
+
+        /* ===== MULTI-SELECT INFO BAR ===== */
+        .multi-select-info {
+            background: linear-gradient(135deg, var(--s-pink), var(--light-pink));
+            border-radius: var(--radius-lg);
+            padding: 16px 20px;
+            margin-bottom: 24px;
+            border: 2px dashed var(--light-pink);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--p-pink);
+        }
+        .multi-select-info i {
+            font-size: 1.3rem;
+            animation: infoPulse 2s infinite;
+        }
+        @keyframes infoPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        /* Slot Selected (Multi-select) */
+        .slot-jam.selected {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            border-color: var(--p-pink);
+            color: #ffffff;
+            box-shadow: var(--shadow-glow);
+            transform: translateY(-4px) scale(1.03);
+        }
+        .slot-jam.selected::before { opacity: 1; }
+        .slot-jam.selected .slot-durasi { color: rgba(255,255,255,0.85); }
+        .slot-jam.selected .slot-waktu { color: #ffffff; }
+        .slot-jam.selected .slot-status { color: rgba(255,255,255,0.9); }
+        .slot-jam.selected::after {
+            content: '\F26B';
+            font-family: 'bootstrap-icons';
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            font-size: 0.9rem;
+            color: #ffffff;
+            z-index: 2;
+            animation: checkPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        @keyframes checkPop {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+
+        /* ===== SELECTED SLOTS LIST ===== */
+        .selected-slots-list {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 2px dashed #e2e8f0;
+        }
+        .selected-slots-title {
+            font-size: 0.78rem;
+            font-weight: 900;
+            color: var(--text-dark);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .selected-slots-title i { color: var(--p-pink); }
+        .selected-slot-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.84rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            padding: 8px 12px;
+            border-radius: 10px;
+            background: var(--s-pink);
+            border: 1px solid var(--light-pink);
+            transition: var(--transition-smooth);
+        }
+        .selected-slot-item:hover {
+            transform: translateX(4px);
+            border-color: var(--p-pink);
+        }
+        .selected-slot-item .slot-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .selected-slot-item .slot-date {
+            font-weight: 800;
+            color: var(--text-dark);
+            font-size: 0.8rem;
+        }
+        .selected-slot-item .slot-time {
+            font-size: 0.75rem;
+            color: var(--p-pink);
+        }
+        .selected-slot-item .slot-remove {
+            color: #dc2626;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 6px;
+            transition: var(--transition-smooth);
+            background: none;
+            border: none;
+        }
+        .selected-slot-item .slot-remove:hover {
+            background: #fef2f2;
+            transform: scale(1.2);
+        }
+
+        /* ===== ACTION BUTTONS ===== */
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        .btn-lanjut {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #ffffff;
+            padding: 14px 24px;
+            border-radius: var(--radius-lg);
+            font-weight: 800;
+            font-size: 0.95rem;
+            border: none;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            text-decoration: none;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 16px rgba(216, 63, 103, 0.3);
+        }
+        .btn-lanjut:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 8px 28px rgba(216, 63, 103, 0.4);
+            color: #ffffff;
+        }
+        .btn-lanjut:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .btn-lewati {
+            background: #ffffff;
+            color: var(--text-muted);
+            padding: 12px 24px;
+            border-radius: var(--radius-lg);
+            font-weight: 700;
+            font-size: 0.9rem;
+            border: 2px solid #e2e8f0;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            text-decoration: none;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .btn-lewati:hover {
+            border-color: var(--p-pink);
+            color: var(--p-pink);
+            background: var(--s-pink);
+        }
+        .btn-clear {
+            background: #fef2f2;
+            color: #dc2626;
+            padding: 10px 20px;
+            border-radius: var(--radius-md);
+            font-weight: 700;
+            font-size: 0.85rem;
+            border: 2px solid #fecaca;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            text-align: center;
+        }
+        .btn-clear:hover {
+            background: #dc2626;
+            color: #ffffff;
+        }
+
+        /* Legend selected */
+        .legend-box.selected { 
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); 
+            border-color: var(--p-pink); 
+            box-shadow: 0 2px 6px rgba(216, 63, 103, 0.3);
+        }
+
     </style>
 </head>
 <body>
@@ -1540,42 +1858,64 @@ for ($i = 0; $i < 7; $i++) {
 
     <!-- MAIN CONTENT -->
     <main class="main-container">
+        <!-- BACK BUTTON -->
+        <div class="back-nav-container">
+            <a href="../Barang_Cetak/pilih_barang_cetak.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>" class="btn-back-step">
+                <i class="bi bi-arrow-left"></i> Kembali ke Barang Cetak
+            </a>
+        </div>
+
+
 
         <!-- PROGRESS BAR SINKRON (Langkah 5 Active, 1 s.d 4 Completed) -->
         <div class="progress-container">
-            <div class="progress-step completed">
-                <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
-                <div class="progress-step-label">Pilih Paket</div>
-            </div>
+            <a href="../Paket/pilih_paket.php?id_paket=<?= $id_paket ?>" class="progress-step-wrapper clickable">
+                <div class="progress-step completed">
+                    <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
+                    <div class="progress-step-label">Pilih Paket</div>
+                </div>
+            </a>
             <div class="progress-line completed"></div>
-            <div class="progress-step completed">
-                <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
-                <div class="progress-step-label">Pilih Ruangan</div>
-            </div>
+            <a href="../Ruangan/pilih_ruangan.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>" class="progress-step-wrapper clickable">
+                <div class="progress-step completed">
+                    <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
+                    <div class="progress-step-label">Pilih Ruangan</div>
+                </div>
+            </a>
             <div class="progress-line completed"></div>
-            <div class="progress-step completed">
-                <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
-                <div class="progress-step-label">Pilih Tema</div>
-            </div>
+            <a href="../Tema/pilih_tema.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>" class="progress-step-wrapper clickable">
+                <div class="progress-step completed">
+                    <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
+                    <div class="progress-step-label">Pilih Tema</div>
+                </div>
+            </a>
             <div class="progress-line completed"></div>
-            <div class="progress-step completed">
-                <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
-                <div class="progress-step-label">Pilih Barang Cetak</div>
-            </div>
+            <a href="../Barang_Cetak/pilih_barang_cetak.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>" class="progress-step-wrapper clickable">
+                <div class="progress-step completed">
+                    <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
+                    <div class="progress-step-label">Pilih Barang Cetak</div>
+                </div>
+            </a>
             <div class="progress-line completed"></div>
-            <div class="progress-step active">
-                <div class="progress-step-circle">5</div>
-                <div class="progress-step-label">Pilih Jadwal</div>
+            <div class="progress-step-wrapper">
+                <div class="progress-step active">
+                    <div class="progress-step-circle">5</div>
+                    <div class="progress-step-label">Pilih Jadwal</div>
+                </div>
             </div>
             <div class="progress-line"></div>
-            <div class="progress-step">
-                <div class="progress-step-circle">6</div>
-                <div class="progress-step-label">Konfirmasi</div>
+            <div class="progress-step-wrapper">
+                <div class="progress-step">
+                    <div class="progress-step-circle">6</div>
+                    <div class="progress-step-label">Konfirmasi</div>
+                </div>
             </div>
             <div class="progress-line"></div>
-            <div class="progress-step">
-                <div class="progress-step-circle">7</div>
-                <div class="progress-step-label">Bayar DP</div>
+            <div class="progress-step-wrapper">
+                <div class="progress-step">
+                    <div class="progress-step-circle">7</div>
+                    <div class="progress-step-label">Bayar DP</div>
+                </div>
             </div>
         </div>
 
@@ -1622,6 +1962,12 @@ for ($i = 0; $i < 7; $i++) {
                         <?= (int)$d_paket['Durasi_Waktu'] ?> Menit / Sesi
                     </div>
                 </div>
+                <!-- MULTI-SELECT INFO BAR -->
+                <div class="multi-select-info">
+                    <i class="bi bi-info-circle-fill"></i>
+                    <span>Klik beberapa slot untuk booking multiple jadwal sekaligus (seperti AYO). Slot yang dipilih akan ditampilkan di sidebar kanan.</span>
+                </div>
+
 
                 <?php if (empty($jadwal_per_hari)): ?>
                     <div class="empty-jadwal">
@@ -1681,11 +2027,12 @@ for ($i = 0; $i < 7; $i++) {
                                         'hari' => $hari_data['hari'],
                                         'tgl_format' => $hari_data['tgl_format']
                                     ], JSON_UNESCAPED_UNICODE);
+                                    $is_selected = in_array($slot['id_jadwal'], $selected_jadwal_ids);
                                 ?>
-                                    <div class="slot-jam tersedia" data-slot='<?= $slot_data ?>'>
+                                    <div class="slot-jam tersedia<?= $is_selected ? ' selected' : '' ?>" data-slot='<?= $slot_data ?>'>
                                         <div class="slot-durasi"><?= (int)$d_paket['Durasi_Waktu'] ?> Menit</div>
                                         <div class="slot-waktu"><?= htmlspecialchars($slot['jam_mulai']) ?> - <?= htmlspecialchars($slot['jam_selesai']) ?></div>
-                                        <div class="slot-status">Rp <?= $harga_format ?></div>
+                                        <div class="slot-status"><?= $is_selected ? 'Dipilih' : 'Rp ' . $harga_format ?></div>
                                     </div>
                                 <?php endif; endforeach; ?>
                             </div>
@@ -1697,6 +2044,10 @@ for ($i = 0; $i < 7; $i++) {
                         <div class="legend-item">
                             <div class="legend-box tersedia"></div>
                             <span>Tersedia</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-box selected"></div>
+                            <span>Dipilih</span>
                         </div>
                         <div class="legend-item">
                             <div class="legend-box booked"></div>
@@ -1746,10 +2097,10 @@ for ($i = 0; $i < 7; $i++) {
                     </div>
 
                     <div class="summary-item">
-                        <div class="summary-icon"><i class="bi bi-calendar"></i></div>
+                        <div class="summary-icon<?= $jumlah_slot_dipilih > 0 ? ' completed' : '' ?>"><i class="bi bi-calendar<?= $jumlah_slot_dipilih > 0 ? '-check' : '' ?>"></i></div>
                         <div>
                             <div class="summary-text">Jadwal</div>
-                            <div class="summary-sub">Belum dipilih</div>
+                            <div class="summary-sub" id="summaryJadwalSub"><?= $jumlah_slot_dipilih > 0 ? $jumlah_slot_dipilih . ' slot dipilih' : 'Belum dipilih' ?></div>
                         </div>
                     </div>
 
@@ -1764,6 +2115,38 @@ for ($i = 0; $i < 7; $i++) {
                             <span>Total Harga:</span>
                             <span id="totalHargaLabel">Rp <?= $total_biaya_akhir_format ?></span>
                         </div>
+                    </div>
+
+                    <!-- SELECTED SLOTS LIST -->
+                    <div class="selected-slots-list" id="selectedSlotsList"<?= $jumlah_slot_dipilih == 0 ? ' style="display:none;"' : '' ?>>
+                        <div class="selected-slots-title"><i class="bi bi-calendar-check-fill"></i> Slot Dipilih:</div>
+                        <div id="selectedSlotsItems">
+                            <?php foreach ($_SESSION['booking_cart_jadwal'] ?? [] as $slot_item): ?>
+                            <div class="selected-slot-item" data-id="<?= $slot_item['id_jadwal'] ?>">
+                                <div class="slot-info">
+                                    <span class="slot-date"><?= htmlspecialchars($slot_item['hari']) ?>, <?= htmlspecialchars($slot_item['tgl_format']) ?></span>
+                                    <span class="slot-time"><?= htmlspecialchars($slot_item['jam_mulai']) ?> - <?= htmlspecialchars($slot_item['jam_selesai']) ?></span>
+                                </div>
+                                <button class="slot-remove" onclick="removeSlot(<?= $slot_item['id_jadwal'] ?>)" title="Hapus slot">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <button class="btn-clear w-100 mt-2" onclick="clearAllSlots()">
+                            <i class="bi bi-trash"></i> Hapus Semua Slot
+                        </button>
+                    </div>
+
+                    <!-- ACTION BUTTONS -->
+                    <div class="action-buttons">
+                        <button class="btn-lanjut" id="btnLanjut" onclick="lanjutKeKonfirmasi()"<?= $jumlah_slot_dipilih == 0 ? ' disabled' : '' ?>>
+                            <i class="bi bi-check-circle-fill"></i> Lanjut ke Konfirmasi
+                        </button>
+                        <a href="?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&action=lewati" 
+                           class="btn-lewati" onclick="return confirmSkip(event)">
+                            <i class="bi bi-skip-forward-fill"></i> Lewati Langkah Ini
+                        </a>
                     </div>
                 </div>
             </div>
@@ -1967,6 +2350,7 @@ for ($i = 0; $i < 7; $i++) {
         const paketNama = <?= json_encode($paket_nama_js) ?>;
         const durasi = <?= json_encode($durasi_js) ?>;
         const hargaFormat = <?= json_encode($harga_format) ?>;
+        const hargaPaket = <?= json_encode((int)$d_paket['Harga_Paket']) ?>;
         const totalHargaAkhirFormat = <?= json_encode(number_format($total_biaya_akhir, 0, ',', '.')) ?>;
         const idPaket = <?= json_encode((int)$id_paket) ?>;
         const idRuangan = <?= json_encode((int)$id_ruangan) ?>;
@@ -1982,6 +2366,9 @@ for ($i = 0; $i < 7; $i++) {
             if (overlay) overlay.classList.add('show');
         }
 
+        // =====================================================
+        // MULTI-SLOT TOGGLE (seperti AYO)
+        // =====================================================
         document.querySelectorAll('.slot-jam.tersedia').forEach(function(el) {
             el.addEventListener('click', function() {
                 const slotData = this.getAttribute('data-slot');
@@ -1991,7 +2378,6 @@ for ($i = 0; $i < 7; $i++) {
                     slot = JSON.parse(slotData);
                 } catch (e) {
                     console.error('Error parsing slot data:', e);
-                    hideLoading();
                     Swal.fire({
                         icon: 'error',
                         title: 'Error',
@@ -2002,47 +2388,246 @@ for ($i = 0; $i < 7; $i++) {
                 }
 
                 if (!slot || !slot.id) {
-                    hideLoading();
                     return;
                 }
 
-                pilihJadwal(slot.id, slot.tanggal, slot.jam_mulai, slot.jam_selesai, slot.hari, slot.tgl_format);
+                // Toggle via AJAX
+                toggleSlot(slot, this);
             });
         });
 
-        function pilihJadwal(idJadwal, tanggal, jamMulai, jamSelesai, hari, tglFormat) {
+        function toggleSlot(slot, element) {
+            showLoading();
+
+            const formData = new FormData();
+            formData.append('action', 'toggle_jadwal');
+            formData.append('id_jadwal', slot.id);
+            formData.append('tanggal', slot.tanggal);
+            formData.append('jam_mulai', slot.jam_mulai);
+            formData.append('jam_selesai', slot.jam_selesai);
+            formData.append('hari', slot.hari);
+            formData.append('tgl_format', slot.tgl_format);
+
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+
+                if (data.status === 'added') {
+                    element.classList.add('selected');
+                    element.querySelector('.slot-status').textContent = 'Dipilih';
+                    updateSidebar(data.cart);
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Slot Ditambahkan',
+                        text: slot.hari + ', ' + slot.tgl_format + ' ' + slot.jam_mulai + ' - ' + slot.jam_selesai,
+                        timer: 1500,
+                        showConfirmButton: false,
+                        toast: true,
+                        position: 'top-end'
+                    });
+                } else if (data.status === 'removed') {
+                    element.classList.remove('selected');
+                    element.querySelector('.slot-status').textContent = 'Rp ' + hargaFormat;
+                    updateSidebar(data.cart);
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Slot Dihapus',
+                        text: slot.hari + ', ' + slot.tgl_format + ' ' + slot.jam_mulai + ' - ' + slot.jam_selesai,
+                        timer: 1500,
+                        showConfirmButton: false,
+                        toast: true,
+                        position: 'top-end'
+                    });
+                } else if (data.status === 'overlap') {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Slot Bertabrakan',
+                        text: data.message,
+                        confirmButtonColor: '#d83f67'
+                    });
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('AJAX Error:', error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'Gagal memproses slot. Silakan coba lagi.',
+                    confirmButtonColor: '#d83f67'
+                });
+            });
+        }
+
+        function updateSidebar(cart) {
+            const jumlahSlot = cart.length;
+            const totalHarga = jumlahSlot * hargaPaket;
+            const totalBiaya = totalHarga + <?= (int)$total_cetak_harga ?>;
+
+            // Update jumlah slot text
+            const jadwalSub = document.getElementById('summaryJadwalSub');
+            if (jadwalSub) {
+                jadwalSub.textContent = jumlahSlot > 0 ? jumlahSlot + ' slot dipilih' : 'Belum dipilih';
+            }
+
+            // Update total harga
+            const totalLabel = document.getElementById('totalHargaLabel');
+            if (totalLabel) {
+                totalLabel.textContent = 'Rp ' + totalBiaya.toLocaleString('id-ID');
+            }
+
+            // Update Jadwal icon
+            const jadwalIcon = document.querySelector('.summary-item:nth-child(5) .summary-icon');
+            if (jadwalIcon) {
+                if (jumlahSlot > 0) {
+                    jadwalIcon.classList.add('completed');
+                    jadwalIcon.innerHTML = '<i class="bi bi-calendar-check"></i>';
+                } else {
+                    jadwalIcon.classList.remove('completed');
+                    jadwalIcon.innerHTML = '<i class="bi bi-calendar"></i>';
+                }
+            }
+
+            // Update selected slots list
+            const slotsList = document.getElementById('selectedSlotsList');
+            const slotsItems = document.getElementById('selectedSlotsItems');
+
+            if (jumlahSlot > 0) {
+                slotsList.style.display = 'block';
+                slotsItems.innerHTML = cart.map(item => `
+                    <div class="selected-slot-item" data-id="${item.id_jadwal}">
+                        <div class="slot-info">
+                            <span class="slot-date">${item.hari}, ${item.tgl_format}</span>
+                            <span class="slot-time">${item.jam_mulai} - ${item.jam_selesai}</span>
+                        </div>
+                        <button class="slot-remove" onclick="removeSlot(${item.id_jadwal})" title="Hapus slot">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                `).join('');
+            } else {
+                slotsList.style.display = 'none';
+                slotsItems.innerHTML = '';
+            }
+
+            // Update lanjut button
+            const btnLanjut = document.getElementById('btnLanjut');
+            if (btnLanjut) {
+                btnLanjut.disabled = jumlahSlot === 0;
+            }
+        }
+
+        function removeSlot(idJadwal) {
+            // Find the slot element and trigger toggle
+            const slotEl = document.querySelector(`.slot-jam[data-slot*="\"id\":${idJadwal}"]`);
+            if (slotEl) {
+                const slotData = slotEl.getAttribute('data-slot');
+                let slot = JSON.parse(slotData);
+                toggleSlot(slot, slotEl);
+            }
+        }
+
+        function clearAllSlots() {
             Swal.fire({
-                title: 'Konfirmasi Jadwal',
-                html: '<div style="text-align:left">' +
-                      '<p><strong>Hari:</strong> ' + hari + ', ' + tglFormat + '</p>' +
-                      '<p><strong>Jam:</strong> ' + jamMulai + ' - ' + jamSelesai + ' WIB</p>' +
-                      '<p><strong>Ruangan:</strong> ' + ruanganNama + '</p>' +
-                      '<p><strong>Tema:</strong> ' + temaNama + '</p>' +
-                      '<p><strong>Paket:</strong> ' + paketNama + ' (' + durasi + ' menit)</p>' +
-                      '<hr style="margin:12px 0;border-color:#f1f5f9">' +
-                      '<p style="font-size:1.1rem;font-weight:800;color:#d83f67">Total Tagihan: Rp ' + totalHargaAkhirFormat + '</p>' +
-                      '</div>',
-                icon: 'question',
+                title: 'Hapus Semua Slot?',
+                text: 'Semua jadwal yang dipilih akan dihapus.',
+                icon: 'warning',
                 showCancelButton: true,
-                confirmButtonColor: '#d83f67',
+                confirmButtonColor: '#dc2626',
                 cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Pilih Jadwal Ini',
-                cancelButtonText: 'Batal',
-                allowOutsideClick: true,
-                allowEscapeKey: true,
-                showCloseButton: true
+                confirmButtonText: 'Ya, Hapus Semua',
+                cancelButtonText: 'Batal'
             }).then((result) => {
                 if (result.isConfirmed) {
                     showLoading();
-                    window.location.href = '../Konfirmasi/konfirmasi.php?id_paket=' + idPaket + 
-                                          '&id_ruangan=' + idRuangan + 
-                                          '&id_tema=' + idTema + 
-                                          '&id_jadwal=' + idJadwal;
+
+                    const formData = new FormData();
+                    formData.append('action', 'clear_jadwal');
+
+                    fetch('', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        hideLoading();
+                        if (data.status === 'cleared') {
+                            // Remove selected class from all slots
+                            document.querySelectorAll('.slot-jam.selected').forEach(function(el) {
+                                el.classList.remove('selected');
+                                el.querySelector('.slot-status').textContent = 'Rp ' + hargaFormat;
+                            });
+                            updateSidebar([]);
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Dihapus',
+                                text: 'Semua slot telah dihapus.',
+                                timer: 1500,
+                                showConfirmButton: false
+                            });
+                        }
+                    })
+                    .catch(error => {
+                        hideLoading();
+                        console.error('AJAX Error:', error);
+                    });
                 }
-            }).catch((error) => {
-                console.error('Swal error:', error);
-                hideLoading();
             });
+        }
+
+        function lanjutKeKonfirmasi() {
+            const cart = <?= json_encode($_SESSION['booking_cart_jadwal'] ?? []) ?>;
+            if (cart.length === 0) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Pilih Jadwal Dulu',
+                    text: 'Silakan pilih minimal 1 slot jadwal.',
+                    confirmButtonColor: '#d83f67'
+                });
+                return;
+            }
+
+            showLoading();
+            // Build URL with multiple id_jadwal
+            const idJadwals = cart.map(item => item.id_jadwal).join(',');
+            window.location.href = '../Konfirmasi/konfirmasi.php?id_paket=' + idPaket + 
+                                  '&id_ruangan=' + idRuangan + 
+                                  '&id_tema=' + idTema + 
+                                  '&id_jadwal=' + idJadwals;
+        }
+
+        function confirmSkip(e) {
+            e.preventDefault();
+            const linkHref = e.currentTarget.href;
+            Swal.fire({
+                title: 'Lewati Langkah Ini?',
+                text: 'Anda akan melanjutkan pemesanan tanpa menambahkan jadwal.',
+                icon: 'info',
+                showCancelButton: true,
+                confirmButtonColor: '#d83f67',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Lewati',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    showLoading();
+                    // Clear cart first
+                    const formData = new FormData();
+                    formData.append('action', 'clear_jadwal');
+                    fetch('', { method: 'POST', body: formData })
+                    .then(() => {
+                        window.location.href = linkHref;
+                    })
+                    .catch(() => {
+                        window.location.href = linkHref;
+                    });
+                }
+            });
+            return false;
         }
 
         window.addEventListener('load', function() {

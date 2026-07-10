@@ -185,8 +185,7 @@ $q_paket = sqlsrv_query($conn,
     "SELECT p.ID_Paket, p.Nama_Paket, p.Harga_Paket, p.Durasi_Waktu, p.Kapasitas_Orang, p.Deskripsi, p.Foto_Paket,
             COUNT(DISTINCT r.ID_Ruangan) as jumlah_ruangan
      FROM Paket_Foto p
-     INNER JOIN Paket_Ruangan pr ON p.ID_Paket = pr.ID_Paket
-     INNER JOIN Ruangan r ON pr.ID_Ruangan = r.ID_Ruangan
+     INNER JOIN Ruangan r ON p.ID_Paket = r.ID_Paket
      WHERE p.Is_Deleted = 0 
        AND p.Status = ? 
        AND r.Is_Deleted = 0 
@@ -1116,7 +1115,7 @@ function fmtTgl($d) {
             </div>
             <div class="d-flex justify-content-between align-items-center">
                 <div class="section-count text-muted" style="font-size: 0.85rem; font-weight: 600;">
-                    Harga <strong>per sesi</strong> • <span id="active-paket-count"><?= sqlsrv_num_rows($q_paket) ?></span> paket tersedia
+                    Harga <strong>per sesi</strong> • <span id="active-paket-count"><?= ($q_paket && sqlsrv_has_rows($q_paket)) ? sqlsrv_num_rows($q_paket) : 0 ?></span> paket tersedia
                 </div>
             </div>
         </div>

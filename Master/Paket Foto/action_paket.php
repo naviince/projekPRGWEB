@@ -32,9 +32,21 @@ function hasOrder($conn, $id_paket) {
     return ($row['total'] ?? 0) > 0;
 }
 
-// Cek apakah paket terikat dengan jadwal studio aktif
+// Cek apakah paket terikat dengan ruangan aktif (Mencegah Database FK Constraint Violation)
+function hasRuangan($conn, $id_paket) {
+    $sql = "SELECT COUNT(*) as total FROM Ruangan WHERE ID_Paket = ? AND Is_Deleted = 0";
+    $stmt = sqlsrv_query($conn, $sql, [$id_paket]);
+    if ($stmt === false) return true;
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    return ($row['total'] ?? 0) > 0;
+}
+
+// Cek apakah paket terikat dengan jadwal studio aktif melalui Ruangan
 function hasJadwal($conn, $id_paket) {
-    $sql = "SELECT COUNT(*) as total FROM Jadwal_Studio WHERE ID_Paket = ? AND Is_Deleted = 0";
+    $sql = "SELECT COUNT(*) as total 
+            FROM Jadwal_Studio js
+            JOIN Ruangan r ON js.ID_Ruangan = r.ID_Ruangan
+            WHERE r.ID_Paket = ? AND js.Is_Deleted = 0";
     $stmt = sqlsrv_query($conn, $sql, [$id_paket]);
     if ($stmt === false) return true;
     $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
@@ -51,9 +63,34 @@ function getFotoPaket($conn, $id) {
 }
 
 // =====================================================
-// PROSES EKSEKUSI AKSI (ARSIP, PULIHKAN, HAPUS PERMANEN)
+// PROSES EKSEKUSI AKSI
 // =====================================================
 switch ($aksi) {
+
+    // -------------------------------------------------
+    // TOGGLE STATUS: Mengubah Status Aktif / Nonaktif
+    // -------------------------------------------------
+    case 'toggle_status':
+        $status = isset($_GET['status']) ? (int)$_GET['status'] : 1;
+        if ($status !== 0 && $status !== 1) {
+            $status = 1;
+        }
+
+        $sql = "UPDATE Paket_Foto SET 
+                Status = ?, 
+                Modified_By = ?,
+                Modified_Date = GETDATE()
+                WHERE ID_Paket = ?";
+
+        $stmt = sqlsrv_query($conn, $sql, [$status, $nama_admin, $id]);
+
+        if ($stmt) {
+            header("Location: list.php?status_sukses=toggle_status");
+        } else {
+            header("Location: list.php?status_sukses=error&message=Gagal+mengubah+status+paket");
+        }
+        exit();
+        break;
 
     // -------------------------------------------------
     // SOFT DELETE: Mengarsipkan Paket (Stored Procedure)
@@ -74,7 +111,7 @@ switch ($aksi) {
         $stmt = sqlsrv_query($conn, $sql, [$id, $nama_admin]);
 
         if ($stmt) {
-            header("Location: list.php?tab=dihapus&status_sukses=soft_delete");
+            header("Location: list.php?status_sukses=soft_delete");
         } else {
             header("Location: list.php?status_sukses=error&message=Gagal+mengarsipkan+paket");
         }
@@ -106,7 +143,7 @@ switch ($aksi) {
         $stmt = sqlsrv_query($conn, $sql, [$nama_admin, $id]);
 
         if ($stmt) {
-            header("Location: list.php?tab=aktif&status_sukses=restore");
+            header("Location: list.php?status_sukses=restore");
         } else {
             header("Location: list.php?status_sukses=error&message=Gagal+memulihkan+paket");
         }
@@ -119,12 +156,17 @@ switch ($aksi) {
     case 'hard_delete':
         // Cek dependensi relasi agar database tidak crash
         if (hasOrder($conn, $id)) {
-            header("Location: list.php?tab=dihapus&status_sukses=error&message=Gagal+Hapus!+Paket+ini+memiliki+riwayat+transaksi+booking+pelanggan.");
+            header("Location: list.php?status_sukses=error&message=Gagal+Hapus!+Paket+ini+memiliki+riwayat+transaksi+booking+pelanggan.");
+            exit();
+        }
+
+        if (hasRuangan($conn, $id)) {
+            header("Location: list.php?status_sukses=error&message=Gagal+Hapus!+Paket+ini+terikat+dengan+Ruangan+Studio.");
             exit();
         }
 
         if (hasJadwal($conn, $id)) {
-            header("Location: list.php?tab=dihapus&status_sukses=error&message=Gagal+Hapus!+Paket+ini+terikat+dengan+Jadwal+Studio.");
+            header("Location: list.php?status_sukses=error&message=Gagal+Hapus!+Paket+ini+terikat+dengan+Jadwal+Studio.");
             exit();
         }
 
@@ -142,9 +184,9 @@ switch ($aksi) {
         $stmt_delete = sqlsrv_query($conn, $sql_delete, [$id]);
 
         if ($stmt_delete) {
-            header("Location: list.php?tab=dihapus&status_sukses=hard_delete");
+            header("Location: list.php?status_sukses=hard_delete");
         } else {
-            header("Location: list.php?tab=dihapus&status_sukses=error&message=Gagal+menghapus+paket+permanen");
+            header("Location: list.php?status_sukses=error&message=Gagal+menghapus+paket+permanen");
         }
         exit();
         break;

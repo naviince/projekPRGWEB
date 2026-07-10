@@ -68,13 +68,15 @@ if (isset($_POST['simpan'])) {
     $deskripsi = isset($_POST['deskripsi']) ? trim($_POST['deskripsi']) : '';
     $kapasitas_orang = isset($_POST['kapasitas_orang']) ? (int)$_POST['kapasitas_orang'] : 0;
 
-    // --- VALIDASI NAMA PAKET DENGAN STORED PROCEDURE SP_CEKDUPLIKATPAKETFOTO ---
+    // --- VALIDASI NAMA PAKET (CEK DUPLIKAT LANGSUNG KE TABEL) ---
+    // Database baru tidak memiliki sp_CekDuplikatPaketFoto, jadi cek langsung ke tabel Paket_Foto
     if (empty($nama_paket)) {
         $errors['nama_paket'] = "Nama paket wajib diisi!";
     } elseif (strlen($nama_paket) > 100) {
         $errors['nama_paket'] = "Nama paket maksimal 100 karakter!";
     } else {
-        $sql_dup = "{CALL sp_CekDuplikatPaketFoto(?, NULL)}";
+        // Cek duplikat: nama paket yang sama, belum dihapus (Is_Deleted = 0), dan status aktif
+        $sql_dup = "SELECT COUNT(*) AS Total FROM Paket_Foto WHERE Nama_Paket = ? AND Is_Deleted = 0";
         $stmt_dup = sqlsrv_query($conn, $sql_dup, array($nama_paket));
         if ($stmt_dup !== false) {
             $row_dup = sqlsrv_fetch_array($stmt_dup, SQLSRV_FETCH_ASSOC);
@@ -86,16 +88,22 @@ if (isset($_POST['simpan'])) {
     }
 
     // --- VALIDASI DURASI WAKTU ---
-    if ($durasi_waktu < 10) {
+    // Sesuai constraint CHK_Paket_Durasi: Durasi_Waktu > 0
+    // Namun di UI minimal 10 menit untuk kepraktisan
+    if ($durasi_waktu <= 0) {
+        $errors['durasi_waktu'] = "Durasi waktu harus lebih dari 0!";
+    } elseif ($durasi_waktu < 10) {
         $errors['durasi_waktu'] = "Durasi waktu minimal 10 menit!";
     }
 
     // --- VALIDASI HARGA PAKET ---
+    // Sesuai constraint CHK_Paket_Harga: Harga_Paket >= 0
     if ($harga_paket < 0) {
         $errors['harga_paket'] = "Harga paket tidak boleh negatif!";
     }
 
     // --- VALIDASI KAPASITAS ORANG ---
+    // Sesuai constraint CHK_Paket_Kapasitas: Kapasitas_Orang > 0
     if ($kapasitas_orang <= 0) {
         $errors['kapasitas_orang'] = "Kapasitas orang harus lebih dari 0!";
     }
@@ -134,7 +142,8 @@ if (isset($_POST['simpan'])) {
         if (!sqlsrv_begin_transaction($conn)) {
             $errors['general'] = "Gagal memulai transaksi database!";
         } else {
-            // Memanggil sp_InsertPaketFoto untuk menyimpan paket utama & mengambil SCOPE_IDENTITY()
+            // Memanggil sp_InsertPaketFoto sesuai database baru SpotLight.sql
+            // Parameter: @Nama, @Durasi, @Harga, @Deskripsi, @Kapasitas, @Foto, @CreatedBy
             $sql_ins_paket = "{CALL sp_InsertPaketFoto(?, ?, ?, ?, ?, ?, ?)}";
             $params_ins_paket = [
                 $nama_paket,
@@ -149,7 +158,11 @@ if (isset($_POST['simpan'])) {
             $stmt_ins_paket = sqlsrv_query($conn, $sql_ins_paket, $params_ins_paket);
 
             if ($stmt_ins_paket) {
+                // Melewati data response status INSERT agar bisa langsung membaca scope identity
+                sqlsrv_next_result($stmt_ins_paket);
+
                 $row_id = sqlsrv_fetch_array($stmt_ins_paket, SQLSRV_FETCH_ASSOC);
+                // Database baru return: SELECT SCOPE_IDENTITY() AS ID_Paket
                 $new_paket_id = $row_id['ID_Paket'] ?? null;
 
                 if ($new_paket_id) {
@@ -159,6 +172,7 @@ if (isset($_POST['simpan'])) {
                 } else {
                     sqlsrv_rollback($conn);
                     $errors['general'] = "Sistem gagal mengidentifikasi ID paket baru!";
+                    // Hapus file yang sudah terupload jika gagal
                     if ($foto_paket != 'default_paket.jpg' && file_exists('../../assets/img/paket/' . $foto_paket)) {
                         @unlink('../../assets/img/paket/' . $foto_paket);
                     }
@@ -167,6 +181,7 @@ if (isset($_POST['simpan'])) {
             } else {
                 sqlsrv_rollback($conn);
                 $errors['general'] = "Gagal menyimpan paket foto ke dalam database. Silakan periksa kembali data Anda!";
+                // Hapus file yang sudah terupload jika gagal
                 if ($foto_paket != 'default_paket.jpg' && file_exists('../../assets/img/paket/' . $foto_paket)) {
                     @unlink('../../assets/img/paket/' . $foto_paket);
                 }
@@ -565,10 +580,10 @@ $_SESSION['csrf_token'] = $csrf_token;
                     </a>
                     <div class="submenu" id="submenuTransaksi">
                         <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                            <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                         </ul>
                     </div>
                 </li>
@@ -614,7 +629,7 @@ $_SESSION['csrf_token'] = $csrf_token;
                 <div class="info-text">
                     <strong>Perhatian:</strong> Isi data paket foto dengan lengkap. 
                     <strong>Durasi</strong> menentukan slot jadwal yang tersedia, 
-                    <strong>Kapasitas</strong> menentukan maksimal orang per sesi, dan 
+                    <strong>Kapasitas</strong> menentukan maksimal orang per sesi, and 
                     <strong>Harga</strong> adalah biaya utama layanan.
                 </div>
             </div>

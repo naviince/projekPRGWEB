@@ -103,11 +103,11 @@ if ($query_count !== false) {
     $total_halaman = ceil($total_records / $limit);
 }
 
-// Ambil data
+// Ambil data (Ditambahkan Explicit Parameter Binding untuk SQLSRV_SQLTYPE_INT guna mencegah error OFFSET/FETCH)
 $sql_list = "SELECT * FROM Paket_Foto WHERE " . implode(" AND ", $conditions) . " ORDER BY " . $order_clause . " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
 $params_list = $params;
-$params_list[] = $offset;
-$params_list[] = $limit;
+$params_list[] = array($offset, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_INT);
+$params_list[] = array($limit, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_INT);
 
 $query = sqlsrv_query($conn, $sql_list, $params_list);
 ?>
@@ -508,10 +508,10 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                     </a>
                     <div class="submenu" id="submenuTransaksi">
                         <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                            <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                         </ul>
                     </div>
                 </li>

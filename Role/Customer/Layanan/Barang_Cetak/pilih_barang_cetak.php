@@ -1432,8 +1432,16 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             totalLabel.innerText = 'Rp ' + totalAkhir.toLocaleString('id-ID');
         }
 
+        function showLoading() {
+            document.getElementById('loadingOverlay').classList.add('show');
+        }
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.remove('show');
+        }
+
         function confirmSkip(e) {
             e.preventDefault();
+            const linkHref = e.currentTarget.href;
             Swal.fire({
                 title: 'Lewati Langkah Ini?',
                 text: 'Anda akan melanjutkan pemesanan tanpa menambahkan produk cetak foto.',
@@ -1446,7 +1454,7 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             }).then((result) => {
                 if (result.isConfirmed) {
                     showLoading();
-                    window.location.href = e.target.href;
+                    window.location.href = linkHref;
                 }
             });
             return false;
@@ -1498,22 +1506,6 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#d83f67',
-                cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya',
-                cancelButtonText: 'Batal'
-            }).then((result) => {
-                if (result.isConfirmed) { window.location.href = '../../../../index.php'; }
-            });
-            return false;
-        }
-
-        function confirmLogout() {
-            Swal.fire({
-                title: 'Keluar?',
-                text: 'Yakin keluar dari sistem?',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#dc2626',
                 cancelButtonColor: '#718096',
                 confirmButtonText: 'Ya',
                 cancelButtonText: 'Batal'

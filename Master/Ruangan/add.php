@@ -103,14 +103,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
         $field_errors['paket'] = "Ruangan hanya boleh terhubung dengan maksimal 1 paket foto!";
     }
 
-    // Cek Duplikat Nama Ruangan (Menggunakan Stored Procedure sp_CekDuplikatRuangan)
+    // Cek Duplikat Nama Ruangan (Diubah ke SQL Langsung karena sp_CekDuplikatRuangan tidak tersedia)
     if (empty($field_errors)) {
-        $sql_dup = "{CALL sp_CekDuplikatRuangan(?, NULL)}";
+        $sql_dup = "SELECT COUNT(*) AS total FROM Ruangan WHERE Nama_Ruangan = ? AND Is_Deleted = 0";
         $stmt_dup = safe_sqlsrv_query($conn, $sql_dup, [$nama]);
         $cek_dup = safe_sqlsrv_fetch($stmt_dup);
         
         if (($cek_dup['total'] ?? 0) > 0) {
-            $error = "Nama tema foto '{$nama}' sudah ada! Gunakan nama lain.";
+            $error = "Nama ruangan '{$nama}' sudah ada! Gunakan nama lain.";
         } else {
             // --- VALIDASI UPLOAD GAMBAR (OPSIONAL) ---
             $foto_name = $_FILES['foto']['name'] ?? '';
@@ -118,11 +118,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             $foto_size = $_FILES['foto']['size'] ?? 0;
             $foto_error = $_FILES['foto']['error'] ?? UPLOAD_ERR_NO_FILE;
 
-            $new_filename = 'default_properti.jpg';
+            $new_filename = 'default_ruangan.jpg';
             $upload_path = '';
 
             if ($foto_error == UPLOAD_ERR_NO_FILE) {
-                $new_filename = 'default_properti.jpg';
+                $new_filename = 'default_ruangan.jpg';
             } elseif ($foto_error != UPLOAD_ERR_OK) {
                 $field_errors['foto'] = "Upload gagal (Error: {$foto_error})";
             } else {
@@ -161,41 +161,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             if ($upload_path && file_exists($upload_path)) @unlink($upload_path);
         } else {
             try {
+                // Ambil ID Paket tunggal karena Ruangan hanya terikat pada satu paket di database
+                $id_paket = (int)$paket_terpilih[0];
+
+                // Validasi paket harus aktif dan terdaftar di database
+                $cek_paket_sql = "SELECT ID_Paket FROM Paket_Foto WHERE ID_Paket = ? AND Is_Deleted = 0";
+                $cek_paket_stmt = safe_sqlsrv_query($conn, $cek_paket_sql, [$id_paket]);
+                $cek_paket = safe_sqlsrv_fetch($cek_paket_stmt);
+                
+                if (!$cek_paket) {
+                    throw new Exception("Paket ID {$id_paket} tidak valid atau tidak terdaftar.");
+                }
+
                 // Simpan Ruangan Baru via Stored Procedure sp_InsertRuangan
-                // (Is_Deleted otomatis 0 dan Status otomatis 1 di database)
-                $sql_ruangan = "{CALL sp_InsertRuangan(?, ?, ?, ?)}";
-                $params_ruangan = [$nama, $deskripsi, $new_filename, $nama_admin];
+                // Format Parameter: @ID_Paket, @Nama, @Deskripsi, @Foto, @CreatedBy
+                $sql_ruangan = "{CALL sp_InsertRuangan(?, ?, ?, ?, ?)}";
+                $params_ruangan = [
+                    $id_paket, 
+                    $nama, 
+                    !empty($deskripsi) ? $deskripsi : null, 
+                    $new_filename, 
+                    $nama_admin
+                ];
                 $stmt_ruangan = sqlsrv_query($conn, $sql_ruangan, $params_ruangan);
 
                 if ($stmt_ruangan === false) {
                     throw new Exception("Gagal menyimpan data ruangan: " . json_encode(sqlsrv_errors()));
                 }
 
+                // Skip result status INSERT untuk membaca output SELECT SCOPE_IDENTITY()
+                sqlsrv_next_result($stmt_ruangan);
+
                 $row_ruangan = safe_sqlsrv_fetch($stmt_ruangan);
                 $id_ruangan_baru = $row_ruangan['ID_Ruangan'] ?? null;
 
                 if (!$id_ruangan_baru) {
                     throw new Exception("Gagal mengambil ID Ruangan baru dari database.");
-                }
-
-                // Simpan Relasi Paket Ruangan via Stored Procedure sp_InsertPaketRuangan
-                foreach ($paket_terpilih as $id_paket) {
-                    $id_paket = (int)$id_paket;
-                    
-                    // Validasi paket harus aktif dan terdaftar
-                    $cek_paket_sql = "SELECT ID_Paket FROM Paket_Foto WHERE ID_Paket = ? AND Is_Deleted = 0";
-                    $cek_paket_stmt = safe_sqlsrv_query($conn, $cek_paket_sql, [$id_paket]);
-                    $cek_paket = safe_sqlsrv_fetch($cek_paket_stmt);
-                    
-                    if (!$cek_paket) {
-                        throw new Exception("Paket ID {$id_paket} tidak valid.");
-                    }
-
-                    $sql_junction = "{CALL sp_InsertPaketRuangan(?, ?)}";
-                    $stmt_junction = sqlsrv_query($conn, $sql_junction, [$id_paket, $id_ruangan_baru]);
-                    if ($stmt_junction === false) {
-                        throw new Exception("Gagal menghubungkan Paket ke Ruangan: " . json_encode(sqlsrv_errors()));
-                    }
                 }
 
                 if (sqlsrv_commit($conn) === false) {
@@ -274,17 +275,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
         .field-error-msg { display: none; font-size: 0.8rem; color: var(--error-red); font-weight: 700; margin-top: 6px; align-items: center; gap: 4px; }
         .field-error-msg.show { display: flex; }
         
-        /* UPLOAD AREA */
-        .upload-area { border: 2px dashed #e2e8f0; border-radius: 20px; padding: 30px; text-align: center; transition: var(--transition-3d); cursor: pointer; background: #f8fafc; }
-        .upload-area:hover, .upload-area.has-image { border-color: var(--p-pink); background: var(--s-pink); }
-        .upload-area.is-error { border-color: var(--error-red) !important; background-color: var(--error-bg) !important; }
-        .upload-preview { width: 100%; max-height: 250px; object-fit: cover; display: none; border-radius: 14px; border: 2px solid var(--light-pink); }
-        .upload-preview.show { display: block; }
-        .upload-placeholder { text-align: center; color: #94a3b8; }
-        .upload-placeholder i { font-size: 2.5rem; color: #cbd5e1; margin-bottom: 12px; display: block; }
-        .upload-placeholder .main-text { font-weight: 700; font-size: 1rem; color: var(--text-dark); margin-bottom: 4px; }
-        .upload-placeholder .sub-text { font-size: 0.8rem; color: #94a3b8; }
-        
         /* FILE SELECT COMPONENT */
         .file-upload-zone { border: 2px dashed #e2e8f0; border-radius: 16px; padding: 30px; text-align: center; transition: var(--transition-3d); cursor: pointer; background: #f8fafc; }
         .file-upload-zone:hover, .file-upload-zone.dragover { border-color: var(--p-pink); background: var(--s-pink); }
@@ -298,7 +288,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
         #preview-container .remove-preview { position: absolute; top: 10px; right: 10px; background: rgba(220, 38, 38, 0.9); color: #fff; border: none; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
         #preview-container .remove-preview:hover { background: #dc2626; transform: scale(1.1); }
         
-        /* CARD INTERACTIVE GRID (SINKRON DENGAN CSS ANDA) */
+        /* CARD INTERACTIVE GRID */
         .paket-section { background: #f8fafc; border-radius: 16px; padding: 24px; border: 2px solid #e2e8f0; transition: var(--transition-3d); }
         .paket-section.is-error { border-color: var(--error-red) !important; background-color: var(--error-bg) !important; }
         .paket-section-title { font-weight: 800; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-dark); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
@@ -318,7 +308,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
         .paket-section-error { display: none; font-size: 0.8rem; color: var(--error-red); font-weight: 700; margin-top: 8px; align-items: center; gap: 4px; }
         .paket-section-error.show { display: flex; }
         
-        /* SUBMIT & CANCEL BUTTONS (SINKRONISASI KELAS CSS) */
+        /* SUBMIT & CANCEL BUTTONS */
         .btn-submit { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; border-radius: 14px; padding: 14px 32px; font-weight: 800; font-size: 0.95rem; transition: var(--transition-3d); display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
         .btn-submit:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(213, 61, 102, 0.35); color: #ffffff; }
         .btn-batal { background: #f1f5f9; color: #475569; border: none; border-radius: 14px; padding: 14px 32px; font-weight: 800; font-size: 0.95rem; transition: var(--transition-3d); display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
@@ -453,7 +443,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                                 <i class="bi bi-stars"></i> Daftar Paket Foto Aktif
                             </div>
                             
-                            <!-- INTERACTIVE CARD-BASED SELECTION GRID (PEMECAH MASALAH LAYOUT TABEL) -->
+                            <!-- INTERACTIVE CARD-BASED SELECTION GRID -->
                             <div style="max-height: 250px; overflow-y: auto; padding: 5px;">
                                 <div class="paket-grid">
                                     <?php if (!empty($daftar_paket)): foreach ($daftar_paket as $pkt): 

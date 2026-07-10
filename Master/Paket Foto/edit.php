@@ -89,8 +89,8 @@ if (isset($_POST['update'])) {
     } elseif (!preg_match('/^[a-zA-Z0-9\s\-&]+$/', $nama)) {
         $errors['nama'] = "Nama paket hanya boleh huruf, angka, spasi, -, &!";
     } else {
-        // Cek duplikat (Menggunakan Stored Procedure sp_CekDuplikatPaketFoto)
-        $sql_cek = "{CALL sp_CekDuplikatPaketFoto(?, ?)}";
+        // Cek duplikat langsung ke tabel Paket_Foto (karena sp_CekDuplikatPaketFoto tidak ada di database SpotLight)
+        $sql_cek = "SELECT COUNT(*) AS Total FROM Paket_Foto WHERE Nama_Paket = ? AND ID_Paket <> ? AND Is_Deleted = 0";
         $stmt_cek = safe_sqlsrv_query($conn, $sql_cek, [$nama, $id]);
         $row_cek = safe_sqlsrv_fetch($stmt_cek);
         if ($row_cek && ($row_cek['Total'] ?? 0) > 0) {
@@ -656,10 +656,10 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
                     </a>
                     <div class="submenu" id="submenuTransaksi">
                         <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                            <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                         </ul>
                     </div>
                 </li>
