@@ -51,7 +51,7 @@ if (!function_exists('fmtTgl')) {
 }
 
 // =====================================================
-// AMBIL ID DARI URL (WAJIB ADA)
+// AMBIL ID DARI URL DENGAN DUKUNGAN MULTI-SLOT JADWAL
 // =====================================================
 if (!isset($_GET['id_paket']) || empty($_GET['id_paket']) ||
     !isset($_GET['id_ruangan']) || empty($_GET['id_ruangan']) ||
@@ -64,7 +64,11 @@ if (!isset($_GET['id_paket']) || empty($_GET['id_paket']) ||
 $id_paket = (int)$_GET['id_paket'];
 $id_ruangan = (int)$_GET['id_ruangan'];
 $id_tema = (int)$_GET['id_tema'];
-$id_jadwal = (int)$_GET['id_jadwal'];
+$id_jadwal_raw = trim($_GET['id_jadwal']);
+
+// Mengurai multi-slot ID jadwal ke dalam array sanitasi
+$id_jadwal_arr = array_map('intval', explode(',', $id_jadwal_raw));
+$placeholders_jadwal = implode(',', array_fill(0, count($id_jadwal_arr), '?'));
 
 // =====================================================
 // AMBIL DATA PAKET
@@ -124,72 +128,66 @@ if (!$d_tema) {
 }
 
 // =====================================================
-// AMBIL DATA JADWAL
+// AMBIL DATA JADWAL (MENDUKUNG MULTI-SLOT)
 // =====================================================
 $q_jadwal = sqlsrv_query($conn, 
-    "SELECT ID_Jadwal, ID_Ruangan, ID_Paket, Tanggal_Jadwal, Jam_Mulai, Jam_Selesai, Keterangan, Status_Jadwal
+    "SELECT ID_Jadwal, ID_Ruangan, Tanggal_Jadwal, Jam_Mulai, Jam_Selesai, Keterangan, Status_Jadwal
      FROM Jadwal_Studio 
-     WHERE ID_Jadwal = ? AND Status = 1 AND Is_Deleted = 0", 
-    array($id_jadwal)
+     WHERE ID_Jadwal IN ($placeholders_jadwal) AND Status = 1 AND Is_Deleted = 0", 
+    $id_jadwal_arr
 );
 if ($q_jadwal === false) {
     die("Error query Jadwal: " . print_r(sqlsrv_errors(), true));
-}
-$d_jadwal = sqlsrv_fetch_array($q_jadwal, SQLSRV_FETCH_ASSOC);
-
-if (!$d_jadwal) {
-    header("Location: ../Jadwal/pilih_jadwal.php?id_paket=$id_paket&id_ruangan=$id_ruangan&id_tema=$id_tema&error=jadwal_tidak_ditemukan");
-    exit();
-}
-
-// Validasi: jadwal harus untuk ruangan dan paket yang dipilih
-if ((int)$d_jadwal['ID_Ruangan'] !== $id_ruangan || (int)$d_jadwal['ID_Paket'] !== $id_paket) {
-    header("Location: ../Jadwal/pilih_jadwal.php?id_paket=$id_paket&id_ruangan=$id_ruangan&id_tema=$id_tema&error=jadwal_tidak_valid");
-    exit();
-}
-
-// Validasi: jadwal harus tersedia
-if ((int)$d_jadwal['Status_Jadwal'] !== STATUS_JADWAL_TERSEDIA) {
-    header("Location: ../Jadwal/pilih_jadwal.php?id_paket=$id_paket&id_ruangan=$id_ruangan&id_tema=$id_tema&error=jadwal_sudah_dibooking");
-    exit();
-}
-
-// Format tanggal dan jam jadwal
-$tgl_obj = $d_jadwal['Tanggal_Jadwal'];
-if (is_object($tgl_obj) && method_exists($tgl_obj, 'format')) {
-    $tgl_str = $tgl_obj->format('Y-m-d');
-    $hari_idx = (int)$tgl_obj->format('w');
-    $tgl_num = $tgl_obj->format('d');
-    $bln_idx = (int)$tgl_obj->format('n') - 1;
-    $thn = $tgl_obj->format('Y');
-} else {
-    $tgl_str = $tgl_obj;
-    $ts = strtotime($tgl_str);
-    $hari_idx = date('w', $ts);
-    $tgl_num = date('d', $ts);
-    $bln_idx = (int)date('n', $ts) - 1;
-    $thn = date('Y', $ts);
-}
-
-$jam_mulai_obj = $d_jadwal['Jam_Mulai'];
-if (is_object($jam_mulai_obj) && method_exists($jam_mulai_obj, 'format')) {
-    $jam_mulai_str = $jam_mulai_obj->format('H:i');
-} else {
-    $jam_mulai_str = substr($jam_mulai_obj, 0, 5);
-}
-
-$jam_selesai_obj = $d_jadwal['Jam_Selesai'];
-if (is_object($jam_selesai_obj) && method_exists($jam_selesai_obj, 'format')) {
-    $jam_selesai_str = $jam_selesai_obj->format('H:i');
-} else {
-    $jam_selesai_str = substr($jam_selesai_obj, 0, 5);
 }
 
 $hari_indo = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
 $bulan_indo = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
 
+$jadwal_list = [];
+while ($row_jadwal = sqlsrv_fetch_array($q_jadwal, SQLSRV_FETCH_ASSOC)) {
+    // Validasi keabsahan ruangan
+    if ((int)$row_jadwal['ID_Ruangan'] !== $id_ruangan) {
+        header("Location: ../Jadwal/pilih_jadwal.php?id_paket=$id_paket&id_ruangan=$id_ruangan&id_tema=$id_tema&error=jadwal_tidak_valid");
+        exit();
+    }
+
+    $tgl_obj = $row_jadwal['Tanggal_Jadwal'];
+    if (is_object($tgl_obj) && method_exists($tgl_obj, 'format')) {
+        $tgl_str = $tgl_obj->format('Y-m-d');
+        $hari_idx = (int)$tgl_obj->format('w');
+        $tgl_num = $tgl_obj->format('d');
+        $bln_idx = (int)$tgl_obj->format('n') - 1;
+        $thn = $tgl_obj->format('Y');
+    } else {
+        $tgl_str = $tgl_obj;
+        $ts = strtotime($tgl_str);
+        $hari_idx = date('w', $ts);
+        $tgl_num = date('d', $ts);
+        $bln_idx = (int)date('n', $ts) - 1;
+        $thn = date('Y', $ts);
+    }
+
+    $jam_mulai_obj = $row_jadwal['Jam_Mulai'];
+    $jam_mulai_str = is_object($jam_mulai_obj) && method_exists($jam_mulai_obj, 'format') ? $jam_mulai_obj->format('H:i') : substr($jam_mulai_obj, 0, 5);
+
+    $jam_selesai_obj = $row_jadwal['Jam_Selesai'];
+    $jam_selesai_str = is_object($jam_selesai_obj) && method_exists($jam_selesai_obj, 'format') ? $jam_selesai_obj->format('H:i') : substr($jam_selesai_obj, 0, 5);
+
+    $jadwal_list[] = [
+        'id' => (int)$row_jadwal['ID_Jadwal'],
+        'hari' => $hari_indo[$hari_idx],
+        'tanggal_format' => $tgl_num . ' ' . $bulan_indo[$bln_idx] . ' ' . $thn,
+        'waktu_format' => $jam_mulai_str . ' - ' . $jam_selesai_str
+    ];
+}
+
+if (empty($jadwal_list)) {
+    header("Location: ../Jadwal/pilih_jadwal.php?id_paket=$id_paket&id_ruangan=$id_ruangan&id_tema=$id_tema&error=jadwal_tidak_ditemukan");
+    exit();
+}
+
 // =====================================================
-// VALIDASI RELASI
+// VALIDASI RELASI SINKRON
 // =====================================================
 $q_validasi = sqlsrv_query($conn, "SELECT COUNT(*) as total FROM Paket_Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ?", array($id_paket, $id_ruangan));
 $d_validasi = sqlsrv_fetch_array($q_validasi, SQLSRV_FETCH_ASSOC);
@@ -234,15 +232,6 @@ $foto_customer_src = ($foto_customer != 'default.jpg' && file_exists("../../../.
     : $default_svg_avatar;
 
 // =====================================================
-// AMBIL PROPERTI RUANGAN (untuk ditampilkan)
-// =====================================================
-$q_properti = sqlsrv_query($conn, "SELECT Nama_Properti, Kategori_Properti FROM Properti WHERE ID_Ruangan = ? AND Status = 1 AND Is_Deleted = 0", array($id_ruangan));
-$properti_list = [];
-while ($p = sqlsrv_fetch_array($q_properti, SQLSRV_FETCH_ASSOC)) {
-    $properti_list[] = $p;
-}
-
-// =====================================================
 // RECALCULATE BELANJAAN BARANG CETAK & HITUNG DISKON SINKRON
 // =====================================================
 $extra_cetak_html = '';
@@ -278,32 +267,34 @@ if ($total_cetak_harga > 0) {
 }
 $total_cetak_setelah_diskon = $total_cetak_harga - $diskon_cetak;
 
-// Hitung rekapitulasi pembayaran total akhir
+// Hitung rekapitulasi pembayaran total akhir (Mendukung Multi-Slot Jadwal secara proporsional)
 $harga_paket = (float)$d_paket['Harga_Paket'];
-$total_harga_semua = $harga_paket + $total_cetak_setelah_diskon;
+$jumlah_slot = count($id_jadwal_arr);
+$total_harga_paket = $harga_paket * $jumlah_slot;
+
+$total_harga_semua = $total_harga_paket + $total_cetak_setelah_diskon;
 $dp_amount = $total_harga_semua * 0.65; // DP 65% dari total keseluruhan
 $sisa_amount = $total_harga_semua - $dp_amount;
 
-$harga_format = number_format($harga_paket, 0, ',', '.');
+$harga_paket_format = number_format($harga_paket, 0, ',', '.');
+$total_harga_paket_format = number_format($total_harga_paket, 0, ',', '.');
 $total_cetak_format = number_format($total_cetak_harga, 0, ',', '.');
 $diskon_cetak_format = number_format($diskon_cetak, 0, ',', '.');
 $total_format = number_format($total_harga_semua, 0, ',', '.');
 $dp_format = number_format($dp_amount, 0, ',', '.');
 $sisa_format = number_format($sisa_amount, 0, ',', '.');
 
-$jadwal_hari = $hari_indo[$hari_idx];
-$jadwal_tgl_format = $tgl_num . ' ' . $bulan_indo[$bln_idx] . ' ' . $thn;
-
-// Cek ketersediaan slot secara real-time
-$q_cek_jadwal = sqlsrv_query($conn, "SELECT Status_Jadwal FROM Jadwal_Studio WHERE ID_Jadwal = ? AND Status = 1 AND Is_Deleted = 0", array($id_jadwal));
+// Cek ketersediaan seluruh slot secara real-time
+$q_cek_jadwal = sqlsrv_query($conn, "SELECT COUNT(*) as total FROM Jadwal_Studio WHERE ID_Jadwal IN ($placeholders_jadwal) AND Status = 1 AND Is_Deleted = 0 AND Status_Jadwal = 0", $id_jadwal_arr);
 $d_cek_jadwal = sqlsrv_fetch_array($q_cek_jadwal, SQLSRV_FETCH_ASSOC);
-$jadwal_masih_tersedia = ($d_cek_jadwal && (int)$d_cek_jadwal['Status_Jadwal'] === STATUS_JADWAL_TERSEDIA);
+$jadwal_masih_tersedia = ($d_cek_jadwal && (int)$d_cek_jadwal['total'] === $jumlah_slot);
 
 // Variable JS aman
 $ruangan_nama_js = htmlspecialchars($d_ruangan['Nama_Ruangan'], ENT_QUOTES, 'UTF-8');
 $tema_nama_js = htmlspecialchars($d_tema['Nama_Tema'], ENT_QUOTES, 'UTF-8');
 $paket_nama_js = htmlspecialchars($d_paket['Nama_Paket'], ENT_QUOTES, 'UTF-8');
 $durasi_js = (int)$d_paket['Durasi_Waktu'];
+$jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -327,7 +318,8 @@ $durasi_js = (int)$d_paket['Durasi_Waktu'];
             --body-bg: #f8fafc;
             --success: #059669;
             --warning: #d97706;
-            --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            --transition-smooth: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-bounce: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -735,6 +727,8 @@ $durasi_js = (int)$d_paket['Durasi_Waktu'];
             background: #f1f5f9;
             margin: 16px 0;
         }
+
+        /* ===== METODE BAYAR SELECTOR ===== */
         .summary-dp-info {
             background: var(--s-pink);
             border-radius: 16px;
@@ -746,7 +740,7 @@ $durasi_js = (int)$d_paket['Durasi_Waktu'];
             font-size: 0.85rem;
             font-weight: 800;
             color: var(--p-pink);
-            margin-bottom: 8px;
+            margin-bottom: 14px;
             display: flex;
             align-items: center;
             gap: 8px;
@@ -759,8 +753,34 @@ $durasi_js = (int)$d_paket['Durasi_Waktu'];
         .summary-dp-note {
             font-size: 0.8rem;
             color: var(--text-muted);
-            margin-top: 8px;
+            margin-top: 12px;
             line-height: 1.5;
+        }
+
+        .payment-option-card {
+            background: #ffffff;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 12px 16px;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+        }
+        .payment-option-card:hover {
+            border-color: var(--p-pink);
+        }
+        .payment-option-card.active {
+            border-color: var(--p-pink);
+            background: var(--s-pink);
+        }
+        .option-label {
+            font-weight: 800;
+            font-size: 0.85rem;
+            color: var(--text-dark);
+        }
+        .option-desc {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
         }
 
         /* ===== WARNING BOX ===== */
@@ -922,7 +942,7 @@ $durasi_js = (int)$d_paket['Durasi_Waktu'];
     <!-- MAIN CONTENT -->
     <main class="main-container">
 
-        <!-- PROGRESS BAR SINKRON (Langkah 6 Active, 1 s.d 5 Completed) -->
+        <!-- PROGRESS BAR SINKRON (Langkah 6 Konfirmasi Active, 1 s.d 5 Completed) -->
         <div class="progress-container">
             <div class="progress-step completed">
                 <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
@@ -985,7 +1005,7 @@ $durasi_js = (int)$d_paket['Durasi_Waktu'];
         <div class="info-box">
             <i class="bi bi-info-circle-fill"></i>
             <div class="info-text">
-                Silakan periksa kembali detail booking Anda. Setelah menekan <strong>"Buat Order & Bayar DP"</strong>, jadwal akan terblokir dan Anda wajib membayar DP sebesar <strong>65%</strong> dari total harga. Order yang tidak dibayar dalam waktu 24 jam akan otomatis dibatalkan.
+                Silakan periksa kembali detail booking Anda. Pilih opsi pembayaran yang Anda inginkan (Bayar DP atau Bayar Lunas), kemudian tekan tombol <strong>"Konfirmasi Sesi & Bayar"</strong> untuk melanjutkan ke langkah pembayaran.
             </div>
         </div>
 
@@ -1103,14 +1123,38 @@ $durasi_js = (int)$d_paket['Durasi_Waktu'];
                     <div class="summary-divider"></div>
 
                     <div class="summary-row" style="border-bottom: none;">
-                        <span class="summary-label" style="font-weight: 800;">Total Harga</span>
+                        <span class="summary-label" style="font-weight: 800;">Total Tagihan</span>
                         <span class="summary-value total">Rp <?= $total_format ?></span>
                     </div>
 
+                    <!-- INTERAKTIF PAYMENT OPTION SELECTOR (PENGENDALI DUA METODE BAYAR) -->
                     <div class="summary-dp-info">
-                        <div class="summary-dp-title"><i class="bi bi-cash-stack"></i> Pembayaran DP (65%)</div>
-                        <div class="summary-dp-amount">Rp <?= $dp_format ?></div>
-                        <div class="summary-dp-note">
+                        <div class="summary-dp-title"><i class="bi bi-wallet2"></i> Pilih Metode Pembayaran</div>
+                        
+                        <!-- Opsi 1: Bayar DP (65%) -->
+                        <div class="payment-option-card active mb-2" onclick="selectPaymentOption('DP')">
+                            <div class="d-flex align-items-center gap-3">
+                                <input type="radio" name="payment_type" value="DP" checked style="accent-color: var(--p-pink); width:18px; height:18px;">
+                                <div style="flex: 1; min-width: 0;">
+                                    <div class="option-label">Bayar DP (65%)</div>
+                                    <div class="option-desc">Bayar Rp <?= $dp_format ?> sekarang</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Opsi 2: Bayar Lunas (100%) -->
+                        <div class="payment-option-card" onclick="selectPaymentOption('Lunas')">
+                            <div class="d-flex align-items-center gap-3">
+                                <input type="radio" name="payment_type" value="Lunas" style="accent-color: var(--p-pink); width:18px; height:18px;">
+                                <div style="flex: 1; min-width: 0;">
+                                    <div class="option-label">Bayar Lunas (100%)</div>
+                                    <div class="option-desc">Bayar Rp <?= $total_format ?> sekarang</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Keterangan sisa tagihan yang dinamis sesuai opsi bayar -->
+                        <div class="summary-dp-note" id="paymentNote">
                             Sisa pembayaran sebesar <strong>Rp <?= $sisa_format ?></strong> dapat dilunasi setelah sesi pemotretan Anda selesai di studio.
                         </div>
                     </div>
@@ -1118,7 +1162,7 @@ $durasi_js = (int)$d_paket['Durasi_Waktu'];
                     <div class="btn-group-konfirmasi">
                         <?php if ($jadwal_masih_tersedia): ?>
                         <button class="btn-konfirmasi" onclick="konfirmasiBooking()">
-                            <i class="bi bi-check2-circle"></i> Buat Order & Bayar DP
+                            <i class="bi bi-check2-circle"></i> Konfirmasi Sesi & Bayar
                         </button>
                         <?php else: ?>
                         <button class="btn-konfirmasi" disabled>
@@ -1339,6 +1383,33 @@ $durasi_js = (int)$d_paket['Durasi_Waktu'];
         const idRuangan = <?= json_encode((int)$id_ruangan) ?>;
         const idTema = <?= json_encode((int)$id_tema) ?>;
 
+        // =====================================================
+        // KONTROLLER INTERAKTIF OPSI PEMBAYARAN (DP / LUNAS)
+        // =====================================================
+        let selectedPaymentType = 'DP';
+
+        function selectPaymentOption(type) {
+            // Hapus status active dari semua kartu opsi bayar
+            document.querySelectorAll('.payment-option-card').forEach(card => card.classList.remove('active'));
+            
+            // Set input radio target ke checked dan aktifkan visual kartu
+            const radioButton = document.querySelector(`input[name="payment_type"][value="${type}"]`);
+            if (radioButton) {
+                radioButton.checked = true;
+                radioButton.closest('.payment-option-card').classList.add('active');
+            }
+            
+            selectedPaymentType = type;
+
+            // Perbarui teks keterangan sisa pembayaran di bawah kartu secara dinamis
+            const noteContainer = document.getElementById('paymentNote');
+            if (type === 'Lunas') {
+                noteContainer.innerHTML = '<span class="text-success"><i class="bi bi-shield-check-fill me-1"></i> <strong>Bebas Hambatan!</strong> Anda telah memilih untuk melunasi seluruh tagihan sekarang. Tidak ada biaya tambahan di studio.</span>';
+            } else {
+                noteContainer.innerHTML = 'Sisa pembayaran sebesar <strong>Rp <?= $sisa_format ?></strong> dapat dilunasi setelah sesi pemotretan Anda selesai di studio.';
+            }
+        }
+
         function konfirmasiBooking() {
             Swal.fire({
                 title: 'Konfirmasi Booking?',
@@ -1350,8 +1421,8 @@ $durasi_js = (int)$d_paket['Durasi_Waktu'];
                       '<li><strong>Tema:</strong> ' + temaNama + '</li>' +
                       '<li><strong>Jadwal:</strong> <?= json_encode(htmlspecialchars($jadwal_hari . ', ' . $jadwal_tgl_format . ' | ' . $jam_mulai_str . ' - ' . $jam_selesai_str)) ?> WIB</li>' +
                       '</ul>' +
-                      '<p style="margin-top:12px;color:#d83f67;font-weight:700;">Total Tagihan: Rp ' + totalHargaAkhirFormat + '</p>' +
-                      '<p style="font-size:0.85rem;color:#718096;">DP yang wajib dibayar: Rp <?= $dp_format ?></p>' +
+                      '<p style="margin-top:12px;color:#d83f67;font-weight:700;margin-bottom:2px;">Metode Pembayaran: ' + (selectedPaymentType === 'DP' ? 'Bayar DP (65%)' : 'Bayar Lunas (100%)') + '</p>' +
+                      '<p style="font-size:0.85rem;color:#718096;">Tagihan Sekarang: ' + (selectedPaymentType === 'DP' ? 'Rp <?= $dp_format ?>' : 'Rp ' + totalHargaAkhirFormat) + '</p>' +
                       '</div>',
                 icon: 'question',
                 showCancelButton: true,
@@ -1362,8 +1433,8 @@ $durasi_js = (int)$d_paket['Durasi_Waktu'];
                 width: 480
             }).then((result) => {
                 if (result.isConfirmed) {
-                    // Kirim ke proses_order.php
-                    window.location.href = 'proses_order.php?id_paket=' + idPaket + '&id_ruangan=' + idRuangan + '&id_tema=' + idTema + '&id_jadwal=<?= (int)$id_jadwal ?>';
+                    // Kirim ke proses_order.php beserta tipe pembayaran pilihan
+                    window.location.href = 'proses_order.php?id_paket=' + idPaket + '&id_ruangan=' + idRuangan + '&id_tema=' + idTema + '&id_jadwal=<?= (int)$id_jadwal ?>&tipe_pembayaran=' + selectedPaymentType;
                 }
             });
         }
