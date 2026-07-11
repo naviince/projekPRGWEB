@@ -815,7 +815,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
         /* ===== EMPTY STATE ===== */
         .empty-state {
             text-align: center;
-            padding: 80px 20px;
+            padding: 60px 20px;
             grid-column: 1 / -1;
         }
         .empty-state i {
@@ -1099,7 +1099,8 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
         </div>
 
     </main>
-<!-- =====================================================
+
+    <!-- =====================================================
     MODAL DETAIL PROFIL & KATA SANDI
     ===================================================== -->
     <div class="modal fade" id="modalProfil" data-bs-backdrop="static" tabindex="-1" aria-labelledby="modalProfilLabel" aria-hidden="true">

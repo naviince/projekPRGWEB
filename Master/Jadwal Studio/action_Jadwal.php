@@ -142,7 +142,7 @@ elseif ($aksi === 'soft_delete') {
 elseif ($aksi === 'generate_7hari') {
     $generated = 0;
 
-    // Ambil semua paket dan ruangan valid dari Paket_Ruangan
+    // Ambil semua paket dan ruangan valid dari Paket_Ruangan (many-to-many)
     $q_valid = sqlsrv_query($conn, "
         SELECT pr.ID_Paket, pr.ID_Ruangan, p.Durasi_Waktu, p.Nama_Paket, r.Nama_Ruangan
         FROM Paket_Ruangan pr
@@ -195,7 +195,7 @@ elseif ($aksi === 'generate_7hari') {
 
                 $jam_selesai_str = $jam_selesai->format('H:i');
 
-                // *Penyesuaian Kueri Bentrok Akurat (Hanya Memerlukan 4 Parameter)
+                // Pengecekan bentrok jadwal di database
                 $cek_bentrok = sqlsrv_query($conn, "
                     SELECT ID_Jadwal FROM Jadwal_Studio 
                     WHERE ID_Ruangan = ? 
@@ -212,16 +212,19 @@ elseif ($aksi === 'generate_7hari') {
                 }
 
                 if (!$bentrok) {
-                    // Menyimpan data jadwal baru menggunakan Stored Procedure sp_InsertJadwalStudio
-                    $insert_sql = "EXEC sp_InsertJadwalStudio ?, ?, ?, ?, ?, ?, ?";
+                    // Menyimpan data jadwal baru menggunakan sp_InsertJadwalStudio (6 Parameter sesuai database)
+                    $insert_sql = "EXEC sp_InsertJadwalStudio ?, ?, ?, ?, ?, ?";
                     $keterangan = "Slot " . $combo['Nama_Paket'] . " - " . $combo['Nama_Ruangan'];
 
                     $insert_stmt = sqlsrv_query($conn, $insert_sql, [
-                        $id_ruangan, $id_paket, $tanggal_str, $jam_mulai_str, $jam_selesai_str,
+                        $id_ruangan, $tanggal_str, $jam_mulai_str, $jam_selesai_str,
                         $keterangan, $nama_admin
                     ]);
 
                     if ($insert_stmt) {
+                        // Melewati status hasil INSERT (row count) untuk membaca output kueri SCOPE_IDENTITY()
+                        sqlsrv_next_result($insert_stmt);
+
                         $row_new = sqlsrv_fetch_array($insert_stmt, SQLSRV_FETCH_ASSOC);
                         $id_jadwal_baru = $row_new['ID_Jadwal'] ?? null;
                         sqlsrv_free_stmt($insert_stmt);

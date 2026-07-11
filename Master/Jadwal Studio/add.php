@@ -3,6 +3,9 @@ ob_start();
 session_start();
 include '../../koneksi.php';
 
+// Pastikan zona waktu server selaras dengan Waktu Indonesia Barat (WIB)
+date_default_timezone_set('Asia/Jakarta');
+
 define('STATUS_DATA_AKTIF', 1);
 define('STATUS_DATA_NONAKTIF', 0);
 
@@ -77,7 +80,7 @@ if (isset($_POST['simpan'])) {
     $jam_mulai      = isset($_POST['jam_mulai']) ? trim($_POST['jam_mulai']) : '';
     $keterangan     = isset($_POST['keterangan']) ? trim($_POST['keterangan']) : '';
 
-    // --- VALIDASI SERVER-SIDE ---
+    // --- VALIDASI SERVER-SIDE diperkuat ---
     if ($id_paket <= 0) {
         $errors['id_paket'] = "Pilih paket foto!";
     } else {
@@ -109,28 +112,45 @@ if (isset($_POST['simpan'])) {
 
     if (empty($tanggal_jadwal)) {
         $errors['tanggal_jadwal'] = "Tanggal jadwal wajib diisi!";
-    } elseif (strtotime($tanggal_jadwal) < strtotime(date('Y-m-d'))) {
-        $errors['tanggal_jadwal'] = "Tanggal tidak boleh di masa lalu!";
+    } else {
+        $date_parsed = date_parse($tanggal_jadwal);
+        if (!$date_parsed || !checkdate($date_parsed['month'], $date_parsed['day'], $date_parsed['year'])) {
+            $errors['tanggal_jadwal'] = "Format tanggal tidak valid!";
+        } elseif (strtotime($tanggal_jadwal) < strtotime(date('Y-m-d'))) {
+            $errors['tanggal_jadwal'] = "Tanggal tidak boleh di masa lalu!";
+        }
     }
 
     if (empty($jam_mulai)) {
         $errors['jam_mulai'] = "Jam mulai wajib diisi!";
     } else {
-        // Validasi jam operasional 08:00 - 20:00
-        $jam_int = (int)str_replace(':', '', substr($jam_mulai, 0, 5));
-        if ($jam_int < 800 || $jam_int >= 2000) {
-            $errors['jam_mulai'] = "Jam mulai harus antara 08:00 - 20:00 WIB!";
+        try {
+            $jam_mulai_obj = new DateTime($jam_mulai);
+            $jam_mulai_24h = $jam_mulai_obj->format('H:i');
+            
+            // Validasi jam operasional 08:00 - 20:00
+            $jam_int = (int)$jam_mulai_obj->format('Hi');
+            if ($jam_int < 800 || $jam_int >= 2000) {
+                $errors['jam_mulai'] = "Jam mulai harus antara 08:00 - 20:00 WIB!";
+            }
+
+            // Validasi agar jam mulai hari ini tidak boleh di masa lalu
+            if (empty($errors['tanggal_jadwal']) && $tanggal_jadwal === date('Y-m-d')) {
+                $now = new DateTime('now');
+                $selected_datetime = new DateTime($tanggal_jadwal . ' ' . $jam_mulai_24h);
+                if ($selected_datetime < $now) {
+                    $errors['jam_mulai'] = "Waktu mulai tidak boleh di masa lalu untuk hari ini!";
+                }
+            }
+        } catch (Exception $e) {
+            $errors['jam_mulai'] = "Format waktu tidak valid!";
         }
     }
 
     // --- HITUNG JAM SELESAI & SINKRONISASI FORMAT 24-JAM INDONESIA (WIB) ---
-    $jam_mulai_24h = '';
     $jam_selesai_24h = '';
-    if (empty($errors['id_paket']) && !empty($jam_mulai)) {
+    if (empty($errors['id_paket']) && empty($errors['jam_mulai'])) {
         $durasi = $cek_paket['Durasi_Waktu'] ?? 30;
-        
-        $jam_mulai_obj = new DateTime($jam_mulai);
-        $jam_mulai_24h = $jam_mulai_obj->format('H:i'); // Paksa format 24 jam (Indonesian Style)
         
         $jam_selesai_obj = clone $jam_mulai_obj;
         $jam_selesai_obj->modify("+{$durasi} minutes");
@@ -143,13 +163,41 @@ if (isset($_POST['simpan'])) {
         }
     }
 
+    // --- SINKRONISASI VALIDASI BENTROK JADWAL DI SISI PHP (PRE-CHECK) ---
+    if (empty($errors)) {
+        $sql_conflict = "SELECT COUNT(*) AS total FROM Jadwal_Studio 
+                         WHERE ID_Ruangan = ? AND Tanggal_Jadwal = ? AND Is_Deleted = 0 
+                           AND (
+                               (CAST(? AS TIME) >= Jam_Mulai AND CAST(? AS TIME) < Jam_Selesai) OR
+                               (CAST(? AS TIME) > Jam_Mulai AND CAST(? AS TIME) <= Jam_Selesai) OR
+                               (Jam_Mulai >= CAST(? AS TIME) AND Jam_Mulai < CAST(? AS TIME))
+                           )";
+        $params_conflict = [
+            $id_ruangan, 
+            $tanggal_jadwal, 
+            $jam_mulai_24h, 
+            $jam_mulai_24h, 
+            $jam_selesai_24h, 
+            $jam_selesai_24h, 
+            $jam_mulai_24h, 
+            $jam_selesai_24h
+        ];
+        $stmt_conflict = sqlsrv_query($conn, $sql_conflict, $params_conflict);
+        if ($stmt_conflict !== false) {
+            $row_conflict = sqlsrv_fetch_array($stmt_conflict, SQLSRV_FETCH_ASSOC);
+            if (($row_conflict['total'] ?? 0) > 0) {
+                $errors['jam_mulai'] = "Slot waktu tersebut bentrok dengan jadwal studio yang sudah terdaftar!";
+            }
+            sqlsrv_free_stmt($stmt_conflict);
+        }
+    }
+
     // --- PROSES SIMPAN TUNGGAL ---
     if (empty($errors)) {
         // Eksekusi Stored Procedure secara atomic tanpa transaksi ganda yang menghambat koneksi
-        $sql = "EXEC sp_InsertJadwalStudio ?, ?, ?, ?, ?, ?, ?";
+        $sql = "EXEC sp_InsertJadwalStudio ?, ?, ?, ?, ?, ?";
         $params = [
             $id_ruangan,
-            $id_paket,
             $tanggal_jadwal,
             $jam_mulai_24h,
             $jam_selesai_24h,
@@ -160,6 +208,9 @@ if (isset($_POST['simpan'])) {
         $stmt = sqlsrv_query($conn, $sql, $params);
 
         if ($stmt) {
+            // Melewati metadata status INSERT (row count) untuk membaca output kueri SCOPE_IDENTITY()
+            sqlsrv_next_result($stmt);
+
             // Ambil ID Jadwal baru hasil return SP
             $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
             $id_jadwal_baru = $row['ID_Jadwal'] ?? null;
@@ -261,7 +312,7 @@ select.form-input-custom { cursor: pointer; appearance: none; background-image: 
 .info-card .info-text strong { color: var(--p-pink); }
 .btn-simpan { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; border-radius: 16px; padding: 16px 32px; font-weight: 800; font-size: 1rem; transition: var(--transition-3d); box-shadow: 0 10px 25px rgba(213, 61, 102, 0.3); display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
 .btn-simpan:hover { transform: translateY(-3px); box-shadow: 0 15px 35px rgba(213, 61, 102, 0.4); color: #ffffff; }
-.btn-kembali { background: #f1f5f9; color: #475569; border: none; border-radius: 16px; padding: 14px 28px; font-weight: 700; font-size: 0.95rem; transition: var(--transition-3d); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.btn-kembali { background: #f1f5f9; color: #475569; border: none; border-radius: 14px; padding: 14px 28px; font-weight: 700; font-size: 0.95rem; transition: var(--transition-3d); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
 .btn-kembali:hover { background: #e2e8f0; color: var(--text-dark); transform: translateY(-2px); }
 .btn-group-bottom { display: flex; gap: 12px; justify-content: flex-end; margin-top: 30px; padding-top: 25px; border-top: 2px solid #f1f5f9; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
@@ -392,9 +443,9 @@ select.form-input-custom { cursor: pointer; appearance: none; background-image: 
                     <div class="helper-text"><i class="bi bi-info-circle"></i>Tidak boleh di masa lalu.</div>
                 </div>
                 <div>
-                    <!-- Menggunakan step="60" untuk membantu kompatibilitas input waktu format 24 jam (Indonesia) -->
+                    <!-- Kolom Jam Mulai diatur agar otomatis terisi 08:00 saat pertama kali dibuka -->
                     <label class="form-label-custom">Jam Mulai <span class="text-danger">*</span></label>
-                    <input type="time" name="jam_mulai" id="jamMulai" class="form-input-custom <?= isset($errors['jam_mulai']) ? 'is-invalid' : '' ?>" value="<?= htmlspecialchars($old_values['jam_mulai'] ?? '') ?>" step="60" required>
+                    <input type="time" name="jam_mulai" id="jamMulai" class="form-input-custom <?= isset($errors['jam_mulai']) ? 'is-invalid' : '' ?>" value="<?= htmlspecialchars($old_values['jam_mulai'] ?? '08:00') ?>" step="60" required>
                     <?php if(isset($errors['jam_mulai'])): ?><span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['jam_mulai'] ?></span><?php endif; ?>
                     <div class="helper-text"><i class="bi bi-info-circle"></i>Jam operasional: 08:00 - 20:00 WIB.</div>
                 </div>

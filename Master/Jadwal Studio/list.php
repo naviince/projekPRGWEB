@@ -31,10 +31,10 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
 // =====================================================
 // AUTO-EXPIRED & AUTO-HAPUS JADWAL LAMPAU (Sesuai Validasi & Integritas DB)
 // =====================================================
-// 1. Hapus permanen jadwal hari kemarin/lampau yang TIDAK memiliki relasi booking (Hard Delete)
+// 1. Hapus permanen jadwal hari kemarin/lampau yang TIDAK memiliki relasi booking di tabel junction (Hard Delete)
 $hard_delete_past_sql = "DELETE FROM Jadwal_Studio 
                          WHERE Tanggal_Jadwal < CAST(GETDATE() AS DATE) 
-                           AND ID_Jadwal NOT IN (SELECT DISTINCT ID_Jadwal FROM [Order])";
+                           AND ID_Jadwal NOT IN (SELECT DISTINCT ID_Jadwal FROM Order_Jadwal)";
 sqlsrv_query($conn, $hard_delete_past_sql);
 
 // 2. Soft delete jadwal hari kemarin/lampau yang MEMILIKI relasi booking (Is_Deleted = 1 & Status = 0)
@@ -82,7 +82,7 @@ $conditions = array("j.Is_Deleted = 0");
 $params = array();
 
 if (!empty($cari)) {
-    $conditions[] = "(r.Nama_Ruangan LIKE ? OR p.Nama_Paket LIKE ? OR j.Keterangan LIKE ?)";
+    $conditions[] = "(r.Nama_Ruangan LIKE ? OR j.Keterangan LIKE ? OR r.ID_Ruangan IN (SELECT pr.ID_Ruangan FROM Paket_Ruangan pr JOIN Paket_Foto pf ON pr.ID_Paket = pf.ID_Paket WHERE pf.Nama_Paket LIKE ?))";
     $params[] = "%$cari%";
     $params[] = "%$cari%";
     $params[] = "%$cari%";
@@ -92,7 +92,8 @@ if ($filter_ruangan > 0) {
     $params[] = $filter_ruangan;
 }
 if ($filter_paket > 0) {
-    $conditions[] = "j.ID_Paket = ?";
+    // Filter berdasarkan subquery Paket_Ruangan
+    $conditions[] = "j.ID_Ruangan IN (SELECT pr.ID_Ruangan FROM Paket_Ruangan pr WHERE pr.ID_Paket = ?)";
     $params[] = $filter_paket;
 }
 if ($filter_status !== "") {
@@ -104,15 +105,17 @@ if (!empty($filter_tanggal)) {
     $params[] = $filter_tanggal;
 }
 
+// Kriteria urutan disesuaikan
 $order_clause = "j.Tanggal_Jadwal ASC, j.Jam_Mulai ASC, r.Nama_Ruangan ASC";
 if ($sort == "tanggal_desc") { $order_clause = "j.Tanggal_Jadwal DESC, j.Jam_Mulai ASC"; }
 elseif ($sort == "ruangan_asc") { $order_clause = "r.Nama_Ruangan ASC, j.Tanggal_Jadwal ASC, j.Jam_Mulai ASC"; }
-elseif ($sort == "paket_asc") { $order_clause = "p.Nama_Paket ASC, j.Tanggal_Jadwal ASC, j.Jam_Mulai ASC"; }
+elseif ($sort == "paket_asc") { 
+    $order_clause = "(SELECT STRING_AGG(pf.Nama_Paket, ', ') FROM Paket_Ruangan pr JOIN Paket_Foto pf ON pr.ID_Paket = pf.ID_Paket WHERE pr.ID_Ruangan = r.ID_Ruangan AND pf.Is_Deleted = 0) ASC, j.Tanggal_Jadwal ASC, j.Jam_Mulai ASC"; 
+}
 
-// Hitung total
+// Hitung total data kueri count diperkecil
 $sql_count = "SELECT COUNT(*) AS total FROM Jadwal_Studio j 
               INNER JOIN Ruangan r ON j.ID_Ruangan = r.ID_Ruangan 
-              INNER JOIN Paket_Foto p ON j.ID_Paket = p.ID_Paket 
               WHERE " . implode(" AND ", $conditions);
 $query_count = sqlsrv_query($conn, $sql_count, $params);
 $total_records = 0;
@@ -123,14 +126,18 @@ if ($query_count !== false) {
     $total_halaman = ceil($total_records / $limit);
 }
 
-// Ambil data
+// Ambil data (Ditambahkan kueri DATEDIFF MINUTE untuk menghitung durasi dinamis langsung dari database)
 $sql_list = "SELECT 
-    j.ID_Jadwal, j.ID_Ruangan, j.ID_Paket, j.Tanggal_Jadwal, j.Jam_Mulai, j.Jam_Selesai,
+    j.ID_Jadwal, j.ID_Ruangan, j.Tanggal_Jadwal, j.Jam_Mulai, j.Jam_Selesai,
     j.Keterangan, j.Status, j.Status_Jadwal,
-    r.Nama_Ruangan, p.Nama_Paket, p.Durasi_Waktu, p.Harga_Paket
+    r.Nama_Ruangan,
+    DATEDIFF(MINUTE, j.Jam_Mulai, j.Jam_Selesai) AS Durasi_Waktu,
+    (SELECT STRING_AGG(pf.Nama_Paket, ', ') 
+     FROM Paket_Ruangan pr 
+     JOIN Paket_Foto pf ON pr.ID_Paket = pf.ID_Paket 
+     WHERE pr.ID_Ruangan = r.ID_Ruangan AND pf.Is_Deleted = 0) as Nama_Paket
 FROM Jadwal_Studio j
 INNER JOIN Ruangan r ON j.ID_Ruangan = r.ID_Ruangan
-INNER JOIN Paket_Foto p ON j.ID_Paket = p.ID_Paket
 WHERE " . implode(" AND ", $conditions) . " 
 ORDER BY " . $order_clause . " 
 OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
@@ -1048,12 +1055,12 @@ body {
             cancelButtonColor: '#718096',
             confirmButtonText: 'Ya, Kembali',
             cancelButtonText: 'Batal'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                window.location.href = '../../index.php';
-            }
-        });
-    }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = '../../index.php';
+                }
+            });
+        }
 
     // Jam Real-Time 24-Jam WIB
     function updateLiveClock() {

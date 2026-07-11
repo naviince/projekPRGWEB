@@ -189,10 +189,10 @@ if (!$d_tema) {
 }
 
 // =====================================================
-// VALIDASI: RUANGAN HARUS TERHUBUNG DENGAN PAKET
+// VALIDASI: RUANGAN HARUS TERHUBUNG DENGAN PAKET (SINKRON MANY-TO-MANY)
 // =====================================================
 $q_validasi = sqlsrv_query($conn, 
-    "SELECT COUNT(*) as total FROM Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ? AND Status = 1 AND Is_Deleted = 0", 
+    "SELECT COUNT(*) as total FROM Paket_Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ?", 
     array($id_paket, $id_ruangan)
 );
 if ($q_validasi === false) {
@@ -252,11 +252,13 @@ $q_jadwal = sqlsrv_query($conn,
         j.Status
      FROM Jadwal_Studio j
      WHERE j.ID_Ruangan = ?
+       -- SINKRONISASI MANY-TO-MANY: Saring slot ketersediaan berdasarkan durasi paket foto terpilih
+       AND DATEDIFF(MINUTE, j.Jam_Mulai, j.Jam_Selesai) = ?
        AND j.Tanggal_Jadwal BETWEEN ? AND ?
        AND j.Status = ?
        AND j.Is_Deleted = 0
      ORDER BY j.Tanggal_Jadwal ASC, j.Jam_Mulai ASC",
-    array($id_ruangan, $date_start_str, $date_end_str, STATUS_DATA_AKTIF)
+    array($id_ruangan, $d_paket['Durasi_Waktu'], $date_start_str, $date_end_str, STATUS_DATA_AKTIF)
 );
 if ($q_jadwal === false) {
     die("Error query Jadwal: " . print_r(sqlsrv_errors(), true));
@@ -478,11 +480,12 @@ for ($i = 0; $i < 7; $i++) {
     ];
     $temp_date->modify('+1 day');
 }
-?>
+
 // ID jadwal yang sudah dipilih (untuk mark selected di UI)
 $selected_jadwal_ids = array_map(function($item) {
     return (int)$item['id_jadwal'];
 }, $_SESSION['booking_cart_jadwal'] ?? []);
+?>
 
 <!DOCTYPE html>
 <html lang="id">
@@ -1103,7 +1106,6 @@ $selected_jadwal_ids = array_map(function($item) {
             font-size: 0.85rem;
             font-weight: 800;
             border: 2px solid var(--light-pink);
-            box-shadow: 0 4px 12px rgba(216, 63, 103, 0.1);
         }
         .jadwal-badge i { font-size: 1.1rem; animation: clockSpin 4s linear infinite; }
         @keyframes clockSpin {
@@ -1339,6 +1341,7 @@ $selected_jadwal_ids = array_map(function($item) {
             border: 1px solid var(--glass-border);
             box-shadow: var(--shadow-card);
             transition: var(--transition-smooth);
+            margin-bottom: 20px;
         }
         .summary-card:hover {
             box-shadow: 0 16px 48px rgba(0,0,0,0.1);
@@ -1749,28 +1752,6 @@ $selected_jadwal_ids = array_map(function($item) {
             cursor: not-allowed;
             transform: none;
         }
-        .btn-lewati {
-            background: #ffffff;
-            color: var(--text-muted);
-            padding: 12px 24px;
-            border-radius: var(--radius-lg);
-            font-weight: 700;
-            font-size: 0.9rem;
-            border: 2px solid #e2e8f0;
-            cursor: pointer;
-            transition: var(--transition-smooth);
-            text-decoration: none;
-            text-align: center;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-        }
-        .btn-lewati:hover {
-            border-color: var(--p-pink);
-            color: var(--p-pink);
-            background: var(--s-pink);
-        }
         .btn-clear {
             background: #fef2f2;
             color: #dc2626;
@@ -1850,7 +1831,7 @@ $selected_jadwal_ids = array_map(function($item) {
             <span class="separator"><i class="bi bi-chevron-right"></i></span>
             <a href="../Tema/pilih_tema.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>"><?= htmlspecialchars($d_tema['Nama_Tema']) ?></a>
             <span class="separator"><i class="bi bi-chevron-right"></i></span>
-            <a href="../Barang_Cetak/pilih_barang_cetak.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>">Barang Cetak</a>
+            <a href="../Barang_Cetak/pilih_barang_cetak.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>">Barang Cetak</a>
             <span class="separator"><i class="bi bi-chevron-right"></i></span>
             <span class="current">Pilih Jadwal</span>
         </div>
@@ -1965,7 +1946,7 @@ $selected_jadwal_ids = array_map(function($item) {
                 <!-- MULTI-SELECT INFO BAR -->
                 <div class="multi-select-info">
                     <i class="bi bi-info-circle-fill"></i>
-                    <span>Klik beberapa slot untuk booking multiple jadwal sekaligus (seperti AYO). Slot yang dipilih akan ditampilkan di sidebar kanan.</span>
+                    <span>Klik beberapa slot untuk booking multiple jadwal sekaligus. Slot yang dipilih akan ditampilkan di sidebar kanan.</span>
                 </div>
 
 
@@ -2143,17 +2124,13 @@ $selected_jadwal_ids = array_map(function($item) {
                         <button class="btn-lanjut" id="btnLanjut" onclick="lanjutKeKonfirmasi()"<?= $jumlah_slot_dipilih == 0 ? ' disabled' : '' ?>>
                             <i class="bi bi-check-circle-fill"></i> Lanjut ke Konfirmasi
                         </button>
-                        <a href="?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&action=lewati" 
-                           class="btn-lewati" onclick="return confirmSkip(event)">
-                            <i class="bi bi-skip-forward-fill"></i> Lewati Langkah Ini
-                        </a>
                     </div>
                 </div>
             </div>
         </div>
 
     </main>
-    <!-- =====================================================
+<!-- =====================================================
     MODAL DETAIL PROFIL & KATA SANDI SINKRON SUNTUK DETAIL
     ===================================================== -->
     <div class="modal fade" id="modalProfil" data-bs-backdrop="static" tabindex="-1" aria-labelledby="modalProfilLabel" aria-hidden="true">
@@ -2360,6 +2337,9 @@ $selected_jadwal_ids = array_map(function($item) {
             const overlay = document.getElementById('loadingOverlay');
             if (overlay) overlay.classList.remove('show');
         }
+
+        // ID jadwal yang sudah dipilih (untuk mark selected di UI)
+        const selectedJadwalIds = <?= json_encode($selected_jadwal_ids) ?>;
 
         function showLoading() {
             const overlay = document.getElementById('loadingOverlay');
@@ -2598,36 +2578,6 @@ $selected_jadwal_ids = array_map(function($item) {
                                   '&id_ruangan=' + idRuangan + 
                                   '&id_tema=' + idTema + 
                                   '&id_jadwal=' + idJadwals;
-        }
-
-        function confirmSkip(e) {
-            e.preventDefault();
-            const linkHref = e.currentTarget.href;
-            Swal.fire({
-                title: 'Lewati Langkah Ini?',
-                text: 'Anda akan melanjutkan pemesanan tanpa menambahkan jadwal.',
-                icon: 'info',
-                showCancelButton: true,
-                confirmButtonColor: '#d83f67',
-                cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Lewati',
-                cancelButtonText: 'Batal'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    showLoading();
-                    // Clear cart first
-                    const formData = new FormData();
-                    formData.append('action', 'clear_jadwal');
-                    fetch('', { method: 'POST', body: formData })
-                    .then(() => {
-                        window.location.href = linkHref;
-                    })
-                    .catch(() => {
-                        window.location.href = linkHref;
-                    });
-                }
-            });
-            return false;
         }
 
         window.addEventListener('load', function() {

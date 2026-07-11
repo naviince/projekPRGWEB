@@ -161,7 +161,9 @@ $current_time = date('H:i:s');
 $q_jadwal_preview = sqlsrv_query($conn, 
     "SELECT TOP 5 j.ID_Jadwal, j.Tanggal_Jadwal, j.Jam_Mulai, j.Jam_Selesai, j.Keterangan
      FROM Jadwal_Studio j
-     WHERE j.ID_Ruangan = ? AND j.ID_Paket = ?
+     WHERE j.ID_Ruangan = ? 
+       -- SINKRONISASI MANY-TO-MANY: Saring slot ketersediaan berdasarkan durasi paket foto terpilih
+       AND DATEDIFF(MINUTE, j.Jam_Mulai, j.Jam_Selesai) = ?
        AND j.Tanggal_Jadwal >= ? 
        AND j.Tanggal_Jadwal <= ?
        -- VALIDASI JAM EXPIRED: Jika tanggal hari ini, jam mulai wajib lebih besar dari jam sekarang
@@ -173,7 +175,7 @@ $q_jadwal_preview = sqlsrv_query($conn,
        AND j.Keterangan NOT LIKE '%libur%'
        AND j.Keterangan NOT LIKE '%maintenance%'
      ORDER BY j.Tanggal_Jadwal, j.Jam_Mulai ASC", 
-    array($id_ruangan, $id_paket, $today, $next_week, $today, $today, $current_time, STATUS_JADWAL_TERSEDIA, STATUS_DATA_AKTIF)
+    array($id_ruangan, $d_paket['Durasi_Waktu'], $today, $next_week, $today, $today, $current_time, STATUS_JADWAL_TERSEDIA, STATUS_DATA_AKTIF)
 );
 if ($q_jadwal_preview === false) {
     die("Error query Jadwal: " . print_r(sqlsrv_errors(), true));
@@ -1482,7 +1484,8 @@ function formatTimeSafe($val) {
         </div>
 
     </main>
-<!-- =====================================================
+
+    <!-- =====================================================
     MODAL DETAIL PROFIL & KATA SANDI
     ===================================================== -->
     <div class="modal fade" id="modalProfil" data-bs-backdrop="static" tabindex="-1" aria-labelledby="modalProfilLabel" aria-hidden="true">
@@ -1775,4 +1778,4 @@ function formatTimeSafe($val) {
         });
     </script>
 </body>
-</html>
+</html>oke ini di bagian pilih_ruangan.php tolong di perbaiki sesuaikan dengan databse dan instruksii ku. (di analisis yaa agar tidak terjadi bug saat edit) 🟢

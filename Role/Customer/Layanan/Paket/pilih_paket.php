@@ -199,7 +199,9 @@ foreach ($ruangan_list as $ruangan) {
     $q_jadwal = sqlsrv_query($conn, 
         "SELECT TOP 3 j.ID_Jadwal, j.Tanggal_Jadwal, j.Jam_Mulai, j.Jam_Selesai
          FROM Jadwal_Studio j
-         WHERE j.ID_Ruangan = ? AND j.ID_Paket = ? 
+         WHERE j.ID_Ruangan = ? 
+           -- SINKRONISASI MANY-TO-MANY: Saring slot ketersediaan berdasarkan durasi paket foto terpilih
+           AND DATEDIFF(MINUTE, j.Jam_Mulai, j.Jam_Selesai) = ?
            AND j.Tanggal_Jadwal IN (?, ?)
            -- VALIDASI JAM EXPIRED: Jika tanggal hari ini, jam mulai wajib lebih besar dari jam sekarang
            AND (j.Tanggal_Jadwal > ? OR (j.Tanggal_Jadwal = ? AND j.Jam_Mulai > ?))
@@ -210,7 +212,7 @@ foreach ($ruangan_list as $ruangan) {
            AND j.Keterangan NOT LIKE '%libur%'
            AND j.Keterangan NOT LIKE '%maintenance%'
          ORDER BY j.Tanggal_Jadwal, j.Jam_Mulai",
-        array($id_ruangan, $id_paket, $today, $tomorrow, $today, $today, $current_time, STATUS_JADWAL_TERSEDIA, STATUS_DATA_AKTIF)
+        array($id_ruangan, $d_paket['Durasi_Waktu'], $today, $tomorrow, $today, $today, $current_time, STATUS_JADWAL_TERSEDIA, STATUS_DATA_AKTIF)
     );
     if ($q_jadwal === false) {
         die("Error query Jadwal: " . print_r(sqlsrv_errors(), true));
@@ -317,7 +319,7 @@ foreach ($ruangan_list as $ruangan) {
             font-size: 1.7rem;
             color: var(--p-pink);
             text-decoration: none;
-            letter-spacing: -1.5px;
+            letter-spacing: -1px;
             transition: var(--transition-smooth);
         }
         .nav-logo:hover { transform: scale(1.02); }
@@ -821,6 +823,7 @@ foreach ($ruangan_list as $ruangan) {
             box-shadow: 0 16px 48px rgba(0,0,0,0.1);
             transform: translateY(-2px);
         }
+        .price-card a { text-decoration: none; }
         .price-label {
             font-size: 0.9rem;
             color: var(--text-muted);
@@ -1366,7 +1369,7 @@ foreach ($ruangan_list as $ruangan) {
                     <div class="price-label">Mulai dari</div>
                     <div class="price-value">Rp <?= $harga_format ?></div>
                     <div class="price-unit">Per Sesi</div>
-                    <a href="#ruangan-section" class="btn-cek" onclick="event.preventDefault(); document.querySelector('#ruangan-section').scrollIntoView({ behavior: 'smooth' });">
+                    <a href="#ruangan-section" class="btn-cek">
                         <i class="bi bi-door-open-fill"></i>
                         Pilih Ruangan
                     </a>
@@ -1473,8 +1476,6 @@ foreach ($ruangan_list as $ruangan) {
                             </div>
                             <div class="ruangan-footer">
                                 <div class="ruangan-harga-wrapper">
-                                    <div class="ruangan-harga">Rp <?= $harga_format ?></div>
-                                    <div class="ruangan-harga-satuan">/ sesi</div>
                                 </div>
                                 <span class="ruangan-btn">Pilih <i class="bi bi-arrow-right"></i></span>
                             </div>
@@ -1492,7 +1493,8 @@ foreach ($ruangan_list as $ruangan) {
         </div>
 
     </main>
-<!-- =====================================================
+
+    <!-- =====================================================
     MODAL DETAIL PROFIL & KATA SANDI
     ===================================================== -->
     <div class="modal fade" id="modalProfil" data-bs-backdrop="static" tabindex="-1" aria-labelledby="modalProfilLabel" aria-hidden="true">

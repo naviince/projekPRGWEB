@@ -920,42 +920,6 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             line-height: 1.6;
         }
 
-        /* ===== LOADING OVERLAY ===== */
-        .loading-overlay {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(255,255,255,0.92);
-            backdrop-filter: blur(8px);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 9999;
-            flex-direction: column;
-            gap: 20px;
-        }
-        .loading-overlay.show { display: flex; }
-        .loading-spinner {
-            width: 56px;
-            height: 56px;
-            border: 4px solid var(--light-pink);
-            border-top-color: var(--p-pink);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        .loading-text {
-            font-size: 1.05rem;
-            font-weight: 800;
-            color: var(--p-pink);
-            letter-spacing: 0.5px;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-5px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
         /* ===== RESPONSIVE ===== */
         @media (max-width: 1200px) {
             .cetak-section { grid-template-columns: 1fr 340px; gap: 32px; }
@@ -984,12 +948,6 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
     </style>
 </head>
 <body>
-
-    <!-- LOADING OVERLAY -->
-    <div class="loading-overlay" id="loadingOverlay">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Memproses...</div>
-    </div>
 
     <!-- NAVBAR ATAS SINKRON -->
     <nav class="top-navbar">
