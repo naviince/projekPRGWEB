@@ -521,7 +521,6 @@ function formatWaktu($time) {
             <a href="../index.php" class="nav-link-item">Dashboard</a>
             <a href="../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
             <a href="../Riwayat/riwayat.php" class="nav-link-item">Riwayat</a>
-            <a href="../Barang/Katalog/index.php" class="nav-link-item">Barang Cetak</a>
             <a href="hasil_foto.php" class="nav-link-item active">Hasil Foto</a>
         </div>
         <div class="nav-right">
