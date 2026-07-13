@@ -1312,7 +1312,7 @@ foreach ($ruangan_list as $ruangan) {
             <div class="progress-line"></div>
             <div class="progress-step">
                 <div class="progress-step-circle">7</div>
-                <div class="progress-step-label">Bayar DP</div>
+                <div class="progress-step-label">Pembayaran</div>
             </div>
         </div>
 

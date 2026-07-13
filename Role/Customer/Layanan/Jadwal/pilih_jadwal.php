@@ -266,16 +266,16 @@ if ($q_jadwal === false) {
 
 // =====================================================
 // CEK JADWAL YANG SUDAH DIBOOKING (dari tabel Order_Jadwal + [Order])
+// SINKRONISASI RUANGAN: Diperbaiki agar mendeteksi seluruh booking ruangan tanpa terikat filter ID_Paket
 // =====================================================
 $q_booked = sqlsrv_query($conn, 
     "SELECT DISTINCT oj.ID_Jadwal
      FROM Order_Jadwal oj
      JOIN [Order] o ON oj.ID_Order = o.ID_Order
      WHERE o.ID_Ruangan = ?
-       AND o.ID_Paket = ?
        AND o.Status = 1
-       AND o.Status_Order NOT IN (?, ?)",
-    array($id_ruangan, $id_paket, STATUS_ORDER_DIBATALKAN, STATUS_ORDER_SELESAI)
+       AND o.Status_Order <> ?",
+    array($id_ruangan, STATUS_ORDER_DIBATALKAN)
 );
 if ($q_booked === false) {
     die("Error query Booked: " . print_r(sqlsrv_errors(), true));
@@ -1846,8 +1846,6 @@ $selected_jadwal_ids = array_map(function($item) {
             </a>
         </div>
 
-
-
         <!-- PROGRESS BAR SINKRON (Langkah 5 Active, 1 s.d 4 Completed) -->
         <div class="progress-container">
             <a href="../Paket/pilih_paket.php?id_paket=<?= $id_paket ?>" class="progress-step-wrapper clickable">
@@ -1895,7 +1893,7 @@ $selected_jadwal_ids = array_map(function($item) {
             <div class="progress-step-wrapper">
                 <div class="progress-step">
                     <div class="progress-step-circle">7</div>
-                    <div class="progress-step-label">Bayar DP</div>
+                    <div class="progress-step-label">Pembayaran</div>
                 </div>
             </div>
         </div>
@@ -1948,7 +1946,6 @@ $selected_jadwal_ids = array_map(function($item) {
                     <i class="bi bi-info-circle-fill"></i>
                     <span>Klik beberapa slot untuk booking multiple jadwal sekaligus. Slot yang dipilih akan ditampilkan di sidebar kanan.</span>
                 </div>
-
 
                 <?php if (empty($jadwal_per_hari)): ?>
                     <div class="empty-jadwal">
@@ -2068,7 +2065,7 @@ $selected_jadwal_ids = array_map(function($item) {
                         </div>
                     </div>
 
-                    <!-- BARANG CETAK BADGE SINKRON SUNTUK DETAIL -->
+                    <!-- BARANG CETAK BADGE SINKRON -->
                     <div class="summary-item" id="summaryCetakItem">
                         <div class="summary-icon" id="summaryCetakIcon"><i class="bi bi-printer"></i></div>
                         <div>
@@ -2128,9 +2125,9 @@ $selected_jadwal_ids = array_map(function($item) {
                 </div>
             </div>
         </div>
-
     </main>
-<!-- =====================================================
+
+    <!-- =====================================================
     MODAL DETAIL PROFIL & KATA SANDI SINKRON SUNTUK DETAIL
     ===================================================== -->
     <div class="modal fade" id="modalProfil" data-bs-backdrop="static" tabindex="-1" aria-labelledby="modalProfilLabel" aria-hidden="true">
@@ -2275,6 +2272,11 @@ $selected_jadwal_ids = array_map(function($item) {
 
     <script src="../../../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
+        // =====================================================
+        // STATE GLOBAL JAVASCRIPT (SOLUSI BUG)
+        // =====================================================
+        let currentCart = <?= json_encode($_SESSION['booking_cart_jadwal'] ?? []) ?>;
+
         function toggleDropdown() {
             document.getElementById('navDropdown').classList.toggle('show');
         }
@@ -2347,7 +2349,7 @@ $selected_jadwal_ids = array_map(function($item) {
         }
 
         // =====================================================
-        // MULTI-SLOT TOGGLE (seperti AYO)
+        // MULTI-SLOT TOGGLE
         // =====================================================
         document.querySelectorAll('.slot-jam.tersedia').forEach(function(el) {
             el.addEventListener('click', function() {
@@ -2444,6 +2446,7 @@ $selected_jadwal_ids = array_map(function($item) {
         }
 
         function updateSidebar(cart) {
+            currentCart = cart; // Sinkronisasi state global javascript secara real-time
             const jumlahSlot = cart.length;
             const totalHarga = jumlahSlot * hargaPaket;
             const totalBiaya = totalHarga + <?= (int)$total_cetak_harga ?>;
@@ -2560,8 +2563,7 @@ $selected_jadwal_ids = array_map(function($item) {
         }
 
         function lanjutKeKonfirmasi() {
-            const cart = <?= json_encode($_SESSION['booking_cart_jadwal'] ?? []) ?>;
-            if (cart.length === 0) {
+            if (currentCart.length === 0) {
                 Swal.fire({
                     icon: 'warning',
                     title: 'Pilih Jadwal Dulu',
@@ -2572,8 +2574,8 @@ $selected_jadwal_ids = array_map(function($item) {
             }
 
             showLoading();
-            // Build URL with multiple id_jadwal
-            const idJadwals = cart.map(item => item.id_jadwal).join(',');
+            // Build URL with multiple id_jadwal secara dinamis berdasarkan state realtime
+            const idJadwals = currentCart.map(item => item.id_jadwal).join(',');
             window.location.href = '../Konfirmasi/konfirmasi.php?id_paket=' + idPaket + 
                                   '&id_ruangan=' + idRuangan + 
                                   '&id_tema=' + idTema + 

@@ -171,10 +171,11 @@ try {
     // Hitung total harga paket dasar secara kumulatif dikalikan jumlah sesi yang dibooking
     $total_paket_final = $harga_paket * $jumlah_slot;
 
-    // Insert order utama (Kolom ID_Jadwal ditiadakan dari kueri tabel Order)
-    $sql_insert_order = "INSERT INTO [Order] (ID_Pelanggan, ID_Paket, ID_Ruangan, ID_Tema, Total_Paket, Total_Barang_Cetak, Status_Order, Status, Created_By)
-                         OUTPUT INSERTED.ID_Order
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    // SOLUSI FIXED ERROR 334: Menggunakan SCOPE_IDENTITY() & SET NOCOUNT ON untuk bypass trigger tabel Order
+    $sql_insert_order = "SET NOCOUNT ON;
+                         INSERT INTO [Order] (ID_Pelanggan, ID_Paket, ID_Ruangan, ID_Tema, Total_Paket, Total_Barang_Cetak, Status_Order, Status, Created_By)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                         SELECT SCOPE_IDENTITY() AS ID_Order;";
     
     $params_insert_order = [
         $id_customer,
@@ -193,13 +194,21 @@ try {
         throw new Exception("Error insert order utama: " . print_r(sqlsrv_errors(), true));
     }
 
-    // Ambil ID_Order yang baru dibuat
-    $d_new_order = sqlsrv_fetch_array($q_insert_order, SQLSRV_FETCH_ASSOC);
-    $id_order = (int)$d_new_order['ID_Order'];
+    // Loop handal melewati buffer hasil trigger untuk membaca SCOPE_IDENTITY() secara akurat
+    $id_order = 0;
+    do {
+        while ($row = sqlsrv_fetch_array($q_insert_order, SQLSRV_FETCH_ASSOC)) {
+            if (isset($row['ID_Order'])) {
+                $id_order = (int)$row['ID_Order'];
+                break 2;
+            }
+        }
+    } while (sqlsrv_next_result($q_insert_order));
+
     sqlsrv_free_stmt($q_insert_order);
 
     if (empty($id_order) || $id_order === 0) {
-        throw new Exception("Error: ID_Order kosong. Order tidak berhasil dibuat.");
+        throw new Exception("Error: ID_Order kosong. Kueri gagal mendapatkan ID order baru dari SCOPE_IDENTITY.");
     }
 
     // Hubungkan setiap jadwal studio yang dipesan ke tabel junction Order_Jadwal
@@ -295,6 +304,9 @@ try {
 // AMBIL ULANG HARGA FINAL SETELAH TERPOTONG DISKON CETAK 5%
 // =====================================================
 $q_get_total = sqlsrv_query($conn, "SELECT Total_Harga, Total_Barang_Cetak FROM [Order] WHERE ID_Order = ?", array($id_order));
+if ($q_get_total === false) {
+    die("Error query total order setelah transaksi: " . print_r(sqlsrv_errors(), true));
+}
 $d_total = sqlsrv_fetch_array($q_get_total, SQLSRV_FETCH_ASSOC);
 $total_harga_db = (float)($d_total['Total_Harga'] ?? $total_paket_final);
 $total_cetak_db = (float)($d_total['Total_Barang_Cetak'] ?? 0);
@@ -303,7 +315,7 @@ sqlsrv_free_stmt($q_get_total);
 // Potongan harga spesial 5% khusus produk cetak
 $diskon_cetak_db = 0;
 if ($total_cetak_db > 0) {
-    $diskon_cetak_db = $total_cetak_db * 0.05; // 5% [2]
+    $diskon_cetak_db = $total_cetak_db * 0.05; // 5%
 }
 $total_harga_sebenarnya = $total_paket_final + ($total_cetak_db - $diskon_cetak_db);
 
@@ -323,8 +335,8 @@ if ($tipe_pembayaran_opt === 'Lunas') {
 }
 
 // =====================================================
-// REDIRECT KE HALAMAN PEMBAYARAN DP DENGAN URL ORDER TERBARU
+// REDIRECT KE HALAMAN PEMBAYARAN DP (Menggunakan jalur relatif asli '../../Booking/Pembayaran' yang telah disesuaikan dengan folder Anda)
 // =====================================================
-header("Location: ../../Booking/Pembayaran/pembayaran_dp.php?id_order=$id_order&success=order_berhasil");
+header("Location: ../../Booking/Pembayaran/pembayaran_dp.php?id_order=$id_order&tipe_bayar=$tipe_pembayaran_opt&success=order_berhasil");
 exit();
 ?>

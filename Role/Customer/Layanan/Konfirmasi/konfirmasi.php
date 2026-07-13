@@ -186,6 +186,29 @@ if (empty($jadwal_list)) {
     exit();
 }
 
+// Format gabungan jadwal untuk kebutuhan SweetAlert JS
+$jadwal_info_list = [];
+foreach ($jadwal_list as $slot) {
+    $jadwal_info_list[] = $slot['hari'] . ', ' . $slot['tanggal_format'] . ' (' . $slot['waktu_format'] . ' WIB)';
+}
+$jadwal_info_full_str = implode('; ', $jadwal_info_list);
+
+// =====================================================
+// AMBIL DATA PROPERTI SINKRON DENGAN RUANGAN
+// =====================================================
+$properti_list = [];
+$q_properti = sqlsrv_query($conn, 
+    "SELECT Nama_Properti, Kategori_Properti 
+     FROM Properti 
+     WHERE ID_Ruangan = ? AND Status = 1 AND Is_Deleted = 0", 
+    array($id_ruangan)
+);
+if ($q_properti !== false) {
+    while ($row_prop = sqlsrv_fetch_array($q_properti, SQLSRV_FETCH_ASSOC)) {
+        $properti_list[] = $row_prop;
+    }
+}
+
 // =====================================================
 // VALIDASI RELASI SINKRON
 // =====================================================
@@ -263,7 +286,7 @@ if (isset($_SESSION['booking_cart_cetak']) && !empty($_SESSION['booking_cart_cet
 // Potongan harga spesial 5% khusus produk cetak
 $diskon_cetak = 0;
 if ($total_cetak_harga > 0) {
-    $diskon_cetak = $total_cetak_harga * 0.05; // 5% [2]
+    $diskon_cetak = $total_cetak_harga * 0.05; // 5%
 }
 $total_cetak_setelah_diskon = $total_cetak_harga - $diskon_cetak;
 
@@ -276,6 +299,8 @@ $total_harga_semua = $total_harga_paket + $total_cetak_setelah_diskon;
 $dp_amount = $total_harga_semua * 0.65; // DP 65% dari total keseluruhan
 $sisa_amount = $total_harga_semua - $dp_amount;
 
+// Format Angka Desimal PHP
+$harga_format = number_format($harga_paket, 0, ',', '.');
 $harga_paket_format = number_format($harga_paket, 0, ',', '.');
 $total_harga_paket_format = number_format($total_harga_paket, 0, ',', '.');
 $total_cetak_format = number_format($total_cetak_harga, 0, ',', '.');
@@ -316,66 +341,92 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             --text-dark: #1e1e24;
             --text-muted: #718096;
             --body-bg: #f8fafc;
-            --success: #059669;
-            --warning: #d97706;
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --glass-border: rgba(255, 255, 255, 0.5);
+            --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.06);
+            --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.08);
+            --shadow-hover: 0 20px 48px rgba(216, 63, 103, 0.18);
+            --shadow-glow: 0 0 40px rgba(216, 63, 103, 0.15);
+            --radius-sm: 12px;
+            --radius-md: 16px;
+            --radius-lg: 24px;
+            --radius-xl: 32px;
             --transition-smooth: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
             --transition-bounce: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            --success: #059669;
+            --warning: #d97706;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
-
+        html { scroll-behavior: smooth; }
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
-            background: var(--body-bg);
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #f8fafc 100%);
+            background-attachment: fixed;
             color: var(--text-dark);
+            min-height: 100vh;
         }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--light-pink); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--p-pink); }
 
         /* ===== NAVBAR ATAS ===== */
         .top-navbar {
-            background: #ffffff;
-            padding: 16px 40px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 14px 40px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             position: sticky;
             top: 0;
             z-index: 1000;
-            box-shadow: 0 2px 20px rgba(0,0,0,0.06);
+            box-shadow: var(--shadow-soft);
+            border-bottom: 1px solid var(--glass-border);
         }
         .nav-logo {
             font-weight: 900;
-            font-size: 1.8rem;
+            font-size: 1.7rem;
             color: var(--p-pink);
             text-decoration: none;
             letter-spacing: -1.5px;
+            transition: var(--transition-smooth);
         }
-        .nav-logo span { color: var(--text-dark); font-weight: 700; font-size: 0.9rem; }
+        .nav-logo:hover { transform: scale(1.02); }
+        .nav-logo span { color: var(--text-dark); font-weight: 700; font-size: 0.85rem; }
         .nav-menu-center {
             display: flex;
-            gap: 32px;
+            gap: 36px;
             align-items: center;
         }
         .nav-link-item {
-            color: #4a5568;
+            color: #64748b;
             text-decoration: none;
             font-weight: 700;
-            font-size: 0.9rem;
-            transition: all 0.3s;
-            padding: 8px 0;
+            font-size: 0.88rem;
+            transition: var(--transition-smooth);
+            padding: 8px 4px;
             position: relative;
+        }
+        .nav-link-item::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 50%;
+            width: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--p-pink), var(--accent-pink));
+            border-radius: 3px;
+            transition: var(--transition-smooth);
+            transform: translateX(-50%);
         }
         .nav-link-item:hover, .nav-link-item.active {
             color: var(--p-pink);
         }
-        .nav-link-item.active::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
+        .nav-link-item:hover::after, .nav-link-item.active::after {
             width: 100%;
-            height: 3px;
-            background: var(--p-pink);
-            border-radius: 3px;
         }
         .nav-right {
             display: flex;
@@ -385,94 +436,163 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
         .nav-btn-booking {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
             color: #fff;
-            padding: 10px 24px;
-            border-radius: 12px;
+            padding: 10px 22px;
+            border-radius: var(--radius-md);
             font-weight: 800;
             font-size: 0.85rem;
             text-decoration: none;
-            transition: all 0.3s;
-            box-shadow: 0 4px 15px rgba(216, 63, 103, 0.25);
+            transition: var(--transition-smooth);
+            box-shadow: 0 4px 16px rgba(216, 63, 103, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
         .nav-btn-booking:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(216, 63, 103, 0.35);
+            transform: translateY(-3px) scale(1.03);
+            box-shadow: 0 8px 28px rgba(216, 63, 103, 0.4);
             color: #fff;
         }
         .nav-avatar-wrapper { position: relative; }
         .nav-avatar {
-            width: 40px;
-            height: 40px;
+            width: 42px;
+            height: 42px;
             border-radius: 50%;
             object-fit: cover;
-            border: 2px solid var(--light-pink);
+            border: 2.5px solid var(--light-pink);
             cursor: pointer;
-            transition: all 0.3s;
+            transition: var(--transition-smooth);
+            box-shadow: 0 2px 8px rgba(216, 63, 103, 0.15);
         }
-        .nav-avatar:hover { transform: scale(1.1); border-color: var(--p-pink); }
+        .nav-avatar:hover {
+            transform: scale(1.12) rotate(3deg);
+            border-color: var(--p-pink);
+            box-shadow: 0 4px 16px rgba(216, 63, 103, 0.25);
+        }
         .nav-dropdown {
             position: absolute;
-            top: 55px;
-            right: 0;
-            background: #ffffff;
-            border-radius: 16px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+            top: 58px;
+            right: -8px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-card), 0 0 0 1px rgba(0,0,0,0.04);
             padding: 12px;
-            min-width: 220px;
+            min-width: 240px;
             display: none;
             z-index: 1001;
-            border: 1px solid #f1f5f9;
+            border: 1px solid var(--glass-border);
+            animation: dropdownSlide 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        .nav-dropdown.show { display: block; animation: fadeIn 0.2s ease; }
+        .nav-dropdown.show { display: block; }
+        @keyframes dropdownSlide {
+            from { opacity: 0; transform: translateY(-10px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
         .dropdown-item {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             padding: 12px 16px;
-            border-radius: 12px;
+            border-radius: var(--radius-md);
             color: #4a5568;
             font-weight: 600;
             font-size: 0.9rem;
             text-decoration: none;
-            transition: all 0.3s;
+            transition: var(--transition-smooth);
             cursor: pointer;
             border: none;
             background: none;
             width: 100%;
         }
-        .dropdown-item:hover { background: var(--s-pink); color: var(--p-pink); }
-        .dropdown-item i { font-size: 1.1rem; width: 20px; text-align: center; }
-        .dropdown-divider { height: 1px; background: #f1f5f9; margin: 8px 0; }
+        .dropdown-item:hover {
+            background: var(--s-pink);
+            color: var(--p-pink);
+            transform: translateX(4px);
+        }
+        .dropdown-item i { font-size: 1.1rem; width: 22px; text-align: center; }
+        .dropdown-divider { height: 1px; background: linear-gradient(90deg, transparent, #e2e8f0, transparent); margin: 8px 0; }
         .dropdown-item.logout { color: #dc2626; }
         .dropdown-item.logout:hover { background: #fef2f2; }
         .dropdown-header {
-            padding: 8px 16px;
+            padding: 10px 16px;
             font-weight: 800;
             color: var(--text-dark);
             font-size: 0.95rem;
         }
 
-        /* ===== PROFILE MODAL CSS SINKRON ===== */
-        .modal-content-custom { border-radius: 24px; border: none; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.15); }
-        .modal-header-custom { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; padding: 20px 30px; border: none; }
-        .modal-body-custom { padding: 30px; }
-        .form-control-custom { border-radius: 12px; padding: 12px 16px; border: 1px solid #e2e8f0; font-size: 0.9rem; font-weight: 600; transition: all 0.3s; }
-        .form-control-custom:focus { border-color: var(--p-pink); box-shadow: 0 0 0 3px rgba(216, 63, 103, 0.1); }
+        /* ===== PROFILE MODAL CSS ===== */
+        .modal-content-custom { 
+            border-radius: var(--radius-xl); 
+            border: none; 
+            overflow: hidden; 
+            box-shadow: 0 24px 64px rgba(0,0,0,0.18);
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+        }
+        .modal-header-custom { 
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); 
+            color: #ffffff; 
+            padding: 24px 32px; 
+            border: none; 
+        }
+        .modal-body-custom { padding: 32px; }
+        .form-control-custom { 
+            border-radius: var(--radius-md); 
+            padding: 14px 18px; 
+            border: 2px solid #e2e8f0; 
+            font-size: 0.9rem; 
+            font-weight: 600; 
+            transition: var(--transition-smooth);
+            background: #ffffff;
+        }
+        .form-control-custom:focus { 
+            border-color: var(--p-pink); 
+            box-shadow: 0 0 0 4px rgba(216, 63, 103, 0.1); 
+            transform: translateY(-1px);
+        }
         .form-label-custom { font-weight: 700; font-size: 0.85rem; color: var(--text-dark); margin-bottom: 8px; }
-        .profile-nav-tabs { border: none; gap: 10px; }
-        .profile-nav-tabs .nav-link { border: none; color: var(--text-muted); font-weight: 700; font-size: 0.9rem; padding: 10px 20px; border-radius: 12px; transition: all 0.3s; }
-        .profile-nav-tabs .nav-link.active { background: var(--light-pink); color: var(--p-pink); }
-        .img-preview-container { position: relative; width: 120px; height: 120px; margin: 0 auto 30px; }
-        .img-preview { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 4px solid var(--light-pink); }
-        .btn-upload-trigger { position: absolute; bottom: 0; right: 0; width: 36px; height: 36px; border-radius: 50%; background: var(--p-pink); color: #ffffff; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 3px solid #ffffff; transition: all 0.3s; }
-        .btn-upload-trigger:hover { background: var(--d-pink); transform: scale(1.1); }
+        .profile-nav-tabs { border: none; gap: 12px; }
+        .profile-nav-tabs .nav-link { 
+            border: none; 
+            color: var(--text-muted); 
+            font-weight: 700; 
+            font-size: 0.9rem; 
+            padding: 12px 24px; 
+            border-radius: var(--radius-md); 
+            transition: var(--transition-smooth); 
+        }
+        .profile-nav-tabs .nav-link.active { 
+            background: linear-gradient(135deg, var(--light-pink), var(--s-pink)); 
+            color: var(--p-pink); 
+            box-shadow: 0 4px 12px rgba(216, 63, 103, 0.15);
+        }
+        .img-preview-container { position: relative; width: 130px; height: 130px; margin: 0 auto 32px; }
+        .img-preview { 
+            width: 100%; height: 100%; border-radius: 50%; object-fit: cover; 
+            border: 4px solid var(--light-pink); 
+            box-shadow: 0 8px 24px rgba(216, 63, 103, 0.2);
+            transition: var(--transition-smooth);
+        }
+        .img-preview-container:hover .img-preview { transform: scale(1.05); }
+        .btn-upload-trigger { 
+            position: absolute; bottom: 0; right: 0; width: 40px; height: 40px; 
+            border-radius: 50%; background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); 
+            color: #ffffff; display: flex; align-items: center; justify-content: center; 
+            cursor: pointer; border: 4px solid #ffffff; 
+            transition: var(--transition-bounce);
+            box-shadow: 0 4px 12px rgba(216, 63, 103, 0.3);
+        }
+        .btn-upload-trigger:hover { transform: scale(1.15) rotate(10deg); }
         .pwd-requirement { display: block; font-size: 0.75rem; font-weight: 600; color: #dc2626; margin-top: 4px; }
         .pwd-requirement.valid { color: #059669; }
 
         /* ===== BREADCRUMB BAR ===== */
         .breadcrumb-bar {
-            background: #ffffff;
-            padding: 16px 40px;
-            border-bottom: 1px solid #f1f5f9;
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            padding: 14px 40px;
+            border-bottom: 1px solid var(--glass-border);
         }
         .breadcrumb-inner {
             max-width: 1400px;
@@ -482,46 +602,61 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             gap: 10px;
             font-size: 0.85rem;
             font-weight: 600;
+            flex-wrap: wrap;
         }
         .breadcrumb-inner a {
             color: var(--text-muted);
             text-decoration: none;
-            transition: all 0.3s;
+            transition: var(--transition-smooth);
+            padding: 4px 8px;
+            border-radius: 8px;
         }
-        .breadcrumb-inner a:hover { color: var(--p-pink); }
-        .breadcrumb-inner .separator { color: #cbd5e1; }
-        .breadcrumb-inner .current { color: var(--p-pink); font-weight: 700; }
+        .breadcrumb-inner a:hover { 
+            color: var(--p-pink); 
+            background: var(--s-pink);
+        }
+        .breadcrumb-inner .separator { color: #cbd5e1; font-size: 0.75rem; }
+        .breadcrumb-inner .current { 
+            color: var(--p-pink); 
+            font-weight: 800; 
+            background: linear-gradient(135deg, var(--s-pink), var(--light-pink));
+            padding: 4px 14px;
+            border-radius: 20px;
+        }
 
         /* ===== MAIN CONTENT ===== */
         .main-container {
             padding: 40px;
-            max-width: 1400px;
+            max-width: 1440px;
             margin: 0 auto;
         }
 
-        /* ===== PROGRESS BAR SINKRON (Langkah 6 Konfirmasi Active) ===== */
+        /* ===== PROGRESS BAR ===== */
         .progress-container {
-            background: #ffffff;
-            border-radius: 20px;
-            padding: 24px 30px;
-            margin-bottom: 30px;
-            border: 1px solid #f1f5f9;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border-radius: var(--radius-xl);
+            padding: 28px 36px;
+            margin-bottom: 32px;
+            border: 1px solid var(--glass-border);
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 0;
             flex-wrap: wrap;
+            box-shadow: var(--shadow-soft);
         }
         .progress-step {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
             text-decoration: none;
+            position: relative;
         }
         .progress-step-circle {
-            width: 44px;
-            height: 44px;
+            width: 48px;
+            height: 48px;
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -531,190 +666,347 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             border: 3px solid #e2e8f0;
             background: #ffffff;
             color: #94a3b8;
-            transition: all 0.3s;
+            transition: var(--transition-bounce);
+            position: relative;
+            z-index: 2;
         }
         .progress-step.active .progress-step-circle {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
             border-color: var(--p-pink);
             color: #ffffff;
-            box-shadow: 0 4px 15px rgba(216, 63, 103, 0.3);
+            box-shadow: var(--shadow-glow);
+            animation: pulseGlow 2s infinite;
+        }
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 20px rgba(216, 63, 103, 0.3); }
+            50% { box-shadow: 0 0 40px rgba(216, 63, 103, 0.5); }
         }
         .progress-step.completed .progress-step-circle {
-            background: var(--success);
-            border-color: var(--success);
+            background: linear-gradient(135deg, #059669, #10b981);
+            border-color: #059669;
             color: #ffffff;
+            box-shadow: 0 4px 16px rgba(5, 150, 105, 0.3);
         }
         .progress-step-label {
-            font-size: 0.75rem;
-            font-weight: 700;
+            font-size: 0.72rem;
+            font-weight: 800;
             color: #94a3b8;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.8px;
+            transition: var(--transition-smooth);
         }
         .progress-step.active .progress-step-label { color: var(--p-pink); }
-        .progress-step.completed .progress-step-label { color: var(--success); }
+        .progress-step.completed .progress-step-label { color: #059669; }
         .progress-line {
-            width: 60px;
-            height: 3px;
+            width: 56px;
+            height: 4px;
             background: #e2e8f0;
-            margin: 0 10px;
-            margin-bottom: 24px;
+            margin: 0 8px;
+            margin-bottom: 26px;
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
         }
-        .progress-line.completed { background: var(--success); }
+        .progress-line.completed { 
+            background: linear-gradient(90deg, #059669, #10b981); 
+        }
+        .progress-line::after {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%;
+            width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+            animation: shimmer 2s infinite;
+        }
+        @keyframes shimmer {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        /* ===== PROGRESS BAR CLICKABLE ===== */
+        .progress-step-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: inherit;
+            transition: var(--transition-smooth);
+            cursor: default;
+        }
+        .progress-step-wrapper.clickable {
+            cursor: pointer;
+        }
+        .progress-step-wrapper.clickable:hover .progress-step-circle {
+            transform: scale(1.1);
+            box-shadow: 0 4px 16px rgba(5, 150, 105, 0.3);
+        }
+        .progress-step-wrapper.clickable:hover .progress-step-label {
+            color: #059669;
+        }
+
+        /* ===== BACK BUTTON ===== */
+        .back-nav-container {
+            margin-bottom: 20px;
+        }
+        .btn-back-step {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: #ffffff;
+            border: 2px solid #e2e8f0;
+            border-radius: var(--radius-md);
+            color: var(--text-muted);
+            font-weight: 700;
+            font-size: 0.85rem;
+            text-decoration: none;
+            transition: var(--transition-smooth);
+            cursor: pointer;
+        }
+        .btn-back-step:hover {
+            border-color: var(--p-pink);
+            color: var(--p-pink);
+            background: var(--s-pink);
+            transform: translateX(-4px);
+        }
 
         /* ===== KONFIRMASI SECTION ===== */
         .konfirmasi-section {
             display: grid;
             grid-template-columns: 1fr 420px;
-            gap: 40px;
+            gap: 32px;
             margin-bottom: 40px;
         }
 
         /* ===== DETAIL CARD ===== */
         .detail-card {
-            background: #ffffff;
-            border-radius: 24px;
-            padding: 30px;
-            border: 1px solid #f1f5f9;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border-radius: var(--radius-xl);
+            padding: 32px;
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--shadow-soft);
             margin-bottom: 20px;
+            transition: var(--transition-smooth);
+        }
+        .detail-card:hover {
+            box-shadow: var(--shadow-card);
         }
         .detail-title {
             font-size: 1.1rem;
-            font-weight: 800;
+            font-weight: 900;
             color: var(--text-dark);
             margin-bottom: 20px;
             display: flex;
             align-items: center;
             gap: 10px;
+            padding-bottom: 14px;
+            border-bottom: 2px solid #f1f5f9;
         }
-        .detail-title i { color: var(--p-pink); }
+        .detail-title i { 
+            color: var(--p-pink); 
+            font-size: 1.3rem;
+            animation: iconFloat 3s ease-in-out infinite;
+        }
+        @keyframes iconFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
         .detail-item {
             display: flex;
             align-items: center;
             gap: 16px;
             padding: 16px;
-            border-radius: 16px;
-            background: var(--s-pink);
+            border-radius: var(--radius-lg);
+            background: linear-gradient(135deg, var(--s-pink), #ffffff);
             margin-bottom: 12px;
-            transition: all 0.3s;
+            transition: var(--transition-smooth);
+            border: 1px solid transparent;
         }
-        .detail-item:hover { transform: translateX(4px); }
+        .detail-item:hover { 
+            transform: translateX(6px); 
+            border-color: var(--light-pink);
+            box-shadow: 0 4px 16px rgba(216, 63, 103, 0.08);
+        }
         .detail-item:last-child { margin-bottom: 0; }
         .detail-img {
-            width: 60px;
-            height: 60px;
-            border-radius: 14px;
+            width: 64px;
+            height: 64px;
+            border-radius: var(--radius-md);
             object-fit: cover;
-            border: 2px solid #ffffff;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            border: 3px solid #ffffff;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+            transition: var(--transition-smooth);
+        }
+        .detail-item:hover .detail-img {
+            transform: scale(1.08) rotate(2deg);
         }
         .detail-info { flex: 1; }
         .detail-label {
-            font-size: 0.75rem;
-            font-weight: 700;
+            font-size: 0.72rem;
+            font-weight: 800;
             color: var(--p-pink);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 2px;
+            letter-spacing: 0.8px;
+            margin-bottom: 4px;
         }
         .detail-value {
-            font-size: 1rem;
-            font-weight: 800;
+            font-size: 1.05rem;
+            font-weight: 900;
             color: var(--text-dark);
+            line-height: 1.3;
         }
         .detail-sub {
             font-size: 0.85rem;
             color: var(--text-muted);
             font-weight: 600;
+            margin-top: 2px;
         }
 
         /* ===== JADWAL CARD ===== */
         .jadwal-card {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            border-radius: 24px;
+            border-radius: var(--radius-xl);
             padding: 24px;
             color: #ffffff;
-            margin-bottom: 20px;
+            margin-bottom: 14px;
+            box-shadow: 0 8px 24px rgba(216, 63, 103, 0.25);
+            transition: var(--transition-smooth);
+            position: relative;
+            overflow: hidden;
+        }
+        .jadwal-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -20%;
+            width: 200px;
+            height: 200px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+        .jadwal-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 16px 40px rgba(216, 63, 103, 0.35);
         }
         .jadwal-card-title {
-            font-size: 0.85rem;
-            font-weight: 700;
-            opacity: 0.9;
+            font-size: 0.78rem;
+            font-weight: 800;
+            opacity: 0.85;
             text-transform: uppercase;
             letter-spacing: 1px;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
         .jadwal-card-main {
-            font-size: 1.4rem;
+            font-size: 1.35rem;
             font-weight: 900;
             margin-bottom: 4px;
+            letter-spacing: -0.3px;
         }
         .jadwal-card-sub {
             font-size: 1rem;
             font-weight: 600;
             opacity: 0.9;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
         /* ===== PROPERTI CARD ===== */
         .properti-card {
-            background: #ffffff;
-            border-radius: 24px;
-            padding: 24px;
-            border: 1px solid #f1f5f9;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border-radius: var(--radius-xl);
+            padding: 28px;
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--shadow-soft);
             margin-bottom: 20px;
+            transition: var(--transition-smooth);
+        }
+        .properti-card:hover {
+            box-shadow: var(--shadow-card);
         }
         .properti-tags {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 12px;
+            gap: 10px;
+            margin-top: 14px;
         }
         .properti-tag {
-            background: var(--s-pink);
+            background: linear-gradient(135deg, var(--s-pink), #ffffff);
             color: var(--p-pink);
-            padding: 6px 14px;
+            padding: 8px 16px;
             border-radius: 50px;
-            font-size: 0.75rem;
+            font-size: 0.78rem;
             font-weight: 700;
+            border: 1.5px solid var(--light-pink);
+            transition: var(--transition-smooth);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .properti-tag:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(216, 63, 103, 0.12);
+            border-color: var(--p-pink);
         }
 
-        /* ===== HARGA SIDEBAR SINKRON ===== */
+        /* ===== HARGA SIDEBAR ===== */
         .booking-summary {
             position: sticky;
             top: 90px;
             height: fit-content;
         }
         .summary-card {
-            background: #ffffff;
-            border-radius: 24px;
-            padding: 30px;
-            border: 1px solid #f1f5f9;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-radius: var(--radius-xl);
+            padding: 28px;
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--shadow-card);
+            transition: var(--transition-smooth);
+        }
+        .summary-card:hover {
+            box-shadow: 0 16px 48px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
         }
         .summary-title {
-            font-size: 1.1rem;
-            font-weight: 800;
+            font-size: 1.05rem;
+            font-weight: 900;
             color: var(--text-dark);
-            margin-bottom: 24px;
-            padding-bottom: 16px;
+            margin-bottom: 20px;
+            padding-bottom: 14px;
             border-bottom: 2px solid #f1f5f9;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
+        .summary-title i { color: var(--p-pink); }
         .summary-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
             padding: 12px 0;
             border-bottom: 1px solid #f8fafc;
+            transition: var(--transition-smooth);
+        }
+        .summary-row:hover {
+            transform: translateX(4px);
         }
         .summary-row:last-child { border-bottom: none; }
         .summary-label {
-            font-size: 0.9rem;
+            font-size: 0.88rem;
             color: var(--text-muted);
             font-weight: 600;
         }
         .summary-value {
-            font-size: 0.95rem;
-            font-weight: 700;
+            font-size: 0.92rem;
+            font-weight: 800;
             color: var(--text-dark);
         }
         .summary-value.total {
@@ -724,14 +1016,53 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
         }
         .summary-divider {
             height: 2px;
-            background: #f1f5f9;
+            background: linear-gradient(90deg, transparent, #f1f5f9, transparent);
             margin: 16px 0;
+        }
+
+        /* ===== EXTRA GOODS LIST ===== */
+        .extra-goods-list {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 2px dashed #e2e8f0;
+        }
+        .extra-goods-title {
+            font-size: 0.78rem;
+            font-weight: 900;
+            color: var(--text-dark);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .extra-goods-title i { color: var(--p-pink); }
+        .extra-goods-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.84rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            background: #f8fafc;
+            transition: var(--transition-smooth);
+        }
+        .extra-goods-item:hover {
+            background: var(--s-pink);
+            transform: translateX(4px);
+        }
+        .extra-goods-item span:last-child {
+            color: var(--text-dark);
+            font-weight: 800;
         }
 
         /* ===== METODE BAYAR SELECTOR ===== */
         .summary-dp-info {
-            background: var(--s-pink);
-            border-radius: 16px;
+            background: linear-gradient(135deg, var(--s-pink), var(--light-pink));
+            border-radius: var(--radius-lg);
             padding: 20px;
             margin-top: 20px;
             border: 2px dashed var(--light-pink);
@@ -745,71 +1076,145 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             align-items: center;
             gap: 8px;
         }
+        .summary-dp-title i { animation: walletBounce 2s infinite; }
+        @keyframes walletBounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-3px); }
+        }
         .summary-dp-amount {
             font-size: 1.8rem;
             font-weight: 900;
             color: var(--p-pink);
         }
         .summary-dp-note {
-            font-size: 0.8rem;
+            font-size: 0.82rem;
             color: var(--text-muted);
             margin-top: 12px;
-            line-height: 1.5;
+            line-height: 1.6;
+            font-weight: 600;
         }
 
         .payment-option-card {
             background: #ffffff;
             border: 2px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 12px 16px;
+            border-radius: var(--radius-md);
+            padding: 14px 18px;
             cursor: pointer;
             transition: var(--transition-smooth);
+            margin-bottom: 10px;
         }
         .payment-option-card:hover {
             border-color: var(--p-pink);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(216, 63, 103, 0.08);
         }
         .payment-option-card.active {
             border-color: var(--p-pink);
-            background: var(--s-pink);
+            background: linear-gradient(135deg, var(--s-pink), #ffffff);
+            box-shadow: 0 4px 16px rgba(216, 63, 103, 0.12);
         }
         .option-label {
             font-weight: 800;
-            font-size: 0.85rem;
+            font-size: 0.88rem;
             color: var(--text-dark);
         }
         .option-desc {
-            font-size: 0.75rem;
+            font-size: 0.78rem;
             color: var(--text-muted);
             font-weight: 600;
+            margin-top: 2px;
         }
 
         /* ===== WARNING BOX ===== */
         .warning-box {
-            background: #fef3c7;
+            background: linear-gradient(135deg, #fef3c7, #fff7ed);
             border: 2px solid #f59e0b;
-            border-radius: 16px;
+            border-radius: var(--radius-lg);
             padding: 20px;
-            margin-bottom: 20px;
+            margin-bottom: 24px;
             display: flex;
             align-items: center;
             gap: 16px;
+            box-shadow: 0 4px 16px rgba(245, 158, 11, 0.1);
+            animation: fadeSlideUp 0.5s ease forwards;
         }
-        .warning-box i { font-size: 1.5rem; color: #d97706; flex-shrink: 0; }
-        .warning-text { font-size: 0.9rem; font-weight: 700; color: #92400e; }
+        .warning-box i { 
+            font-size: 1.6rem; 
+            color: #d97706; 
+            flex-shrink: 0;
+            animation: warningPulse 2s infinite;
+        }
+        @keyframes warningPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        .warning-text { font-size: 0.92rem; font-weight: 700; color: #92400e; line-height: 1.5; }
 
         /* ===== INFO BOX ===== */
         .info-box {
-            background: var(--s-pink);
-            border-radius: 16px;
+            background: linear-gradient(135deg, var(--s-pink), #ffffff);
+            border-radius: var(--radius-lg);
             padding: 20px;
-            margin-bottom: 20px;
+            margin-bottom: 24px;
             display: flex;
             align-items: flex-start;
             gap: 16px;
+            border: 2px solid var(--light-pink);
+            box-shadow: 0 4px 16px rgba(216, 63, 103, 0.06);
+            animation: fadeSlideUp 0.5s ease forwards;
+            animation-delay: 0.1s;
+            opacity: 0;
         }
-        .info-box i { font-size: 1.5rem; color: var(--p-pink); flex-shrink: 0; margin-top: 2px; }
+        .info-box i { 
+            font-size: 1.5rem; 
+            color: var(--p-pink); 
+            flex-shrink: 0; 
+            margin-top: 2px;
+            animation: infoPulse 2s infinite;
+        }
+        @keyframes infoPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
         .info-text { font-size: 0.9rem; font-weight: 600; color: var(--text-dark); line-height: 1.6; }
         .info-text strong { color: var(--p-pink); }
+
+        /* ===== DISKON ALERT ===== */
+        .diskon-alert {
+            background: linear-gradient(135deg, #e6fffa, #d1fae5);
+            border-radius: var(--radius-xl);
+            padding: 24px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            border: 2px solid #a7f3d0;
+            box-shadow: 0 4px 20px rgba(5, 150, 105, 0.1);
+            animation: fadeSlideUp 0.5s ease forwards;
+            animation-delay: 0.15s;
+            opacity: 0;
+        }
+        .diskon-alert .diskon-icon {
+            font-size: 2.5rem;
+            flex-shrink: 0;
+            animation: celebrateBounce 1.5s ease-in-out infinite;
+        }
+        @keyframes celebrateBounce {
+            0%, 100% { transform: translateY(0) rotate(-5deg); }
+            50% { transform: translateY(-8px) rotate(5deg); }
+        }
+        .diskon-alert h5 {
+            font-weight: 900;
+            color: #059669;
+            margin-bottom: 4px;
+            font-size: 1.05rem;
+        }
+        .diskon-alert p {
+            color: #059669;
+            font-size: 0.88rem;
+            font-weight: 600;
+            margin: 0;
+        }
 
         /* ===== BUTTONS ===== */
         .btn-group-konfirmasi {
@@ -823,11 +1228,11 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             color: #ffffff;
             border: none;
             padding: 16px 24px;
-            border-radius: 16px;
+            border-radius: var(--radius-lg);
             font-size: 1rem;
             font-weight: 800;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: var(--transition-smooth);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -836,7 +1241,7 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             text-decoration: none;
         }
         .btn-konfirmasi:hover {
-            transform: translateY(-3px);
+            transform: translateY(-3px) scale(1.02);
             box-shadow: 0 12px 35px rgba(216, 63, 103, 0.4);
             color: #ffffff;
         }
@@ -852,11 +1257,11 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             color: var(--text-muted);
             border: 2px solid #e2e8f0;
             padding: 14px 24px;
-            border-radius: 16px;
+            border-radius: var(--radius-lg);
             font-size: 0.95rem;
             font-weight: 700;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: var(--transition-smooth);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -867,25 +1272,87 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             border-color: var(--p-pink);
             color: var(--p-pink);
             background: var(--s-pink);
+            transform: translateY(-2px);
         }
 
+        /* ===== ANIMATIONS ===== */
+        @keyframes fadeSlideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-5px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
+        /* ===== LOADING OVERLAY ===== */
+        .loading-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(255,255,255,0.92);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .loading-overlay.show { display: flex; }
+        .loading-spinner {
+            width: 56px;
+            height: 56px;
+            border: 4px solid var(--light-pink);
+            border-top-color: var(--p-pink);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        .loading-text {
+            font-size: 1.05rem;
+            font-weight: 800;
+            color: var(--p-pink);
+            letter-spacing: 0.5px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
         /* ===== RESPONSIVE ===== */
+        @media (max-width: 1200px) {
+            .konfirmasi-section { grid-template-columns: 1fr 380px; }
+        }
         @media (max-width: 992px) {
             .konfirmasi-section { grid-template-columns: 1fr; }
-            .harga-card { position: static; }
+            .booking-summary { position: static; margin-top: 24px; }
             .nav-menu-center { display: none; }
             .main-container { padding: 20px; }
-            .top-navbar { padding: 16px 20px; }
-            .breadcrumb-bar { padding: 16px 20px; }
+            .top-navbar { padding: 14px 20px; }
+            .breadcrumb-bar { padding: 14px 20px; }
+            .progress-container { padding: 20px 16px; }
+            .progress-line { width: 30px; margin: 0 4px; }
+        }
+        @media (max-width: 768px) {
+            .progress-step-label { display: none; }
+            .progress-line { width: 16px; }
+            .detail-card { padding: 24px; }
+            .jadwal-card { padding: 20px; }
+            .summary-card { padding: 24px; }
+        }
+        @media (max-width: 480px) {
+            .detail-card { padding: 20px; }
+            .properti-card { padding: 20px; }
+            .summary-card { padding: 20px; }
+            .btn-konfirmasi, .btn-kembali { padding: 14px 20px; font-size: 0.9rem; }
+            .diskon-alert { flex-direction: column; text-align: center; padding: 20px; }
+            .diskon-alert .diskon-icon { font-size: 2rem; }
         }
     </style>
 </head>
 <body>
+    <!-- LOADING OVERLAY -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Memproses...</div>
+    </div>
 
     <!-- NAVBAR ATAS SINKRON -->
     <nav class="top-navbar">
@@ -942,41 +1409,62 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
     <!-- MAIN CONTENT -->
     <main class="main-container">
 
+        <!-- BACK BUTTON -->
+        <div class="back-nav-container">
+            <a href="../Jadwal/pilih_jadwal.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>" class="btn-back-step">
+                <i class="bi bi-arrow-left"></i> Kembali ke Jadwal
+            </a>
+        </div>
+
         <!-- PROGRESS BAR SINKRON (Langkah 6 Konfirmasi Active, 1 s.d 5 Completed) -->
         <div class="progress-container">
-            <div class="progress-step completed">
-                <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
-                <div class="progress-step-label">Pilih Paket</div>
-            </div>
+            <a href="../Paket/pilih_paket.php?id_paket=<?= $id_paket ?>" class="progress-step-wrapper clickable">
+                <div class="progress-step completed">
+                    <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
+                    <div class="progress-step-label">Pilih Paket</div>
+                </div>
+            </a>
             <div class="progress-line completed"></div>
-            <div class="progress-step completed">
-                <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
-                <div class="progress-step-label">Pilih Ruangan</div>
-            </div>
+            <a href="../Ruangan/pilih_ruangan.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>" class="progress-step-wrapper clickable">
+                <div class="progress-step completed">
+                    <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
+                    <div class="progress-step-label">Pilih Ruangan</div>
+                </div>
+            </a>
             <div class="progress-line completed"></div>
-            <div class="progress-step completed">
-                <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
-                <div class="progress-step-label">Pilih Tema</div>
-            </div>
+            <a href="../Tema/pilih_tema.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>" class="progress-step-wrapper clickable">
+                <div class="progress-step completed">
+                    <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
+                    <div class="progress-step-label">Pilih Tema</div>
+                </div>
+            </a>
             <div class="progress-line completed"></div>
-            <div class="progress-step completed">
-                <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
-                <div class="progress-step-label">Pilih Barang Cetak</div>
-            </div>
+            <a href="../Barang_Cetak/pilih_barang_cetak.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>" class="progress-step-wrapper clickable">
+                <div class="progress-step completed">
+                    <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
+                    <div class="progress-step-label">Pilih Barang Cetak</div>
+                </div>
+            </a>
             <div class="progress-line completed"></div>
-            <div class="progress-step completed">
-                <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
-                <div class="progress-step-label">Jadwal</div>
-            </div>
+            <a href="../Jadwal/pilih_jadwal.php?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>" class="progress-step-wrapper clickable">
+                <div class="progress-step completed">
+                    <div class="progress-step-circle"><i class="bi bi-check-lg"></i></div>
+                    <div class="progress-step-label">Jadwal</div>
+                </div>
+            </a>
             <div class="progress-line completed"></div>
-            <div class="progress-step active">
-                <div class="progress-step-circle">6</div>
-                <div class="progress-step-label">Konfirmasi</div>
+            <div class="progress-step-wrapper">
+                <div class="progress-step active">
+                    <div class="progress-step-circle">6</div>
+                    <div class="progress-step-label">Konfirmasi</div>
+                </div>
             </div>
             <div class="progress-line"></div>
-            <div class="progress-step">
-                <div class="progress-step-circle">7</div>
-                <div class="progress-step-label">Bayar DP</div>
+            <div class="progress-step-wrapper">
+                <div class="progress-step">
+                    <div class="progress-step-circle">7</div>
+                    <div class="progress-step-label">Pembayaran</div>
+                </div>
             </div>
         </div>
 
@@ -992,11 +1480,11 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
 
         <!-- BANNER DISKON PROSES (DITAMPILKAN JIKA MEMBELI BARANG CETAK) -->
         <?php if ($total_cetak_harga > 0): ?>
-        <div class="alert alert-success border-0 shadow-sm d-flex align-items-center gap-3 p-4 mb-4" style="border-radius:24px; background: linear-gradient(135deg, #e6fffa, #d1fae5);">
-            <div class="fs-1">🎉</div>
+        <div class="diskon-alert">
+            <div class="diskon-icon">🎉</div>
             <div>
-                <h5 class="fw-bold text-success mb-1">Selamat! Anda Mendapatkan Diskon 5%!</h5>
-                <p class="text-success small mb-0 fw-semibold">Anda mendapatkan diskon potongan harga spesial sebesar <strong>5%</strong> khusus untuk seluruh produk cetak foto Anda.</p>
+                <h5>Selamat! Anda Mendapatkan Diskon 5%!</h5>
+                <p>Anda mendapatkan diskon potongan harga spesial sebesar <strong>5%</strong> khusus untuk seluruh produk cetak foto Anda.</p>
             </div>
         </div>
         <?php endif; ?>
@@ -1014,7 +1502,7 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             <!-- Left: Detail Booking -->
             <div>
                 <!-- Paket -->
-                <div class="detail-card">
+                <div class="detail-card" style="animation: fadeSlideUp 0.5s ease forwards; opacity: 0;">
                     <div class="detail-title"><i class="bi bi-box-seam-fill"></i> Paket Foto</div>
                     <div class="detail-item">
                         <img src="../../../../assets/img/paket/<?= htmlspecialchars($d_paket['Foto_Paket'] ?? 'default_paket.jpg') ?>" class="detail-img" alt="Paket">
@@ -1027,7 +1515,7 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
                 </div>
 
                 <!-- Ruangan -->
-                <div class="detail-card">
+                <div class="detail-card" style="animation: fadeSlideUp 0.5s ease forwards; animation-delay: 0.1s; opacity: 0;">
                     <div class="detail-title"><i class="bi bi-door-open-fill"></i> Ruangan</div>
                     <div class="detail-item">
                         <img src="../../../../assets/img/ruangan/<?= htmlspecialchars($d_ruangan['Foto_Ruangan'] ?? 'default_ruangan.jpg') ?>" class="detail-img" alt="Ruangan">
@@ -1040,7 +1528,7 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
                 </div>
 
                 <!-- Tema -->
-                <div class="detail-card">
+                <div class="detail-card" style="animation: fadeSlideUp 0.5s ease forwards; animation-delay: 0.2s; opacity: 0;">
                     <div class="detail-title"><i class="bi bi-image-fill"></i> Tema Foto</div>
                     <div class="detail-item">
                         <img src="../../../../assets/img/tema/<?= htmlspecialchars($d_tema['Foto_Tema'] ?? 'default_tema.jpg') ?>" class="detail-img" alt="Tema">
@@ -1052,25 +1540,27 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
                     </div>
                 </div>
 
-                <!-- Jadwal -->
-                <div class="detail-card" style="position:relative; overflow:hidden;">
-                    <div class="detail-title"><i class="bi bi-calendar-check-fill"></i> Jadwal Sesi</div>
-                    <div class="jadwal-card">
-                        <div class="jadwal-card-title"><i class="bi bi-clock"></i> Jadwal Terpilih</div>
-                        <div class="jadwal-card-main"><?= htmlspecialchars($jadwal_hari) ?>, <?= htmlspecialchars($jadwal_tgl_format) ?></div>
-                        <div class="jadwal-card-sub"><i class="bi bi-clock-fill"></i> <?= htmlspecialchars($jam_mulai_str) ?> - <?= htmlspecialchars($jam_selesai_str) ?> WIB</div>
-                    </div>
+                <!-- Jadwal (Iterasi dinamis multi-slot jadwal, aman dari error undefined variables) -->
+                <div class="detail-card" style="animation: fadeSlideUp 0.5s ease forwards; animation-delay: 0.3s; opacity: 0;">
+                    <div class="detail-title"><i class="bi bi-calendar-check-fill"></i> Jadwal Sesi (<?= $jumlah_slot ?> Slot)</div>
+                    <?php foreach ($jadwal_list as $index => $slot): ?>
+                        <div class="jadwal-card" style="<?= $index > 0 ? 'margin-top: 14px;' : '' ?>">
+                            <div class="jadwal-card-title"><i class="bi bi-clock"></i> Jadwal Terpilih (Slot <?= $index + 1 ?>)</div>
+                            <div class="jadwal-card-main"><?= htmlspecialchars($slot['hari']) ?>, <?= htmlspecialchars($slot['tanggal_format']) ?></div>
+                            <div class="jadwal-card-sub"><i class="bi bi-clock-fill"></i> <?= htmlspecialchars($slot['waktu_format']) ?> WIB</div>
+                        </div>
+                    <?php endforeach; ?>
                 </div>
 
-                <!-- Properti -->
+                <!-- Properti (Aman dari error undefined variables karena data sudah ditarik di bagian atas PHP) -->
                 <?php if (!empty($properti_list)): ?>
-                <div class="properti-card">
+                <div class="properti-card" style="animation: fadeSlideUp 0.5s ease forwards; animation-delay: 0.4s; opacity: 0;">
                     <div class="detail-title"><i class="bi bi-stars"></i> Properti Tersedia</div>
                     <div class="detail-sub" style="margin-bottom:8px;">Fasilitas yang tersedia di ruangan ini:</div>
                     <div class="properti-tags">
                         <?php foreach ($properti_list as $prop): ?>
                         <span class="properti-tag">
-                            <i class="bi bi-check-circle-fill" style="font-size:0.7rem;margin-right:4px;"></i>
+                            <i class="bi bi-check-circle-fill" style="font-size:0.7rem;"></i>
                             <?= htmlspecialchars($prop['Nama_Properti']) ?> (<?= htmlspecialchars($prop['Kategori_Properti']) ?>)
                         </span>
                         <?php endforeach; ?>
@@ -1079,16 +1569,16 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
                 <?php endif; ?>
             </div>
 
-            <!-- Right: Ringkasan Harga (SINKRON DENGAN PRODUK CETAK) -->
-            <div class="booking-summary">
+            <!-- Right: Ringkasan Harga (SINKRON DENGAN PRODUK CETAK & MULTI SLOT) -->
+            <div class="booking-summary" style="animation: fadeSlideUp 0.5s ease forwards; animation-delay: 0.2s; opacity: 0;">
                 <div class="summary-card">
                     <div class="summary-title">
                         <i class="bi bi-receipt"></i> Ringkasan Pembayaran
                     </div>
 
                     <div class="summary-row">
-                        <span class="summary-label">Harga Paket</span>
-                        <span class="summary-value">Rp <?= $harga_format ?></span>
+                        <span class="summary-label">Harga Paket (<?= $jumlah_slot ?> Sesi)</span>
+                        <span class="summary-value">Rp <?= $total_harga_paket_format ?></span>
                     </div>
 
                     <!-- Detail Cetak jika ada -->
@@ -1115,7 +1605,7 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
                     <!-- LIST PRODUK CETAK DI DETAIL HARGA -->
                     <?php if ($total_cetak_harga > 0): ?>
                         <div class="extra-goods-list">
-                            <div class="extra-goods-title"><i class="bi bi-printer-fill me-1"></i>Rincian Cetak:</div>
+                            <div class="extra-goods-title"><i class="bi bi-printer-fill"></i> Rincian Cetak:</div>
                             <?= $extra_cetak_html ?>
                         </div>
                     <?php endif; ?>
@@ -1130,9 +1620,9 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
                     <!-- INTERAKTIF PAYMENT OPTION SELECTOR (PENGENDALI DUA METODE BAYAR) -->
                     <div class="summary-dp-info">
                         <div class="summary-dp-title"><i class="bi bi-wallet2"></i> Pilih Metode Pembayaran</div>
-                        
+
                         <!-- Opsi 1: Bayar DP (65%) -->
-                        <div class="payment-option-card active mb-2" onclick="selectPaymentOption('DP')">
+                        <div class="payment-option-card active" onclick="selectPaymentOption('DP')">
                             <div class="d-flex align-items-center gap-3">
                                 <input type="radio" name="payment_type" value="DP" checked style="accent-color: var(--p-pink); width:18px; height:18px;">
                                 <div style="flex: 1; min-width: 0;">
@@ -1178,9 +1668,8 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
         </div>
 
     </main>
-
     <!-- =====================================================
-    MODAL DETAIL PROFIL & KATA SANDI
+    MODAL DETAIL PROFIL & KATA SANDI SINKRON SUNTUK DETAIL
     ===================================================== -->
     <div class="modal fade" id="modalProfil" data-bs-backdrop="static" tabindex="-1" aria-labelledby="modalProfilLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -1191,7 +1680,7 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                
+
                 <div class="bg-light px-4 pt-3">
                     <ul class="nav profile-nav-tabs" id="profileTabs" role="tablist">
                         <li class="nav-item" role="presentation">
@@ -1209,12 +1698,12 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
 
                 <div class="modal-body modal-body-custom">
                     <div class="tab-content" id="profileTabsContent">
-                        
+
                         <!-- TAB 1: DETAIL PROFIL -->
                         <div class="tab-pane fade show active" id="tab-detail" role="tabpanel" aria-labelledby="detail-tab">
                             <form action="../../index.php" method="POST" enctype="multipart/form-data">
                                 <input type="hidden" name="action_type" value="update_profile">
-                                
+
                                 <div class="img-preview-container">
                                     <img src="<?= $foto_customer_src ?>" id="profilePreview" class="img-preview" alt="Foto Profil">
                                     <label for="foto_profil" class="btn-upload-trigger" title="Ubah Foto">
@@ -1222,7 +1711,7 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
                                     </label>
                                     <input type="file" id="foto_profil" name="foto_profil" accept="image/png, image/jpeg, image/jpg" style="display: none;" onchange="previewImage(event)">
                                 </div>
-                                
+
                                 <div class="row g-3">
                                     <div class="col-md-6">
                                         <label class="form-label form-label-custom">Username</label>
@@ -1373,6 +1862,26 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             });
         }
 
+        function hideLoading() {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) overlay.classList.remove('show');
+        }
+
+        function showLoading() {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) overlay.classList.add('show');
+        }
+
+        window.addEventListener('load', function() {
+            hideLoading();
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                hideLoading();
+            }
+        });
+
         const ruanganNama = <?= json_encode($ruangan_nama_js) ?>;
         const temaNama = <?= json_encode($tema_nama_js) ?>;
         const paketNama = <?= json_encode($paket_nama_js) ?>;
@@ -1391,14 +1900,14 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
         function selectPaymentOption(type) {
             // Hapus status active dari semua kartu opsi bayar
             document.querySelectorAll('.payment-option-card').forEach(card => card.classList.remove('active'));
-            
+
             // Set input radio target ke checked dan aktifkan visual kartu
             const radioButton = document.querySelector(`input[name="payment_type"][value="${type}"]`);
             if (radioButton) {
                 radioButton.checked = true;
                 radioButton.closest('.payment-option-card').classList.add('active');
             }
-            
+
             selectedPaymentType = type;
 
             // Perbarui teks keterangan sisa pembayaran di bawah kartu secara dinamis
@@ -1419,7 +1928,7 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
                       '<li><strong>Paket:</strong> ' + paketNama + '</li>' +
                       '<li><strong>Ruangan:</strong> ' + ruanganNama + '</li>' +
                       '<li><strong>Tema:</strong> ' + temaNama + '</li>' +
-                      '<li><strong>Jadwal:</strong> <?= json_encode(htmlspecialchars($jadwal_hari . ', ' . $jadwal_tgl_format . ' | ' . $jam_mulai_str . ' - ' . $jam_selesai_str)) ?> WIB</li>' +
+                      '<li><strong>Jadwal:</strong> ' + <?= json_encode($jadwal_info_full_str) ?> + '</li>' +
                       '</ul>' +
                       '<p style="margin-top:12px;color:#d83f67;font-weight:700;margin-bottom:2px;">Metode Pembayaran: ' + (selectedPaymentType === 'DP' ? 'Bayar DP (65%)' : 'Bayar Lunas (100%)') + '</p>' +
                       '<p style="font-size:0.85rem;color:#718096;">Tagihan Sekarang: ' + (selectedPaymentType === 'DP' ? 'Rp <?= $dp_format ?>' : 'Rp ' + totalHargaAkhirFormat) + '</p>' +
@@ -1433,8 +1942,9 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
                 width: 480
             }).then((result) => {
                 if (result.isConfirmed) {
-                    // Kirim ke proses_order.php beserta tipe pembayaran pilihan
-                    window.location.href = 'proses_order.php?id_paket=' + idPaket + '&id_ruangan=' + idRuangan + '&id_tema=' + idTema + '&id_jadwal=<?= (int)$id_jadwal ?>&tipe_pembayaran=' + selectedPaymentType;
+                    showLoading();
+                    // Kirim ke proses_order.php beserta tipe pembayaran pilihan dan gabungan ID Jadwal Multi-slot
+                    window.location.href = 'proses_order.php?id_paket=' + idPaket + '&id_ruangan=' + idRuangan + '&id_tema=' + idTema + '&id_jadwal=' + <?= json_encode($id_jadwal_raw) ?> + '&tipe_pembayaran=' + selectedPaymentType;
                 }
             });
         }

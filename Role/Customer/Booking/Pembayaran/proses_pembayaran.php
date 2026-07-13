@@ -2,6 +2,9 @@
 session_start();
 include '../../../../koneksi.php';
 
+// Atur zona waktu ke WIB (Waktu Indonesia Barat) agar deteksi jam lampau akurat
+date_default_timezone_set('Asia/Jakarta');
+
 // =====================================================
 // KONSTANTA STATUS
 // =====================================================
@@ -25,8 +28,16 @@ $id_order = (int)($_POST['id_order'] ?? 0);
 $metode_pembayaran = trim($_POST['metode_pembayaran'] ?? '');
 $jumlah_bayar = (float)($_POST['jumlah_bayar'] ?? 0);
 
+// Ambil pilihan tipe pembayaran (DP / Lunas) untuk melestarikan status halaman pembayaran_dp.php setelah redirect
+$tipe_bayar_opt = 'DP';
+if (isset($_SESSION['order_tipe_bayar']) && $_SESSION['order_id'] == $id_order) {
+    $tipe_bayar_opt = $_SESSION['order_tipe_bayar'];
+} elseif (isset($_POST['tipe_bayar'])) {
+    $tipe_bayar_opt = trim($_POST['tipe_bayar']) === 'Lunas' ? 'Lunas' : 'DP';
+}
+
 if ($id_order <= 0 || empty($metode_pembayaran) || $jumlah_bayar <= 0) {
-    header("Location: pembayaran_dp.php?id_order=$id_order&error=data_tidak_lengkap");
+    header("Location: pembayaran_dp.php?id_order=$id_order&tipe_bayar=$tipe_bayar_opt&error=data_tidak_lengkap");
     exit();
 }
 
@@ -41,12 +52,12 @@ $q_order = sqlsrv_query($conn,
 $d_order = sqlsrv_fetch_array($q_order, SQLSRV_FETCH_ASSOC);
 
 if (!$d_order) {
-    header("Location: pembayaran_dp.php?id_order=$id_order&error=order_tidak_valid");
+    header("Location: pembayaran_dp.php?id_order=$id_order&tipe_bayar=$tipe_bayar_opt&error=order_tidak_valid");
     exit();
 }
 
 if ((int)$d_order['Status_Order'] !== STATUS_ORDER_MENUNGGU_DP) {
-    header("Location: pembayaran_dp.php?id_order=$id_order&error=order_sudah_diproses");
+    header("Location: pembayaran_dp.php?id_order=$id_order&tipe_bayar=$tipe_bayar_opt&error=order_sudah_diproses");
     exit();
 }
 
@@ -59,7 +70,7 @@ $q_cek = sqlsrv_query($conn,
     array($id_order)
 );
 if (sqlsrv_fetch_array($q_cek, SQLSRV_FETCH_ASSOC)) {
-    header("Location: pembayaran_dp.php?id_order=$id_order&error=sudah_upload_dp");
+    header("Location: pembayaran_dp.php?id_order=$id_order&tipe_bayar=$tipe_bayar_opt&error=sudah_upload_dp");
     exit();
 }
 
@@ -67,7 +78,7 @@ if (sqlsrv_fetch_array($q_cek, SQLSRV_FETCH_ASSOC)) {
 // VALIDASI FILE UPLOAD
 // =====================================================
 if (!isset($_FILES['bukti_transfer']) || $_FILES['bukti_transfer']['error'] !== UPLOAD_ERR_OK) {
-    header("Location: pembayaran_dp.php?id_order=$id_order&error=file_wajib_diupload");
+    header("Location: pembayaran_dp.php?id_order=$id_order&tipe_bayar=$tipe_bayar_opt&error=file_wajib_diupload");
     exit();
 }
 
@@ -81,12 +92,12 @@ $allowed_ext = ['jpg', 'jpeg', 'png', 'pdf'];
 $max_size = 5 * 1024 * 1024; // 5MB
 
 if (!in_array($file_ext, $allowed_ext)) {
-    header("Location: pembayaran_dp.php?id_order=$id_order&error=format_file_tidak_valid");
+    header("Location: pembayaran_dp.php?id_order=$id_order&tipe_bayar=$tipe_bayar_opt&error=format_file_tidak_valid");
     exit();
 }
 
 if ($file_size > $max_size) {
-    header("Location: pembayaran_dp.php?id_order=$id_order&error=file_terlalu_besar");
+    header("Location: pembayaran_dp.php?id_order=$id_order&tipe_bayar=$tipe_bayar_opt&error=file_terlalu_besar");
     exit();
 }
 
@@ -102,15 +113,15 @@ $file_baru = 'bukti_dp_' . $id_order . '_' . time() . '_' . uniqid() . '.' . $fi
 $target_path = $upload_dir . $file_baru;
 
 if (!move_uploaded_file($file_tmp, $target_path)) {
-    header("Location: pembayaran_dp.php?id_order=$id_order&error=gagal_upload_file");
+    header("Location: pembayaran_dp.php?id_order=$id_order&tipe_bayar=$tipe_bayar_opt&error=gagal_upload_file");
     exit();
 }
 
 // =====================================================
-// INSERT KE TABEL PEMBAYARAN
+// INSERT KE TABEL PEMBAYARAN (DENGAN TRANSACTION)
 // =====================================================
 if (!sqlsrv_begin_transaction($conn)) {
-    header("Location: pembayaran_dp.php?id_order=$id_order&error=gagal_transaction");
+    header("Location: pembayaran_dp.php?id_order=$id_order&tipe_bayar=$tipe_bayar_opt&error=gagal_transaction");
     exit();
 }
 
@@ -134,15 +145,16 @@ try {
     }
 
     sqlsrv_commit($conn);
-    header("Location: pembayaran_dp.php?id_order=$id_order&success=upload_berhasil");
+    // Redirect sukses dengan melestarikan tipe pembayaran pilihan
+    header("Location: pembayaran_dp.php?id_order=$id_order&tipe_bayar=$tipe_bayar_opt&success=upload_berhasil");
 
 } catch (Exception $e) {
     sqlsrv_rollback($conn);
-    // Hapus file yang sudah diupload
+    // Hapus file fisik yang terlanjur diunggah demi mencegah sampah file di storage server
     if (file_exists($target_path)) {
         unlink($target_path);
     }
-    header("Location: pembayaran_dp.php?id_order=$id_order&error=" . urlencode($e->getMessage()));
+    header("Location: pembayaran_dp.php?id_order=$id_order&tipe_bayar=$tipe_bayar_opt&error=" . urlencode($e->getMessage()));
 }
 exit();
 ?>

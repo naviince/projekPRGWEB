@@ -1057,7 +1057,7 @@ function fmtTgl($d) {
             </div>
             <div class="step-item">
                 <div class="step-number inactive">7</div>
-                <div class="step-text inactive">Bayar DP</div>
+                <div class="step-text inactive">Pembayaran</div>
             </div>
         </div>
     </section>
@@ -1078,7 +1078,7 @@ function fmtTgl($d) {
                 <div class="stat-chip-icon" style="background: #fffbeb; color: #d97706;"><i class="bi bi-hourglass-split"></i></div>
                 <div>
                     <div class="stat-chip-text"><?= $d_stats['menunggu_dp'] ?? 0 ?> Menunggu</div>
-                    <div class="stat-chip-sub">Segera bayar DP</div>
+                    <div class="stat-chip-sub">Segera Melakukan Pembayaran</div>
                 </div>
             </div>
             <div class="stat-chip">
