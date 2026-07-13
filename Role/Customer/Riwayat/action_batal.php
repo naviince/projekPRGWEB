@@ -2,69 +2,241 @@
 session_start();
 include '../../../koneksi.php';
 
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=utf-8');
 
-// Proteksi - SAMA PERSIS DENGAN INDEX.PHP
+// =====================================================
+// PROTEKSI HALAMAN - HANYA CUSTOMER YANG LOGIN
+// =====================================================
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Customer') {
-    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    echo json_encode(['success' => false, 'message' => 'Sesi tidak valid. Silakan login ulang.']);
     exit();
 }
 
-$id_customer = $_SESSION['id_user'];
+$id_customer = $_SESSION['id_user'] ?? $_SESSION['id_pelanggan'] ?? null;
+if (!$id_customer) {
+    echo json_encode(['success' => false, 'message' => 'ID pelanggan tidak ditemukan dalam sesi.']);
+    exit();
+}
 
+// =====================================================
+// KONSTANTA STATUS - SINKRON DENGAN DATABASE
+// =====================================================
+define('STATUS_ORDER_MENUNGGU_DP', 0);
+define('STATUS_ORDER_DP_TERVERIFIKASI', 1);
+define('STATUS_ORDER_SELESAI_FOTO', 2);
+define('STATUS_ORDER_LUNAS', 3);
+define('STATUS_ORDER_DIBATALKAN', 4);
+
+define('STATUS_JADWAL_TERSEDIA', 0);
+define('STATUS_JADWAL_BOOKED', 1);
+
+// =====================================================
+// VALIDASI INPUT
+// =====================================================
 if (!isset($_GET['id_order'])) {
-    echo json_encode(['success' => false, 'message' => 'ID Order tidak ada']);
+    echo json_encode(['success' => false, 'message' => 'ID Order tidak ditemukan.']);
     exit();
 }
 
 $id_order = intval($_GET['id_order']);
 
-// Cek order milik customer dan status = Menunggu DP (0)
-$cek = sqlsrv_query($conn, "
-    SELECT Status_Order, ID_Jadwal FROM [Order] 
-    WHERE ID_Order = ? AND ID_Pelanggan = ? AND Is_Deleted = 0
-", array($id_order, $id_customer));
-
-if (!$cek || !sqlsrv_has_rows($cek)) {
-    echo json_encode(['success' => false, 'message' => 'Order tidak ditemukan']);
+if ($id_order <= 0) {
+    echo json_encode(['success' => false, 'message' => 'ID Order tidak valid.']);
     exit();
 }
 
-$row = sqlsrv_fetch_array($cek, SQLSRV_FETCH_ASSOC);
-if ($row['Status_Order'] != 0) {
-    echo json_encode(['success' => false, 'message' => 'Hanya order yang menunggu DP yang bisa dibatalkan']);
+// =====================================================
+// CEK KEPEMILIKAN ORDER & STATUS
+// =====================================================
+$cek_sql = "
+    SELECT 
+        o.Status_Order,
+        o.Total_Paket,
+        o.Total_Barang_Cetak,
+        p.Nama_Pelanggan
+    FROM [Order] o
+    INNER JOIN Pelanggan p ON o.ID_Pelanggan = p.ID_Pelanggan
+    WHERE o.ID_Order = ? 
+      AND o.ID_Pelanggan = ? 
+      AND o.Is_Deleted = 0
+      AND o.Status = 1
+";
+
+$cek_stmt = sqlsrv_query($conn, $cek_sql, [$id_order, $id_customer]);
+
+if ($cek_stmt === false) {
+    $errors = sqlsrv_errors();
+    $error_msg = 'Terjadi kesalahan database saat memverifikasi order.';
+    if ($errors != null) {
+        foreach ($errors as $error) {
+            $error_msg .= ' [' . $error['message'] . ']';
+        }
+    }
+    echo json_encode(['success' => false, 'message' => $error_msg]);
     exit();
 }
 
-$id_jadwal = $row['ID_Jadwal'];
-
-// Update order status = Dibatalkan (4)
-$update_order = sqlsrv_query($conn, "
-    UPDATE [Order] 
-    SET Status_Order = 4, Modified_By = ?, Modified_Date = GETDATE()
-    WHERE ID_Order = ? AND ID_Pelanggan = ?
-", array($id_customer, $id_order, $id_customer));
-
-if (!$update_order) {
-    echo json_encode(['success' => false, 'message' => 'Gagal membatalkan order']);
+if (!sqlsrv_has_rows($cek_stmt)) {
+    echo json_encode(['success' => false, 'message' => 'Order tidak ditemukan atau bukan milik Anda.']);
     exit();
 }
 
-// Kalau ada jadwal, kembalikan status jadwal jadi tersedia (0)
-if (!empty($id_jadwal)) {
-    sqlsrv_query($conn, "
-        UPDATE Jadwal_Studio 
-        SET Status_Jadwal = 0, Modified_Date = GETDATE()
-        WHERE ID_Jadwal = ?
-    ", array($id_jadwal));
+$row = sqlsrv_fetch_array($cek_stmt, SQLSRV_FETCH_ASSOC);
+
+// =====================================================
+// VALIDASI STATUS ORDER - HANYA BISA DIBATALKAN JIKA MENUNGGU DP
+// =====================================================
+if ($row['Status_Order'] != STATUS_ORDER_MENUNGGU_DP) {
+    $status_labels = [
+        STATUS_ORDER_DP_TERVERIFIKASI => 'DP Terverifikasi',
+        STATUS_ORDER_SELESAI_FOTO => 'Selesai Foto',
+        STATUS_ORDER_LUNAS => 'Lunas',
+        STATUS_ORDER_DIBATALKAN => 'Sudah Dibatalkan'
+    ];
+    $current_status = $status_labels[$row['Status_Order']] ?? 'Unknown';
+
+    echo json_encode([
+        'success' => false, 
+        'message' => 'Order tidak dapat dibatalkan karena statusnya sudah "' . $current_status . '".'
+    ]);
+    exit();
 }
 
-// Soft delete pembayaran DP yang menunggu (kalau ada)
-sqlsrv_query($conn, "
-    UPDATE Pembayaran 
-    SET Is_Deleted = 1, Deleted_By = ?, Deleted_Date = GETDATE()
-    WHERE ID_Order = ? AND Tipe_Pembayaran = 'DP' AND Status_Pembayaran = 0
-", array($id_customer, $id_order));
+// =====================================================
+// TARIK SEMUA JADWAL TERKAIT ORDER (MULTI-JADWAL)
+// =====================================================
+$jadwal_list = [];
+$jadwal_sql = "
+    SELECT oj.ID_Jadwal
+    FROM Order_Jadwal oj
+    INNER JOIN Jadwal_Studio j ON oj.ID_Jadwal = j.ID_Jadwal
+    WHERE oj.ID_Order = ? AND j.Status = 1 AND j.Is_Deleted = 0
+";
 
-echo json_encode(['success' => true, 'message' => 'Order berhasil dibatalkan']);
+$jadwal_stmt = sqlsrv_query($conn, $jadwal_sql, [$id_order]);
+if ($jadwal_stmt !== false) {
+    while ($j = sqlsrv_fetch_array($jadwal_stmt, SQLSRV_FETCH_ASSOC)) {
+        $jadwal_list[] = $j['ID_Jadwal'];
+    }
+}
+
+// =====================================================
+// PROSES PEMBATALAN DENGAN TRANSACTION
+// =====================================================
+$username_cust = $_SESSION['username'] ?? 'customer';
+
+sqlsrv_begin_transaction($conn);
+try {
+    // 1. Update order status = Dibatalkan (4)
+    $update_order_sql = "
+        UPDATE [Order] 
+        SET 
+            Status_Order = ?, 
+            Modified_By = ?, 
+            Modified_Date = GETDATE()
+        WHERE ID_Order = ? AND ID_Pelanggan = ? AND Status = 1
+    ";
+
+    $update_order_stmt = sqlsrv_query($conn, $update_order_sql, [
+        STATUS_ORDER_DIBATALKAN,
+        $username_cust,
+        $id_order,
+        $id_customer
+    ]);
+
+    if ($update_order_stmt === false) {
+        throw new Exception('Gagal mengubah status order menjadi dibatalkan.');
+    }
+
+    $rows_affected = sqlsrv_rows_affected($update_order_stmt);
+    if ($rows_affected === 0) {
+        throw new Exception('Tidak ada data order yang diperbarui. Order mungkin sudah tidak aktif.');
+    }
+
+    // 2. Kembalikan SEMUA jadwal terkait ke status Tersedia (0)
+    if (!empty($jadwal_list)) {
+        $placeholders = implode(',', array_fill(0, count($jadwal_list), '?'));
+        $update_jadwal_sql = "
+            UPDATE Jadwal_Studio 
+            SET 
+                Status_Jadwal = ?, 
+                Modified_By = ?, 
+                Modified_Date = GETDATE()
+            WHERE ID_Jadwal IN ($placeholders) 
+              AND Status = 1 
+              AND Is_Deleted = 0
+        ";
+
+        $jadwal_params = array_merge([STATUS_JADWAL_TERSEDIA, $username_cust], $jadwal_list);
+        $update_jadwal_stmt = sqlsrv_query($conn, $update_jadwal_sql, $jadwal_params);
+
+        if ($update_jadwal_stmt === false) {
+            throw new Exception('Gagal mengembalikan status jadwal studio.');
+        }
+    }
+
+    // 3. Soft delete pembayaran DP yang masih menunggu verifikasi (kalau ada)
+    $update_pembayaran_sql = "
+        UPDATE Pembayaran 
+        SET 
+            Is_Deleted = 1, 
+            Deleted_By = ?, 
+            Deleted_Date = GETDATE()
+        WHERE ID_Order = ? 
+          AND Tipe_Pembayaran = 'DP' 
+          AND Status_Pembayaran = ?
+          AND Status = 1
+          AND Is_Deleted = 0
+    ";
+
+    $update_pembayaran_stmt = sqlsrv_query($conn, $update_pembayaran_sql, [
+        $username_cust,
+        $id_order,
+        STATUS_PEMBAYARAN_MENUNGGU
+    ]);
+
+    if ($update_pembayaran_stmt === false) {
+        throw new Exception('Gagal memperbarui status pembayaran.');
+    }
+
+    // 4. Soft delete penjualan barang cetak terkait (kalau ada)
+    $update_penjualan_sql = "
+        UPDATE Penjualan 
+        SET 
+            Is_Deleted = 1, 
+            Deleted_By = ?, 
+            Deleted_Date = GETDATE()
+        WHERE ID_Order = ? 
+          AND Status = 1
+          AND Is_Deleted = 0
+    ";
+
+    $update_penjualan_stmt = sqlsrv_query($conn, $update_penjualan_sql, [
+        $username_cust,
+        $id_order
+    ]);
+
+    // Commit transaksi
+    sqlsrv_commit($conn);
+
+    // Siapkan response detail
+    $total_jadwal = count($jadwal_list);
+
+    echo json_encode([
+        'success' => true, 
+        'message' => 'Order berhasil dibatalkan. ' . 
+                     ($total_jadwal > 0 ? $total_jadwal . ' slot jadwal telah dilepas kembali.' : ''),
+        'data' => [
+            'id_order' => $id_order,
+            'status_baru' => 'Dibatalkan',
+            'jadwal_dilepas' => $total_jadwal,
+            'timestamp' => date('Y-m-d H:i:s')
+        ]
+    ]);
+
+} catch (Exception $e) {
+    sqlsrv_rollback($conn);
+    echo json_encode(['success' => false, 'message' => 'Gagal membatalkan order: ' . $e->getMessage()]);
+    exit();
+}
 ?>
