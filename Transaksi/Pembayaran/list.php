@@ -2,6 +2,9 @@
 session_start();
 include '../../koneksi.php';
 
+// Atur zona waktu ke WIB
+date_default_timezone_set('Asia/Jakarta');
+
 // --- PROTEKSI HALAMAN ---
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Admin') {
     header("Location: ../../login.php");
@@ -23,6 +26,120 @@ if ($halaman < 1) $halaman = 1;
 $offset = ($halaman - 1) * $limit;
 $cari = isset($_GET['cari']) ? trim($_GET['cari']) : "";
 $tab_filter = isset($_GET['tab']) ? trim($_GET['tab']) : "semua";
+$tgl_dari = isset($_GET['tgl_dari']) ? trim($_GET['tgl_dari']) : "";
+$tgl_sampai = isset($_GET['tgl_sampai']) ? trim($_GET['tgl_sampai']) : "";
+$urut = isset($_GET['urut']) ? trim($_GET['urut']) : "terbaru";
+
+// =====================================================
+// AUTO-EXPIRE: PEMBAYARAN DP MENUNGGU YANG:
+// (a) jadwal sesinya sudah lewat semua, ATAU
+// (b) bukti sudah diupload tapi tidak diverifikasi admin
+//     lebih dari BATAS_JAM_VERIFIKASI jam -> dianggap expired
+//     juga, supaya antrian verifikasi tidak numpuk.
+// - Order otomatis dibatalkan (Status_Order = 4)
+// - Bukti pembayaran DP yang menunggu otomatis "dihapus"
+//   dari daftar (soft delete: Status = 0).
+// =====================================================
+define('BATAS_JAM_VERIFIKASI', 24); // batas waktu admin verifikasi sejak bukti diupload
+
+// -----------------------------------------------------
+// BERSIHKAN PEMBAYARAN "NYANGKUT": kalau order-nya sudah
+// Dibatalkan (lewat jalur mana pun -- customer batal sendiri,
+// auto-expire riwayat.php, dsb) tapi masih ada Pembayaran DP
+// berstatus Menunggu, itu sampah -- soft delete sekarang juga.
+// -----------------------------------------------------
+sqlsrv_query($conn, "
+    UPDATE Pembayaran SET Status = 0, Modified_By = 'system_auto', Modified_Date = GETDATE()
+    WHERE Status = 1 AND Status_Pembayaran = 0
+      AND ID_Order IN (SELECT ID_Order FROM [Order] WHERE Status_Order = 4)
+");
+
+$q_pending = sqlsrv_query($conn, "
+    SELECT o.ID_Order, p.Tanggal_Upload
+    FROM [Order] o 
+    INNER JOIN Pembayaran p ON o.ID_Order = p.ID_Order 
+        AND p.Tipe_Pembayaran = 'DP' AND p.Status_Pembayaran = 0 AND p.Status = 1
+    WHERE o.Status_Order = 0 AND o.Status = 1
+");
+$pending_order_ids = [];
+$tanggal_upload_map = [];
+if ($q_pending !== false) {
+    while ($r = sqlsrv_fetch_array($q_pending, SQLSRV_FETCH_ASSOC)) {
+        $oid = (int)$r['ID_Order'];
+        $pending_order_ids[] = $oid;
+
+        $tu = $r['Tanggal_Upload'];
+        if (is_object($tu) && method_exists($tu, 'format')) { $tu = $tu->format('Y-m-d H:i:s'); }
+        $tanggal_upload_map[$oid] = strtotime($tu);
+    }
+}
+
+if (!empty($pending_order_ids)) {
+    $ph = implode(',', array_fill(0, count($pending_order_ids), '?'));
+    $q_jadwal_chk = sqlsrv_query($conn, "
+        SELECT oj.ID_Order, j.Tanggal_Jadwal, j.Jam_Selesai 
+        FROM Order_Jadwal oj 
+        INNER JOIN Jadwal_Studio j ON oj.ID_Jadwal = j.ID_Jadwal 
+        WHERE oj.ID_Order IN ($ph) AND j.Status = 1 AND j.Is_Deleted = 0
+    ", $pending_order_ids);
+
+    $has_jadwal = [];
+    $semua_lewat = [];
+    foreach ($pending_order_ids as $oid) { $semua_lewat[$oid] = true; }
+
+    if ($q_jadwal_chk !== false) {
+        while ($jr = sqlsrv_fetch_array($q_jadwal_chk, SQLSRV_FETCH_ASSOC)) {
+            $oid = (int)$jr['ID_Order'];
+            $has_jadwal[$oid] = true;
+
+            $tgl = $jr['Tanggal_Jadwal'];
+            if (is_object($tgl) && method_exists($tgl, 'format')) { $tgl = $tgl->format('Y-m-d'); }
+            $jam = $jr['Jam_Selesai'];
+            if (is_object($jam) && method_exists($jam, 'format')) { $jam = $jam->format('H:i:s'); }
+            else { $jam = substr((string)$jam, 0, 8); }
+
+            if (strtotime($tgl . ' ' . $jam) >= time()) {
+                $semua_lewat[$oid] = false; // masih ada jadwal yang belum lewat
+            }
+        }
+    }
+
+    $auto_expire_ids = [];
+    foreach ($pending_order_ids as $oid) {
+        $jadwal_lewat = !empty($has_jadwal[$oid]) && $semua_lewat[$oid] === true;
+
+        $upload_kadaluarsa = false;
+        if (isset($tanggal_upload_map[$oid]) && $tanggal_upload_map[$oid] !== false) {
+            $jam_berlalu = (time() - $tanggal_upload_map[$oid]) / 3600;
+            $upload_kadaluarsa = $jam_berlalu >= BATAS_JAM_VERIFIKASI;
+        }
+
+        if ($jadwal_lewat || $upload_kadaluarsa) {
+            $auto_expire_ids[] = $oid;
+        }
+    }
+
+    if (!empty($auto_expire_ids)) {
+        $ph2 = implode(',', array_fill(0, count($auto_expire_ids), '?'));
+        sqlsrv_begin_transaction($conn);
+        try {
+            $u1 = sqlsrv_query($conn, "
+                UPDATE [Order] SET Status_Order = 4, 
+                    Keterangan = 'Dibatalkan otomatis oleh sistem: jadwal kadaluarsa atau bukti DP tidak diverifikasi dalam batas waktu',
+                    Modified_By = 'system_auto', Modified_Date = GETDATE()
+                WHERE ID_Order IN ($ph2) AND Status_Order = 0
+            ", $auto_expire_ids);
+            $u2 = sqlsrv_query($conn, "
+                UPDATE Pembayaran SET Status = 0, Modified_By = 'system_auto', Modified_Date = GETDATE()
+                WHERE ID_Order IN ($ph2) AND Tipe_Pembayaran = 'DP' AND Status_Pembayaran = 0 AND Status = 1
+            ", $auto_expire_ids);
+            if ($u1 === false || $u2 === false) { throw new Exception('auto-expire gagal'); }
+            sqlsrv_commit($conn);
+        } catch (Exception $e) {
+            sqlsrv_rollback($conn);
+        }
+    }
+}
 
 // Statistik
 $q_stats = "SELECT COUNT(*) as total, SUM(CASE WHEN Status_Pembayaran = 0 THEN 1 ELSE 0 END) as menunggu, SUM(CASE WHEN Status_Pembayaran = 1 THEN 1 ELSE 0 END) as valid, SUM(CASE WHEN Status_Pembayaran = 2 THEN 1 ELSE 0 END) as ditolak FROM Pembayaran WHERE Status = 1 AND Tipe_Pembayaran = 'DP'";
@@ -47,6 +164,14 @@ if (!empty($cari)) {
     $conditions[] = "(pl.Nama_Pelanggan LIKE ? OR CAST(p.ID_Pembayaran AS VARCHAR) LIKE ? OR CAST(o.ID_Order AS VARCHAR) LIKE ?)";
     $params[] = "%$cari%"; $params[] = "%$cari%"; $params[] = "%$cari%";
 }
+if (!empty($tgl_dari) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $tgl_dari)) {
+    $conditions[] = "CAST(p.Tanggal_Upload AS DATE) >= ?";
+    $params[] = $tgl_dari;
+}
+if (!empty($tgl_sampai) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $tgl_sampai)) {
+    $conditions[] = "CAST(p.Tanggal_Upload AS DATE) <= ?";
+    $params[] = $tgl_sampai;
+}
 $where = implode(" AND ", $conditions);
 
 $sql_count = "SELECT COUNT(*) AS total FROM Pembayaran p INNER JOIN [Order] o ON p.ID_Order = o.ID_Order INNER JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan WHERE $where";
@@ -58,7 +183,17 @@ if ($q_count !== false) {
     $total_halaman = ceil($total_records / $limit);
 }
 
-$sql_list = "SELECT p.ID_Pembayaran, p.ID_Order, p.Tipe_Pembayaran, p.Metode_Pembayaran, p.Jumlah_Bayar, p.Bukti_Transfer, p.Tanggal_Upload, p.Status_Pembayaran, p.ID_Karyawan_Verifikator, pl.Nama_Pelanggan, pl.No_Hp, pl.Email_Pelanggan, o.Status_Order, k.Nama_Karyawan as Nama_Verifikator FROM Pembayaran p INNER JOIN [Order] o ON p.ID_Order = o.ID_Order INNER JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan LEFT JOIN Karyawan k ON p.ID_Karyawan_Verifikator = k.ID_Karyawan WHERE $where ORDER BY p.Tanggal_Upload DESC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
+$order_map = [
+    'terbaru'        => 'p.Tanggal_Upload DESC',
+    'terlama'        => 'p.Tanggal_Upload ASC',
+    'nama_az'        => 'pl.Nama_Pelanggan ASC',
+    'nama_za'        => 'pl.Nama_Pelanggan DESC',
+    'jumlah_tinggi'  => 'p.Jumlah_Bayar DESC',
+    'jumlah_rendah'  => 'p.Jumlah_Bayar ASC',
+];
+$order_by = $order_map[$urut] ?? $order_map['terbaru'];
+
+$sql_list = "SELECT p.ID_Pembayaran, p.ID_Order, p.Tipe_Pembayaran, p.Metode_Pembayaran, p.Jumlah_Bayar, p.Bukti_Transfer, p.Tanggal_Upload, p.Status_Pembayaran, p.ID_Karyawan_Verifikator, pl.Nama_Pelanggan, pl.No_Hp, pl.Email_Pelanggan, o.Status_Order, k.Nama_Karyawan as Nama_Verifikator FROM Pembayaran p INNER JOIN [Order] o ON p.ID_Order = o.ID_Order INNER JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan LEFT JOIN Karyawan k ON p.ID_Karyawan_Verifikator = k.ID_Karyawan WHERE $where ORDER BY $order_by OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
 $p_list = $params; $p_list[] = $offset; $p_list[] = $limit;
 $query = sqlsrv_query($conn, $sql_list, $p_list);
 
@@ -177,6 +312,27 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 .fade-in-up{animation:fadeIn 0.5s ease-out;}
 .bukti-thumb{width:60px;height:60px;border-radius:10px;object-fit:cover;border:2px solid #e2e8f0;cursor:pointer;transition:all 0.3s;}
 .bukti-thumb:hover{transform:scale(1.05);border-color:var(--p-pink);}
+.bukti-thumb-pdf{display:flex;align-items:center;justify-content:center;background:#fef2f2;color:#dc2626;font-size:1.4rem;}
+
+/* ===== FILTER MODAL (gaya sama dengan Data Pelanggan) ===== */
+.btn-filter-toggle{position:relative;display:inline-flex;align-items:center;gap:8px;background:var(--p-pink);color:#fff;border:none;padding:10px 18px;border-radius:12px;font-weight:600;font-size:0.9rem;cursor:pointer;transition:all .2s;}
+.btn-filter-toggle:hover{background:var(--d-pink);}
+.filter-dot{width:8px;height:8px;border-radius:50%;background:#fff;display:inline-block;margin-left:2px;}
+.filter-modal-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:2000;align-items:center;justify-content:center;padding:16px;}
+.filter-modal-overlay.active{display:flex;}
+.filter-modal-box{background:#fff;border-radius:20px;width:100%;max-width:420px;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,0.25);}
+.filter-modal-header{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:1.15rem;margin-bottom:20px;color:var(--text-dark);}
+.filter-modal-close{cursor:pointer;color:#94a3b8;font-size:1.1rem;}
+.filter-modal-close:hover{color:var(--p-pink);}
+.filter-modal-body label{display:block;font-size:0.75rem;font-weight:700;color:#94a3b8;letter-spacing:.5px;margin:16px 0 6px;}
+.filter-modal-body label:first-child{margin-top:0;}
+.filter-select{width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid #e2e8f0;font-size:0.9rem;color:var(--text-dark);background:#fff;}
+.filter-select:focus{outline:none;border-color:var(--p-pink);}
+.filter-modal-footer{display:flex;gap:12px;margin-top:24px;}
+.btn-filter-reset{flex:1;background:#f1f5f9;color:#64748b;border:none;padding:13px;border-radius:12px;font-weight:700;cursor:pointer;}
+.btn-filter-reset:hover{background:#e2e8f0;}
+.btn-filter-terapkan{flex:1.4;background:var(--p-pink);color:#fff;border:none;padding:13px;border-radius:12px;font-weight:700;cursor:pointer;}
+.btn-filter-terapkan:hover{background:var(--d-pink);}
 @media(max-width:992px){.main-content{margin-left:0;padding:20px;}.sidebar{transform:translateX(-100%);}}
 </style>
 </head>
@@ -254,42 +410,93 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 <div class="search-filter-bar">
 <form method="GET" class="search-form-flex" id="mainSearchForm">
 <input type="hidden" name="tab" value="<?= htmlspecialchars($tab_filter) ?>">
+<input type="hidden" name="urut" id="inputUrut" value="<?= htmlspecialchars($urut) ?>">
+<input type="hidden" name="tgl_dari" id="inputTglDari" value="<?= htmlspecialchars($tgl_dari) ?>">
+<input type="hidden" name="tgl_sampai" id="inputTglSampai" value="<?= htmlspecialchars($tgl_sampai) ?>">
 <div class="search-input-wrapper"><i class="bi bi-search search-icon"></i><input type="text" name="cari" class="search-input-main" placeholder="Cari nama customer, no. pembayaran, atau no. order..." value="<?= htmlspecialchars($cari) ?>"></div>
+<button type="button" class="btn-filter-toggle" onclick="bukaModalFilter()"><i class="bi bi-funnel-fill"></i> Filter<?php if($urut!=='terbaru'||!empty($tgl_dari)||!empty($tgl_sampai)):?> <span class="filter-dot"></span><?php endif;?></button>
 <button type="submit" class="btn-search-icon" title="Cari"><i class="bi bi-search"></i></button>
+<?php if (!empty($cari) || !empty($tgl_dari) || !empty($tgl_sampai) || $urut!=='terbaru'): ?>
+<a href="list.php?tab=<?= htmlspecialchars($tab_filter) ?>" class="btn-search-icon" style="background:#f1f5f9;color:#64748b;" title="Reset filter"><i class="bi bi-x-lg"></i></a>
+<?php endif; ?>
 </form>
+</div>
+
+<!-- MODAL FILTER (gaya sama dengan halaman Data Pelanggan) -->
+<div id="modalFilterData" class="filter-modal-overlay" onclick="if(event.target===this) tutupModalFilter()">
+  <div class="filter-modal-box">
+    <div class="filter-modal-header">
+      <div><i class="bi bi-funnel-fill" style="color:#D53D66;"></i> Filter Data</div>
+      <span class="filter-modal-close" onclick="tutupModalFilter()"><i class="bi bi-x-lg"></i></span>
+    </div>
+    <div class="filter-modal-body">
+      <label>URUT BERDASARKAN</label>
+      <select id="selectUrut" class="filter-select">
+        <option value="terbaru">Tanggal Upload Terbaru</option>
+        <option value="terlama">Tanggal Upload Terlama</option>
+        <option value="nama_az">Nama A - Z</option>
+        <option value="nama_za">Nama Z - A</option>
+        <option value="jumlah_tinggi">Jumlah Bayar Tertinggi</option>
+        <option value="jumlah_rendah">Jumlah Bayar Terendah</option>
+      </select>
+
+      <label>DARI TANGGAL UPLOAD</label>
+      <input type="date" id="selectTglDari" class="filter-select">
+
+      <label>SAMPAI TANGGAL UPLOAD</label>
+      <input type="date" id="selectTglSampai" class="filter-select">
+    </div>
+    <div class="filter-modal-footer">
+      <button type="button" class="btn-filter-reset" onclick="resetModalFilter()"><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
+      <button type="button" class="btn-filter-terapkan" onclick="terapkanModalFilter()"><i class="bi bi-check-lg"></i> Terapkan</button>
+    </div>
+  </div>
 </div>
 
 <div class="card-3d mb-4" style="padding:24px;">
 <div class="table-scroll-wrapper">
 <table class="data-table">
-<thead><tr><th>No. Pembayaran</th><th>Customer</th><th>No. Order</th><th>Metode</th><th>Jumlah DP</th><th>Bukti</th><th>Tanggal Upload</th><th>Status</th><th class="text-center">Aksi</th></tr></thead>
+<thead><tr><th>No.</th><th>Customer</th><th>No. Order</th><th>Metode</th><th>Jumlah DP</th><th>Bukti</th><th>Tanggal Upload</th><th>Status</th><th class="text-center">Aksi</th></tr></thead>
 <tbody>
 <?php
+$no_urut = $offset + 1;
 if($query&&sqlsrv_has_rows($query)):
 while($row=sqlsrv_fetch_array($query,SQLSRV_FETCH_ASSOC)):
 $statusInfo=getStatusPembayaranLabel((int)$row['Status_Pembayaran']);
 $orderStatusInfo=getStatusOrderLabel((int)$row['Status_Order']);
 ?>
 <tr class="fade-in-up">
-<td><div class="td-pembayaran-id">#<?= str_pad((int)$row['ID_Pembayaran'],5,'0',STR_PAD_LEFT) ?></div><div class="td-customer-contact">Order #<?= str_pad((int)$row['ID_Order'],5,'0',STR_PAD_LEFT) ?></div></td>
+<!-- PENYELARASAN NOMOR URUT: Kolom 1 menampilkan nomor urutan angka sekuensial yang rapi -->
+<td><div class="td-pembayaran-id"><?= $no_urut++ ?></div></td>
 <td><div class="td-customer"><?= htmlspecialchars($row['Nama_Pelanggan']) ?></div><div class="td-customer-contact"><?= htmlspecialchars($row['No_Hp']) ?></div></td>
 <td><div class="td-order">#<?= str_pad((int)$row['ID_Order'],5,'0',STR_PAD_LEFT) ?></div><div class="td-detail" style="color:<?= $orderStatusInfo[1] ?>"><span class="badge-dot" style="background:<?= $orderStatusInfo[1] ?>"></span><?= $orderStatusInfo[0] ?></div></td>
 <td><div class="td-detail"><?= htmlspecialchars($row['Metode_Pembayaran']) ?></div></td>
 <td><div class="td-jumlah">Rp <?= number_format((float)$row['Jumlah_Bayar'],0,',','.') ?></div></td>
-<td><?php if(!empty($row['Bukti_Transfer'])):?><img src="../../assets/img/bukti/<?= htmlspecialchars($row['Bukti_Transfer']) ?>" class="bukti-thumb" onclick="window.open(this.src,'_blank')" title="Klik untuk memperbesar"><?php else:?><span class="td-detail" style="color:#94a3b8">Tidak ada</span><?php endif;?></td>
+<td><?php if(!empty($row['Bukti_Transfer'])):
+    $bukti_url = "../../assets/img/bukti/" . htmlspecialchars($row['Bukti_Transfer'], ENT_QUOTES);
+    $bukti_ext = strtolower(pathinfo($row['Bukti_Transfer'], PATHINFO_EXTENSION));
+    ?>
+    <?php if($bukti_ext === 'pdf'): ?>
+    <button type="button" class="bukti-thumb bukti-thumb-pdf" onclick="lihatBukti('<?= $bukti_url ?>', true)" title="Klik untuk melihat bukti"><i class="bi bi-file-earmark-pdf"></i></button>
+    <?php else: ?>
+    <img src="<?= $bukti_url ?>" class="bukti-thumb" onclick="lihatBukti('<?= $bukti_url ?>', false)" title="Klik untuk memperbesar">
+    <?php endif; ?>
+<?php else:?><span class="td-detail" style="color:#94a3b8">Tidak ada</span><?php endif;?></td>
 <td><div class="td-detail"><?= (is_object($row['Tanggal_Upload'])&&method_exists($row['Tanggal_Upload'],'format'))?$row['Tanggal_Upload']->format('d M Y H:i'):date('d M Y H:i',strtotime($row['Tanggal_Upload'])) ?></div></td>
 <td><span class="badge-status" style="background:<?= $statusInfo[2] ?>;color:<?= $statusInfo[1] ?>"><span class="badge-dot" style="background:<?= $statusInfo[1] ?>"></span><?= $statusInfo[0] ?></span></td>
 <td>
-<?php if((int)$row['Status_Pembayaran']===0):?>
+<?php if((int)$row['Status_Pembayaran']===0 && (int)$row['Status_Order']!==4):?>
 <button class="btn-action-circle btn-action-terima" onclick="konfirmasiTerima(<?= (int)$row['ID_Pembayaran'] ?>)" title="Terima Pembayaran"><i class="bi bi-check-lg"></i></button>
 <button class="btn-action-circle btn-action-tolak" onclick="konfirmasiTolak(<?= (int)$row['ID_Pembayaran'] ?>)" title="Tolak Pembayaran"><i class="bi bi-x-lg"></i></button>
+<?php elseif((int)$row['Status_Pembayaran']===0 && (int)$row['Status_Order']===4):?>
+<span class="td-detail" style="color:#94a3b8;"><i class="bi bi-slash-circle"></i> Order Dibatalkan</span>
 <?php else:?>
 <button class="btn-action-circle btn-action-view" onclick="Swal.fire({title:'Detail Pembayaran',html:'<b>Customer:</b> <?= htmlspecialchars($row['Nama_Pelanggan']) ?><br><b>Jumlah:</b> Rp <?= number_format((float)$row['Jumlah_Bayar'],0,',','.') ?><br><b>Status:</b> <?= $statusInfo[0] ?>',icon:'info',confirmButtonColor:'#D53D66'})" title="Lihat Detail"><i class="bi bi-eye"></i></button>
 <?php endif;?>
 </td>
 </tr>
 <?php endwhile;else:?>
-<tr><td colspan="10" class="text-center text-muted py-5"><i class="bi bi-inbox fs-1 mb-3 d-block" style="color:#cbd5e1"></i><p class="fw-bold">Tidak ada pembayaran DP yang sesuai.</p><p class="small">Belum ada pembayaran DP masuk.</p></td></tr>
+<tr><td colspan="9" class="text-center text-muted py-5"><i class="bi bi-inbox fs-1 mb-3 d-block" style="color:#cbd5e1"></i><p class="fw-bold">Tidak ada pembayaran DP yang sesuai.</p><p class="small">Belum ada pembayaran DP masuk.</p></td></tr>
 <?php endif;?>
 </tbody>
 </table>
@@ -298,9 +505,10 @@ $orderStatusInfo=getStatusOrderLabel((int)$row['Status_Order']);
 <div class="pagination-wrapper">
 <div class="pagination-info">Menampilkan <span><?= $offset+1 ?></span> - <span><?= min($offset+$limit,$total_records) ?></span> dari <span><?= $total_records ?></span> pembayaran</div>
 <nav class="pagination-nav">
-<?php if($halaman>1):?><a class="page-link-pag" href="list.php?halaman=<?= $halaman-1 ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?>" title="Sebelumnya"><i class="bi bi-chevron-left"></i></a><?php else:?><span class="page-link-pag disabled"><i class="bi bi-chevron-left"></i></span><?php endif;?>
-<?php $start_page=max(1,$halaman-2);$end_page=min($total_halaman,$halaman+2);if($start_page>1){echo'<a class="page-link-pag" href="list.php?halaman=1&tab='.$tab_filter.'&cari='.urlencode($cari).'">1</a>';if($start_page>2)echo'<span class="page-link-pag disabled">...</span>';}for($i=$start_page;$i<=$end_page;$i++):?><a class="page-link-pag <?= ($halaman==$i)?'active-pag':'' ?>" href="list.php?halaman=<?= $i ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?>"><?= $i ?></a><?php endfor;if($end_page<$total_halaman){if($end_page<$total_halaman-1)echo'<span class="page-link-pag disabled">...</span>';echo'<a class="page-link-pag" href="list.php?halaman='.$total_halaman.'&tab='.$tab_filter.'&cari='.urlencode($cari).'">'.$total_halaman.'</a>';}?>
-<?php if($halaman<$total_halaman):?><a class="page-link-pag" href="list.php?halaman=<?= $halaman+1 ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?>" title="Selanjutnya"><i class="bi bi-chevron-right"></i></a><?php else:?><span class="page-link-pag disabled"><i class="bi bi-chevron-right"></i></span><?php endif;?>
+<?php $extra_qs = (!empty($tgl_dari)?'&tgl_dari='.urlencode($tgl_dari):'').(!empty($tgl_sampai)?'&tgl_sampai='.urlencode($tgl_sampai):''); ?>
+<?php if($halaman>1):?><a class="page-link-pag" href="list.php?halaman=<?= $halaman-1 ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?><?= $extra_qs ?>" title="Sebelumnya"><i class="bi bi-chevron-left"></i></a><?php else:?><span class="page-link-pag disabled"><i class="bi bi-chevron-left"></i></span><?php endif;?>
+<?php $start_page=max(1,$halaman-2);$end_page=min($total_halaman,$halaman+2);if($start_page>1){echo'<a class="page-link-pag" href="list.php?halaman=1&tab='.$tab_filter.'&cari='.urlencode($cari).$extra_qs.'">1</a>';if($start_page>2)echo'<span class="page-link-pag disabled">...</span>';}for($i=$start_page;$i<=$end_page;$i++):?><a class="page-link-pag <?= ($halaman==$i)?'active-pag':'' ?>" href="list.php?halaman=<?= $i ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?><?= $extra_qs ?>"><?= $i ?></a><?php endfor;if($end_page<$total_halaman){if($end_page<$total_halaman-1)echo'<span class="page-link-pag disabled">...</span>';echo'<a class="page-link-pag" href="list.php?halaman='.$total_halaman.'&tab='.$tab_filter.'&cari='.urlencode($cari).$extra_qs.'">'.$total_halaman.'</a>';}?>
+<?php if($halaman<$total_halaman):?><a class="page-link-pag" href="list.php?halaman=<?= $halaman+1 ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?><?= $extra_qs ?>" title="Selanjutnya"><i class="bi bi-chevron-right"></i></a><?php else:?><span class="page-link-pag disabled"><i class="bi bi-chevron-right"></i></span><?php endif;?>
 </nav>
 </div>
 <?php elseif($total_records>0):?>
@@ -312,6 +520,54 @@ $orderStatusInfo=getStatusOrderLabel((int)$row['Status_Order']);
 <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script>
 document.querySelectorAll('.btn-toggle-submenu').forEach(button=>{button.addEventListener('click',function(e){e.preventDefault();const targetId=this.getAttribute('data-target');const targetEl=document.querySelector(targetId);const chevron=this.querySelector('.icon-chevron');if(targetEl){const isShown=targetEl.classList.contains('show');document.querySelectorAll('.submenu').forEach(el=>el.classList.remove('show'));document.querySelectorAll('.icon-chevron').forEach(icon=>icon.style.transform='rotate(0deg)');if(!isShown){targetEl.classList.add('show');if(chevron)chevron.style.transform='rotate(180deg)';}}});});
+function bukaModalFilter(){
+    document.getElementById('selectUrut').value = document.getElementById('inputUrut').value || 'terbaru';
+    document.getElementById('selectTglDari').value = document.getElementById('inputTglDari').value || '';
+    document.getElementById('selectTglSampai').value = document.getElementById('inputTglSampai').value || '';
+    document.getElementById('modalFilterData').classList.add('active');
+}
+function tutupModalFilter(){
+    document.getElementById('modalFilterData').classList.remove('active');
+}
+function terapkanModalFilter(){
+    document.getElementById('inputUrut').value = document.getElementById('selectUrut').value;
+    document.getElementById('inputTglDari').value = document.getElementById('selectTglDari').value;
+    document.getElementById('inputTglSampai').value = document.getElementById('selectTglSampai').value;
+    document.getElementById('mainSearchForm').submit();
+}
+function resetModalFilter(){
+    document.getElementById('selectUrut').value = 'terbaru';
+    document.getElementById('selectTglDari').value = '';
+    document.getElementById('selectTglSampai').value = '';
+    document.getElementById('inputUrut').value = 'terbaru';
+    document.getElementById('inputTglDari').value = '';
+    document.getElementById('inputTglSampai').value = '';
+    document.getElementById('mainSearchForm').submit();
+}
+document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape') tutupModalFilter();
+});
+function lihatBukti(url, isPdf){
+    if(isPdf){
+        Swal.fire({
+            title:'Bukti Transfer (PDF)',
+            html:'<iframe src="'+url+'" style="width:100%;height:60vh;border:none;border-radius:8px;"></iframe>',
+            width:'50em',
+            confirmButtonColor:'#D53D66',
+            confirmButtonText:'Tutup'
+        });
+    } else {
+        Swal.fire({
+            title:'Bukti Transfer',
+            imageUrl:url,
+            imageAlt:'Bukti Transfer',
+            imageWidth:'100%',
+            width:'32em',
+            confirmButtonColor:'#D53D66',
+            confirmButtonText:'Tutup'
+        });
+    }
+}
 function konfirmasiTerima(idPembayaran){Swal.fire({title:'Terima Pembayaran?',text:'Apakah Anda yakin ingin MENERIMA pembayaran DP ini? Order akan masuk ke Booking Customer.',icon:'question',showCancelButton:true,confirmButtonColor:'#059669',cancelButtonColor:'#718096',confirmButtonText:'Ya, Terima',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){window.location.href='verifikasi.php?id='+idPembayaran+'&aksi=terima';}});}
 function konfirmasiTolak(idPembayaran){Swal.fire({title:'Tolak Pembayaran?',text:'Apakah Anda yakin ingin MENOLAK pembayaran DP ini? Customer harus upload ulang.',icon:'warning',showCancelButton:true,confirmButtonColor:'#dc2626',cancelButtonColor:'#718096',confirmButtonText:'Ya, Tolak',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){window.location.href='verifikasi.php?id='+idPembayaran+'&aksi=tolak';}});}
 function confirmLogout(e){e.preventDefault();Swal.fire({title:'Keluar Sistem?',text:'Apakah Anda yakin ingin keluar dari sistem SpotLight Studio?',icon:'warning',showCancelButton:true,confirmButtonColor:'#D53D66',cancelButtonColor:'#718096',confirmButtonText:'Ya, Keluar',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){window.location.href='../../logout.php';}});}

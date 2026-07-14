@@ -28,10 +28,14 @@ if ($halaman < 1) $halaman = 1;
 $offset = ($halaman - 1) * $limit;
 $cari = isset($_GET['cari']) ? trim($_GET['cari']) : "";
 $tab_filter = isset($_GET['tab']) ? trim($_GET['tab']) : "semua";
+$tgl_dari = isset($_GET['tgl_dari']) ? trim($_GET['tgl_dari']) : "";
+$tgl_sampai = isset($_GET['tgl_sampai']) ? trim($_GET['tgl_sampai']) : "";
+$urut = isset($_GET['urut']) ? trim($_GET['urut']) : "terbaru";
 
+// Statistik Order
 $q_stats = "SELECT COUNT(*) as total, SUM(CASE WHEN Status_Order = 1 THEN 1 ELSE 0 END) as dp_terverifikasi, SUM(CASE WHEN Status_Order = 1 AND NOT EXISTS (SELECT 1 FROM Sesi_Foto sf WHERE sf.ID_Order = [Order].ID_Order AND sf.Status = 1 AND sf.Status_Sesi <> 2) THEN 1 ELSE 0 END) as menunggu_assign, SUM(CASE WHEN Status_Order = 2 THEN 1 ELSE 0 END) as selesai, SUM(CASE WHEN Status_Order = 3 THEN 1 ELSE 0 END) as lunas, SUM(CASE WHEN Status_Order = 4 THEN 1 ELSE 0 END) as dibatalkan FROM [Order] WHERE Status = 1 AND Status_Order >= 1";
 $stmt_stats = sqlsrv_query($conn, $q_stats);
-$stats = ['total'=>0,'dp_terverifikasi'=>0,'menunggu_assign'=>0,'selesai'=>0,'lunas'=>0,'dibatalkan'=>0];
+$stats = ['total'=>0,'dp_terverifikasi'=>0,'menunggu_assign'=>0,'selesai'=>0,'lunas'=>0,'dibatalkan'=>0, 'expired'=>0];
 if ($stmt_stats !== false) {
     $row = sqlsrv_fetch_array($stmt_stats, SQLSRV_FETCH_ASSOC);
     if ($row) $stats = $row;
@@ -54,6 +58,14 @@ if (!empty($cari)) {
     $conditions[] = "(p.Nama_Pelanggan LIKE ? OR CAST(o.ID_Order AS VARCHAR) LIKE ? OR pk.Nama_Paket LIKE ?)";
     $params[] = "%$cari%"; $params[] = "%$cari%"; $params[] = "%$cari%";
 }
+if (!empty($tgl_dari) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $tgl_dari)) {
+    $conditions[] = "CAST(o.Tanggal_Booking AS DATE) >= ?";
+    $params[] = $tgl_dari;
+}
+if (!empty($tgl_sampai) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $tgl_sampai)) {
+    $conditions[] = "CAST(o.Tanggal_Booking AS DATE) <= ?";
+    $params[] = $tgl_sampai;
+}
 $where = implode(" AND ", $conditions);
 
 $sql_count = "SELECT COUNT(*) AS total FROM [Order] o INNER JOIN Pelanggan p ON o.ID_Pelanggan = p.ID_Pelanggan INNER JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket WHERE $where";
@@ -65,16 +77,129 @@ if ($q_count !== false) {
     $total_halaman = ceil($total_records / $limit);
 }
 
-$sql_list = "SELECT o.ID_Order, o.Tanggal_Booking, o.Total_Paket, o.Total_Barang_Cetak, o.Total_Harga, o.Status_Order, o.Rating, o.Review, o.Keterangan, p.Nama_Pelanggan, p.No_Hp, p.Email_Pelanggan, pk.Nama_Paket, pk.Durasi_Waktu, pk.Harga_Paket, r.Nama_Ruangan, t.Nama_Tema, j.Tanggal_Jadwal, j.Jam_Mulai, j.Jam_Selesai, sf.ID_Karyawan as ID_Fotografer, sf.Status_Sesi, k.Nama_Karyawan as Nama_Fotografer FROM [Order] o INNER JOIN Pelanggan p ON o.ID_Pelanggan = p.ID_Pelanggan INNER JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket INNER JOIN Ruangan r ON o.ID_Ruangan = r.ID_Ruangan INNER JOIN Tema_Foto t ON o.ID_Tema = t.ID_Tema INNER JOIN Jadwal_Studio j ON o.ID_Jadwal = j.ID_Jadwal LEFT JOIN Sesi_Foto sf ON o.ID_Order = sf.ID_Order AND sf.Status = 1 AND sf.Status_Sesi <> 2 LEFT JOIN Karyawan k ON sf.ID_Karyawan = k.ID_Karyawan WHERE $where ORDER BY o.Tanggal_Booking DESC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
+// Sorter kueri dinamis
+$order_map = [
+    'terbaru'        => 'o.Tanggal_Booking DESC',
+    'terlama'        => 'o.Tanggal_Booking ASC',
+    'nama_az'        => 'p.Nama_Pelanggan ASC',
+    'nama_za'        => 'p.Nama_Pelanggan DESC',
+    'total_tinggi'   => 'o.Total_Harga DESC',
+    'total_rendah'   => 'o.Total_Harga ASC',
+];
+$order_by = $order_map[$urut] ?? $order_map['terbaru'];
+
+// Kueri utama list order (Kueri diperbaiki dari JOIN langsung Jadwal_Studio agar terhindar dari Error Kolom)
+$sql_list = "SELECT o.ID_Order, o.Tanggal_Booking, o.Total_Paket, o.Total_Barang_Cetak, o.Total_Harga, o.Status_Order, o.Rating, o.Review, o.Keterangan, 
+                    p.Nama_Pelanggan, p.No_Hp, p.Email_Pelanggan, 
+                    pk.Nama_Paket, pk.Durasi_Waktu, pk.Harga_Paket, 
+                    r.Nama_Ruangan, r.Foto_Ruangan,
+                    t.Nama_Tema, t.Foto_Tema,
+                    sf.ID_Karyawan as ID_Fotografer, sf.Status_Sesi, 
+                    k.Nama_Karyawan as Nama_Fotografer 
+             FROM [Order] o 
+             INNER JOIN Pelanggan p ON o.ID_Pelanggan = p.ID_Pelanggan 
+             INNER JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket 
+             INNER JOIN Ruangan r ON o.ID_Ruangan = r.ID_Ruangan 
+             INNER JOIN Tema_Foto t ON o.ID_Tema = t.ID_Tema 
+             LEFT JOIN Sesi_Foto sf ON o.ID_Order = sf.ID_Order AND sf.Status = 1 AND sf.Status_Sesi <> 2 
+             LEFT JOIN Karyawan k ON sf.ID_Karyawan = k.ID_Karyawan 
+             WHERE $where 
+             ORDER BY $order_by 
+             OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
+
 $p_list = $params; $p_list[] = $offset; $p_list[] = $limit;
 $query = sqlsrv_query($conn, $sql_list, $p_list);
 
+// Penampungan data order ke dalam array
+$orders_list = [];
+$order_ids = [];
+if ($query !== false) {
+    while ($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)) {
+        $orders_list[] = $row;
+        $order_ids[] = (int)$row['ID_Order'];
+    }
+}
+
+// =====================================================
+// SINKRONISASI JADWAL MULTI-SLOT SECARA REAL-TIME DARI ORDER_JADWAL
+// =====================================================
+$jadwal_per_order = [];
+if (!empty($order_ids)) {
+    $placeholders = implode(',', array_fill(0, count($order_ids), '?'));
+    $sql_jadwal = "
+        SELECT oj.ID_Order, j.ID_Jadwal, j.Tanggal_Jadwal, j.Jam_Mulai, j.Jam_Selesai
+        FROM Order_Jadwal oj
+        INNER JOIN Jadwal_Studio j ON oj.ID_Jadwal = j.ID_Jadwal
+        WHERE oj.ID_Order IN ($placeholders) AND j.Status = 1 AND j.Is_Deleted = 0
+        ORDER BY oj.ID_Order, j.Tanggal_Jadwal ASC, j.Jam_Mulai ASC
+    ";
+    $q_jadwal = sqlsrv_query($conn, $sql_jadwal, $order_ids);
+    if ($q_jadwal !== false) {
+        while ($j = sqlsrv_fetch_array($q_jadwal, SQLSRV_FETCH_ASSOC)) {
+            $oid = (int)$j['ID_Order'];
+            if (!isset($jadwal_per_order[$oid])) {
+                $jadwal_per_order[$oid] = [];
+            }
+            
+            if (is_object($j['Tanggal_Jadwal']) && method_exists($j['Tanggal_Jadwal'], 'format')) {
+                $tgl_str = $j['Tanggal_Jadwal']->format('d M Y');
+            } else {
+                $tgl_str = date('d M Y', strtotime($j['Tanggal_Jadwal']));
+            }
+            
+            $jam_mulai_str = (is_object($j['Jam_Mulai']) && method_exists($j['Jam_Mulai'], 'format')) ? $j['Jam_Mulai']->format('H:i') : substr($j['Jam_Mulai'], 0, 5);
+            $jam_selesai_str = (is_object($j['Jam_Selesai']) && method_exists($j['Jam_Selesai'], 'format')) ? $j['Jam_Selesai']->format('H:i') : substr($j['Jam_Selesai'], 0, 5);
+            
+            $jadwal_per_order[$oid][] = [
+                'tanggal' => $tgl_str,
+                'jam' => $jam_mulai_str . ' - ' . $jam_selesai_str
+            ];
+        }
+    }
+}
+
+// Ambil list Fotografer aktif untuk ditugaskan
 $q_fg = sqlsrv_query($conn, "SELECT ID_Karyawan, Nama_Karyawan FROM Karyawan WHERE Role_Karyawan = 'Fotografer' AND Status = 1 AND Is_Deleted = 0");
 $fotografer_list = [];
 if ($q_fg !== false) { while ($f = sqlsrv_fetch_array($q_fg, SQLSRV_FETCH_ASSOC)) $fotografer_list[] = $f; }
 
+// Objek JSON order untuk meminimalisir lag pemrosesan detail
+$order_data_js = [];
+foreach ($orders_list as $row) {
+    $oid = (int)$row['ID_Order'];
+    $s_info = getStatusLabel((int)$row['Status_Order']);
+    
+    $schedules = $jadwal_per_order[$oid] ?? [];
+    $jadwal_str = [];
+    foreach ($schedules as $s) {
+        $jadwal_str[] = $s['tanggal'] . ' | ' . $s['jam'] . ' WIB';
+    }
+
+    $order_data_js[$oid] = [
+        'id_order' => $oid,
+        'nama_pelanggan' => $row['Nama_Pelanggan'],
+        'no_hp' => $row['No_Hp'],
+        'email_pelanggan' => $row['Email_Pelanggan'],
+        'nama_paket' => $row['Nama_Paket'],
+        'nama_ruangan' => $row['Nama_Ruangan'],
+        'nama_tema' => $row['Nama_Tema'],
+        'total_paket' => (float)$row['Total_Paket'],
+        'total_cetak' => (float)$row['Total_Barang_Cetak'],
+        'total_harga' => (float)$row['Total_Harga'],
+        'tanggal_booking' => fmtTgl($row['Tanggal_Booking']),
+        'status_order_label' => $s_info[0],
+        'status_order_color' => $s_info[1],
+        'nama_fotografer' => $row['Nama_Fotografer'] ?? 'Belum diassign',
+        'jadwal' => $jadwal_str,
+        'durasi' => $row['Durasi_Waktu'] ?? 0,
+        'kapasitas' => $row['Harga_Paket'] ?? 0,
+        'foto_ruangan' => $row['Foto_Ruangan'] ?? 'default_ruangan.jpg',
+        'foto_tema' => $row['Foto_Tema'] ?? 'default_tema.jpg'
+    ];
+}
+
 function getStatusLabel($s) {
-    $l = [1=>['DP Terverifikasi','#059669','#d1fae5','bi-check-circle-fill'],2=>['Selesai','#2563eb','#dbeafe','bi-camera-fill'],3=>['Lunas','#7c3aed','#ede9fe','bi-cash-stack'],4=>['Dibatalkan','#dc2626','#fee2e2','bi-x-circle-fill']];
+    $l = [1=>['DP Terverifikasi','#059669','#d1fae5','bi-check-circle-fill'],2=>['Selesai Foto','#2563eb','#dbeafe','bi-camera-fill'],3=>['Lunas','#7c3aed','#ede9fe','bi-cash-stack'],4=>['Dibatalkan','#dc2626','#fee2e2','bi-x-circle-fill']];
     return $l[$s] ?? ['Unknown','#718096','#f1f5f9','bi-question-circle'];
 }
 function fmtTgl($d) { return (is_object($d)&&method_exists($d,'format'))?$d->format('d M Y H:i'):date('d M Y H:i',strtotime($d)); }
@@ -196,6 +321,26 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 .modal-body-custom{padding:24px;}
 @keyframes modalIn{from{opacity:0;transform:scale(0.95);}to{opacity:1;transform:scale(1);}}
 @media(max-width:992px){.main-content{margin-left:0;padding:20px;}.sidebar{transform:translateX(-100%);}}
+
+/* ===== FILTER MODAL ===== */
+.btn-filter-toggle{position:relative;display:inline-flex;align-items:center;gap:8px;background:var(--p-pink);color:#fff;border:none;padding:10px 18px;border-radius:12px;font-weight:600;font-size:0.9rem;cursor:pointer;transition:all .2s;}
+.btn-filter-toggle:hover{background:var(--d-pink);}
+.filter-dot{width:8px;height:8px;border-radius:50%;background:#fff;display:inline-block;margin-left:2px;}
+.filter-modal-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:2000;align-items:center;justify-content:center;padding:16px;}
+.filter-modal-overlay.active{display:flex;}
+.filter-modal-box{background:#fff;border-radius:20px;width:100%;max-width:420px;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,0.25);}
+.filter-modal-header{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:1.15rem;margin-bottom:20px;color:var(--text-dark);}
+.filter-modal-close{cursor:pointer;color:#94a3b8;font-size:1.1rem;}
+.filter-modal-close:hover{color:var(--p-pink);}
+.filter-modal-body label{display:block;font-size:0.75rem;font-weight:700;color:#94a3b8;letter-spacing:.5px;margin:16px 0 6px;}
+.filter-modal-body label:first-child{margin-top:0;}
+.filter-select{width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid #e2e8f0;font-size:0.9rem;color:var(--text-dark);background:#fff;}
+.filter-select:focus{outline:none;border-color:var(--p-pink);}
+.filter-modal-footer{display:flex;gap:12px;margin-top:24px;}
+.btn-filter-reset{flex:1;background:#f1f5f9;color:#64748b;border:none;padding:13px;border-radius:12px;font-weight:700;cursor:pointer;}
+.btn-filter-reset:hover{background:#e2e8f0;}
+.btn-filter-terapkan{flex:1.4;background:var(--p-pink);color:#fff;border:none;padding:13px;border-radius:12px;font-weight:700;cursor:pointer;}
+.btn-filter-terapkan:hover{background:var(--d-pink);}
 </style>
 </head>
 <body>
@@ -223,7 +368,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 </div>
 </li>
 
-<!-- TRANSAKSI - URUTAN BERURUTAN -->
+<!-- TRANSAKSI -->
 <li class="nav-item">
 <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuTransaksi"><span><i class="bi bi-cart-fill me-2"></i> Transaksi</span><i class="bi bi-chevron-up small icon-chevron" style="transform:rotate(180deg);"></i></a>
 <div class="submenu show" id="submenuTransaksi">
@@ -275,41 +420,93 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 <div class="search-filter-bar">
 <form method="GET" class="search-form-flex" id="mainSearchForm">
 <input type="hidden" name="tab" value="<?= htmlspecialchars($tab_filter) ?>">
+<input type="hidden" name="urut" id="inputUrut" value="<?= htmlspecialchars($urut) ?>">
+<input type="hidden" name="tgl_dari" id="inputTglDari" value="<?= htmlspecialchars($tgl_dari) ?>">
+<input type="hidden" name="tgl_sampai" id="inputTglSampai" value="<?= htmlspecialchars($tgl_sampai) ?>">
 <div class="search-input-wrapper"><i class="bi bi-search search-icon"></i><input type="text" name="cari" class="search-input-main" placeholder="Cari nama customer, no. order, atau paket..." value="<?= htmlspecialchars($cari) ?>"></div>
+<button type="button" class="btn-filter-toggle" onclick="bukaModalFilter()"><i class="bi bi-funnel-fill"></i> Filter<?php if($urut!=='terbaru'||!empty($tgl_dari)||!empty($tgl_sampai)):?> <span class="filter-dot"></span><?php endif;?></button>
 <button type="submit" class="btn-search-icon" title="Cari"><i class="bi bi-search"></i></button>
+<?php if (!empty($cari) || !empty($tgl_dari) || !empty($tgl_sampai) || $urut!=='terbaru'): ?>
+<a href="list.php?tab=<?= htmlspecialchars($tab_filter) ?>" class="btn-search-icon" style="background:#f1f5f9;color:#64748b;" title="Reset filter"><i class="bi bi-x-lg"></i></a>
+<?php endif; ?>
 </form>
+</div>
+
+<!-- MODAL FILTER (gaya sama dengan halaman Verifikasi DP) -->
+<div id="modalFilterData" class="filter-modal-overlay" onclick="if(event.target===this) tutupModalFilter()">
+  <div class="filter-modal-box">
+    <div class="filter-modal-header">
+      <div><i class="bi bi-funnel-fill" style="color:#D53D66;"></i> Filter Data</div>
+      <span class="filter-modal-close" onclick="tutupModalFilter()"><i class="bi bi-x-lg"></i></span>
+    </div>
+    <div class="filter-modal-body">
+      <label>URUT BERDASARKAN</label>
+      <select id="selectUrut" class="filter-select">
+        <option value="terbaru">Tanggal Booking Terbaru</option>
+        <option value="terlama">Tanggal Booking Terlama</option>
+        <option value="nama_az">Nama A - Z</option>
+        <option value="nama_za">Nama Z - A</option>
+        <option value="total_tinggi">Total Tagihan Tertinggi</option>
+        <option value="total_rendah">Total Tagihan Terendah</option>
+      </select>
+
+      <label>DARI TANGGAL BOOKING</label>
+      <input type="date" id="selectTglDari" class="filter-select">
+
+      <label>SAMPAI TANGGAL BOOKING</label>
+      <input type="date" id="selectTglSampai" class="filter-select">
+    </div>
+    <div class="filter-modal-footer">
+      <button type="button" class="btn-filter-reset" onclick="resetModalFilter()"><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
+      <button type="button" class="btn-filter-terapkan" onclick="terapkanModalFilter()"><i class="bi bi-check-lg"></i> Terapkan</button>
+    </div>
+  </div>
 </div>
 
 <div class="card-3d mb-4" style="padding:24px;">
 <div class="table-scroll-wrapper">
 <table class="data-table">
-<thead><tr><th>No. Order</th><th>Customer</th><th>Paket & Detail</th><th>Jadwal</th><th>Total</th><th>Status</th><th>Fotografer</th><th class="text-center">Aksi</th></tr></thead>
+<thead><tr><th>No.</th><th>No. Order</th><th>Customer</th><th>Paket & Detail</th><th>Jadwal Sesi</th><th>Total</th><th>Status</th><th>Fotografer</th><th class="text-center">Aksi</th></tr></thead>
 <tbody>
 <?php
 $no=$offset+1;
-if($query&&sqlsrv_has_rows($query)):
-while($row=sqlsrv_fetch_array($query,SQLSRV_FETCH_ASSOC)):
+if(!empty($orders_list)):
+foreach($orders_list as $row):
 $statusInfo=getStatusLabel((int)$row['Status_Order']);
-$tanggal_val=$row['Tanggal_Jadwal'];
-if(is_object($tanggal_val)&&method_exists($tanggal_val,'format')){$tgl_format=$tanggal_val->format('d M Y');}else{$tgl_format=$tanggal_val;}
-$jam_mulai_str=(is_object($row['Jam_Mulai'])&&method_exists($row['Jam_Mulai'],'format'))?$row['Jam_Mulai']->format('H:i'):(is_string($row['Jam_Mulai'])?substr($row['Jam_Mulai'],0,5):'-');
-$jam_selesai_str=(is_object($row['Jam_Selesai'])&&method_exists($row['Jam_Selesai'],'format'))?$row['Jam_Selesai']->format('H:i'):(is_string($row['Jam_Selesai'])?substr($row['Jam_Selesai'],0,5):'-');
 $has_fotografer=!empty($row['ID_Fotografer']);
 $nama_fotografer=$row['Nama_Fotografer']??null;
 $is_dp_terverifikasi=((int)$row['Status_Order']===STATUS_ORDER_DP_TERVERIFIKASI);
 ?>
 <tr class="fade-in-up" data-id="<?= $row['ID_Order'] ?>">
-<td><div class="td-order-id">#<?= str_pad((int)$row['ID_Order'],5,'0',STR_PAD_LEFT) ?></div><div class="td-customer-contact"><?= fmtTgl($row['Tanggal_Booking']) ?></div></td>
+<!-- PENYELARASAN NOMOR URUT: Kolom 1 menampilkan nomor urutan angka sekuensial yang rapi -->
+<td><div class="td-order-id"><?= $no++ ?></div></td>
+<!-- Kolom 2 memuat No. Order Asli (#00018) dan Tanggal Booking secara terstruktur -->
+<td><div class="td-order-id" style="color:var(--text-dark);">#<?= str_pad((int)$row['ID_Order'],5,'0',STR_PAD_LEFT) ?></div><div class="td-customer-contact"><?= fmtTgl($row['Tanggal_Booking']) ?></div></td>
 <td><div class="td-customer"><?= htmlspecialchars($row['Nama_Pelanggan']) ?></div><div class="td-customer-contact"><?= htmlspecialchars($row['No_Hp']) ?></div></td>
 <td><div class="td-paket"><?= htmlspecialchars($row['Nama_Paket']) ?></div><div class="td-detail"><?= htmlspecialchars($row['Nama_Ruangan']) ?> &bull; <?= htmlspecialchars($row['Nama_Tema']) ?></div><div class="td-detail"><i class="bi bi-clock me-1"></i><?= $row['Durasi_Waktu'] ?> menit</div></td>
-<td><div class="td-jadwal"><?= $tgl_format ?></div><div class="td-jam"><?= $jam_mulai_str ?> - <?= $jam_selesai_str ?></div></td>
+<td>
+    <!-- SINKRONISASI JADWAL MULTI-SLOT SECARA REAL-TIME TANPA ERROR -->
+    <?php 
+    $schedules = $jadwal_per_order[(int)$row['ID_Order']] ?? [];
+    if (!empty($schedules)):
+        foreach ($schedules as $idx => $s):
+    ?>
+        <div class="td-jadwal" style="<?= $idx > 0 ? 'margin-top: 6px; padding-top: 6px; border-top: 1px dashed #f1f5f9;' : '' ?>"><?= htmlspecialchars($s['tanggal']) ?></div>
+        <div class="td-jam"><?= htmlspecialchars($s['jam']) ?> WIB</div>
+    <?php 
+        endforeach;
+    else:
+    ?>
+        <div class="td-detail" style="color:#94a3b8"><i class="bi bi-calendar-x me-1"></i>Belum Terjadwal</div>
+    <?php endif; ?>
+</td>
 <td><div class="td-harga">Rp <?= number_format((float)$row['Total_Harga'],0,',','.') ?></div></td>
 <td><span class="badge-status" style="background:<?= $statusInfo[2] ?>;color:<?= $statusInfo[1] ?>"><span class="badge-dot" style="background:<?= $statusInfo[1] ?>"></span><?= $statusInfo[0] ?></span></td>
 <td><?php if($has_fotografer):?><span class="fotografer-badge"><i class="bi bi-person-fill"></i><?= htmlspecialchars($nama_fotografer) ?></span><?php else:?><span class="td-detail" style="color:#94a3b8"><i class="bi bi-person-x me-1"></i>Belum diassign</span><?php endif;?></td>
 <td><button class="btn-action-circle btn-action-view" onclick="bukaDetail(<?= (int)$row['ID_Order'] ?>)" title="Lihat Detail"><i class="bi bi-eye"></i></button><?php if($is_dp_terverifikasi&&!$has_fotografer):?><button class="btn-action-circle btn-action-assign" onclick="konfirmasiAssign(<?= (int)$row['ID_Order'] ?>)" title="Assign Fotografer"><i class="bi bi-person-plus"></i></button><?php endif;?></td>
 </tr>
-<?php endwhile;else:?>
-<tr><td colspan="8" class="text-center text-muted py-5"><i class="bi bi-inbox fs-1 mb-3 d-block" style="color:#cbd5e1"></i><p class="fw-bold">Tidak ada order yang sesuai.</p><p class="small">Belum ada order yang sudah dikonfirmasi.</p></td></tr>
+<?php endforeach;else:?>
+<tr><td colspan="9" class="text-center text-muted py-5"><i class="bi bi-inbox fs-1 mb-3 d-block" style="color:#cbd5e1"></i><p class="fw-bold">Tidak ada order yang sesuai.</p><p class="small">Belum ada order yang sudah dikonfirmasi.</p></td></tr>
 <?php endif;?>
 </tbody>
 </table>
@@ -318,9 +515,10 @@ $is_dp_terverifikasi=((int)$row['Status_Order']===STATUS_ORDER_DP_TERVERIFIKASI)
 <div class="pagination-wrapper">
 <div class="pagination-info">Menampilkan <span><?= $offset+1 ?></span> - <span><?= min($offset+$limit,$total_records) ?></span> dari <span><?= $total_records ?></span> order</div>
 <nav class="pagination-nav">
-<?php if($halaman>1):?><a class="page-link-pag" href="list.php?halaman=<?= $halaman-1 ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?>" title="Sebelumnya"><i class="bi bi-chevron-left"></i></a><?php else:?><span class="page-link-pag disabled"><i class="bi bi-chevron-left"></i></span><?php endif;?>
-<?php $start_page=max(1,$halaman-2);$end_page=min($total_halaman,$halaman+2);if($start_page>1){echo'<a class="page-link-pag" href="list.php?halaman=1&tab='.$tab_filter.'&cari='.urlencode($cari).'">1</a>';if($start_page>2)echo'<span class="page-link-pag disabled">...</span>';}for($i=$start_page;$i<=$end_page;$i++):?><a class="page-link-pag <?= ($halaman==$i)?'active-pag':'' ?>" href="list.php?halaman=<?= $i ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?>"><?= $i ?></a><?php endfor;if($end_page<$total_halaman){if($end_page<$total_halaman-1)echo'<span class="page-link-pag disabled">...</span>';echo'<a class="page-link-pag" href="list.php?halaman='.$total_halaman.'&tab='.$tab_filter.'&cari='.urlencode($cari).'">'.$total_halaman.'</a>';}?>
-<?php if($halaman<$total_halaman):?><a class="page-link-pag" href="list.php?halaman=<?= $halaman+1 ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?>" title="Selanjutnya"><i class="bi bi-chevron-right"></i></a><?php else:?><span class="page-link-pag disabled"><i class="bi bi-chevron-right"></i></span><?php endif;?>
+<?php $extra_qs = (!empty($tgl_dari)?'&tgl_dari='.urlencode($tgl_dari):'').(!empty($tgl_sampai)?'&tgl_sampai='.urlencode($tgl_sampai):'').(!empty($urut)?'&urut='.urlencode($urut):''); ?>
+<?php if($halaman>1):?><a class="page-link-pag" href="list.php?halaman=<?= $halaman-1 ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?><?= $extra_qs ?>" title="Sebelumnya"><i class="bi bi-chevron-left"></i></a><?php else:?><span class="page-link-pag disabled"><i class="bi bi-chevron-left"></i></span><?php endif;?>
+<?php $start_page=max(1,$halaman-2);$end_page=min($total_halaman,$halaman+2);if($start_page>1){echo'<a class="page-link-pag" href="list.php?halaman=1&tab='.$tab_filter.'&cari='.urlencode($cari).$extra_qs.'">1</a>';if($start_page>2)echo'<span class="page-link-pag disabled">...</span>';}for($i=$start_page;$i<=$end_page;$i++):?><a class="page-link-pag <?= ($halaman==$i)?'active-pag':'' ?>" href="list.php?halaman=<?= $i ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?><?= $extra_qs ?>"><?= $i ?></a><?php endfor;if($end_page<$total_halaman){if($end_page<$total_halaman-1)echo'<span class="page-link-pag disabled">...</span>';echo'<a class="page-link-pag" href="list.php?halaman='.$total_halaman.'&tab='.$tab_filter.'&cari='.urlencode($cari).$extra_qs.'">'.$total_halaman.'</a>';}?>
+<?php if($halaman<$total_halaman):?><a class="page-link-pag" href="list.php?halaman=<?= $halaman+1 ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?><?= $extra_qs ?>" title="Selanjutnya"><i class="bi bi-chevron-right"></i></a><?php else:?><span class="page-link-pag disabled"><i class="bi bi-chevron-right"></i></span><?php endif;?>
 </nav>
 </div>
 <?php elseif($total_records>0):?>
@@ -335,18 +533,107 @@ $is_dp_terverifikasi=((int)$row['Status_Order']===STATUS_ORDER_DP_TERVERIFIKASI)
 
 <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script>
+// Objek JSON order untuk meminimalisir lag pemrosesan detail
+const orderData = <?= json_encode($order_data_js) ?>;
+
 document.querySelectorAll('.btn-toggle-submenu').forEach(button=>{button.addEventListener('click',function(e){e.preventDefault();const targetId=this.getAttribute('data-target');const targetEl=document.querySelector(targetId);const chevron=this.querySelector('.icon-chevron');if(targetEl){const isShown=targetEl.classList.contains('show');document.querySelectorAll('.submenu').forEach(el=>el.classList.remove('show'));document.querySelectorAll('.icon-chevron').forEach(icon=>icon.style.transform='rotate(0deg)');if(!isShown){targetEl.classList.add('show');if(chevron)chevron.style.transform='rotate(180deg)';}}});});
 function bukaModal(id){document.getElementById(id).classList.add('show')}
 function tutupModal(id){document.getElementById(id).classList.remove('show')}
 document.querySelectorAll('.modal-overlay').forEach(modal=>{modal.addEventListener('click',function(e){if(e.target===this)tutupModal(this.id);});});
-function bukaDetail(idOrder){const row=document.querySelector('tr[data-id="'+idOrder+'"]');if(!row)return;const cells=row.querySelectorAll('td');const orderId=cells[0].querySelector('.td-order-id').innerText;const customer=cells[1].querySelector('.td-customer').innerText;const paket=cells[2].querySelector('.td-paket').innerText;const jadwal=cells[3].querySelector('.td-jadwal').innerText;const jam=cells[3].querySelector('.td-jam').innerText;const total=cells[4].querySelector('.td-harga').innerText;const status=cells[5].querySelector('.badge-status').innerText.trim();const fotografer=cells[6].innerText.trim();const html='<div style="display:grid;gap:16px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div style="background:#f8fafc;padding:14px 18px;border-radius:14px;border:1px solid #e2e8f0"><div style="font-size:0.7rem;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">No. Order</div><div style="font-weight:800;color:var(--p-pink);font-size:1.1rem">'+orderId+'</div></div><div style="background:#f8fafc;padding:14px 18px;border-radius:14px;border:1px solid #e2e8f0"><div style="font-size:0.7rem;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Status</div><div style="font-weight:700;font-size:0.95rem">'+status+'</div></div></div><div style="background:#f8fafc;padding:14px 18px;border-radius:14px;border:1px solid #e2e8f0"><div style="font-size:0.7rem;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Customer</div><div style="font-weight:700;color:var(--text-dark);font-size:0.95rem">'+customer+'</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div style="background:#f8fafc;padding:14px 18px;border-radius:14px;border:1px solid #e2e8f0"><div style="font-size:0.7rem;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Paket</div><div style="font-weight:700;color:var(--text-dark);font-size:0.95rem">'+paket+'</div></div><div style="background:#f8fafc;padding:14px 18px;border-radius:14px;border:1px solid #e2e8f0"><div style="font-size:0.7rem;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Jadwal</div><div style="font-weight:700;color:var(--text-dark);font-size:0.95rem">'+jadwal+'</div><div style="font-size:0.8rem;color:#718096;font-weight:600">'+jam+'</div></div></div><div style="background:#f8fafc;padding:14px 18px;border-radius:14px;border:1px solid #e2e8f0"><div style="font-size:0.7rem;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Fotografer</div><div style="font-weight:700;color:var(--text-dark);font-size:0.95rem">'+fotografer+'</div></div><div style="background:linear-gradient(135deg,#FFF0F3,#FFF8F0);padding:14px 18px;border-radius:14px;border:1px solid rgba(255,228,233,0.8)"><div style="font-size:0.7rem;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Total Pembayaran</div><div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid #ffe4e9"><span style="font-size:0.9rem;font-weight:800;color:var(--text-dark)">Total</span><span style="font-weight:800;font-size:1rem;color:var(--p-pink)">'+total+'</span></div></div></div>';document.getElementById('detailContent').innerHTML=html;bukaModal('modalDetail');}
+
+function bukaDetail(idOrder) {
+    const data = orderData[idOrder] || {};
+    if (!data.id_order) return;
+
+    let jadwalHtml = '';
+    if (data.jadwal && data.jadwal.length > 0) {
+        data.jadwal.forEach((j, idx) => {
+            jadwalHtml += `<div style="${idx > 0 ? 'margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2e8f0;' : ''}">Slot ${idx + 1}: ${j}</div>`;
+        });
+    } else {
+        jadwalHtml = 'Belum Terjadwal';
+    }
+
+    const html = `
+        <div style="display:grid;gap:16px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div style="background:#f8fafc;padding:14px 18px;border-radius:14px;border:1px solid #e2e8f0">
+                    <div style="font-size:0.7rem;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">No. Order</div>
+                    <div style="font-weight:800;color:var(--p-pink);font-size:1.1rem">#${String(data.id_order).padStart(5, '0')}</div>
+                </div>
+                <div style="background:#f8fafc;padding:14px 18px;border-radius:14px;border:1px solid #e2e8f0">
+                    <div style="font-size:0.7rem;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Status</div>
+                    <div style="font-weight:700;font-size:0.95rem;color:${data.status_order_color}">${data.status_order_label}</div>
+                </div>
+            </div>
+            <div style="background:#f8fafc;padding:14px 18px;border-radius:14px;border:1px solid #e2e8f0">
+                <div style="font-size:0.7rem;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Customer</div>
+                <div style="font-weight:700;color:var(--text-dark);font-size:0.95rem">${data.nama_pelanggan}</div>
+                <div style="font-size:0.8rem;color:#718096;font-weight:600">${data.no_hp} &bull; ${data.email_pelanggan}</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div style="background:#f8fafc;padding:14px 18px;border-radius:14px;border:1px solid #e2e8f0">
+                    <div style="font-size:0.7rem;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Paket</div>
+                    <div style="font-weight:700;color:var(--text-dark);font-size:0.95rem">${data.nama_paket}</div>
+                    <div style="font-size:0.8rem;color:#718096;font-weight:600">${data.nama_ruangan} &bull; ${data.nama_tema}</div>
+                </div>
+                <div style="background:#f8fafc;padding:14px 18px;border-radius:14px;border:1px solid #e2e8f0">
+                    <div style="font-size:0.7rem;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Jadwal Sesi</div>
+                    <div style="font-weight:700;color:var(--text-dark);font-size:0.85rem">${jadwalHtml}</div>
+                </div>
+            </div>
+            <div style="background:#f8fafc;padding:14px 18px;border-radius:14px;border:1px solid #e2e8f0">
+                <div style="font-size:0.7rem;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Fotografer Assigned</div>
+                <div style="font-weight:700;color:var(--text-dark);font-size:0.95rem">${data.nama_fotografer}</div>
+            </div>
+            <div style="background:linear-gradient(135deg,#FFF0F3,#FFF8F0);padding:14px 18px;border-radius:14px;border:1px solid rgba(255,228,233,0.8)">
+                <div style="font-size:0.7rem;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Total Pembayaran</div>
+                <div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid #ffe4e9">
+                    <span style="font-size:0.9rem;font-weight:800;color:var(--text-dark)">Total</span>
+                    <span style="font-weight:800;font-size:1.1rem;color:var(--p-pink)">Rp ${data.total_harga.toLocaleString('id-ID')}</span>
+                </div>
+            </div>
+        </div>`;
+    document.getElementById('detailContent').innerHTML = html;
+    bukaModal('modalDetail');
+}
+
 function konfirmasiAssign(idOrder){Swal.fire({title:'Assign Fotografer?',text:'Pilih fotografer yang akan menangani sesi foto ini.',icon:'question',showCancelButton:true,confirmButtonColor:'#D53D66',cancelButtonColor:'#718096',confirmButtonText:'Lanjutkan',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){document.getElementById('assignOrderId').value=idOrder;bukaModal('modalAssign');}});}
 function confirmLogout(e){e.preventDefault();Swal.fire({title:'Keluar Sistem?',text:'Apakah Anda yakin ingin keluar dari sistem SpotLight Studio?',icon:'warning',showCancelButton:true,confirmButtonColor:'#D53D66',cancelButtonColor:'#718096',confirmButtonText:'Ya, Keluar',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){window.location.href='../../logout.php';}});}
 function confirmLandingPage(e){e.preventDefault();Swal.fire({title:'Kembali ke Beranda?',text:'Anda akan dialihkan ke halaman utama publik.',icon:'info',showCancelButton:true,confirmButtonColor:'#D53D66',cancelButtonColor:'#718096',confirmButtonText:'Ya, Kembali',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){window.location.href='../../index.php';}});}
 function bukaModalBiodata(){Swal.fire({title:'<?= htmlspecialchars($nama_admin) ?>',text:'Administrator - SpotLight Studio',icon:'info',confirmButtonColor:'#D53D66'});}
 function updateLiveClock(){const now=new Date();const days=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];const months=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];document.getElementById('live-clock').innerText=`${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()} - ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')} WIB`;}
 setInterval(updateLiveClock,1000);updateLiveClock();
-<?php if(isset($_GET['status'])):?><?php if($_GET['status']=='sukses_assign'):?>Swal.fire({icon:'success',title:'Berhasil!',text:'Fotografer berhasil diassign ke order.',confirmButtonColor:'#D53D66'});<?php elseif($_GET['status']=='error'):?>Swal.fire({icon:'error',title:'Gagal!',text:'<?= htmlspecialchars($_GET['msg']??'Terjadi kesalahan.') ?>',confirmButtonColor:'#D53D66'});<?php endif;?><?php endif;?>
+
+function bukaModalFilter(){
+    document.getElementById('selectUrut').value = document.getElementById('inputUrut').value || 'terbaru';
+    document.getElementById('selectTglDari').value = document.getElementById('inputTglDari').value || '';
+    document.getElementById('selectTglSampai').value = document.getElementById('inputTglSampai').value || '';
+    document.getElementById('modalFilterData').classList.add('active');
+}
+function tutupModalFilter(){
+    document.getElementById('modalFilterData').classList.remove('active');
+}
+function terapkanModalFilter(){
+    document.getElementById('inputUrut').value = document.getElementById('selectUrut').value;
+    document.getElementById('inputTglDari').value = document.getElementById('selectTglDari').value;
+    document.getElementById('inputTglSampai').value = document.getElementById('selectTglSampai').value;
+    document.getElementById('mainSearchForm').submit();
+}
+function resetModalFilter(){
+    document.getElementById('selectUrut').value = 'terbaru';
+    document.getElementById('selectTglDari').value = '';
+    document.getElementById('selectTglSampai').value = '';
+    document.getElementById('inputUrut').value = 'terbaru';
+    document.getElementById('inputTglDari').value = '';
+    document.getElementById('inputTglSampai').value = '';
+    document.getElementById('mainSearchForm').submit();
+}
+document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape') tutupModalFilter();
+});
+
+<?php if(isset($_GET['status'])):?><?php if($_GET['status']=='sukses_assign'):?>Swal.fire({icon:'success',title:'Berhasil!',text:'<?= htmlspecialchars($_GET['msg']??'Fotografer berhasil diassign.') ?>',confirmButtonColor:'#D53D66'});<?php elseif($_GET['status']=='error'):?>Swal.fire({icon:'error',title:'Gagal!',text:'<?= htmlspecialchars($_GET['msg']??'Terjadi kesalahan.') ?>',confirmButtonColor:'#D53D66'});<?php endif;?><?php endif;?>
 </script>
 </body>
 </html>

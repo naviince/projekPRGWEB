@@ -352,6 +352,14 @@ if (!empty($auto_cancel_ids)) {
     $stmt_auto_cancel = sqlsrv_query($conn, $sql_auto_cancel, $auto_cancel_ids);
 
     if ($stmt_auto_cancel !== false) {
+        // Bersihkan juga bukti DP yang mungkin sudah terlanjur diupload
+        // customer tapi belum sempat diverifikasi admin saat order ini
+        // ikut auto-dibatalkan (mencegah data pembayaran "nyangkut").
+        $sql_bersih_pembayaran = "UPDATE Pembayaran 
+            SET Status = 0, Modified_By = 'system_auto', Modified_Date = GETDATE()
+            WHERE ID_Order IN ($ph) AND Tipe_Pembayaran = 'DP' AND Status_Pembayaran = 0 AND Status = 1";
+        sqlsrv_query($conn, $sql_bersih_pembayaran, $auto_cancel_ids);
+
         // Sinkronkan array di memori supaya tampilan langsung update
         // tanpa perlu reload halaman kedua kalinya.
         foreach ($riwayat_list as &$item_ref) {
