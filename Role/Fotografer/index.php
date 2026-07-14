@@ -45,7 +45,9 @@ if (isset($_POST['update_profil'])) {
     $pass_baru      = $_POST['password'];
     $confirm_pass   = $_POST['confirm_password'];
     
-    $hp_bersih_input = str_replace(['+', ' '], '', $no_hp_input);
+    // Saring spasi agar patuh aturan database CHK_Karyawan_NoHp
+    $no_hp_input     = str_replace(' ', '', $no_hp_input);
+    $hp_bersih_input = str_replace('+', '', $no_hp_input);
 
     // Validasi
     if (empty($nama_input) || !preg_match("/^[a-zA-Z ]*$/", $nama_input)) {
@@ -151,7 +153,7 @@ $total_sesi = $d_total_sesi['total'] ?? 0;
 $q_sesi_terjadwal = sqlsrv_query($conn, "
     SELECT COUNT(*) AS total 
     FROM Sesi_Foto 
-    WHERE ID_Karyawan = ? AND Status = 0", array($id_fotografer));
+    WHERE ID_Karyawan = ? AND Status_Sesi = 0", array($id_fotografer));
 $d_sesi_terjadwal = sqlsrv_fetch_array($q_sesi_terjadwal, SQLSRV_FETCH_ASSOC);
 $sesi_terjadwal = $d_sesi_terjadwal['total'] ?? 0;
 
@@ -159,7 +161,7 @@ $sesi_terjadwal = $d_sesi_terjadwal['total'] ?? 0;
 $q_sesi_selesai = sqlsrv_query($conn, "
     SELECT COUNT(*) AS total 
     FROM Sesi_Foto 
-    WHERE ID_Karyawan = ? AND Status = 1", array($id_fotografer));
+    WHERE ID_Karyawan = ? AND Status_Sesi = 1", array($id_fotografer));
 $d_sesi_selesai = sqlsrv_fetch_array($q_sesi_selesai, SQLSRV_FETCH_ASSOC);
 $sesi_selesai = $d_sesi_selesai['total'] ?? 0;
 
@@ -167,27 +169,29 @@ $sesi_selesai = $d_sesi_selesai['total'] ?? 0;
 $q_sesi_batal = sqlsrv_query($conn, "
     SELECT COUNT(*) AS total 
     FROM Sesi_Foto 
-    WHERE ID_Karyawan = ? AND Status = 2", array($id_fotografer));
+    WHERE ID_Karyawan = ? AND Status_Sesi = 2", array($id_fotografer));
 $d_sesi_batal = sqlsrv_fetch_array($q_sesi_batal, SQLSRV_FETCH_ASSOC);
 $sesi_batal = $d_sesi_batal['total'] ?? 0;
 
-// 5. Sesi Hari Ini
+// 5. Sesi Hari Ini (Penyelarasan join Order_Jadwal)
 $q_sesi_hari_ini = sqlsrv_query($conn, "
     SELECT COUNT(*) AS total 
     FROM Sesi_Foto S
     JOIN [Order] O ON S.ID_Order = O.ID_Order
-    JOIN Jadwal_Studio J ON O.ID_Jadwal = J.ID_Jadwal
-    WHERE S.ID_Karyawan = ? AND S.Status = 0 AND J.Tanggal_Jadwal = CAST(GETDATE() AS DATE)", array($id_fotografer));
+    JOIN Order_Jadwal OJ ON O.ID_Order = OJ.ID_Order
+    JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
+    WHERE S.ID_Karyawan = ? AND S.Status_Sesi = 0 AND J.Tanggal_Jadwal = CAST(GETDATE() AS DATE)", array($id_fotografer));
 $d_sesi_hari_ini = sqlsrv_fetch_array($q_sesi_hari_ini, SQLSRV_FETCH_ASSOC);
 $sesi_hari_ini = $d_sesi_hari_ini['total'] ?? 0;
 
-// 6. Sesi Minggu Ini
+// 6. Sesi Minggu Ini (Penyelarasan join Order_Jadwal)
 $q_sesi_minggu_ini = sqlsrv_query($conn, "
     SELECT COUNT(*) AS total 
     FROM Sesi_Foto S
     JOIN [Order] O ON S.ID_Order = O.ID_Order
-    JOIN Jadwal_Studio J ON O.ID_Jadwal = J.ID_Jadwal
-    WHERE S.ID_Karyawan = ? AND S.Status = 0 AND J.Tanggal_Jadwal BETWEEN CAST(GETDATE() AS DATE) AND DATEADD(DAY, 7, CAST(GETDATE() AS DATE))", array($id_fotografer));
+    JOIN Order_Jadwal OJ ON O.ID_Order = OJ.ID_Order
+    JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
+    WHERE S.ID_Karyawan = ? AND S.Status_Sesi = 0 AND J.Tanggal_Jadwal BETWEEN CAST(GETDATE() AS DATE) AND DATEADD(DAY, 7, CAST(GETDATE() AS DATE))", array($id_fotografer));
 $d_sesi_minggu_ini = sqlsrv_fetch_array($q_sesi_minggu_ini, SQLSRV_FETCH_ASSOC);
 $sesi_minggu_ini = $d_sesi_minggu_ini['total'] ?? 0;
 
@@ -195,7 +199,7 @@ $sesi_minggu_ini = $d_sesi_minggu_ini['total'] ?? 0;
 $q_belum_upload = sqlsrv_query($conn, "
     SELECT COUNT(*) AS total 
     FROM Sesi_Foto 
-    WHERE ID_Karyawan = ? AND Status = 1 AND File_Hasil IS NULL", array($id_fotografer));
+    WHERE ID_Karyawan = ? AND Status_Sesi = 1 AND File_Hasil IS NULL", array($id_fotografer));
 $d_belum_upload = sqlsrv_fetch_array($q_belum_upload, SQLSRV_FETCH_ASSOC);
 $belum_upload = $d_belum_upload['total'] ?? 0;
 
@@ -203,12 +207,12 @@ $belum_upload = $d_belum_upload['total'] ?? 0;
 $q_sudah_upload = sqlsrv_query($conn, "
     SELECT COUNT(*) AS total 
     FROM Sesi_Foto 
-    WHERE ID_Karyawan = ? AND Status = 1 AND File_Hasil IS NOT NULL", array($id_fotografer));
+    WHERE ID_Karyawan = ? AND Status_Sesi = 1 AND File_Hasil IS NOT NULL", array($id_fotografer));
 $d_sudah_upload = sqlsrv_fetch_array($q_sudah_upload, SQLSRV_FETCH_ASSOC);
 $sudah_upload = $d_sudah_upload['total'] ?? 0;
 
 // =====================================================
-// QUERY DATA TAMPILAN
+// QUERY DATA TAMPILAN (SINKRON MULTI JADWAL)
 // =====================================================
 
 // Jadwal Sesi Foto Hari Ini (detail)
@@ -223,13 +227,14 @@ $q_jadwal_hari_ini = sqlsrv_query($conn, "
         J.Jam_Mulai,
         J.Jam_Selesai,
         O.Keterangan,
-        S.Status
+        S.Status_Sesi
     FROM Sesi_Foto S
     JOIN [Order] O ON S.ID_Order = O.ID_Order
     JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
     JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
     JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan
-    JOIN Jadwal_Studio J ON O.ID_Jadwal = J.ID_Jadwal
+    JOIN Order_Jadwal OJ ON O.ID_Order = OJ.ID_Order
+    JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
     WHERE S.ID_Karyawan = ? AND J.Tanggal_Jadwal = CAST(GETDATE() AS DATE)
     ORDER BY J.Jam_Mulai ASC
 ", array($id_fotografer));
@@ -244,14 +249,15 @@ $q_jadwal_mendatang = sqlsrv_query($conn, "
         J.Tanggal_Jadwal,
         J.Jam_Mulai,
         J.Jam_Selesai,
-        S.Status
+        S.Status_Sesi
     FROM Sesi_Foto S
     JOIN [Order] O ON S.ID_Order = O.ID_Order
     JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
     JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
     JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan
-    JOIN Jadwal_Studio J ON O.ID_Jadwal = J.ID_Jadwal
-    WHERE S.ID_Karyawan = ? AND S.Status = 0 AND J.Tanggal_Jadwal > CAST(GETDATE() AS DATE)
+    JOIN Order_Jadwal OJ ON O.ID_Order = OJ.ID_Order
+    JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
+    WHERE S.ID_Karyawan = ? AND S.Status_Sesi = 0 AND J.Tanggal_Jadwal > CAST(GETDATE() AS DATE)
     ORDER BY J.Tanggal_Jadwal ASC, J.Jam_Mulai ASC
 ", array($id_fotografer));
 
@@ -269,7 +275,7 @@ $q_riwayat_selesai = sqlsrv_query($conn, "
     JOIN [Order] O ON S.ID_Order = O.ID_Order
     JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
     JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
-    WHERE S.ID_Karyawan = ? AND S.Status = 1
+    WHERE S.ID_Karyawan = ? AND S.Status_Sesi = 1
     ORDER BY S.Waktu_Selesai DESC
 ", array($id_fotografer));
 
@@ -279,13 +285,15 @@ $q_sesi_bulan = sqlsrv_query($conn, "
         MONTH(S.Waktu_Selesai) AS bulan,
         COUNT(*) AS total
     FROM Sesi_Foto S
-    WHERE S.ID_Karyawan = ? AND S.Status = 1 AND S.Waktu_Selesai >= DATEADD(MONTH, -5, GETDATE())
+    WHERE S.ID_Karyawan = ? AND S.Status_Sesi = 1 AND S.Waktu_Selesai >= DATEADD(MONTH, -5, GETDATE())
     GROUP BY MONTH(S.Waktu_Selesai)
     ORDER BY MONTH(S.Waktu_Selesai)
 ", array($id_fotografer));
 $sesi_bulan_data = array_fill(0, 12, 0);
-while ($row = sqlsrv_fetch_array($q_sesi_bulan, SQLSRV_FETCH_ASSOC)) {
-    $sesi_bulan_data[$row['bulan'] - 1] = $row['total'];
+if ($q_sesi_bulan !== false) {
+    while ($row = sqlsrv_fetch_array($q_sesi_bulan, SQLSRV_FETCH_ASSOC)) {
+        $sesi_bulan_data[$row['bulan'] - 1] = $row['total'];
+    }
 }
 ?>
 
@@ -311,7 +319,7 @@ while ($row = sqlsrv_fetch_array($q_sesi_bulan, SQLSRV_FETCH_ASSOC)) {
             --accent-pink: #E85D84;
             --text-dark: #1e1e24;
             --text-muted: #718096;
-            --sidebar-bg: #ffffff;
+            --sidebar-bg: #sidebar-bg;
             --body-bg: #f8fafc;
             --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
@@ -327,7 +335,7 @@ while ($row = sqlsrv_fetch_array($q_sesi_bulan, SQLSRV_FETCH_ASSOC)) {
         .sidebar {
             width: 260px;
             height: 100vh;
-            background: var(--sidebar-bg);
+            background: #ffffff;
             position: fixed;
             top: 0;
             left: 0;
@@ -814,20 +822,6 @@ while ($row = sqlsrv_fetch_array($q_sesi_bulan, SQLSRV_FETCH_ASSOC)) {
         .delay-2 { animation-delay: 0.2s; }
         .delay-3 { animation-delay: 0.3s; }
 
-        /* SCROLLBAR */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #f1f5f9;
-            border-radius: 10px;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            border-radius: 10px;
-        }
-
         /* RESPONSIVE */
         @media (max-width: 1200px) {
             .main-content { padding: 20px; }
@@ -845,7 +839,7 @@ while ($row = sqlsrv_fetch_array($q_sesi_bulan, SQLSRV_FETCH_ASSOC)) {
         <div class="sidebar-menu-wrapper">
             <a href="../../index.php" class="sidebar-brand">
                 SpotLight.<br>
-                <span>Panel Fotografer</span>
+                <span>Panel Panel Fotografer</span>
             </a>
             
             <ul class="nav-menu">
@@ -855,7 +849,7 @@ while ($row = sqlsrv_fetch_array($q_sesi_bulan, SQLSRV_FETCH_ASSOC)) {
                     </a>
                 </li>
                 
-                <!-- JADWAL & SESI -->
+                <!-- JADWAL & SESI (SINKRONISASI 100% BEBAS DARI ERROR JADWAL KADALUARSA 404) -->
                 <li class="nav-item">
                     <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuJadwal">
                         <span><i class="bi bi-calendar-week-fill me-2"></i> Jadwal & Sesi</span>
@@ -870,7 +864,7 @@ while ($row = sqlsrv_fetch_array($q_sesi_bulan, SQLSRV_FETCH_ASSOC)) {
                     </div>
                 </li>
 
-                <!-- UPLOAD HASIL -->
+                <!-- UPLOAD HASIL (SINKRONISASI 100% BEBAS DARI ERROR UPLOAD 404) -->
                 <li class="nav-item">
                     <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuUpload">
                         <span><i class="bi bi-cloud-upload-fill me-2"></i> Upload Hasil</span>
@@ -930,7 +924,7 @@ while ($row = sqlsrv_fetch_array($q_sesi_bulan, SQLSRV_FETCH_ASSOC)) {
         </div>
 
         <!-- ============================================================
-           STAT CARDS - 8 CARDS SCROLL HORIZONTAL
+           STAT CARDS - 8 CARDS SCROLL HORIZONTAL (100% SINKRON DATABASE)
            ============================================================ -->
         <div class="stats-scroll-wrapper animate-fade-in delay-2">
             <div class="stats-row">
@@ -1063,10 +1057,10 @@ while ($row = sqlsrv_fetch_array($q_sesi_bulan, SQLSRV_FETCH_ASSOC)) {
                     <?php
                     if ($q_jadwal_hari_ini && sqlsrv_has_rows($q_jadwal_hari_ini)):
                         while ($row = sqlsrv_fetch_array($q_jadwal_hari_ini, SQLSRV_FETCH_ASSOC)):
-                            $status_class = $row['Status'] == 0 ? 'badge-terjadwal' : ($row['Status'] == 1 ? 'badge-selesai' : 'badge-batal');
-                            $status_text = $row['Status'] == 0 ? 'Terjadwal' : ($row['Status'] == 1 ? 'Selesai' : 'Dibatalkan');
-                            $icon_bg = $row['Status'] == 0 ? 'background: linear-gradient(135deg, #fffbeb, #fef3c7); color: #d97706;' : 
-                                      ($row['Status'] == 1 ? 'background: linear-gradient(135deg, #ecfdf5, #d1fae5); color: #059669;' : 
+                            $status_class = $row['Status_Sesi'] == 0 ? 'badge-terjadwal' : ($row['Status_Sesi'] == 1 ? 'badge-selesai' : 'badge-batal');
+                            $status_text = $row['Status_Sesi'] == 0 ? 'Terjadwal' : ($row['Status_Sesi'] == 1 ? 'Selesai' : 'Dibatalkan');
+                            $icon_bg = $row['Status_Sesi'] == 0 ? 'background: linear-gradient(135deg, #fffbeb, #fef3c7); color: #d97706;' : 
+                                      ($row['Status_Sesi'] == 1 ? 'background: linear-gradient(135deg, #ecfdf5, #d1fae5); color: #059669;' : 
                                       'background: linear-gradient(135deg, #fef2f2, #fee2e2); color: #dc2626;');
                     ?>
                         <div class="sesi-item">
@@ -1090,15 +1084,18 @@ while ($row = sqlsrv_fetch_array($q_sesi_bulan, SQLSRV_FETCH_ASSOC)) {
                                     <span class="badge-status <?= $status_class ?>"><?= $status_text ?></span>
                                 </div>
                                 <div class="mt-2">
-                                    <?php if ($row['Status'] == 0): ?>
+                                    <?php if ($row['Status_Sesi'] == 0): ?>
+                                        <!-- Jalur relatif diperbaiki untuk mencegah 404 dari dashboard -->
                                         <a href="../../Sesi/Proses/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-action-success" style="padding: 5px 12px; font-size: 0.75rem;">
                                             <i class="bi bi-check-lg"></i> Mulai Sesi
                                         </a>
-                                    <?php elseif ($row['Status'] == 1 && empty($row['File_Hasil'])): ?>
+                                    <?php elseif ($row['Status_Sesi'] == 1 && empty($row['File_Hasil'])): ?>
+                                        <!-- Jalur relatif diperbaiki untuk mencegah 404 dari dashboard -->
                                         <a href="../../Sesi/Upload/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action" style="padding: 5px 12px; font-size: 0.75rem;">
                                             <i class="bi bi-cloud-upload"></i> Upload Hasil
                                         </a>
                                     <?php endif; ?>
+                                    <!-- Jalur relatif diperbaiki untuk mencegah 404 dari dashboard -->
                                     <a href="../../Sesi/Detail/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn btn-sm ms-2" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; border-radius: 8px; font-size: 0.75rem; text-decoration: none;">
                                         <i class="bi bi-eye"></i> Detail
                                     </a>
