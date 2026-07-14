@@ -30,6 +30,10 @@ define('STATUS_ORDER_DIBATALKAN', 4);
 define('STATUS_JADWAL_TERSEDIA', 0);
 define('STATUS_JADWAL_BOOKED', 1);
 
+define('STATUS_PEMBAYARAN_MENUNGGU', 0);
+define('STATUS_PEMBAYARAN_VALID', 1);
+define('STATUS_PEMBAYARAN_DITOLAK', 2);
+
 // =====================================================
 // VALIDASI INPUT
 // =====================================================
@@ -58,7 +62,6 @@ $cek_sql = "
     INNER JOIN Pelanggan p ON o.ID_Pelanggan = p.ID_Pelanggan
     WHERE o.ID_Order = ? 
       AND o.ID_Pelanggan = ? 
-      AND o.Is_Deleted = 0
       AND o.Status = 1
 ";
 
@@ -179,14 +182,13 @@ try {
     $update_pembayaran_sql = "
         UPDATE Pembayaran 
         SET 
-            Is_Deleted = 1, 
-            Deleted_By = ?, 
-            Deleted_Date = GETDATE()
+            Status = 0, 
+            Modified_By = ?, 
+            Modified_Date = GETDATE()
         WHERE ID_Order = ? 
           AND Tipe_Pembayaran = 'DP' 
           AND Status_Pembayaran = ?
           AND Status = 1
-          AND Is_Deleted = 0
     ";
 
     $update_pembayaran_stmt = sqlsrv_query($conn, $update_pembayaran_sql, [
@@ -203,12 +205,11 @@ try {
     $update_penjualan_sql = "
         UPDATE Penjualan 
         SET 
-            Is_Deleted = 1, 
-            Deleted_By = ?, 
-            Deleted_Date = GETDATE()
+            Status = 0, 
+            Modified_By = ?, 
+            Modified_Date = GETDATE()
         WHERE ID_Order = ? 
           AND Status = 1
-          AND Is_Deleted = 0
     ";
 
     $update_penjualan_stmt = sqlsrv_query($conn, $update_penjualan_sql, [

@@ -69,7 +69,6 @@ $cek_sql = "
     INNER JOIN Pelanggan p ON o.ID_Pelanggan = p.ID_Pelanggan
     WHERE o.ID_Order = ? 
       AND o.ID_Pelanggan = ? 
-      AND o.Is_Deleted = 0
       AND o.Status = 1
 ";
 

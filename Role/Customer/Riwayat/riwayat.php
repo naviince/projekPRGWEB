@@ -60,6 +60,45 @@ if (isset($_POST['action_upload_pembayaran'])) {
         exit();
     }
 
+    if (!in_array($tipe_pembayaran, ['DP', 'Pelunasan'])) {
+        echo json_encode(['success' => false, 'message' => 'Tipe pembayaran tidak valid.']);
+        exit();
+    }
+
+    // -----------------------------------------------------
+    // VALIDASI KEPEMILIKAN + TAHAP ORDER YANG SESUAI
+    // Mencegah: upload DP dobel saat masih menunggu verifikasi,
+    // upload Pelunasan sebelum sesi foto selesai, atau upload
+    // untuk order yang bukan milik user / sudah dibatalkan.
+    // -----------------------------------------------------
+    $cek_order_sql = "SELECT Status_Order FROM [Order] WHERE ID_Order = ? AND ID_Pelanggan = ? AND Status = 1";
+    $cek_order_stmt = sqlsrv_query($conn, $cek_order_sql, [$id_order, $id_pelanggan]);
+    $order_row = $cek_order_stmt ? sqlsrv_fetch_array($cek_order_stmt, SQLSRV_FETCH_ASSOC) : null;
+
+    if (!$order_row) {
+        echo json_encode(['success' => false, 'message' => 'Order tidak ditemukan atau bukan milik Anda.']);
+        exit();
+    }
+
+    if ($tipe_pembayaran === 'DP' && $order_row['Status_Order'] != STATUS_ORDER_MENUNGGU_DP) {
+        echo json_encode(['success' => false, 'message' => 'Order ini sudah tidak dalam tahap menunggu DP.']);
+        exit();
+    }
+    if ($tipe_pembayaran === 'Pelunasan' && $order_row['Status_Order'] != STATUS_ORDER_SELESAI_FOTO) {
+        echo json_encode(['success' => false, 'message' => 'Pelunasan hanya bisa diunggah setelah sesi foto selesai.']);
+        exit();
+    }
+
+    // Cegah upload dobel selagi bukti sebelumnya masih menunggu verifikasi admin
+    $cek_pending_sql = "SELECT COUNT(*) AS total FROM Pembayaran 
+        WHERE ID_Order = ? AND Tipe_Pembayaran = ? AND Status_Pembayaran = ? AND Status = 1";
+    $cek_pending_stmt = sqlsrv_query($conn, $cek_pending_sql, [$id_order, $tipe_pembayaran, STATUS_PEMBAYARAN_MENUNGGU]);
+    $pending_row = $cek_pending_stmt ? sqlsrv_fetch_array($cek_pending_stmt, SQLSRV_FETCH_ASSOC) : null;
+    if ($pending_row && $pending_row['total'] > 0) {
+        echo json_encode(['success' => false, 'message' => 'Anda masih memiliki bukti ' . $tipe_pembayaran . ' yang sedang menunggu verifikasi admin. Mohon tunggu sampai diproses.']);
+        exit();
+    }
+
     if (!isset($_FILES['bukti_transfer']) || $_FILES['bukti_transfer']['error'] === UPLOAD_ERR_NO_FILE) {
         echo json_encode(['success' => false, 'message' => 'Bukti transfer wajib diunggah.']);
         exit();
@@ -281,6 +320,55 @@ if (!empty($riwayat_list)) {
 }
 
 // =====================================================
+// AUTO-BATALKAN ORDER YANG KADALUARSA & BELUM DP
+// - Order dengan status "Menunggu DP" (0) yang seluruh
+//   jadwalnya sudah lewat otomatis dipindah ke "Dibatalkan" (4).
+// - Order yang sudah DP/lunas TIDAK disentuh otomatis,
+//   karena ada uang yang harus diverifikasi/direfund manual oleh admin.
+// - Ini menggantikan konsep "hapus permanen": data order tetap
+//   tersimpan sebagai riwayat (Status tetap 1), tapi statusnya
+//   berubah jadi Dibatalkan sehingga otomatis pindah ke tab Batal
+//   dan tidak lagi dianggap pesanan aktif.
+// =====================================================
+$auto_cancel_ids = [];
+foreach ($riwayat_list as $item) {
+    $oid = $item['ID_Order'];
+    if (
+        $item['Status_Order'] == STATUS_ORDER_MENUNGGU_DP &&
+        isset($jadwal_expired[$oid]) && $jadwal_expired[$oid] === true
+    ) {
+        $auto_cancel_ids[] = $oid;
+    }
+}
+
+if (!empty($auto_cancel_ids)) {
+    $ph = implode(',', array_fill(0, count($auto_cancel_ids), '?'));
+    $sql_auto_cancel = "UPDATE [Order] 
+        SET Status_Order = " . STATUS_ORDER_DIBATALKAN . ", 
+            Keterangan = 'Dibatalkan otomatis oleh sistem: jadwal kadaluarsa tanpa pembayaran DP',
+            Modified_By = 'system_auto', 
+            Modified_Date = GETDATE()
+        WHERE ID_Order IN ($ph) AND Status_Order = " . STATUS_ORDER_MENUNGGU_DP;
+    $stmt_auto_cancel = sqlsrv_query($conn, $sql_auto_cancel, $auto_cancel_ids);
+
+    if ($stmt_auto_cancel !== false) {
+        // Sinkronkan array di memori supaya tampilan langsung update
+        // tanpa perlu reload halaman kedua kalinya.
+        foreach ($riwayat_list as &$item_ref) {
+            if (in_array($item_ref['ID_Order'], $auto_cancel_ids)) {
+                $item_ref['Status_Order'] = STATUS_ORDER_DIBATALKAN;
+                $item_ref['Keterangan'] = 'Dibatalkan otomatis oleh sistem: jadwal kadaluarsa tanpa pembayaran DP';
+            }
+        }
+        unset($item_ref);
+        // Order yang sudah otomatis dibatalkan bukan lagi "expired" (sudah final di tab Batal)
+        foreach ($auto_cancel_ids as $aid) {
+            $jadwal_expired[$aid] = false;
+        }
+    }
+}
+
+// =====================================================
 // AMBIL BARANG CETAK PER ORDER
 // =====================================================
 $barang_per_order = [];
@@ -477,8 +565,22 @@ function getAksiButtons($item, $jadwal_expired_map, $jadwal_map) {
     switch ($status) {
         case STATUS_ORDER_MENUNGGU_DP:
             $dp_amount = $total_harga_diskon * 0.65;
-            $buttons .= '<button onclick="bukaModalPembayaran(' . $id_order . ', \'DP\', ' . $dp_amount . ', ' . $total_harga_diskon . ')" class="btn-aksi btn-upload"><i class="bi bi-upload"></i> Upload Bukti DP</button>';
-            $buttons .= '<a href="javascript:void(0)" onclick="batalkanOrder(' . $id_order . ')" class="btn-aksi btn-batal"><i class="bi bi-x-lg"></i> Batalkan</a>';
+            $status_dp = $item['Status_DP'] ?? null;
+
+            if ($status_dp === STATUS_PEMBAYARAN_MENUNGGU) {
+                // Sudah upload, tinggal nunggu admin verifikasi -> tombol upload dinonaktifkan
+                $buttons .= '<span class="btn-aksi btn-pending"><i class="bi bi-hourglass-split"></i> Menunggu Verifikasi Admin</span>';
+            } elseif ($status_dp === STATUS_PEMBAYARAN_DITOLAK) {
+                $buttons .= '<div class="notice-ditolak"><i class="bi bi-exclamation-triangle"></i> Bukti DP sebelumnya ditolak admin. Silakan upload ulang.</div>';
+                $buttons .= '<button onclick="bukaModalPembayaran(' . $id_order . ', \'DP\', ' . $dp_amount . ', ' . $total_harga_diskon . ')" class="btn-aksi btn-upload"><i class="bi bi-upload"></i> Upload Ulang Bukti DP</button>';
+            } else {
+                $buttons .= '<button onclick="bukaModalPembayaran(' . $id_order . ', \'DP\', ' . $dp_amount . ', ' . $total_harga_diskon . ')" class="btn-aksi btn-upload"><i class="bi bi-upload"></i> Upload Bukti DP</button>';
+            }
+
+            // Batalkan tetap tersedia selama belum ada bukti DP yang menunggu verifikasi
+            if ($status_dp !== STATUS_PEMBAYARAN_MENUNGGU) {
+                $buttons .= '<a href="javascript:void(0)" onclick="batalkanOrder(' . $id_order . ')" class="btn-aksi btn-batal"><i class="bi bi-x-lg"></i> Batalkan</a>';
+            }
             break;
 
         case STATUS_ORDER_DP_TERVERIFIKASI:
@@ -490,7 +592,16 @@ function getAksiButtons($item, $jadwal_expired_map, $jadwal_map) {
 
         case STATUS_ORDER_SELESAI_FOTO:
             $remaining_amount = $total_harga_diskon - ($item['Jumlah_DP'] ?? 0);
-            $buttons .= '<button onclick="bukaModalPembayaran(' . $id_order . ', \'Pelunasan\', ' . $remaining_amount . ', ' . $total_harga_diskon . ')" class="btn-aksi btn-upload" style="background:linear-gradient(135deg, #059669, #10b981);color:#fff;"><i class="bi bi-upload"></i> Upload Pelunasan</button>';
+            $status_pelunasan = $item['Status_Pelunasan'] ?? null;
+
+            if ($status_pelunasan === STATUS_PEMBAYARAN_MENUNGGU) {
+                $buttons .= '<span class="btn-aksi btn-pending"><i class="bi bi-hourglass-split"></i> Menunggu Verifikasi Admin</span>';
+            } else {
+                if ($status_pelunasan === STATUS_PEMBAYARAN_DITOLAK) {
+                    $buttons .= '<div class="notice-ditolak"><i class="bi bi-exclamation-triangle"></i> Bukti pelunasan sebelumnya ditolak admin. Silakan upload ulang.</div>';
+                }
+                $buttons .= '<button onclick="bukaModalPembayaran(' . $id_order . ', \'Pelunasan\', ' . $remaining_amount . ', ' . $total_harga_diskon . ')" class="btn-aksi btn-upload" style="background:linear-gradient(135deg, #059669, #10b981);color:#fff;"><i class="bi bi-upload"></i> Upload Pelunasan</button>';
+            }
             if ($has_file && $id_sesi > 0) {
                 $buttons .= '<a href="../../../assets/img/bukti/' . rawurlencode($item['File_Hasil']) . '" class="btn-aksi btn-preview" download><i class="bi bi-image"></i> Preview Hasil</a>';
             }
@@ -1235,6 +1346,9 @@ foreach ($riwayat_list as $item) {
         .btn-rating:hover { background: #d97706; color: #fff; }
         .btn-expired { background: #f3f4f6; color: #6b7280; cursor: not-allowed; }
         .btn-expired:hover { transform: none; box-shadow: none; }
+        .btn-pending { background: #fef3c7; color: #92400e; cursor: default; border: 1px solid #fde68a; }
+        .btn-pending:hover { transform: none; box-shadow: none; }
+        .notice-ditolak { width: 100%; background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
 
         .fotografer-info {
             display: flex;
@@ -2431,14 +2545,10 @@ function copyRekeningPopup(noRek, el) {
             }, 2000);
         }
 
-        Swal.fire({
+        tampilkanToast({
             icon: 'success',
             title: 'Tersalin!',
-            text: 'Nomor rekening berhasil disalin ke clipboard.',
-            timer: 1500,
-            showConfirmButton: false,
-            toast: true,
-            position: 'top-end'
+            text: 'Nomor rekening berhasil disalin ke clipboard.'
         });
     });
 }
@@ -2548,6 +2658,32 @@ function handleFileSelectPopup(input) {
 });
 
 // =====================================================
+// ANTI-NUMPUK NOTIFIKASI
+// Semua Swal.fire pop-up harus lewat helper ini supaya
+// notifikasi lama otomatis ditutup dulu sebelum yang baru muncul.
+// =====================================================
+function tampilkanNotif(opsi) {
+    Swal.close(); // tutup notif yang sedang tampil (kalau ada) biar tidak numpuk
+    return Swal.fire(opsi);
+}
+
+// Toast khusus (pojok kanan atas, auto-hilang) juga anti-numpuk
+function tampilkanToast(opsi) {
+    Swal.close();
+    return Swal.fire(Object.assign({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 1500,
+        timerProgressBar: true
+    }, opsi));
+}
+
+// Kunci proses supaya tombol tidak bisa diklik berkali-kali
+// selagi masih menunggu response server (penyebab utama notif numpuk).
+const uiLock = { batal: false, rating: false, upload: false };
+
+// =====================================================
 // MODAL RATING
 // =====================================================
 const stars = document.querySelectorAll('#starContainer i');
@@ -2599,7 +2735,7 @@ function tutupModalRating() {
 
 function submitRating() {
     if (selectedRating === 0) {
-        Swal.fire({
+        tampilkanNotif({
             icon: 'warning',
             title: 'Pilih Rating',
             text: 'Silakan pilih minimal 1 bintang!',
@@ -2607,6 +2743,9 @@ function submitRating() {
         });
         return;
     }
+
+    if (uiLock.rating) return; // cegah double submit -> notif numpuk
+    uiLock.rating = true;
 
     const review = document.getElementById('reviewText').value;
 
@@ -2618,7 +2757,7 @@ function submitRating() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            Swal.fire({
+            tampilkanNotif({
                 icon: 'success',
                 title: 'Berhasil!',
                 text: 'Terima kasih atas rating dan review Anda!',
@@ -2627,7 +2766,8 @@ function submitRating() {
                 location.reload();
             });
         } else {
-            Swal.fire({
+            uiLock.rating = false;
+            tampilkanNotif({
                 icon: 'error',
                 title: 'Gagal',
                 text: data.message || 'Terjadi kesalahan',
@@ -2636,7 +2776,8 @@ function submitRating() {
         }
     })
     .catch(err => {
-        Swal.fire({
+        uiLock.rating = false;
+        tampilkanNotif({
             icon: 'error',
             title: 'Error',
             text: 'Terjadi kesalahan sistem',
@@ -2649,7 +2790,9 @@ function submitRating() {
 // BATALKAN ORDER
 // =====================================================
 function batalkanOrder(id_order) {
-    Swal.fire({
+    if (uiLock.batal) return; // cegah dialog konfirmasi terbuka berkali-kali
+
+    tampilkanNotif({
         title: 'Batalkan Pesanan?',
         text: 'Apakah Anda yakin ingin membatalkan pesanan ini? Slot jadwal akan dilepas.',
         icon: 'warning',
@@ -2660,31 +2803,38 @@ function batalkanOrder(id_order) {
         cancelButtonText: 'Tidak'
     }).then((result) => {
         if (result.isConfirmed) {
-            Swal.fire({
+            uiLock.batal = true;
+
+            tampilkanNotif({
                 title: 'Membatalkan...',
                 html: 'Mohon tunggu...',
                 allowOutsideClick: false,
                 didOpen: () => { Swal.showLoading(); }
             });
 
-            fetch('../Pembayaran/proses_batal_order.php?id_order=' + id_order + '&redirect=riwayat')
-            .then(r => {
-                if (r.redirected) {
-                    window.location.href = r.url;
+            fetch('action_batal.php?id_order=' + id_order)
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    tampilkanNotif({
+                        icon: 'success',
+                        title: 'Dibatalkan',
+                        text: data.message || 'Pesanan berhasil dibatalkan',
+                        confirmButtonColor: '#d83f67'
+                    }).then(() => location.reload());
                 } else {
-                    return r.text();
+                    uiLock.batal = false;
+                    tampilkanNotif({
+                        icon: 'error',
+                        title: 'Gagal',
+                        text: data.message || 'Gagal membatalkan pesanan',
+                        confirmButtonColor: '#d83f67'
+                    });
                 }
             })
-            .then(() => {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Dibatalkan',
-                    text: 'Pesanan berhasil dibatalkan',
-                    confirmButtonColor: '#d83f67'
-                }).then(() => location.reload());
-            })
             .catch(err => {
-                Swal.fire({
+                uiLock.batal = false;
+                tampilkanNotif({
                     icon: 'error',
                     title: 'Gagal',
                     text: 'Gagal membatalkan pesanan',
