@@ -967,16 +967,612 @@ function fmtTgl($d) {
             to { opacity: 1; transform: translateY(0); }
         }
 
-        @media (max-width: 992px) {
-            .hero-title { font-size: 2rem; }
-            .info-section { grid-template-columns: 1fr; }
-            .nav-menu-center { display: none; }
-            .main-container { padding: 20px; }
-            .top-navbar { padding: 16px 20px; }
-            .booking-steps { display: none; }
-            .scroll-nav-btn { display: none !important; }
-            .paket-card { min-width: 260px; max-width: 260px; }
+
+        /* ========== RESPONSIVE BREAKPOINTS ========== */
+        /* Tablet & Mobile (max-width: 991.98px) */
+        @media (max-width: 991.98px) {
+            .top-navbar {
+                padding: 12px 16px;
+            }
+            .nav-logo {
+                font-size: 1.4rem;
+            }
+            .nav-logo span {
+                font-size: 0.75rem;
+            }
+            .nav-menu-center {
+                display: none;
+            }
+            .nav-btn-booking {
+                padding: 8px 16px;
+                font-size: 0.8rem;
+            }
+            .nav-avatar {
+                width: 36px;
+                height: 36px;
+            }
+            .hero-banner {
+                padding: 40px 20px;
+            }
+            .hero-title {
+                font-size: 1.8rem;
+            }
+            .hero-subtitle {
+                font-size: 0.9rem;
+            }
+            .hero-btn {
+                padding: 12px 28px;
+                font-size: 0.9rem;
+            }
+            .booking-steps {
+                display: none;
+            }
+            .main-container {
+                padding: 20px 16px;
+            }
+            .stats-bar {
+                gap: 10px;
+            }
+            .stat-chip {
+                padding: 10px 14px;
+            }
+            .stat-chip-icon {
+                width: 32px;
+                height: 32px;
+                font-size: 0.9rem;
+            }
+            .stat-chip-text {
+                font-size: 0.8rem;
+            }
+            .stat-chip-sub {
+                font-size: 0.7rem;
+            }
+            .section-title {
+                font-size: 1.1rem;
+            }
+            .paket-card {
+                min-width: 260px;
+                max-width: 260px;
+            }
+            .paket-img-wrapper {
+                height: 180px;
+            }
+            .paket-nama {
+                font-size: 1rem;
+            }
+            .paket-harga {
+                font-size: 1.1rem;
+            }
+            .paket-btn {
+                padding: 10px 20px;
+                font-size: 0.8rem;
+            }
+            .scroll-nav-btn {
+                display: none !important;
+            }
+            .info-section {
+                grid-template-columns: 1fr;
+            }
+            .info-card {
+                padding: 20px;
+            }
+            .modal-dialog.modal-lg {
+                max-width: 95%;
+                margin: 10px auto;
+            }
+            .modal-body-custom {
+                padding: 16px;
+            }
+            .img-preview-container {
+                width: 90px;
+                height: 90px;
+            }
+            .form-control-custom {
+                padding: 8px 12px;
+                font-size: 0.85rem;
+            }
+            .nav-dropdown {
+                right: -10px;
+                min-width: 200px;
+            }
         }
+
+        /* Mobile Landscape & Small Tablets (max-width: 767.98px) */
+        @media (max-width: 767.98px) {
+            .top-navbar {
+                padding: 10px 12px;
+            }
+            .nav-logo {
+                font-size: 1.2rem;
+            }
+            .nav-logo span {
+                display: none;
+            }
+            .nav-right {
+                gap: 10px;
+            }
+            .nav-btn-booking {
+                padding: 8px 12px;
+                font-size: 0.75rem;
+            }
+            .nav-btn-booking i {
+                display: none;
+            }
+            .hero-banner {
+                padding: 30px 16px;
+            }
+            .hero-title {
+                font-size: 1.5rem;
+                letter-spacing: -0.5px;
+            }
+            .hero-subtitle {
+                font-size: 0.85rem;
+                margin-bottom: 20px;
+            }
+            .hero-btn {
+                padding: 10px 24px;
+                font-size: 0.85rem;
+            }
+            .main-container {
+                padding: 16px 12px;
+            }
+            .stats-bar {
+                gap: 8px;
+                padding-bottom: 6px;
+            }
+            .stat-chip {
+                padding: 8px 12px;
+                border-radius: 12px;
+            }
+            .stat-chip-icon {
+                width: 28px;
+                height: 28px;
+                font-size: 0.8rem;
+                border-radius: 8px;
+            }
+            .stat-chip-text {
+                font-size: 0.75rem;
+            }
+            .stat-chip-sub {
+                font-size: 0.65rem;
+            }
+            .section-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+                margin-bottom: 16px;
+            }
+            .section-title {
+                font-size: 1rem;
+            }
+            .section-title i {
+                font-size: 1.1rem;
+            }
+            .d-flex.flex-wrap.justify-content-between.align-items-center.gap-3 {
+                flex-direction: column !important;
+                align-items: stretch !important;
+            }
+            .d-flex.flex-wrap.justify-content-between.align-items-center.gap-3 .position-relative {
+                max-width: 100% !important;
+                min-width: 100% !important;
+            }
+            .d-flex.flex-wrap.justify-content-between.align-items-center.gap-3 > div:last-child {
+                min-width: 100% !important;
+            }
+            #sortPaket {
+                width: 100%;
+            }
+            .paket-scroll-wrapper {
+                margin-bottom: 30px;
+            }
+            .paket-card {
+                min-width: 240px;
+                max-width: 240px;
+                border-radius: 16px;
+            }
+            .paket-img-wrapper {
+                height: 160px;
+            }
+            .paket-badge-durasi,
+            .paket-badge-kapasitas {
+                padding: 4px 10px;
+                font-size: 0.7rem;
+            }
+            .paket-body {
+                padding: 14px;
+            }
+            .paket-nama {
+                font-size: 0.95rem;
+            }
+            .paket-desc {
+                font-size: 0.8rem;
+                margin-bottom: 12px;
+            }
+            .paket-meta {
+                gap: 8px;
+                margin-bottom: 12px;
+            }
+            .paket-meta-item {
+                padding: 4px 8px;
+                font-size: 0.75rem;
+            }
+            .paket-footer {
+                padding-top: 12px;
+            }
+            .paket-harga {
+                font-size: 1rem;
+            }
+            .paket-harga-satuan {
+                font-size: 0.7rem;
+            }
+            .paket-btn {
+                padding: 8px 16px;
+                font-size: 0.8rem;
+                border-radius: 10px;
+            }
+            .info-section {
+                gap: 16px;
+                margin-top: 24px;
+            }
+            .info-card {
+                padding: 16px;
+                border-radius: 16px;
+            }
+            .info-card-title {
+                font-size: 1rem;
+                margin-bottom: 12px;
+            }
+            .info-item {
+                padding: 10px 0;
+            }
+            .info-icon {
+                width: 36px;
+                height: 36px;
+                font-size: 0.9rem;
+            }
+            .info-text {
+                font-size: 0.85rem;
+            }
+            .info-sub {
+                font-size: 0.75rem;
+            }
+            .info-btn {
+                padding: 5px 12px;
+                font-size: 0.7rem;
+            }
+            .barang-cetak-scroll-container {
+                max-height: 200px;
+            }
+            .modal-content-custom {
+                border-radius: 20px;
+            }
+            .modal-header-custom {
+                padding: 16px;
+            }
+            .modal-header-custom h5 {
+                font-size: 1rem;
+            }
+            .modal-body-custom {
+                padding: 16px;
+            }
+            .profile-nav-tabs .nav-link {
+                padding: 8px 14px;
+                font-size: 0.85rem;
+            }
+            .img-preview-container {
+                width: 80px;
+                height: 80px;
+            }
+            .btn-upload-trigger {
+                width: 28px;
+                height: 28px;
+            }
+            .form-label-custom {
+                font-size: 0.8rem;
+            }
+            .form-control-custom {
+                padding: 8px 12px;
+                font-size: 0.85rem;
+                border-radius: 10px;
+            }
+            .pwd-requirement {
+                font-size: 0.7rem;
+            }
+            .modal-footer-custom {
+                padding: 12px 16px;
+                flex-direction: column-reverse;
+                gap: 8px;
+            }
+            .modal-footer-custom .btn {
+                width: 100%;
+                padding: 10px;
+            }
+            .nav-dropdown {
+                right: -5px;
+                min-width: 180px;
+                border-radius: 12px;
+                padding: 8px;
+            }
+            .dropdown-header {
+                font-size: 0.9rem;
+                padding: 6px 12px;
+            }
+            .dropdown-item {
+                padding: 10px 12px;
+                font-size: 0.85rem;
+            }
+        }
+
+        /* Small Mobile (max-width: 575.98px) */
+        @media (max-width: 575.98px) {
+            .top-navbar {
+                padding: 8px 10px;
+            }
+            .nav-logo {
+                font-size: 1.1rem;
+            }
+            .nav-btn-booking {
+                padding: 6px 10px;
+                font-size: 0.7rem;
+                border-radius: 8px;
+            }
+            .nav-avatar {
+                width: 32px;
+                height: 32px;
+            }
+            .hero-banner {
+                padding: 24px 12px;
+            }
+            .hero-title {
+                font-size: 1.3rem;
+            }
+            .hero-subtitle {
+                font-size: 0.8rem;
+            }
+            .hero-btn {
+                padding: 10px 20px;
+                font-size: 0.8rem;
+            }
+            .main-container {
+                padding: 12px 10px;
+            }
+            .stats-bar {
+                gap: 6px;
+            }
+            .stat-chip {
+                padding: 6px 10px;
+                border-radius: 10px;
+            }
+            .stat-chip-icon {
+                width: 24px;
+                height: 24px;
+                font-size: 0.7rem;
+            }
+            .stat-chip-text {
+                font-size: 0.7rem;
+            }
+            .stat-chip-sub {
+                font-size: 0.6rem;
+            }
+            .paket-card {
+                min-width: 220px;
+                max-width: 220px;
+            }
+            .paket-img-wrapper {
+                height: 140px;
+            }
+            .paket-badge-durasi,
+            .paket-badge-kapasitas {
+                padding: 3px 8px;
+                font-size: 0.65rem;
+            }
+            .paket-body {
+                padding: 12px;
+            }
+            .paket-nama {
+                font-size: 0.9rem;
+            }
+            .paket-desc {
+                font-size: 0.75rem;
+                -webkit-line-clamp: 2;
+            }
+            .paket-meta {
+                gap: 6px;
+                margin-bottom: 10px;
+            }
+            .paket-meta-item {
+                padding: 3px 6px;
+                font-size: 0.7rem;
+                border-radius: 6px;
+            }
+            .paket-footer {
+                padding-top: 10px;
+            }
+            .paket-harga {
+                font-size: 0.9rem;
+            }
+            .paket-btn {
+                padding: 6px 12px;
+                font-size: 0.75rem;
+            }
+            .info-card {
+                padding: 14px;
+                border-radius: 14px;
+            }
+            .info-card-title {
+                font-size: 0.95rem;
+            }
+            .info-item {
+                padding: 8px 0;
+            }
+            .info-icon {
+                width: 32px;
+                height: 32px;
+                font-size: 0.8rem;
+            }
+            .info-text {
+                font-size: 0.8rem;
+            }
+            .info-sub {
+                font-size: 0.7rem;
+            }
+            .info-btn {
+                padding: 4px 10px;
+                font-size: 0.65rem;
+            }
+            .section-count {
+                font-size: 0.75rem;
+            }
+            .modal-dialog {
+                margin: 5px;
+            }
+            .modal-content-custom {
+                border-radius: 16px;
+            }
+            .modal-header-custom {
+                padding: 14px;
+            }
+            .modal-body-custom {
+                padding: 14px;
+            }
+            .profile-nav-tabs {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                scrollbar-width: none;
+            }
+            .profile-nav-tabs::-webkit-scrollbar {
+                display: none;
+            }
+            .profile-nav-tabs .nav-link {
+                padding: 8px 12px;
+                font-size: 0.8rem;
+                white-space: nowrap;
+            }
+            .row.g-3 > [class*="col-"] {
+                padding-left: 8px;
+                padding-right: 8px;
+            }
+            .form-control-custom {
+                padding: 8px 10px;
+                font-size: 0.8rem;
+            }
+            .img-preview-container {
+                width: 70px;
+                height: 70px;
+            }
+            .nav-dropdown {
+                right: 0;
+                min-width: 170px;
+                border-radius: 10px;
+            }
+            .dropdown-item {
+                padding: 8px 10px;
+                font-size: 0.8rem;
+            }
+        }
+
+        /* Extra Small Mobile (max-width: 359.98px) */
+        @media (max-width: 359.98px) {
+            .nav-logo {
+                font-size: 1rem;
+            }
+            .nav-btn-booking {
+                padding: 5px 8px;
+                font-size: 0.65rem;
+            }
+            .hero-title {
+                font-size: 1.1rem;
+            }
+            .hero-subtitle {
+                font-size: 0.75rem;
+            }
+            .hero-btn {
+                padding: 8px 16px;
+                font-size: 0.75rem;
+            }
+            .paket-card {
+                min-width: 200px;
+                max-width: 200px;
+            }
+            .paket-img-wrapper {
+                height: 120px;
+            }
+            .paket-nama {
+                font-size: 0.85rem;
+            }
+            .paket-desc {
+                font-size: 0.7rem;
+            }
+            .paket-meta-item {
+                font-size: 0.65rem;
+            }
+            .paket-harga {
+                font-size: 0.85rem;
+            }
+            .paket-btn {
+                padding: 5px 10px;
+                font-size: 0.7rem;
+            }
+            .stat-chip-text {
+                font-size: 0.65rem;
+            }
+            .info-text {
+                font-size: 0.75rem;
+            }
+        }
+
+        /* Large Screens (min-width: 1200px) */
+        @media (min-width: 1200px) {
+            .main-container {
+                max-width: 1320px;
+            }
+            .paket-card {
+                min-width: 320px;
+                max-width: 320px;
+            }
+            .paket-img-wrapper {
+                height: 240px;
+            }
+        }
+
+        /* Touch Device Optimizations */
+        @media (hover: none) and (pointer: coarse) {
+            .paket-card:hover {
+                transform: none;
+            }
+            .paket-card:active {
+                transform: scale(0.98);
+            }
+            .stat-chip:hover {
+                transform: none;
+            }
+            .info-btn:hover {
+                background: var(--s-pink);
+                color: var(--p-pink);
+            }
+            .nav-avatar:hover {
+                transform: none;
+            }
+            .hero-btn:hover {
+                transform: none;
+            }
+            .nav-btn-booking:hover {
+                transform: none;
+            }
+        }
+
+        /* Reduced Motion Preference */
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+            html {
+                scroll-behavior: auto;
+            }
+        }
+
     </style>
 </head>
 <body>
