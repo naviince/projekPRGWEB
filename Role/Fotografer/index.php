@@ -239,9 +239,37 @@ $q_jadwal_hari_ini = sqlsrv_query($conn, "
     ORDER BY J.Jam_Mulai ASC
 ", array($id_fotografer));
 
-// Jadwal Sesi Foto Mendatang (7 hari ke depan)
+// =====================================================
+// FILTER DATA - SESI MENDATANG & RIWAYAT SELESAI
+// =====================================================
+$jm_cari = isset($_GET['jm_cari']) ? trim($_GET['jm_cari']) : "";
+$jm_dari = isset($_GET['jm_dari']) ? trim($_GET['jm_dari']) : "";
+$jm_sampai = isset($_GET['jm_sampai']) ? trim($_GET['jm_sampai']) : "";
+
+$rs_cari = isset($_GET['rs_cari']) ? trim($_GET['rs_cari']) : "";
+$rs_dari = isset($_GET['rs_dari']) ? trim($_GET['rs_dari']) : "";
+$rs_sampai = isset($_GET['rs_sampai']) ? trim($_GET['rs_sampai']) : "";
+
+// Jadwal Sesi Foto Mendatang (dengan filter nama customer & rentang tanggal)
+$jm_conditions = ["S.ID_Karyawan = ?", "S.Status_Sesi = 0", "J.Tanggal_Jadwal >= CAST(GETDATE() AS DATE)"];
+$jm_params = [$id_fotografer];
+if (!empty($jm_cari)) {
+    $jm_conditions[] = "P.Nama_Pelanggan LIKE ?";
+    $jm_params[] = "%$jm_cari%";
+}
+if (!empty($jm_dari) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $jm_dari)) {
+    $jm_conditions[] = "CAST(J.Tanggal_Jadwal AS DATE) >= ?";
+    $jm_params[] = $jm_dari;
+}
+if (!empty($jm_sampai) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $jm_sampai)) {
+    $jm_conditions[] = "CAST(J.Tanggal_Jadwal AS DATE) <= ?";
+    $jm_params[] = $jm_sampai;
+}
+$jm_where = implode(" AND ", $jm_conditions);
+$jm_top = (!empty($jm_cari) || !empty($jm_dari) || !empty($jm_sampai)) ? 20 : 5; // kalau lagi filter, tampilkan lebih banyak
+
 $q_jadwal_mendatang = sqlsrv_query($conn, "
-    SELECT TOP 5
+    SELECT TOP $jm_top
         S.ID_Sesi_Foto,
         P.Nama_Pelanggan,
         PK.Nama_Paket,
@@ -257,13 +285,30 @@ $q_jadwal_mendatang = sqlsrv_query($conn, "
     JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan
     JOIN Order_Jadwal OJ ON O.ID_Order = OJ.ID_Order
     JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
-    WHERE S.ID_Karyawan = ? AND S.Status_Sesi = 0 AND J.Tanggal_Jadwal > CAST(GETDATE() AS DATE)
+    WHERE $jm_where
     ORDER BY J.Tanggal_Jadwal ASC, J.Jam_Mulai ASC
-", array($id_fotografer));
+", $jm_params);
 
-// Riwayat Sesi Selesai (Top 5)
+// Riwayat Sesi Selesai (dengan filter nama customer & rentang tanggal selesai)
+$rs_conditions = ["S.ID_Karyawan = ?", "S.Status_Sesi = 1"];
+$rs_params = [$id_fotografer];
+if (!empty($rs_cari)) {
+    $rs_conditions[] = "P.Nama_Pelanggan LIKE ?";
+    $rs_params[] = "%$rs_cari%";
+}
+if (!empty($rs_dari) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $rs_dari)) {
+    $rs_conditions[] = "CAST(S.Waktu_Selesai AS DATE) >= ?";
+    $rs_params[] = $rs_dari;
+}
+if (!empty($rs_sampai) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $rs_sampai)) {
+    $rs_conditions[] = "CAST(S.Waktu_Selesai AS DATE) <= ?";
+    $rs_params[] = $rs_sampai;
+}
+$rs_where = implode(" AND ", $rs_conditions);
+$rs_top = (!empty($rs_cari) || !empty($rs_dari) || !empty($rs_sampai)) ? 20 : 5;
+
 $q_riwayat_selesai = sqlsrv_query($conn, "
-    SELECT TOP 5
+    SELECT TOP $rs_top
         S.ID_Sesi_Foto,
         P.Nama_Pelanggan,
         PK.Nama_Paket,
@@ -275,9 +320,9 @@ $q_riwayat_selesai = sqlsrv_query($conn, "
     JOIN [Order] O ON S.ID_Order = O.ID_Order
     JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
     JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
-    WHERE S.ID_Karyawan = ? AND S.Status_Sesi = 1
+    WHERE $rs_where
     ORDER BY S.Waktu_Selesai DESC
-", array($id_fotografer));
+", $rs_params);
 
 // Statistik Sesi per Bulan (6 bulan terakhir)
 $q_sesi_bulan = sqlsrv_query($conn, "
@@ -1145,6 +1190,19 @@ if ($q_sesi_bulan !== false) {
                         <h5 class="content-title"><i class="bi bi-calendar-event-fill text-danger me-2"></i>Sesi Mendatang</h5>
                         <a href="../../Sesi/Terjadwal/index.php" class="btn btn-sm" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; border-radius: 8px; font-size: 0.75rem; text-decoration: none;">Lihat Semua</a>
                     </div>
+
+                    <form method="GET" class="d-flex flex-wrap gap-2 mb-3" style="padding:0 2px;">
+                        <input type="hidden" name="rs_cari" value="<?= htmlspecialchars($rs_cari) ?>">
+                        <input type="hidden" name="rs_dari" value="<?= htmlspecialchars($rs_dari) ?>">
+                        <input type="hidden" name="rs_sampai" value="<?= htmlspecialchars($rs_sampai) ?>">
+                        <input type="text" name="jm_cari" value="<?= htmlspecialchars($jm_cari) ?>" placeholder="Cari nama customer..." style="flex:1;min-width:140px;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:0.8rem;">
+                        <input type="date" name="jm_dari" value="<?= htmlspecialchars($jm_dari) ?>" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:0.78rem;">
+                        <input type="date" name="jm_sampai" value="<?= htmlspecialchars($jm_sampai) ?>" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:0.78rem;">
+                        <button type="submit" style="background:var(--p-pink);color:#fff;border:none;border-radius:10px;padding:8px 14px;font-size:0.8rem;font-weight:700;"><i class="bi bi-funnel-fill"></i></button>
+                        <?php if (!empty($jm_cari) || !empty($jm_dari) || !empty($jm_sampai)): ?>
+                        <a href="?<?= http_build_query(['rs_cari'=>$rs_cari,'rs_dari'=>$rs_dari,'rs_sampai'=>$rs_sampai]) ?>" style="background:#f1f5f9;color:#64748b;border-radius:10px;padding:8px 12px;font-size:0.8rem;display:flex;align-items:center;text-decoration:none;"><i class="bi bi-x-lg"></i></a>
+                        <?php endif; ?>
+                    </form>
                     
                     <div class="timeline">
                         <?php
@@ -1171,7 +1229,7 @@ if ($q_sesi_bulan !== false) {
                         ?>
                             <div class="text-center py-4">
                                 <i class="bi bi-calendar-check fs-1 mb-2" style="color: #cbd5e1;"></i>
-                                <p class="text-muted">Tidak ada sesi mendatang.</p>
+                                <p class="text-muted"><?= (!empty($jm_cari)||!empty($jm_dari)||!empty($jm_sampai)) ? 'Tidak ada sesi yang cocok dengan filter.' : 'Tidak ada sesi mendatang.' ?></p>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -1185,6 +1243,19 @@ if ($q_sesi_bulan !== false) {
                         <h5 class="content-title"><i class="bi bi-clock-history text-danger me-2"></i>Riwayat Selesai</h5>
                         <a href="../../Sesi/Selesai/index.php" class="btn btn-sm" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; border-radius: 8px; font-size: 0.75rem; text-decoration: none;">Lihat Semua</a>
                     </div>
+
+                    <form method="GET" class="d-flex flex-wrap gap-2 mb-3" style="padding:0 2px;">
+                        <input type="hidden" name="jm_cari" value="<?= htmlspecialchars($jm_cari) ?>">
+                        <input type="hidden" name="jm_dari" value="<?= htmlspecialchars($jm_dari) ?>">
+                        <input type="hidden" name="jm_sampai" value="<?= htmlspecialchars($jm_sampai) ?>">
+                        <input type="text" name="rs_cari" value="<?= htmlspecialchars($rs_cari) ?>" placeholder="Cari nama customer..." style="flex:1;min-width:140px;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:0.8rem;">
+                        <input type="date" name="rs_dari" value="<?= htmlspecialchars($rs_dari) ?>" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:0.78rem;">
+                        <input type="date" name="rs_sampai" value="<?= htmlspecialchars($rs_sampai) ?>" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:0.78rem;">
+                        <button type="submit" style="background:var(--p-pink);color:#fff;border:none;border-radius:10px;padding:8px 14px;font-size:0.8rem;font-weight:700;"><i class="bi bi-funnel-fill"></i></button>
+                        <?php if (!empty($rs_cari) || !empty($rs_dari) || !empty($rs_sampai)): ?>
+                        <a href="?<?= http_build_query(['jm_cari'=>$jm_cari,'jm_dari'=>$jm_dari,'jm_sampai'=>$jm_sampai]) ?>" style="background:#f1f5f9;color:#64748b;border-radius:10px;padding:8px 12px;font-size:0.8rem;display:flex;align-items:center;text-decoration:none;"><i class="bi bi-x-lg"></i></a>
+                        <?php endif; ?>
+                    </form>
                     
                     <?php
                     if ($q_riwayat_selesai && sqlsrv_has_rows($q_riwayat_selesai)):
@@ -1226,7 +1297,7 @@ if ($q_sesi_bulan !== false) {
                     ?>
                         <div class="text-center py-4">
                             <i class="bi bi-inbox fs-1 mb-2" style="color: #cbd5e1;"></i>
-                            <p class="text-muted">Belum ada sesi selesai.</p>
+                            <p class="text-muted"><?= (!empty($rs_cari)||!empty($rs_dari)||!empty($rs_sampai)) ? 'Tidak ada riwayat yang cocok dengan filter.' : 'Belum ada sesi selesai.' ?></p>
                         </div>
                     <?php endif; ?>
                 </div>
