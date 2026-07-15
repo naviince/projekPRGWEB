@@ -32,17 +32,46 @@ $tgl_dari = isset($_GET['tgl_dari']) ? trim($_GET['tgl_dari']) : "";
 $tgl_sampai = isset($_GET['tgl_sampai']) ? trim($_GET['tgl_sampai']) : "";
 $urut = isset($_GET['urut']) ? trim($_GET['urut']) : "terbaru";
 
-// Statistik Order
-$q_stats = "SELECT COUNT(*) as total, SUM(CASE WHEN Status_Order = 1 THEN 1 ELSE 0 END) as dp_terverifikasi, SUM(CASE WHEN Status_Order = 1 AND NOT EXISTS (SELECT 1 FROM Sesi_Foto sf WHERE sf.ID_Order = [Order].ID_Order AND sf.Status = 1 AND sf.Status_Sesi <> 2) THEN 1 ELSE 0 END) as menunggu_assign, SUM(CASE WHEN Status_Order = 2 THEN 1 ELSE 0 END) as selesai, SUM(CASE WHEN Status_Order = 3 THEN 1 ELSE 0 END) as lunas, SUM(CASE WHEN Status_Order = 4 THEN 1 ELSE 0 END) as dibatalkan,
-    SUM(CASE WHEN Status_Order = 1 
-        AND EXISTS (SELECT 1 FROM Order_Jadwal ojx WHERE ojx.ID_Order = [Order].ID_Order)
-        AND NOT EXISTS (
-            SELECT 1 FROM Order_Jadwal ojy 
-            INNER JOIN Jadwal_Studio jy ON ojy.ID_Jadwal = jy.ID_Jadwal
-            WHERE ojy.ID_Order = [Order].ID_Order AND jy.Status = 1 AND jy.Is_Deleted = 0
-              AND DATEADD(SECOND, DATEDIFF(SECOND, 0, jy.Jam_Selesai), CAST(jy.Tanggal_Jadwal AS DATETIME)) >= GETDATE()
-        ) THEN 1 ELSE 0 END) as expired
-    FROM [Order] WHERE Status = 1 AND Status_Order >= 1";
+// =====================================================
+// STATISTIK ORDER
+// =====================================================
+// Kondisi dasar: order aktif (Status=1) dan sudah diverifikasi (Status_Order >= 1)
+// Tapi UNTUK LIST BOOKING CUSTOMER, kita hanya peduli yang BELUM punya sesi foto
+
+$q_stats = "
+    SELECT 
+        COUNT(*) as total,
+        -- DP Terverifikasi: semua yang Status_Order=1 (termasuk yang sudah assign & belum)
+        SUM(CASE WHEN o.Status_Order = 1 THEN 1 ELSE 0 END) as dp_terverifikasi,
+        -- Menunggu Assign: Status_Order IN (1,3) tapi BELUM punya sesi foto aktif
+        SUM(CASE WHEN o.Status_Order IN (1, 3) 
+            AND NOT EXISTS (
+                SELECT 1 FROM Sesi_Foto sf 
+                WHERE sf.ID_Order = o.ID_Order 
+                  AND sf.Status = 1 
+                  AND sf.Status_Sesi IN (0, 1)
+            ) THEN 1 ELSE 0 END) as menunggu_assign,
+        SUM(CASE WHEN o.Status_Order = 2 THEN 1 ELSE 0 END) as selesai,
+        SUM(CASE WHEN o.Status_Order = 3 THEN 1 ELSE 0 END) as lunas,
+        SUM(CASE WHEN o.Status_Order = 4 THEN 1 ELSE 0 END) as dibatalkan,
+        -- Expired: DP terverifikasi, belum assign, tapi jadwal sudah lewat
+        SUM(CASE WHEN o.Status_Order = 1 
+            AND NOT EXISTS (
+                SELECT 1 FROM Sesi_Foto sf 
+                WHERE sf.ID_Order = o.ID_Order 
+                  AND sf.Status = 1 
+                  AND sf.Status_Sesi IN (0, 1)
+            )
+            AND EXISTS (SELECT 1 FROM Order_Jadwal ojx WHERE ojx.ID_Order = o.ID_Order)
+            AND NOT EXISTS (
+                SELECT 1 FROM Order_Jadwal ojy 
+                INNER JOIN Jadwal_Studio jy ON ojy.ID_Jadwal = jy.ID_Jadwal
+                WHERE ojy.ID_Order = o.ID_Order AND jy.Status = 1 AND jy.Is_Deleted = 0
+                  AND DATEADD(SECOND, DATEDIFF(SECOND, 0, jy.Jam_Selesai), CAST(jy.Tanggal_Jadwal AS DATETIME)) >= GETDATE()
+            ) THEN 1 ELSE 0 END) as expired
+    FROM [Order] o
+    WHERE o.Status = 1 AND o.Status_Order >= 1
+";
 $stmt_stats = sqlsrv_query($conn, $q_stats);
 $stats = ['total'=>0,'dp_terverifikasi'=>0,'menunggu_assign'=>0,'selesai'=>0,'lunas'=>0,'dibatalkan'=>0, 'expired'=>0];
 if ($stmt_stats !== false) {
@@ -50,12 +79,22 @@ if ($stmt_stats !== false) {
     if ($row) $stats = $row;
 }
 
-$conditions = ["o.Status = 1 AND o.Status_Order >= 1"];
+// =====================================================
+// FILTER KONDISI QUERY UTAMA
+// =====================================================
+$conditions = ["o.Status = 1 AND o.Status_Order IN (1, 3)"];
 $params = [];
+
 if ($tab_filter === 'dp_terverifikasi') {
     $conditions[] = "o.Status_Order = 1";
 } elseif ($tab_filter === 'menunggu_assign') {
-    $conditions[] = "o.Status_Order = 1 AND NOT EXISTS (SELECT 1 FROM Sesi_Foto sf WHERE sf.ID_Order = o.ID_Order AND sf.Status = 1 AND sf.Status_Sesi <> 2)";
+    // Status_Order IN (1,3) DAN belum punya sesi foto aktif
+    $conditions[] = "o.Status_Order IN (1, 3) AND NOT EXISTS (
+        SELECT 1 FROM Sesi_Foto sf 
+        WHERE sf.ID_Order = o.ID_Order 
+          AND sf.Status = 1 
+          AND sf.Status_Sesi IN (0, 1)
+    )";
 } elseif ($tab_filter === 'selesai') {
     $conditions[] = "o.Status_Order = 2";
 } elseif ($tab_filter === 'lunas') {
@@ -63,7 +102,13 @@ if ($tab_filter === 'dp_terverifikasi') {
 } elseif ($tab_filter === 'dibatalkan') {
     $conditions[] = "o.Status_Order = 4";
 } elseif ($tab_filter === 'terlewat') {
-    $conditions[] = "o.Status_Order = 1 
+    $conditions[] = "o.Status_Order IN (1, 3) 
+        AND NOT EXISTS (
+            SELECT 1 FROM Sesi_Foto sf 
+            WHERE sf.ID_Order = o.ID_Order 
+              AND sf.Status = 1 
+              AND sf.Status_Sesi IN (0, 1)
+        )
         AND EXISTS (SELECT 1 FROM Order_Jadwal ojx WHERE ojx.ID_Order = o.ID_Order)
         AND NOT EXISTS (
             SELECT 1 FROM Order_Jadwal ojy 
@@ -72,6 +117,7 @@ if ($tab_filter === 'dp_terverifikasi') {
               AND DATEADD(SECOND, DATEDIFF(SECOND, 0, jy.Jam_Selesai), CAST(jy.Tanggal_Jadwal AS DATETIME)) >= GETDATE()
         )";
 }
+
 if (!empty($cari)) {
     $conditions[] = "(p.Nama_Pelanggan LIKE ? OR CAST(o.ID_Order AS VARCHAR) LIKE ? OR pk.Nama_Paket LIKE ?)";
     $params[] = "%$cari%"; $params[] = "%$cari%"; $params[] = "%$cari%";
@@ -86,7 +132,14 @@ if (!empty($tgl_sampai) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $tgl_sampai)) {
 }
 $where = implode(" AND ", $conditions);
 
-$sql_count = "SELECT COUNT(*) AS total FROM [Order] o INNER JOIN Pelanggan p ON o.ID_Pelanggan = p.ID_Pelanggan INNER JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket WHERE $where";
+// =====================================================
+// HITUNG TOTAL RECORDS
+// =====================================================
+$sql_count = "SELECT COUNT(*) AS total 
+              FROM [Order] o 
+              INNER JOIN Pelanggan p ON o.ID_Pelanggan = p.ID_Pelanggan 
+              INNER JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket 
+              WHERE $where";
 $q_count = sqlsrv_query($conn, $sql_count, $params);
 $total_records = 0; $total_halaman = 0;
 if ($q_count !== false) {
@@ -95,7 +148,9 @@ if ($q_count !== false) {
     $total_halaman = ceil($total_records / $limit);
 }
 
-// Sorter kueri dinamis
+// =====================================================
+// SORTER QUERY
+// =====================================================
 $order_map = [
     'terbaru'        => 'o.Tanggal_Booking DESC',
     'terlama'        => 'o.Tanggal_Booking ASC',
@@ -106,7 +161,13 @@ $order_map = [
 ];
 $order_by = $order_map[$urut] ?? $order_map['terbaru'];
 
-// Kueri utama list order (Kueri diperbaiki dari JOIN langsung Jadwal_Studio agar terhindar dari Error Kolom)
+// =====================================================
+// QUERY UTAMA LIST ORDER
+// PERUBAHAN KRUSIAL:
+// 1. Base query hanya ambil Status_Order IN (1, 3) — DP OK atau Lunas
+// 2. LEFT JOIN Sesi_Foto dengan kondisi Status_Sesi IN (0, 1) untuk cek assign
+// 3. Tombol assign muncul kalau belum ada fotografer (ID_Fotografer IS NULL)
+// =====================================================
 $sql_list = "SELECT o.ID_Order, o.Tanggal_Booking, o.Total_Paket, o.Total_Barang_Cetak, o.Total_Harga, o.Status_Order, o.Rating, o.Review, o.Keterangan, 
                     p.Nama_Pelanggan, p.No_Hp, p.Email_Pelanggan, 
                     pk.Nama_Paket, pk.Durasi_Waktu, pk.Harga_Paket, 
@@ -119,7 +180,9 @@ $sql_list = "SELECT o.ID_Order, o.Tanggal_Booking, o.Total_Paket, o.Total_Barang
              INNER JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket 
              INNER JOIN Ruangan r ON o.ID_Ruangan = r.ID_Ruangan 
              INNER JOIN Tema_Foto t ON o.ID_Tema = t.ID_Tema 
-             LEFT JOIN Sesi_Foto sf ON o.ID_Order = sf.ID_Order AND sf.Status = 1 AND sf.Status_Sesi <> 2 
+             LEFT JOIN Sesi_Foto sf ON o.ID_Order = sf.ID_Order 
+                 AND sf.Status = 1 
+                 AND sf.Status_Sesi IN (0, 1)
              LEFT JOIN Karyawan k ON sf.ID_Karyawan = k.ID_Karyawan 
              WHERE $where 
              ORDER BY $order_by 
@@ -128,7 +191,9 @@ $sql_list = "SELECT o.ID_Order, o.Tanggal_Booking, o.Total_Paket, o.Total_Barang
 $p_list = $params; $p_list[] = $offset; $p_list[] = $limit;
 $query = sqlsrv_query($conn, $sql_list, $p_list);
 
-// Penampungan data order ke dalam array
+// =====================================================
+// PENAMPUNGAN DATA ORDER
+// =====================================================
 $orders_list = [];
 $order_ids = [];
 if ($query !== false) {
@@ -139,7 +204,7 @@ if ($query !== false) {
 }
 
 // =====================================================
-// SINKRONISASI JADWAL MULTI-SLOT SECARA REAL-TIME DARI ORDER_JADWAL
+// SINKRONISASI JADWAL MULTI-SLOT
 // =====================================================
 $jadwal_per_order = [];
 if (!empty($order_ids)) {
@@ -168,7 +233,6 @@ if (!empty($order_ids)) {
             $jam_mulai_str = (is_object($j['Jam_Mulai']) && method_exists($j['Jam_Mulai'], 'format')) ? $j['Jam_Mulai']->format('H:i') : substr($j['Jam_Mulai'], 0, 5);
             $jam_selesai_str = (is_object($j['Jam_Selesai']) && method_exists($j['Jam_Selesai'], 'format')) ? $j['Jam_Selesai']->format('H:i') : substr($j['Jam_Selesai'], 0, 5);
 
-            // Simpan tanggal mentah (Y-m-d) + jam selesai buat hitung apakah jadwal sudah lewat
             $tgl_raw = (is_object($j['Tanggal_Jadwal']) && method_exists($j['Tanggal_Jadwal'], 'format')) ? $j['Tanggal_Jadwal']->format('Y-m-d') : date('Y-m-d', strtotime($j['Tanggal_Jadwal']));
             $jam_selesai_raw = (is_object($j['Jam_Selesai']) && method_exists($j['Jam_Selesai'], 'format')) ? $j['Jam_Selesai']->format('H:i:s') : substr($j['Jam_Selesai'], 0, 8);
             $ts_selesai = strtotime($tgl_raw . ' ' . $jam_selesai_raw);
@@ -184,12 +248,6 @@ if (!empty($order_ids)) {
 
 // =====================================================
 // VALIDASI: TANDAI ORDER YANG JADWALNYA SUDAH LEWAT
-// Order dengan status "DP Terverifikasi" (1) yang seluruh
-// jadwalnya sudah lewat waktu selesainya, tapi sesi fotonya
-// belum pernah ditandai Selesai -> ditandai "Jadwal Terlewat"
-// supaya admin sadar dan segera follow up / reschedule.
-// TIDAK dihapus/dibatalkan otomatis karena DP sudah dibayar
-// customer (beda kasus dengan order yang belum bayar sama sekali).
 // =====================================================
 $order_terlewat = [];
 foreach ($jadwal_per_order as $oid_chk => $schedules_chk) {
@@ -201,12 +259,16 @@ foreach ($jadwal_per_order as $oid_chk => $schedules_chk) {
     }
 }
 
-// Ambil list Fotografer aktif untuk ditugaskan
+// =====================================================
+// AMBIL LIST FOTOGRAFER AKTIF
+// =====================================================
 $q_fg = sqlsrv_query($conn, "SELECT ID_Karyawan, Nama_Karyawan FROM Karyawan WHERE Role_Karyawan = 'Fotografer' AND Status = 1 AND Is_Deleted = 0");
 $fotografer_list = [];
 if ($q_fg !== false) { while ($f = sqlsrv_fetch_array($q_fg, SQLSRV_FETCH_ASSOC)) $fotografer_list[] = $f; }
 
-// Objek JSON order untuk meminimalisir lag pemrosesan detail
+// =====================================================
+// OBJEK JSON UNTUK MODAL DETAIL
+// =====================================================
 $order_data_js = [];
 foreach ($orders_list as $row) {
     $oid = (int)$row['ID_Order'];
@@ -242,10 +304,19 @@ foreach ($orders_list as $row) {
 }
 
 function getStatusLabel($s) {
-    $l = [1=>['DP Terverifikasi','#059669','#d1fae5','bi-check-circle-fill'],2=>['Selesai Foto','#2563eb','#dbeafe','bi-camera-fill'],3=>['Lunas','#7c3aed','#ede9fe','bi-cash-stack'],4=>['Dibatalkan','#dc2626','#fee2e2','bi-x-circle-fill']];
+    $l = [
+        1 => ['DP Terverifikasi','#059669','#d1fae5','bi-check-circle-fill'],
+        2 => ['Selesai Foto','#2563eb','#dbeafe','bi-camera-fill'],
+        3 => ['Lunas','#7c3aed','#ede9fe','bi-cash-stack'],
+        4 => ['Dibatalkan','#dc2626','#fee2e2','bi-x-circle-fill']
+    ];
     return $l[$s] ?? ['Unknown','#718096','#f1f5f9','bi-question-circle'];
 }
-function fmtTgl($d) { return (is_object($d)&&method_exists($d,'format'))?$d->format('d M Y H:i'):date('d M Y H:i',strtotime($d)); }
+function fmtTgl($d) { 
+    return (is_object($d) && method_exists($d, 'format')) 
+        ? $d->format('d M Y H:i') 
+        : date('d M Y H:i', strtotime($d)); 
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -477,7 +548,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 </form>
 </div>
 
-<!-- MODAL FILTER (gaya sama dengan halaman Verifikasi DP) -->
+<!-- MODAL FILTER -->
 <div id="modalFilterData" class="filter-modal-overlay" onclick="if(event.target===this) tutupModalFilter()">
   <div class="filter-modal-box">
     <div class="filter-modal-header">
@@ -520,17 +591,19 @@ foreach($orders_list as $row):
 $statusInfo=getStatusLabel((int)$row['Status_Order']);
 $has_fotografer=!empty($row['ID_Fotografer']);
 $nama_fotografer=$row['Nama_Fotografer']??null;
-$is_dp_terverifikasi=((int)$row['Status_Order']===STATUS_ORDER_DP_TERVERIFIKASI);
+// =====================================================
+// TOMBOL ASSIGN MUNCUL KALAU:
+// 1. Status_Order = 1 (DP Terverifikasi) ATAU Status_Order = 3 (Lunas)
+// 2. BELUM punya fotografer (ID_Fotografer IS NULL)
+// =====================================================
+$bisa_assign = ((int)$row['Status_Order'] === STATUS_ORDER_DP_TERVERIFIKASI || (int)$row['Status_Order'] === STATUS_ORDER_LUNAS) && !$has_fotografer;
 ?>
 <tr class="fade-in-up" data-id="<?= $row['ID_Order'] ?>">
-<!-- PENYELARASAN NOMOR URUT: Kolom 1 menampilkan nomor urutan angka sekuensial yang rapi -->
 <td><div class="td-order-id"><?= $no++ ?></div></td>
-<!-- Kolom 2 memuat No. Order Asli (#00018) dan Tanggal Booking secara terstruktur -->
 <td><div class="td-order-id" style="color:var(--text-dark);">#<?= str_pad((int)$row['ID_Order'],5,'0',STR_PAD_LEFT) ?></div><div class="td-customer-contact"><?= fmtTgl($row['Tanggal_Booking']) ?></div></td>
 <td><div class="td-customer"><?= htmlspecialchars($row['Nama_Pelanggan']) ?></div><div class="td-customer-contact"><?= htmlspecialchars($row['No_Hp']) ?></div></td>
 <td><div class="td-paket"><?= htmlspecialchars($row['Nama_Paket']) ?></div><div class="td-detail"><?= htmlspecialchars($row['Nama_Ruangan']) ?> &bull; <?= htmlspecialchars($row['Nama_Tema']) ?></div><div class="td-detail"><i class="bi bi-clock me-1"></i><?= $row['Durasi_Waktu'] ?> menit</div></td>
 <td>
-    <!-- SINKRONISASI JADWAL MULTI-SLOT SECARA REAL-TIME TANPA ERROR -->
     <?php 
     $schedules = $jadwal_per_order[(int)$row['ID_Order']] ?? [];
     if (!empty($schedules)):
@@ -546,12 +619,12 @@ $is_dp_terverifikasi=((int)$row['Status_Order']===STATUS_ORDER_DP_TERVERIFIKASI)
     <?php endif; ?>
 </td>
 <td><div class="td-harga">Rp <?= number_format((float)$row['Total_Harga'],0,',','.') ?></div></td>
-<td><span class="badge-status" style="background:<?= $statusInfo[2] ?>;color:<?= $statusInfo[1] ?>"><span class="badge-dot" style="background:<?= $statusInfo[1] ?>"></span><?= $statusInfo[0] ?></span><?php if($is_dp_terverifikasi && !empty($order_terlewat[(int)$row['ID_Order']])):?><div class="badge-terlewat" title="Jadwal sudah lewat waktu tapi sesi foto belum ditandai selesai. Segera follow up / reschedule."><i class="bi bi-exclamation-triangle-fill"></i> Jadwal Terlewat</div><?php endif;?></td>
+<td><span class="badge-status" style="background:<?= $statusInfo[2] ?>;color:<?= $statusInfo[1] ?>"><span class="badge-dot" style="background:<?= $statusInfo[1] ?>"></span><?= $statusInfo[0] ?></span><?php if((int)$row['Status_Order'] === STATUS_ORDER_DP_TERVERIFIKASI && !empty($order_terlewat[(int)$row['ID_Order']])):?><div class="badge-terlewat" title="Jadwal sudah lewat waktu tapi sesi foto belum ditandai selesai. Segera follow up / reschedule."><i class="bi bi-exclamation-triangle-fill"></i> Jadwal Terlewat</div><?php endif;?></td>
 <td><?php if($has_fotografer):?><span class="fotografer-badge"><i class="bi bi-person-fill"></i><?= htmlspecialchars($nama_fotografer) ?></span><?php else:?><span class="td-detail" style="color:#94a3b8"><i class="bi bi-person-x me-1"></i>Belum diassign</span><?php endif;?></td>
-<td><button class="btn-action-circle btn-action-view" onclick="bukaDetail(<?= (int)$row['ID_Order'] ?>)" title="Lihat Detail"><i class="bi bi-eye"></i></button><?php if($is_dp_terverifikasi&&!$has_fotografer):?><button class="btn-action-circle btn-action-assign" onclick="konfirmasiAssign(<?= (int)$row['ID_Order'] ?>)" title="Assign Fotografer"><i class="bi bi-person-plus"></i></button><?php endif;?></td>
+<td><button class="btn-action-circle btn-action-view" onclick="bukaDetail(<?= (int)$row['ID_Order'] ?>)" title="Lihat Detail"><i class="bi bi-eye"></i></button><?php if($bisa_assign):?><button class="btn-action-circle btn-action-assign" onclick="konfirmasiAssign(<?= (int)$row['ID_Order'] ?>)" title="Assign Fotografer"><i class="bi bi-person-plus"></i></button><?php endif;?></td>
 </tr>
 <?php endforeach;else:?>
-<tr><td colspan="9" class="text-center text-muted py-5"><i class="bi bi-inbox fs-1 mb-3 d-block" style="color:#cbd5e1"></i><p class="fw-bold">Tidak ada order yang sesuai.</p><p class="small">Belum ada order yang sudah dikonfirmasi.</p></td></tr>
+<tr><td colspan="9" class="text-center text-muted py-5"><i class="bi bi-inbox fs-1 mb-3 d-block" style="color:#cbd5e1"></i><p class="fw-bold">Tidak ada order yang sesuai.</p><p class="small">Belum ada order yang sudah dikonfirmasi dan siap di-assign fotografer.</p></td></tr>
 <?php endif;?>
 </tbody>
 </table>
@@ -578,7 +651,6 @@ $is_dp_terverifikasi=((int)$row['Status_Order']===STATUS_ORDER_DP_TERVERIFIKASI)
 
 <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script>
-// Objek JSON order untuk meminimalisir lag pemrosesan detail
 const orderData = <?= json_encode($order_data_js) ?>;
 
 document.querySelectorAll('.btn-toggle-submenu').forEach(button=>{button.addEventListener('click',function(e){e.preventDefault();const targetId=this.getAttribute('data-target');const targetEl=document.querySelector(targetId);const chevron=this.querySelector('.icon-chevron');if(targetEl){const isShown=targetEl.classList.contains('show');document.querySelectorAll('.submenu').forEach(el=>el.classList.remove('show'));document.querySelectorAll('.icon-chevron').forEach(icon=>icon.style.transform='rotate(0deg)');if(!isShown){targetEl.classList.add('show');if(chevron)chevron.style.transform='rotate(180deg)';}}});});
