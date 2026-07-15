@@ -9,23 +9,22 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 
 $id_fotografer = $_SESSION['id_user'];
 
-// Query: Sesi dengan Status_Sesi = 1 (Selesai)
-$q_selesai = sqlsrv_query($conn, "
-    SELECT 
-        S.ID_Sesi_Foto, S.ID_Order, S.File_Hasil, S.Tanggal_Upload_Hasil,
-        S.Waktu_Mulai, S.Waktu_Selesai,
-        P.Nama_Pelanggan, PK.Nama_Paket, PK.Durasi_Waktu,
-        R.Nama_Ruangan, J.Tanggal_Jadwal, J.Jam_Mulai, J.Jam_Selesai,
-        O.Keterangan
-    FROM Sesi_Foto S
-    JOIN [Order] O ON S.ID_Order = O.ID_Order
-    JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
-    JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
-    JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan
-    JOIN Jadwal_Studio J ON O.ID_Jadwal = J.ID_Jadwal
-    WHERE S.ID_Karyawan = ? AND S.Status = 1 AND S.Status_Sesi = 1
-    ORDER BY S.Waktu_Selesai DESC
-", array($id_fotografer));
+// =====================================================
+// QUERY: SESI SELESAI (Status_Sesi = 1) MILIK FOTOGRAFER
+// Menggunakan stored procedure sp_ReadSesiSelesaiFotografer yang sudah
+// mengikuti skema Order_Jadwal (multi-jadwal booking) -- sebelumnya query
+// di sini pakai O.ID_Jadwal langsung yang TIDAK ADA di tabel [Order] dan
+// pasti gagal dieksekusi.
+// =====================================================
+$q_selesai = sqlsrv_query($conn, "{CALL sp_ReadSesiSelesaiFotografer(?)}", array($id_fotografer));
+
+$sesi_selesai = [];
+if ($q_selesai) {
+    while ($row = sqlsrv_fetch_array($q_selesai, SQLSRV_FETCH_ASSOC)) {
+        $sesi_selesai[] = $row;
+    }
+}
+$has_data = !empty($sesi_selesai);
 
 function formatTanggal($date) {
     if (!$date) return '-';
@@ -146,13 +145,24 @@ function formatWaktu($time) {
             </div>
 
             <?php
-            $has_data = false;
-            if ($q_selesai && sqlsrv_has_rows($q_selesai)):
-                $has_data = true;
-                while ($row = sqlsrv_fetch_array($q_selesai, SQLSRV_FETCH_ASSOC)):
+            if ($has_data):
+                foreach ($sesi_selesai as $row):
                     $is_uploaded = !empty($row['File_Hasil']);
             ?>
-                <div class="sesi-item">
+                <div class="sesi-item"
+                     data-id="<?= $row['ID_Sesi_Foto'] ?>"
+                     data-pelanggan="<?= htmlspecialchars($row['Nama_Pelanggan']) ?>"
+                     data-paket="<?= htmlspecialchars($row['Nama_Paket']) ?>"
+                     data-ruangan="<?= htmlspecialchars($row['Nama_Ruangan']) ?>"
+                     data-tanggal="<?= htmlspecialchars(formatTanggal($row['Tanggal_Jadwal'])) ?>"
+                     data-jam-mulai="<?= formatWaktu($row['Jam_Mulai']) ?>"
+                     data-jam-selesai="<?= formatWaktu($row['Jam_Selesai']) ?>"
+                     data-durasi="<?= $row['Durasi_Waktu'] ?>"
+                     data-slot="<?= (int)($row['Total_Slot'] ?? 1) ?>"
+                     data-keterangan="<?= htmlspecialchars($row['Keterangan'] ?? '') ?>"
+                     data-mulai="<?= $row['Waktu_Mulai'] ? htmlspecialchars(formatTanggal($row['Waktu_Mulai']).' '.formatWaktu($row['Waktu_Mulai'])) : '-' ?>"
+                     data-selesai="<?= $row['Waktu_Selesai'] ? htmlspecialchars(formatTanggal($row['Waktu_Selesai']).' '.formatWaktu($row['Waktu_Selesai'])) : '-' ?>"
+                     data-file="<?= htmlspecialchars($row['File_Hasil'] ?? '') ?>">
                     <div class="sesi-icon" style="background: linear-gradient(135deg, #ecfdf5, #d1fae5); color: #059669;">
                         <i class="bi bi-check-lg"></i>
                     </div>
@@ -162,6 +172,9 @@ function formatWaktu($time) {
                                 <div class="sesi-time">
                                     <i class="bi bi-calendar-check me-1"></i><?= formatTanggal($row['Tanggal_Jadwal']) ?>
                                     <span class="ms-2"><i class="bi bi-clock me-1"></i><?= formatWaktu($row['Jam_Mulai']) ?> - <?= formatWaktu($row['Jam_Selesai']) ?></span>
+                                    <?php if (($row['Total_Slot'] ?? 1) > 1): ?>
+                                        <span class="ms-2 badge" style="background:#dbeafe;color:#2563eb;font-weight:700;font-size:0.7rem;"><i class="bi bi-collection me-1"></i><?= $row['Total_Slot'] ?> Slot</span>
+                                    <?php endif; ?>
                                 </div>
                                 <div class="sesi-title mt-1"><?= htmlspecialchars($row['Nama_Pelanggan']) ?></div>
                                 <div class="sesi-info">
@@ -201,13 +214,13 @@ function formatWaktu($time) {
                                     <i class="bi bi-arrow-repeat"></i> Upload Ulang
                                 </a>
                             <?php endif; ?>
-                            <a href="../Detail/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-action-secondary">
+                            <a href="../Detail/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-action-secondary" onclick="return openDetailModal(this, event);">
                                 <i class="bi bi-eye"></i> Detail
                             </a>
                         </div>
                     </div>
                 </div>
-            <?php endwhile; endif; ?>
+            <?php endforeach; endif; ?>
 
             <?php if (!$has_data): ?>
                 <div class="text-center py-5">
@@ -244,6 +257,50 @@ function formatWaktu($time) {
         function confirmLandingPage(e) {
             e.preventDefault();
             Swal.fire({ title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama.', icon: 'info', showCancelButton: true, confirmButtonColor: '#D53D66', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal' }).then((result) => { if (result.isConfirmed) window.location.href = '../../index.php'; });
+        }
+
+        // =====================================================
+        // DETAIL SESI (modal, tidak perlu halaman terpisah)
+        // =====================================================
+        function openDetailModal(btn, e) {
+            if (e) e.preventDefault();
+            const item = btn.closest('.sesi-item');
+            const d = item.dataset;
+
+            const slotInfo = parseInt(d.slot, 10) > 1
+                ? '<span class="badge" style="background:#dbeafe;color:#2563eb;font-weight:700;">' + d.slot + ' Slot Jadwal</span>'
+                : '';
+
+            const keteranganHtml = (d.keterangan && d.keterangan.trim() !== '')
+                ? '<hr style="margin:12px 0;border-color:#f1f5f9;">' +
+                  '<p style="font-size:0.85rem;color:#b45309;background:#fffbeb;border:1px solid #fde68a;padding:8px 12px;border-radius:8px;">' +
+                  '<i class="bi bi-info-circle me-1"></i>' + d.keterangan + '</p>'
+                : '';
+
+            const fileHtml = (d.file && d.file.trim() !== '')
+                ? '<p><strong>File Hasil:</strong> ' + d.file + '</p>'
+                : '<p style="color:#d97706;"><strong>File Hasil:</strong> Belum diunggah</p>';
+
+            Swal.fire({
+                title: 'Detail Sesi Foto',
+                html: '<div style="text-align:left;">' +
+                      '<p><strong>Pelanggan:</strong> ' + d.pelanggan + '</p>' +
+                      '<p><strong>Tanggal Jadwal:</strong> ' + d.tanggal + '</p>' +
+                      '<p><strong>Waktu Jadwal:</strong> ' + d.jamMulai + ' - ' + d.jamSelesai + ' (' + d.durasi + ' menit)</p>' +
+                      '<p><strong>Paket:</strong> ' + d.paket + '</p>' +
+                      '<p><strong>Ruangan:</strong> ' + d.ruangan + '</p>' +
+                      (slotInfo ? '<p>' + slotInfo + '</p>' : '') +
+                      '<hr style="margin:12px 0;border-color:#f1f5f9;">' +
+                      '<p><strong>Sesi Berlangsung:</strong> ' + d.mulai + ' → ' + d.selesai + '</p>' +
+                      fileHtml +
+                      keteranganHtml +
+                      '</div>',
+                icon: 'success',
+                confirmButtonColor: '#D53D66',
+                confirmButtonText: 'Tutup'
+            });
+
+            return false;
         }
     </script>
 </body>

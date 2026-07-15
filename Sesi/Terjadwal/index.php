@@ -9,27 +9,26 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 
 $id_fotografer = $_SESSION['id_user'];
 
-// Query: Sesi dengan Status_Sesi = 0 (Menunggu) - yang akan datang
-$q_terjadwal = sqlsrv_query($conn, "
-    SELECT 
-        S.ID_Sesi_Foto, S.ID_Order, S.Status_Sesi,
-        P.Nama_Pelanggan, PK.Nama_Paket, PK.Durasi_Waktu,
-        R.Nama_Ruangan, J.Tanggal_Jadwal, J.Jam_Mulai, J.Jam_Selesai,
-        O.Keterangan
-    FROM Sesi_Foto S
-    JOIN [Order] O ON S.ID_Order = O.ID_Order
-    JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
-    JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
-    JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan
-    JOIN Jadwal_Studio J ON O.ID_Jadwal = J.ID_Jadwal
-    WHERE S.ID_Karyawan = ? AND S.Status = 1 AND S.Status_Sesi = 0
-    ORDER BY J.Tanggal_Jadwal ASC, J.Jam_Mulai ASC
-", array($id_fotografer));
+// =====================================================
+// QUERY: SESI MENUNGGU (Status_Sesi = 0) MILIK FOTOGRAFER
+// Menggunakan stored procedure sp_ReadSesiTerjadwalFotografer
+// yang sudah mengikuti skema Order_Jadwal (multi-jadwal booking)
+// dan memfilter order aktif / tidak dibatalkan.
+// =====================================================
+$q_terjadwal = sqlsrv_query($conn, "{CALL sp_ReadSesiTerjadwalFotografer(?)}", array($id_fotografer));
 
-$total_terjadwal = 0;
-if ($q_terjadwal && sqlsrv_has_rows($q_terjadwal)) {
-    $total_terjadwal = sqlsrv_num_rows($q_terjadwal);
+$sesi_terjadwal = [];
+if ($q_terjadwal) {
+    while ($row = sqlsrv_fetch_array($q_terjadwal, SQLSRV_FETCH_ASSOC)) {
+        // Format tanggal jadi string aman (jaga-jaga kalau driver return string, bukan objek DateTime)
+        $tgl_obj = $row['Tanggal_Jadwal'];
+        $row['Tanggal_Jadwal_Str'] = (is_object($tgl_obj) && method_exists($tgl_obj, 'format'))
+            ? $tgl_obj->format('Y-m-d')
+            : date('Y-m-d', strtotime($tgl_obj));
+        $sesi_terjadwal[] = $row;
+    }
 }
+$total_terjadwal = count($sesi_terjadwal);
 
 // Profile
 $q_profile = sqlsrv_query($conn, "SELECT * FROM Karyawan WHERE ID_Karyawan = ?", array($id_fotografer));
@@ -152,11 +151,10 @@ function formatWaktu($time) {
             </div>
 
             <?php
-            $has_data = false;
-            if ($q_terjadwal && sqlsrv_has_rows($q_terjadwal)):
-                $has_data = true;
-                while ($row = sqlsrv_fetch_array($q_terjadwal, SQLSRV_FETCH_ASSOC)):
-                    $tgl_jadwal = $row['Tanggal_Jadwal']->format('Y-m-d');
+            $has_data = !empty($sesi_terjadwal);
+            if ($has_data):
+                foreach ($sesi_terjadwal as $row):
+                    $tgl_jadwal = $row['Tanggal_Jadwal_Str'];
                     $today = date('Y-m-d');
                     $is_today = ($tgl_jadwal == $today);
                     $days_left = floor((strtotime($tgl_jadwal) - strtotime($today)) / 86400);
@@ -169,8 +167,11 @@ function formatWaktu($time) {
                         <div class="d-flex justify-content-between align-items-start">
                             <div>
                                 <div class="sesi-time">
-                                    <i class="bi bi-calendar-event me-1"></i><?= formatTanggal($row['Tanggal_Jadwal']) ?>
+                                    <i class="bi bi-calendar-event me-1"></i><?= formatTanggal(new DateTime($tgl_jadwal)) ?>
                                     <span class="ms-2"><i class="bi bi-clock me-1"></i><?= formatWaktu($row['Jam_Mulai']) ?> - <?= formatWaktu($row['Jam_Selesai']) ?></span>
+                                    <?php if (($row['Total_Slot'] ?? 1) > 1): ?>
+                                        <span class="ms-2 badge" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; font-size: 0.7rem;"><i class="bi bi-collection me-1"></i><?= $row['Total_Slot'] ?> Slot</span>
+                                    <?php endif; ?>
                                 </div>
                                 <div class="sesi-title mt-1"><?= htmlspecialchars($row['Nama_Pelanggan']) ?></div>
                                 <div class="sesi-info">
@@ -198,7 +199,7 @@ function formatWaktu($time) {
                         </div>
                     </div>
                 </div>
-            <?php endwhile; endif; ?>
+            <?php endforeach; endif; ?>
 
             <?php if (!$has_data): ?>
                 <div class="text-center py-5">
