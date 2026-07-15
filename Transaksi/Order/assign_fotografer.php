@@ -25,10 +25,12 @@ if ($id_order <= 0 || $id_fotografer <= 0) {
 }
 
 // =====================================================
-// SINKRONISASI: CEK ORDER EXISTS DAN STATUS_ORDER = 1 (DP TERVERIFIKASI)
+// SINKRONISASI: CEK ORDER EXISTS DAN STATUS_ORDER = 1 (DP TERVERIFIKASI) ATAU 3 (LUNAS)
+// Order boleh masuk assign fotografer selama salah satu dari dua jalur
+// pembayaran (DP atau Pelunasan langsung) sudah diverifikasi Admin.
 // =====================================================
 $q_check_order = sqlsrv_query($conn, 
-    "SELECT ID_Order FROM [Order] WHERE ID_Order = ? AND Status_Order = 1 AND Status = 1",
+    "SELECT ID_Order, Status_Order FROM [Order] WHERE ID_Order = ? AND Status_Order IN (1, 3) AND Status = 1",
     [$id_order]
 );
 
@@ -41,7 +43,7 @@ if ($q_check_order === false) {
 
 $order = sqlsrv_fetch_array($q_check_order, SQLSRV_FETCH_ASSOC);
 if (!$order) {
-    header("Location: list.php?status=error&msg=" . urlencode("Order tidak ditemukan atau sudah diproses. Pastikan order sudah DP terverifikasi."));
+    header("Location: list.php?status=error&msg=" . urlencode("Order tidak ditemukan atau belum bisa diassign. Pastikan pembayaran DP atau Pelunasan sudah diverifikasi Admin."));
     exit();
 }
 sqlsrv_free_stmt($q_check_order);
@@ -174,9 +176,14 @@ foreach ($order_schedules as $sched) {
 
 // =====================================================
 // CEK APAKAH SUDAH ADA SESI UNTUK ORDER INI
+// PENTING: Status_Order bisa "balik" ke 3 (Lunas) setelah Pelunasan
+// diverifikasi meskipun sesi fotonya SUDAH SELESAI sebelumnya (order
+// sempat di Status_Order = 2 pasca sesi kelar). Makanya di sini WAJIB
+// cek Status_Sesi secara eksplisit, bukan cuma "ada sesi atau tidak" --
+// supaya sesi yang sudah Selesai (1) TIDAK ketimpa/di-assign ulang.
 // =====================================================
 $q_sesi = sqlsrv_query($conn, 
-    "SELECT ID_Sesi_Foto FROM Sesi_Foto 
+    "SELECT ID_Sesi_Foto, Status_Sesi FROM Sesi_Foto 
      WHERE ID_Order = ? AND Status = 1 AND Status_Sesi <> 2",
     [$id_order]
 );
@@ -188,6 +195,13 @@ if ($q_sesi === false) {
 
 $existing_sesi = sqlsrv_fetch_array($q_sesi, SQLSRV_FETCH_ASSOC);
 sqlsrv_free_stmt($q_sesi);
+
+// Sesi foto sudah Selesai (1) -> TOLAK, jangan sampai fotografer di-reassign
+// pada sesi yang sudah kelar (mis. order DP -> sesi selesai -> baru bayar Lunas).
+if ($existing_sesi && (int)$existing_sesi['Status_Sesi'] === 1) {
+    header("Location: list.php?status=error&msg=" . urlencode("Sesi foto untuk order ini sudah SELESAI. Tidak perlu (dan tidak boleh) assign ulang fotografer."));
+    exit();
+}
 
 // =====================================================
 // SIMPAN PENUGASAN (DENGAN TRANSACTION)

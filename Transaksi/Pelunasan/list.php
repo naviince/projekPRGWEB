@@ -15,7 +15,7 @@ if ($d_admin) { $d_admin = array_change_key_case($d_admin, CASE_LOWER); }
 $nama_admin = $d_admin['nama_karyawan'] ?? 'Administrator';
 $foto_admin = $d_admin['foto_profil'] ?? 'default.jpg';
 $default_svg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
-$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_admin)) ? "../../assets/img/pelanggan/" . $foto_admin : $default_svg;
+$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) ? "../../assets/img/karyawan/" . $foto_admin : $default_svg;
 
 $limit = 10;
 $halaman = isset($_GET['halaman']) ? (int)$_GET['halaman'] : 1;
@@ -25,7 +25,7 @@ $cari = isset($_GET['cari']) ? trim($_GET['cari']) : "";
 $tab_filter = isset($_GET['tab']) ? trim($_GET['tab']) : "semua";
 
 // Statistik
-$q_stats = "SELECT COUNT(*) as total, SUM(CASE WHEN Status_Pembayaran = 0 THEN 1 ELSE 0 END) as menunggu, SUM(CASE WHEN Status_Pembayaran = 1 THEN 1 ELSE 0 END) as valid, SUM(CASE WHEN Status_Pembayaran = 2 THEN 1 ELSE 0 END) as ditolak FROM Pembayaran WHERE Status = 1 AND Tipe_Pembayaran = 'Pelunasan'";
+$q_stats = "SELECT COUNT(*) as total, SUM(CASE WHEN p.Status_Pembayaran = 0 THEN 1 ELSE 0 END) as menunggu, SUM(CASE WHEN p.Status_Pembayaran = 1 THEN 1 ELSE 0 END) as valid, SUM(CASE WHEN p.Status_Pembayaran = 2 THEN 1 ELSE 0 END) as ditolak FROM Pembayaran p INNER JOIN [Order] o ON p.ID_Order = o.ID_Order WHERE p.Status = 1 AND o.Status = 1 AND p.Tipe_Pembayaran = 'Pelunasan'";
 $stmt_stats = sqlsrv_query($conn, $q_stats);
 $stats = ['total'=>0,'menunggu'=>0,'valid'=>0,'ditolak'=>0];
 if ($stmt_stats !== false) {
@@ -34,7 +34,7 @@ if ($stmt_stats !== false) {
 }
 
 // Query list
-$conditions = ["p.Status = 1", "p.Tipe_Pembayaran = 'Pelunasan'"];
+$conditions = ["p.Status = 1", "o.Status = 1", "pl.Is_Deleted = 0", "p.Tipe_Pembayaran = 'Pelunasan'"];
 $params = [];
 if ($tab_filter === 'menunggu') {
     $conditions[] = "p.Status_Pembayaran = 0";
@@ -262,21 +262,23 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 <div class="card-3d mb-4" style="padding:24px;">
 <div class="table-scroll-wrapper">
 <table class="data-table">
-<thead><tr><th>No. Pembayaran</th><th>Customer</th><th>No. Order</th><th>Metode</th><th>Jumlah Pelunasan</th><th>Bukti</th><th>Tanggal Upload</th><th>Status</th><th class="text-center">Aksi</th></tr></thead>
+<thead><tr><th class="text-center">No.</th><th>Customer</th><th>No. Order</th><th>Metode</th><th>Jumlah Pelunasan</th><th>Bukti</th><th>Tanggal Upload</th><th>Status</th><th class="text-center">Aksi</th></tr></thead>
 <tbody>
 <?php
 if($query&&sqlsrv_has_rows($query)):
+$no_urut=$offset;
 while($row=sqlsrv_fetch_array($query,SQLSRV_FETCH_ASSOC)):
+$no_urut++;
 $statusInfo=getStatusPembayaranLabel((int)$row['Status_Pembayaran']);
 $orderStatusInfo=getStatusOrderLabel((int)$row['Status_Order']);
 ?>
 <tr class="fade-in-up">
-<td><div class="td-pembayaran-id">#<?= str_pad((int)$row['ID_Pembayaran'],5,'0',STR_PAD_LEFT) ?></div><div class="td-customer-contact">Order #<?= str_pad((int)$row['ID_Order'],5,'0',STR_PAD_LEFT) ?></div></td>
+<td class="text-center"><div class="td-pembayaran-id"><?= $no_urut ?></div></td>
 <td><div class="td-customer"><?= htmlspecialchars($row['Nama_Pelanggan']) ?></div><div class="td-customer-contact"><?= htmlspecialchars($row['No_Hp']) ?></div></td>
 <td><div class="td-order">#<?= str_pad((int)$row['ID_Order'],5,'0',STR_PAD_LEFT) ?></div><div class="td-detail" style="color:<?= $orderStatusInfo[1] ?>"><span class="badge-dot" style="background:<?= $orderStatusInfo[1] ?>"></span><?= $orderStatusInfo[0] ?></div></td>
 <td><div class="td-detail"><?= htmlspecialchars($row['Metode_Pembayaran']) ?></div></td>
 <td><div class="td-jumlah">Rp <?= number_format((float)$row['Jumlah_Bayar'],0,',','.') ?></div></td>
-<td><?php if(!empty($row['Bukti_Transfer'])):?><img src="../../assets/img/bukti/<?= htmlspecialchars($row['Bukti_Transfer']) ?>" class="bukti-thumb" onclick="window.open(this.src,'_blank')" title="Klik untuk memperbesar"><?php else:?><span class="td-detail" style="color:#94a3b8">Tidak ada</span><?php endif;?></td>
+<td><?php if(!empty($row['Bukti_Transfer'])):?><img src="../../assets/img/bukti/<?= htmlspecialchars($row['Bukti_Transfer']) ?>" class="bukti-thumb" onclick="bukaBuktiTransfer(this.src)" title="Klik untuk memperbesar"><?php else:?><span class="td-detail" style="color:#94a3b8">Tidak ada</span><?php endif;?></td>
 <td><div class="td-detail"><?= (is_object($row['Tanggal_Upload'])&&method_exists($row['Tanggal_Upload'],'format'))?$row['Tanggal_Upload']->format('d M Y H:i'):date('d M Y H:i',strtotime($row['Tanggal_Upload'])) ?></div></td>
 <td><span class="badge-status" style="background:<?= $statusInfo[2] ?>;color:<?= $statusInfo[1] ?>"><span class="badge-dot" style="background:<?= $statusInfo[1] ?>"></span><?= $statusInfo[0] ?></span></td>
 <td>
@@ -284,7 +286,7 @@ $orderStatusInfo=getStatusOrderLabel((int)$row['Status_Order']);
 <button class="btn-action-circle btn-action-terima" onclick="konfirmasiTerima(<?= (int)$row['ID_Pembayaran'] ?>)" title="Terima Pelunasan"><i class="bi bi-check-lg"></i></button>
 <button class="btn-action-circle btn-action-tolak" onclick="konfirmasiTolak(<?= (int)$row['ID_Pembayaran'] ?>)" title="Tolak Pelunasan"><i class="bi bi-x-lg"></i></button>
 <?php else:?>
-<button class="btn-action-circle btn-action-view" onclick="Swal.fire({title:'Detail Pelunasan',html:'<b>Customer:</b> <?= htmlspecialchars($row['Nama_Pelanggan']) ?><br><b>Jumlah:</b> Rp <?= number_format((float)$row['Jumlah_Bayar'],0,',','.') ?><br><b>Status:</b> <?= $statusInfo[0] ?>',icon:'info',confirmButtonColor:'#D53D66'})" title="Lihat Detail"><i class="bi bi-eye"></i></button>
+<button class="btn-action-circle btn-action-view" onclick="Swal.fire({title:'Detail Pelunasan',html:'<b>Customer:</b> <?= htmlspecialchars($row['Nama_Pelanggan']) ?><br><b>Jumlah:</b> Rp <?= number_format((float)$row['Jumlah_Bayar'],0,',','.') ?><br><b>Status:</b> <?= $statusInfo[0] ?><br><b>Diverifikasi oleh:</b> <?= htmlspecialchars($row['Nama_Verifikator'] ?? '-') ?>',icon:'info',confirmButtonColor:'#D53D66'})" title="Lihat Detail"><i class="bi bi-eye"></i></button>
 <?php endif;?>
 </td>
 </tr>
@@ -309,11 +311,27 @@ $orderStatusInfo=getStatusOrderLabel((int)$row['Status_Order']);
 </div>
 </div>
 
+<!-- MODAL POPUP BUKTI TRANSFER -->
+<div class="modal fade" id="modalBuktiTransfer" tabindex="-1" aria-hidden="true">
+<div class="modal-dialog modal-dialog-centered">
+<div class="modal-content" style="border-radius:20px;border:none;overflow:hidden;">
+<div class="modal-header" style="border-bottom:1px solid #f1f5f9;">
+<h6 class="modal-title fw-bold" style="color:var(--text-dark);"><i class="bi bi-receipt me-2" style="color:var(--p-pink);"></i>Bukti Transfer</h6>
+<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+</div>
+<div class="modal-body text-center" style="padding:24px;background:#f8fafc;">
+<img id="imgBuktiTransfer" src="" alt="Bukti Transfer" style="max-width:100%;max-height:70vh;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,0.08);">
+</div>
+</div>
+</div>
+</div>
+
 <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script>
 document.querySelectorAll('.btn-toggle-submenu').forEach(button=>{button.addEventListener('click',function(e){e.preventDefault();const targetId=this.getAttribute('data-target');const targetEl=document.querySelector(targetId);const chevron=this.querySelector('.icon-chevron');if(targetEl){const isShown=targetEl.classList.contains('show');document.querySelectorAll('.submenu').forEach(el=>el.classList.remove('show'));document.querySelectorAll('.icon-chevron').forEach(icon=>icon.style.transform='rotate(0deg)');if(!isShown){targetEl.classList.add('show');if(chevron)chevron.style.transform='rotate(180deg)';}}});});
 function konfirmasiTerima(idPembayaran){Swal.fire({title:'Terima Pelunasan?',text:'Apakah Anda yakin ingin MENERIMA pembayaran pelunasan ini? Order akan menjadi LUNAS.',icon:'question',showCancelButton:true,confirmButtonColor:'#059669',cancelButtonColor:'#718096',confirmButtonText:'Ya, Terima',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){window.location.href='verifikasi.php?id='+idPembayaran+'&aksi=terima';}});}
 function konfirmasiTolak(idPembayaran){Swal.fire({title:'Tolak Pelunasan?',text:'Apakah Anda yakin ingin MENOLAK pembayaran pelunasan ini? Customer harus upload ulang.',icon:'warning',showCancelButton:true,confirmButtonColor:'#dc2626',cancelButtonColor:'#718096',confirmButtonText:'Ya, Tolak',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){window.location.href='verifikasi.php?id='+idPembayaran+'&aksi=tolak';}});}
+function bukaBuktiTransfer(src){document.getElementById('imgBuktiTransfer').src=src;const modal=new bootstrap.Modal(document.getElementById('modalBuktiTransfer'));modal.show();}
 function confirmLogout(e){e.preventDefault();Swal.fire({title:'Keluar Sistem?',text:'Apakah Anda yakin ingin keluar dari sistem SpotLight Studio?',icon:'warning',showCancelButton:true,confirmButtonColor:'#D53D66',cancelButtonColor:'#718096',confirmButtonText:'Ya, Keluar',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){window.location.href='../../logout.php';}});}
 function confirmLandingPage(e){e.preventDefault();Swal.fire({title:'Kembali ke Beranda?',text:'Anda akan dialihkan ke halaman utama publik.',icon:'info',showCancelButton:true,confirmButtonColor:'#D53D66',cancelButtonColor:'#718096',confirmButtonText:'Ya, Kembali',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){window.location.href='../../index.php';}});}
 function bukaModalBiodata(){Swal.fire({title:'<?= htmlspecialchars($nama_admin) ?>',text:'Administrator - SpotLight Studio',icon:'info',confirmButtonColor:'#D53D66'});}
