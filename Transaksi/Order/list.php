@@ -33,7 +33,16 @@ $tgl_sampai = isset($_GET['tgl_sampai']) ? trim($_GET['tgl_sampai']) : "";
 $urut = isset($_GET['urut']) ? trim($_GET['urut']) : "terbaru";
 
 // Statistik Order
-$q_stats = "SELECT COUNT(*) as total, SUM(CASE WHEN Status_Order = 1 THEN 1 ELSE 0 END) as dp_terverifikasi, SUM(CASE WHEN Status_Order = 1 AND NOT EXISTS (SELECT 1 FROM Sesi_Foto sf WHERE sf.ID_Order = [Order].ID_Order AND sf.Status = 1 AND sf.Status_Sesi <> 2) THEN 1 ELSE 0 END) as menunggu_assign, SUM(CASE WHEN Status_Order = 2 THEN 1 ELSE 0 END) as selesai, SUM(CASE WHEN Status_Order = 3 THEN 1 ELSE 0 END) as lunas, SUM(CASE WHEN Status_Order = 4 THEN 1 ELSE 0 END) as dibatalkan FROM [Order] WHERE Status = 1 AND Status_Order >= 1";
+$q_stats = "SELECT COUNT(*) as total, SUM(CASE WHEN Status_Order = 1 THEN 1 ELSE 0 END) as dp_terverifikasi, SUM(CASE WHEN Status_Order = 1 AND NOT EXISTS (SELECT 1 FROM Sesi_Foto sf WHERE sf.ID_Order = [Order].ID_Order AND sf.Status = 1 AND sf.Status_Sesi <> 2) THEN 1 ELSE 0 END) as menunggu_assign, SUM(CASE WHEN Status_Order = 2 THEN 1 ELSE 0 END) as selesai, SUM(CASE WHEN Status_Order = 3 THEN 1 ELSE 0 END) as lunas, SUM(CASE WHEN Status_Order = 4 THEN 1 ELSE 0 END) as dibatalkan,
+    SUM(CASE WHEN Status_Order = 1 
+        AND EXISTS (SELECT 1 FROM Order_Jadwal ojx WHERE ojx.ID_Order = [Order].ID_Order)
+        AND NOT EXISTS (
+            SELECT 1 FROM Order_Jadwal ojy 
+            INNER JOIN Jadwal_Studio jy ON ojy.ID_Jadwal = jy.ID_Jadwal
+            WHERE ojy.ID_Order = [Order].ID_Order AND jy.Status = 1 AND jy.Is_Deleted = 0
+              AND DATEADD(SECOND, DATEDIFF(SECOND, 0, jy.Jam_Selesai), CAST(jy.Tanggal_Jadwal AS DATETIME)) >= GETDATE()
+        ) THEN 1 ELSE 0 END) as expired
+    FROM [Order] WHERE Status = 1 AND Status_Order >= 1";
 $stmt_stats = sqlsrv_query($conn, $q_stats);
 $stats = ['total'=>0,'dp_terverifikasi'=>0,'menunggu_assign'=>0,'selesai'=>0,'lunas'=>0,'dibatalkan'=>0, 'expired'=>0];
 if ($stmt_stats !== false) {
@@ -53,6 +62,15 @@ if ($tab_filter === 'dp_terverifikasi') {
     $conditions[] = "o.Status_Order = 3";
 } elseif ($tab_filter === 'dibatalkan') {
     $conditions[] = "o.Status_Order = 4";
+} elseif ($tab_filter === 'terlewat') {
+    $conditions[] = "o.Status_Order = 1 
+        AND EXISTS (SELECT 1 FROM Order_Jadwal ojx WHERE ojx.ID_Order = o.ID_Order)
+        AND NOT EXISTS (
+            SELECT 1 FROM Order_Jadwal ojy 
+            INNER JOIN Jadwal_Studio jy ON ojy.ID_Jadwal = jy.ID_Jadwal
+            WHERE ojy.ID_Order = o.ID_Order AND jy.Status = 1 AND jy.Is_Deleted = 0
+              AND DATEADD(SECOND, DATEDIFF(SECOND, 0, jy.Jam_Selesai), CAST(jy.Tanggal_Jadwal AS DATETIME)) >= GETDATE()
+        )";
 }
 if (!empty($cari)) {
     $conditions[] = "(p.Nama_Pelanggan LIKE ? OR CAST(o.ID_Order AS VARCHAR) LIKE ? OR pk.Nama_Paket LIKE ?)";
@@ -149,12 +167,37 @@ if (!empty($order_ids)) {
             
             $jam_mulai_str = (is_object($j['Jam_Mulai']) && method_exists($j['Jam_Mulai'], 'format')) ? $j['Jam_Mulai']->format('H:i') : substr($j['Jam_Mulai'], 0, 5);
             $jam_selesai_str = (is_object($j['Jam_Selesai']) && method_exists($j['Jam_Selesai'], 'format')) ? $j['Jam_Selesai']->format('H:i') : substr($j['Jam_Selesai'], 0, 5);
-            
+
+            // Simpan tanggal mentah (Y-m-d) + jam selesai buat hitung apakah jadwal sudah lewat
+            $tgl_raw = (is_object($j['Tanggal_Jadwal']) && method_exists($j['Tanggal_Jadwal'], 'format')) ? $j['Tanggal_Jadwal']->format('Y-m-d') : date('Y-m-d', strtotime($j['Tanggal_Jadwal']));
+            $jam_selesai_raw = (is_object($j['Jam_Selesai']) && method_exists($j['Jam_Selesai'], 'format')) ? $j['Jam_Selesai']->format('H:i:s') : substr($j['Jam_Selesai'], 0, 8);
+            $ts_selesai = strtotime($tgl_raw . ' ' . $jam_selesai_raw);
+
             $jadwal_per_order[$oid][] = [
                 'tanggal' => $tgl_str,
-                'jam' => $jam_mulai_str . ' - ' . $jam_selesai_str
+                'jam' => $jam_mulai_str . ' - ' . $jam_selesai_str,
+                'ts_selesai' => $ts_selesai
             ];
         }
+    }
+}
+
+// =====================================================
+// VALIDASI: TANDAI ORDER YANG JADWALNYA SUDAH LEWAT
+// Order dengan status "DP Terverifikasi" (1) yang seluruh
+// jadwalnya sudah lewat waktu selesainya, tapi sesi fotonya
+// belum pernah ditandai Selesai -> ditandai "Jadwal Terlewat"
+// supaya admin sadar dan segera follow up / reschedule.
+// TIDAK dihapus/dibatalkan otomatis karena DP sudah dibayar
+// customer (beda kasus dengan order yang belum bayar sama sekali).
+// =====================================================
+$order_terlewat = [];
+foreach ($jadwal_per_order as $oid_chk => $schedules_chk) {
+    if (empty($schedules_chk)) continue;
+    $ts_list = array_column($schedules_chk, 'ts_selesai');
+    $ts_terakhir = max($ts_list);
+    if ($ts_terakhir !== false && $ts_terakhir < time()) {
+        $order_terlewat[$oid_chk] = true;
     }
 }
 
@@ -294,6 +337,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 .td-jam{font-size:0.75rem;color:#94a3b8;font-weight:600;}
 .td-harga{font-weight:800;font-size:0.95rem;color:var(--p-pink);}
 .badge-status{font-size:0.72rem;font-weight:700;padding:6px 14px;border-radius:50px;display:inline-flex;align-items:center;gap:6px;}
+.badge-terlewat{margin-top:6px;font-size:0.68rem;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #fde68a;padding:4px 10px;border-radius:8px;display:inline-flex;align-items:center;gap:5px;}
 .badge-dot{width:6px;height:6px;border-radius:50%;display:inline-block;}
 .btn-action-circle{width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;transition:all 0.4s;border:1.5px solid #eef2f6;background:#fff;font-size:0.85rem;text-decoration:none;margin:0 2px;cursor:pointer;}
 .btn-action-view{color:#D53D66;border-color:#FFE4E9;}
@@ -415,6 +459,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 <a href="list.php?tab=selesai" class="tab-btn <?= $tab_filter==='selesai'?'active':'' ?>"><i class="bi bi-camera-fill"></i> Selesai <span class="tab-count"><?= $stats['selesai']??0 ?></span></a>
 <a href="list.php?tab=lunas" class="tab-btn <?= $tab_filter==='lunas'?'active':'' ?>"><i class="bi bi-cash-stack"></i> Lunas <span class="tab-count"><?= $stats['lunas']??0 ?></span></a>
 <a href="list.php?tab=dibatalkan" class="tab-btn <?= $tab_filter==='dibatalkan'?'active':'' ?>"><i class="bi bi-x-circle-fill"></i> Dibatalkan <span class="tab-count"><?= $stats['dibatalkan']??0 ?></span></a>
+<a href="list.php?tab=terlewat" class="tab-btn <?= $tab_filter==='terlewat'?'active':'' ?>" style="<?= ($stats['expired']??0)>0 ? 'color:#b45309;' : '' ?>"><i class="bi bi-exclamation-triangle-fill"></i> Jadwal Terlewat <span class="tab-count"><?= $stats['expired']??0 ?></span></a>
 </div>
 
 <div class="search-filter-bar">
@@ -501,7 +546,7 @@ $is_dp_terverifikasi=((int)$row['Status_Order']===STATUS_ORDER_DP_TERVERIFIKASI)
     <?php endif; ?>
 </td>
 <td><div class="td-harga">Rp <?= number_format((float)$row['Total_Harga'],0,',','.') ?></div></td>
-<td><span class="badge-status" style="background:<?= $statusInfo[2] ?>;color:<?= $statusInfo[1] ?>"><span class="badge-dot" style="background:<?= $statusInfo[1] ?>"></span><?= $statusInfo[0] ?></span></td>
+<td><span class="badge-status" style="background:<?= $statusInfo[2] ?>;color:<?= $statusInfo[1] ?>"><span class="badge-dot" style="background:<?= $statusInfo[1] ?>"></span><?= $statusInfo[0] ?></span><?php if($is_dp_terverifikasi && !empty($order_terlewat[(int)$row['ID_Order']])):?><div class="badge-terlewat" title="Jadwal sudah lewat waktu tapi sesi foto belum ditandai selesai. Segera follow up / reschedule."><i class="bi bi-exclamation-triangle-fill"></i> Jadwal Terlewat</div><?php endif;?></td>
 <td><?php if($has_fotografer):?><span class="fotografer-badge"><i class="bi bi-person-fill"></i><?= htmlspecialchars($nama_fotografer) ?></span><?php else:?><span class="td-detail" style="color:#94a3b8"><i class="bi bi-person-x me-1"></i>Belum diassign</span><?php endif;?></td>
 <td><button class="btn-action-circle btn-action-view" onclick="bukaDetail(<?= (int)$row['ID_Order'] ?>)" title="Lihat Detail"><i class="bi bi-eye"></i></button><?php if($is_dp_terverifikasi&&!$has_fotografer):?><button class="btn-action-circle btn-action-assign" onclick="konfirmasiAssign(<?= (int)$row['ID_Order'] ?>)" title="Assign Fotografer"><i class="bi bi-person-plus"></i></button><?php endif;?></td>
 </tr>

@@ -124,58 +124,27 @@ if ($jadwal_stmt !== false) {
 }
 
 // =====================================================
-// PROSES PEMBATALAN DENGAN TRANSACTION
+// PROSES PEMBATALAN — PAKAI STORED PROCEDURE sp_BatalkanOrderBooking
+// UNTUK BAGIAN ORDER + JADWAL (satu sumber logika sama kayak
+// SP yang dipakai admin di sp_BatalkanOrderBooking versi database).
+// Bagian Pembayaran & Penjualan tetap ditangani di PHP karena
+// belum ada SP khusus untuk itu di database.
 // =====================================================
 $username_cust = $_SESSION['username'] ?? 'customer';
 
 sqlsrv_begin_transaction($conn);
 try {
-    // 1. Update order status = Dibatalkan (4)
-    $update_order_sql = "
-        UPDATE [Order] 
-        SET 
-            Status_Order = ?, 
-            Modified_By = ?, 
-            Modified_Date = GETDATE()
-        WHERE ID_Order = ? AND ID_Pelanggan = ? AND Status = 1
-    ";
-
-    $update_order_stmt = sqlsrv_query($conn, $update_order_sql, [
-        STATUS_ORDER_DIBATALKAN,
-        $username_cust,
+    // 1 & 2. Panggil SP: update Status_Order = Dibatalkan (4) + reset semua
+    // Jadwal_Studio terkait ke Tersedia (0), lewat Order_Jadwal junction.
+    $q_sp = sqlsrv_query($conn, "{CALL sp_BatalkanOrderBooking (?, ?)}", [
         $id_order,
-        $id_customer
+        $username_cust
     ]);
 
-    if ($update_order_stmt === false) {
-        throw new Exception('Gagal mengubah status order menjadi dibatalkan.');
-    }
-
-    $rows_affected = sqlsrv_rows_affected($update_order_stmt);
-    if ($rows_affected === 0) {
-        throw new Exception('Tidak ada data order yang diperbarui. Order mungkin sudah tidak aktif.');
-    }
-
-    // 2. Kembalikan SEMUA jadwal terkait ke status Tersedia (0)
-    if (!empty($jadwal_list)) {
-        $placeholders = implode(',', array_fill(0, count($jadwal_list), '?'));
-        $update_jadwal_sql = "
-            UPDATE Jadwal_Studio 
-            SET 
-                Status_Jadwal = ?, 
-                Modified_By = ?, 
-                Modified_Date = GETDATE()
-            WHERE ID_Jadwal IN ($placeholders) 
-              AND Status = 1 
-              AND Is_Deleted = 0
-        ";
-
-        $jadwal_params = array_merge([STATUS_JADWAL_TERSEDIA, $username_cust], $jadwal_list);
-        $update_jadwal_stmt = sqlsrv_query($conn, $update_jadwal_sql, $jadwal_params);
-
-        if ($update_jadwal_stmt === false) {
-            throw new Exception('Gagal mengembalikan status jadwal studio.');
-        }
+    if ($q_sp === false) {
+        $errors = sqlsrv_errors();
+        $err_msg = $errors ? $errors[0]['message'] : 'Gagal menjalankan prosedur pembatalan order.';
+        throw new Exception($err_msg);
     }
 
     // 3. Soft delete pembayaran DP yang masih menunggu verifikasi (kalau ada)

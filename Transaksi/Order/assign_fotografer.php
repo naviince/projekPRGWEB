@@ -135,11 +135,11 @@ foreach ($order_schedules as $sched) {
         WHERE sf.ID_Karyawan = ? 
           AND sf.Status = 1 
           AND sf.Status_Sesi <> 2
-          AND j.Tanggal_Jadwal = ?
+          AND CAST(j.Tanggal_Jadwal AS DATE) = CAST(? AS DATE)
           AND (
-              (j.Jam_Mulai >= ? AND j.Jam_Mulai < ?) OR
-              (j.Jam_Selesai > ? AND j.Jam_Selesai <= ?) OR
-              (? >= j.Jam_Mulai AND ? < j.Jam_Selesai)
+              (j.Jam_Mulai >= CAST(? AS TIME) AND j.Jam_Mulai < CAST(? AS TIME)) OR
+              (j.Jam_Selesai > CAST(? AS TIME) AND j.Jam_Selesai <= CAST(? AS TIME)) OR
+              (CAST(? AS TIME) >= j.Jam_Mulai AND CAST(? AS TIME) < j.Jam_Selesai)
           )
           AND sf.ID_Order <> ?
     ";

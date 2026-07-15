@@ -480,14 +480,44 @@ foreach ($riwayat_list as $item) {
 // =====================================================
 // FUNGSI HELPER
 // =====================================================
-function getStatusBadge($status, $is_expired = false) {
+// -----------------------------------------------------
+// DETEKSI PEMBAYARAN LANGSUNG LUNAS (SEKALIGUS)
+// Sistem hanya mengenal 2 tahap pembayaran di tabel Pembayaran
+// (DP lalu Pelunasan). Saat customer memilih "Bayar Langsung Lunas"
+// di halaman booking, seluruh nominal (100%) tetap tercatat sebagai
+// baris Tipe_Pembayaran = 'DP'. Fungsi ini mendeteksi kondisi tsb
+// dengan membandingkan Jumlah_DP terhadap total harga order, supaya
+// tampilan tidak keliru menganggapnya sebagai DP parsial (65%) yang
+// masih menyisakan tahap Pelunasan terpisah.
+// -----------------------------------------------------
+function hitungTotalHargaDiskon($item) {
+    $total_paket = (float)($item['Total_Paket'] ?? 0);
+    $total_cetak = (float)($item['Total_Barang_Cetak'] ?? 0);
+    $diskon_cetak = $total_cetak > 0 ? $total_cetak * 0.05 : 0;
+    return $total_paket + ($total_cetak - $diskon_cetak);
+}
+
+function isBayarLunasSekaligus($item) {
+    $jumlah_dp = (float)($item['Jumlah_DP'] ?? 0);
+    $total_harga_diskon = hitungTotalHargaDiskon($item);
+    // Toleransi Rp1 untuk pembulatan floating point
+    return $jumlah_dp > 0 && $total_harga_diskon > 0 && $jumlah_dp >= ($total_harga_diskon - 1);
+}
+
+function getStatusBadge($status, $is_expired = false, $is_lunas_sekaligus = false) {
     if ($is_expired && $status != STATUS_ORDER_LUNAS && $status != STATUS_ORDER_DIBATALKAN) {
         return '<span class="badge badge-expired"><i class="bi bi-clock-history"></i> Kadaluarsa</span>';
     }
     switch ($status) {
         case STATUS_ORDER_MENUNGGU_DP:
+            if ($is_lunas_sekaligus) {
+                return '<span class="badge badge-dp"><i class="bi bi-hourglass-split"></i> Menunggu Verifikasi Pembayaran (Lunas)</span>';
+            }
             return '<span class="badge badge-menunggu"><i class="bi bi-hourglass-split"></i> Menunggu DP</span>';
         case STATUS_ORDER_DP_TERVERIFIKASI:
+            if ($is_lunas_sekaligus) {
+                return '<span class="badge badge-dp"><i class="bi bi-check-circle-fill"></i> Lunas - Menunggu Sesi</span>';
+            }
             return '<span class="badge badge-dp"><i class="bi bi-check-circle-fill"></i> DP Terverifikasi</span>';
         case STATUS_ORDER_SELESAI_FOTO:
             return '<span class="badge badge-foto"><i class="bi bi-camera-fill"></i> Selesai Foto</span>';
@@ -559,10 +589,10 @@ function getAksiButtons($item, $jadwal_expired_map, $jadwal_map) {
     $is_expired = isset($jadwal_expired_map[$oid]) && $jadwal_expired_map[$oid] && $status != STATUS_ORDER_LUNAS && $status != STATUS_ORDER_DIBATALKAN;
 
     // Perhitungan total harga setelah diskon produk cetak 5%
-    $total_paket = (float)($item['Total_Paket'] ?? 0);
-    $total_cetak = (float)($item['Total_Barang_Cetak'] ?? 0);
-    $diskon_cetak = $total_cetak > 0 ? $total_cetak * 0.05 : 0;
-    $total_harga_diskon = $total_paket + ($total_cetak - $diskon_cetak);
+    $total_harga_diskon = hitungTotalHargaDiskon($item);
+    // Deteksi apakah customer memilih "Bayar Langsung Lunas" saat booking
+    // (nominal DP yang tercatat sudah menutupi 100% total harga)
+    $is_lunas_sekaligus = isBayarLunasSekaligus($item);
 
     // Jika expired, hanya tampilkan badge expired
     if ($is_expired) {
@@ -577,9 +607,13 @@ function getAksiButtons($item, $jadwal_expired_map, $jadwal_map) {
 
             if ($status_dp === STATUS_PEMBAYARAN_MENUNGGU) {
                 // Sudah upload, tinggal nunggu admin verifikasi -> tombol upload dinonaktifkan
-                $buttons .= '<span class="btn-aksi btn-pending"><i class="bi bi-hourglass-split"></i> Menunggu Verifikasi Admin</span>';
+                if ($is_lunas_sekaligus) {
+                    $buttons .= '<span class="btn-aksi btn-pending"><i class="bi bi-hourglass-split"></i> Menunggu Verifikasi Admin (Pembayaran Lunas)</span>';
+                } else {
+                    $buttons .= '<span class="btn-aksi btn-pending"><i class="bi bi-hourglass-split"></i> Menunggu Verifikasi Admin</span>';
+                }
             } elseif ($status_dp === STATUS_PEMBAYARAN_DITOLAK) {
-                $buttons .= '<div class="notice-ditolak"><i class="bi bi-exclamation-triangle"></i> Bukti DP sebelumnya ditolak admin. Silakan upload ulang.</div>';
+                $buttons .= '<div class="notice-ditolak"><i class="bi bi-exclamation-triangle"></i> Bukti pembayaran sebelumnya ditolak admin. Silakan upload ulang.</div>';
                 $buttons .= '<button onclick="bukaModalPembayaran(' . $id_order . ', \'DP\', ' . $dp_amount . ', ' . $total_harga_diskon . ')" class="btn-aksi btn-upload"><i class="bi bi-upload"></i> Upload Ulang Bukti DP</button>';
             } else {
                 $buttons .= '<button onclick="bukaModalPembayaran(' . $id_order . ', \'DP\', ' . $dp_amount . ', ' . $total_harga_diskon . ')" class="btn-aksi btn-upload"><i class="bi bi-upload"></i> Upload Bukti DP</button>';
@@ -602,7 +636,10 @@ function getAksiButtons($item, $jadwal_expired_map, $jadwal_map) {
             $remaining_amount = $total_harga_diskon - ($item['Jumlah_DP'] ?? 0);
             $status_pelunasan = $item['Status_Pelunasan'] ?? null;
 
-            if ($status_pelunasan === STATUS_PEMBAYARAN_MENUNGGU) {
+            if ($is_lunas_sekaligus) {
+                // Sudah dibayar lunas sejak awal, tidak perlu upload pelunasan lagi
+                $buttons .= '<span class="btn-aksi btn-pending" style="background:#ecfdf5;color:#059669;"><i class="bi bi-check2-all"></i> Sudah Lunas - Menunggu Admin Selesaikan Pesanan</span>';
+            } elseif ($status_pelunasan === STATUS_PEMBAYARAN_MENUNGGU) {
                 $buttons .= '<span class="btn-aksi btn-pending"><i class="bi bi-hourglass-split"></i> Menunggu Verifikasi Admin</span>';
             } else {
                 if ($status_pelunasan === STATUS_PEMBAYARAN_DITOLAK) {
@@ -2000,6 +2037,7 @@ foreach ($riwayat_list as $item) {
                         $order_schedules = $jadwal_per_order[$id_order] ?? [];
                         $is_expired = isset($jadwal_expired[$id_order]) && $jadwal_expired[$id_order] && $item['Status_Order'] != STATUS_ORDER_LUNAS && $item['Status_Order'] != STATUS_ORDER_DIBATALKAN;
                         $card_class = $is_batal ? 'batal' : ($is_expired ? 'expired' : ($item['Status_Order'] == STATUS_ORDER_LUNAS ? 'lunas' : ''));
+                        $is_lunas_sekaligus = isBayarLunasSekaligus($item);
                         $card_delay += 0.05;
                     ?>
                     <div class="order-card <?php echo $card_class; ?>" style="animation-delay: <?php echo $card_delay; ?>s;">
@@ -2012,7 +2050,7 @@ foreach ($riwayat_list as $item) {
                                     <i class="bi bi-calendar3"></i>
                                     <?php echo formatTanggalIndo($item['Tanggal_Booking']); ?>
                                 </div>
-                                <?php echo getStatusBadge($item['Status_Order'], $is_expired); ?>
+                                <?php echo getStatusBadge($item['Status_Order'], $is_expired, $is_lunas_sekaligus); ?>
                             </div>
                         </div>
 
@@ -2119,11 +2157,16 @@ foreach ($riwayat_list as $item) {
                             <!-- PEMBAYARAN -->
                             <div class="pembayaran-section">
                                 <h4><i class="bi bi-credit-card-2-front"></i> Informasi Pembayaran</h4>
+                                <?php if ($is_lunas_sekaligus): ?>
+                                <div style="margin-bottom:10px;padding:8px 12px;background:#ecfdf5;color:#059669;border-radius:8px;font-size:0.82rem;font-weight:700;display:inline-flex;align-items:center;gap:6px;">
+                                    <i class="bi bi-info-circle"></i> Dibayar Lunas Sekaligus (tidak ada tahap Pelunasan terpisah)
+                                </div>
+                                <?php endif; ?>
                                 <div class="pembayaran-grid">
                                     <!-- DP Box -->
                                     <div class="pembayaran-box">
                                         <div class="pay-header">
-                                            <span class="pay-label"><i class="bi bi-cash-coin" style="margin-right:6px;"></i>DP (Uang Muka)</span>
+                                            <span class="pay-label"><i class="bi bi-cash-coin" style="margin-right:6px;"></i><?php echo $is_lunas_sekaligus ? 'Pembayaran (Lunas)' : 'DP (Uang Muka)'; ?></span>
                                             <?php 
                                             if (!empty($item['Status_DP']) || !empty($item['Jumlah_DP'])) {
                                                 echo getStatusPembayaranBadge($item['Status_DP'] ?? null);
@@ -2151,7 +2194,9 @@ foreach ($riwayat_list as $item) {
                                         <div class="pay-header">
                                             <span class="pay-label"><i class="bi bi-cash-stack" style="margin-right:6px;"></i>Pelunasan</span>
                                             <?php 
-                                            if (!empty($item['Status_Pelunasan']) || !empty($item['Jumlah_Pelunasan'])) {
+                                            if ($is_lunas_sekaligus) {
+                                                echo '<span class="badge-pay badge-pay-verified"><i class="bi bi-check-lg"></i> Tidak Diperlukan</span>';
+                                            } elseif (!empty($item['Status_Pelunasan']) || !empty($item['Jumlah_Pelunasan'])) {
                                                 echo getStatusPembayaranBadge($item['Status_Pelunasan'] ?? null);
                                             } else {
                                                 echo '<span class="badge-pay badge-pay-wait">Belum Bayar</span>';
@@ -2159,12 +2204,18 @@ foreach ($riwayat_list as $item) {
                                             ?>
                                         </div>
                                         <div class="pay-amount">
-                                            <?php echo !empty($item['Jumlah_Pelunasan']) ? formatRupiah($item['Jumlah_Pelunasan']) : '-'; ?>
+                                            <?php 
+                                            if ($is_lunas_sekaligus) {
+                                                echo '<span style="font-size:0.8rem;font-weight:600;color:var(--text-muted);">Sudah termasuk pembayaran lunas</span>';
+                                            } else {
+                                                echo !empty($item['Jumlah_Pelunasan']) ? formatRupiah($item['Jumlah_Pelunasan']) : '-';
+                                            }
+                                            ?>
                                         </div>
-                                        <?php if (!empty($item['Metode_Pelunasan'])): ?>
+                                        <?php if (!$is_lunas_sekaligus && !empty($item['Metode_Pelunasan'])): ?>
                                         <div class="pay-metode"><i class="bi bi-bank"></i> <?php echo htmlspecialchars($item['Metode_Pelunasan']); ?></div>
                                         <?php endif; ?>
-                                        <?php if (!empty($item['Tgl_Pelunasan'])): ?>
+                                        <?php if (!$is_lunas_sekaligus && !empty($item['Tgl_Pelunasan'])): ?>
                                         <div class="pay-detail">
                                             <i class="bi bi-calendar3" style="color:var(--text-muted);margin-right:4px;"></i>
                                             <?php echo formatTanggalIndo($item['Tgl_Pelunasan']); ?>

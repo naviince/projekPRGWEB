@@ -88,67 +88,37 @@ if ((int)$d_pembayaran['Status_Pembayaran'] !== STATUS_PEMBAYARAN_MENUNGGU) {
 $id_order = (int)$d_pembayaran['ID_Order'];
 
 // =====================================================
-// PROSES VERIFIKASI (ATOMIC UPDATE - ANTI RACE CONDITION)
-// Update pembayaran menyertakan WHERE Status_Pembayaran = MENUNGGU
-// supaya kalau ada 2 admin klik bersamaan, hanya 1 yang berhasil.
+// PROSES VERIFIKASI — PAKAI STORED PROCEDURE sp_VerifikasiPembayaran
+// SP ini sudah menangani (di level database, satu sumber logika):
+//   - Update status Pembayaran (Valid/Ditolak)
+//   - Update Status_Order otomatis (DP Terverifikasi kalau diterima)
+//   - Kalau DITOLAK: otomatis kembalikan Status_Jadwal ke Tersedia (0)
+//     lewat tabel Order_Jadwal -> Jadwal_Studio (sebelumnya versi raw
+//     query PHP TIDAK melakukan ini, jadi ada bug: jadwal nyangkut
+//     status "Booked" walau DP-nya ditolak. Sekarang konsisten.)
+//   - Trigger tr_Log_Pembayaran & tr_Log_Order tetap otomatis jalan
+//     dan mencatat audit log, karena trigger berjalan di level tabel.
 // =====================================================
-if (!sqlsrv_begin_transaction($conn)) {
-    header("Location: list.php?status=error&msg=" . urlencode("Gagal memulai transaksi."));
+$status_verifikasi_sp = ($aksi === 'terima') ? STATUS_PEMBAYARAN_VALID : STATUS_PEMBAYARAN_DITOLAK;
+
+$q_sp = sqlsrv_query($conn, "{CALL sp_VerifikasiPembayaran (?, ?, ?, ?)}", [
+    $id_pembayaran,
+    $status_verifikasi_sp,
+    $id_verifikator,
+    'admin_verifikasi'
+]);
+
+if ($q_sp === false) {
+    $errors = sqlsrv_errors();
+    $err_msg = $errors ? $errors[0]['message'] : 'Gagal menjalankan prosedur verifikasi.';
+    header("Location: list.php?status=error&msg=" . urlencode($err_msg));
     exit();
 }
 
-try {
-    if ($aksi === 'terima') {
-        $q_update = sqlsrv_query($conn, 
-            "UPDATE Pembayaran 
-             SET Status_Pembayaran = ?, ID_Karyawan_Verifikator = ?, Modified_Date = GETDATE()
-             WHERE ID_Pembayaran = ? AND Status_Pembayaran = ?",
-            [STATUS_PEMBAYARAN_VALID, $id_verifikator, $id_pembayaran, STATUS_PEMBAYARAN_MENUNGGU]
-        );
-        if ($q_update === false) {
-            throw new Exception("Gagal update pembayaran.");
-        }
-        if (sqlsrv_rows_affected($q_update) === 0) {
-            throw new Exception("Pembayaran sudah diproses admin lain sebelum Anda.");
-        }
-
-        // Kalau DP valid, update order jadi DP Terverifikasi (hanya jika masih Menunggu DP)
-        $q_order = sqlsrv_query($conn, 
-            "UPDATE [Order] SET Status_Order = ?, Modified_By = ?, Modified_Date = GETDATE() 
-             WHERE ID_Order = ? AND Status_Order = ?",
-            [STATUS_ORDER_DP_TERVERIFIKASI, 'admin_verifikasi', $id_order, STATUS_ORDER_MENUNGGU_DP]
-        );
-        if ($q_order === false) {
-            throw new Exception("Gagal update status order.");
-        }
-        if (sqlsrv_rows_affected($q_order) === 0) {
-            throw new Exception("Status order sudah berubah (kemungkinan dibatalkan/kadaluarsa), verifikasi dibatalkan.");
-        }
-
-        sqlsrv_commit($conn);
-        header("Location: list.php?status=sukses&msg=" . urlencode("Pembayaran DP diterima. Order sekarang masuk ke Booking Customer."));
-
-    } else { // tolak
-        $q_update = sqlsrv_query($conn, 
-            "UPDATE Pembayaran 
-             SET Status_Pembayaran = ?, ID_Karyawan_Verifikator = ?, Modified_Date = GETDATE()
-             WHERE ID_Pembayaran = ? AND Status_Pembayaran = ?",
-            [STATUS_PEMBAYARAN_DITOLAK, $id_verifikator, $id_pembayaran, STATUS_PEMBAYARAN_MENUNGGU]
-        );
-        if ($q_update === false) {
-            throw new Exception("Gagal update pembayaran.");
-        }
-        if (sqlsrv_rows_affected($q_update) === 0) {
-            throw new Exception("Pembayaran sudah diproses admin lain sebelum Anda.");
-        }
-
-        sqlsrv_commit($conn);
-        header("Location: list.php?status=sukses&msg=" . urlencode("Pembayaran ditolak. Customer harus upload ulang."));
-    }
-
-} catch (Exception $e) {
-    sqlsrv_rollback($conn);
-    header("Location: list.php?status=error&msg=" . urlencode($e->getMessage()));
+if ($aksi === 'terima') {
+    header("Location: list.php?status=sukses&msg=" . urlencode("Pembayaran DP diterima. Order sekarang masuk ke Booking Customer."));
+} else {
+    header("Location: list.php?status=sukses&msg=" . urlencode("Pembayaran ditolak. Jadwal dikembalikan ke Tersedia, customer harus upload ulang."));
 }
 exit();
 ?>

@@ -24,6 +24,7 @@ $q_jadwal = sqlsrv_query($conn, "
         PK.Nama_Paket,
         PK.Durasi_Waktu,
         R.Nama_Ruangan,
+        J.ID_Jadwal,
         J.Tanggal_Jadwal,
         J.Jam_Mulai,
         J.Jam_Selesai,
@@ -33,16 +34,38 @@ $q_jadwal = sqlsrv_query($conn, "
     JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
     JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
     JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan
-    JOIN Jadwal_Studio J ON O.ID_Jadwal = J.ID_Jadwal
-    WHERE S.ID_Karyawan = ? AND S.Status = 1
+    JOIN Order_Jadwal OJ ON O.ID_Order = OJ.ID_Order
+    JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
+    WHERE S.ID_Karyawan = ? AND S.Status = 1 AND O.Status = 1 
+      AND O.Status_Order <> 4 AND J.Status = 1 AND J.Is_Deleted = 0
     ORDER BY J.Tanggal_Jadwal ASC, J.Jam_Mulai ASC
 ", array($id_fotografer));
 
 // Ambil data untuk kalender (group by tanggal)
 $jadwal_by_date = [];
+$total_terlewat = 0;
 if ($q_jadwal && sqlsrv_has_rows($q_jadwal)) {
     while ($row = sqlsrv_fetch_array($q_jadwal, SQLSRV_FETCH_ASSOC)) {
-        $tgl = $row['Tanggal_Jadwal']->format('Y-m-d');
+        // Format tanggal jadi string aman (jaga-jaga kalau driver return string, bukan objek DateTime)
+        $tgl_obj = $row['Tanggal_Jadwal'];
+        $tgl = (is_object($tgl_obj) && method_exists($tgl_obj, 'format')) ? $tgl_obj->format('Y-m-d') : date('Y-m-d', strtotime($tgl_obj));
+
+        $js_obj = $row['Jam_Selesai'];
+        $jam_selesai_raw = (is_object($js_obj) && method_exists($js_obj, 'format')) ? $js_obj->format('H:i:s') : substr((string)$js_obj, 0, 8);
+
+        // =====================================================
+        // VALIDASI: TANDAI SESI YANG WAKTUNYA SUDAH LEWAT
+        // Sesi dengan Status_Sesi = 0 (Menunggu) yang jam
+        // selesainya sudah lewat waktu sekarang -> ditandai
+        // "Terlewat" supaya fotografer/admin sadar dan segera
+        // update status (mulai sesi / hubungi admin). Data TIDAK
+        // dihapus otomatis karena ini bukti kerja fotografer yang
+        // harus tetap tercatat untuk akuntabilitas.
+        // =====================================================
+        $ts_selesai = strtotime($tgl . ' ' . $jam_selesai_raw);
+        $row['is_terlewat'] = ((int)$row['Status_Sesi'] === 0 && $ts_selesai !== false && $ts_selesai < time());
+        if ($row['is_terlewat']) { $total_terlewat++; }
+
         if (!isset($jadwal_by_date[$tgl])) {
             $jadwal_by_date[$tgl] = [];
         }
@@ -82,7 +105,8 @@ function formatWaktu($time) {
     return $time->format('H:i');
 }
 
-function getStatusBadge($status) {
+function getStatusBadge($status, $is_terlewat = false) {
+    if ($is_terlewat) return '<span class="badge-status" style="background:#fef3c7;color:#b45309;border:1px solid #fde68a;"><i class="bi bi-exclamation-triangle-fill me-1"></i>Terlewat</span>';
     if ($status == 0) return '<span class="badge-status badge-terjadwal">Menunggu</span>';
     if ($status == 1) return '<span class="badge-status badge-selesai">Selesai</span>';
     return '<span class="badge-status badge-batal">Dibatalkan</span>';
@@ -135,7 +159,7 @@ function getStatusIcon($status) {
         .card-3d:hover::before { opacity: 1; }
         .content-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .content-title { font-weight: 700; font-size: 1.1rem; color: var(--text-dark); }
-        .sesi-item { display: flex; align-items: center; gap: 14px; padding: 16px; background: linear-gradient(135deg, #ffffff, #FFF0F3); border-radius: 16px; margin-bottom: 12px; transition: var(--transition-3d); border: 2px solid transparent; }
+        .sesi-item { display: flex; align-items: center; gap: 14px; padding: 16px; background: linear-gradient(135deg, #ffffff, #FFF0F3); border-radius: 16px; margin-bottom: 12px; transition: var(--transition-3d); border: 2px solid transparent; cursor: pointer; }
         .sesi-item:hover { transform: translateX(6px); border-color: var(--p-pink); box-shadow: 0 8px 20px rgba(213, 61, 102, 0.1); }
         .sesi-icon { width: 50px; height: 50px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0; }
         .sesi-time { font-size: 0.85rem; font-weight: 700; color: var(--p-pink); }
@@ -156,6 +180,10 @@ function getStatusIcon($status) {
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fadeInUp 0.6s ease-out forwards; }
         @media (max-width: 992px) { .main-content { margin-left: 0; padding: 20px; } .sidebar { transform: translateX(-100%); } }
+        
+        /* Modal custom styles */
+        .modal-content { border: none; }
+        .modal-backdrop.show { opacity: 0.5; }
     </style>
 </head>
 <body>
@@ -206,7 +234,12 @@ function getStatusIcon($status) {
         <div class="card-3d animate-fade-in">
             <div class="content-header">
                 <h5 class="content-title"><i class="bi bi-calendar-week-fill text-danger me-2"></i>Daftar Jadwal</h5>
-                <span class="badge" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; border-radius: 8px; font-size: 0.75rem;"><?= count($jadwal_by_date) ?> Hari</span>
+                <div class="d-flex gap-2">
+                    <?php if ($total_terlewat > 0): ?>
+                        <span class="badge" style="background:#fef3c7;color:#b45309;font-weight:700;border-radius:8px;font-size:0.75rem;border:1px solid #fde68a;"><i class="bi bi-exclamation-triangle-fill me-1"></i><?= $total_terlewat ?> Terlewat</span>
+                    <?php endif; ?>
+                    <span class="badge" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; border-radius: 8px; font-size: 0.75rem;"><?= count($jadwal_by_date) ?> Hari</span>
+                </div>
             </div>
 
             <?php if (!empty($jadwal_by_date)): ?>
@@ -216,9 +249,21 @@ function getStatusIcon($status) {
                         <span class="float-end" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;"><?= count($sesi_list) ?> Sesi</span>
                     </div>
                     <?php foreach ($sesi_list as $row): ?>
-                        <div class="sesi-item">
-                            <div class="sesi-icon" style="<?= getStatusIcon($row['Status_Sesi']) ?>">
-                                <i class="bi bi-camera-fill"></i>
+                        <div class="sesi-item" 
+                             data-id="<?= $row['ID_Sesi_Foto'] ?>"
+                             data-pelanggan="<?= htmlspecialchars($row['Nama_Pelanggan']) ?>"
+                             data-paket="<?= htmlspecialchars($row['Nama_Paket']) ?>"
+                             data-ruangan="<?= htmlspecialchars($row['Nama_Ruangan']) ?>"
+                             data-tanggal="<?= formatTanggal(new DateTime($tgl)) ?>"
+                             data-jam-mulai="<?= formatWaktu($row['Jam_Mulai']) ?>"
+                             data-jam-selesai="<?= formatWaktu($row['Jam_Selesai']) ?>"
+                             data-durasi="<?= $row['Durasi_Waktu'] ?>"
+                             data-status="<?= $row['Status_Sesi'] ?>"
+                             data-terlewat="<?= $row['is_terlewat'] ? '1' : '0' ?>"
+                             data-keterangan="<?= htmlspecialchars($row['Keterangan'] ?? '') ?>"
+                             data-id-order="<?= $row['ID_Order'] ?>">
+                            <div class="sesi-icon" style="<?= $row['is_terlewat'] ? 'background: linear-gradient(135deg, #fffbeb, #fef3c7); color: #b45309;' : getStatusIcon($row['Status_Sesi']) ?>">
+                                <i class="bi <?= $row['is_terlewat'] ? 'bi-exclamation-triangle-fill' : 'bi-camera-fill' ?>"></i>
                             </div>
                             <div class="flex-grow-1">
                                 <div class="d-flex justify-content-between align-items-start">
@@ -231,17 +276,25 @@ function getStatusIcon($status) {
                                         <div class="sesi-info">
                                             <?= htmlspecialchars($row['Nama_Paket']) ?> • <?= htmlspecialchars($row['Nama_Ruangan']) ?>
                                         </div>
+                                        <?php if ($row['is_terlewat']): ?>
+                                            <div class="sesi-info mt-1" style="color:#b45309;font-weight:700;"><i class="bi bi-clock-history me-1"></i>Waktu sesi sudah lewat dan belum dimulai. Segera update status atau hubungi admin.</div>
+                                        <?php endif; ?>
                                         <?php if (!empty($row['Keterangan'])): ?>
                                             <div class="sesi-info mt-1"><i class="bi bi-info-circle me-1"></i><?= htmlspecialchars($row['Keterangan']) ?></div>
                                         <?php endif; ?>
                                     </div>
                                     <div class="text-end">
-                                        <?= getStatusBadge($row['Status_Sesi']) ?>
+                                        <?= getStatusBadge($row['Status_Sesi'], $row['is_terlewat']) ?>
                                         <div class="mt-2">
-                                            <a href="../Detail/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn btn-sm" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; border-radius: 8px; font-size: 0.75rem; text-decoration: none;">
+                                            <button type="button" class="btn btn-sm btn-detail-modal" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; border-radius: 8px; font-size: 0.75rem; text-decoration: none; border: none;"
+                                                    onclick="event.stopPropagation(); openDetailModal(this);">
                                                 <i class="bi bi-eye"></i> Detail
-                                            </a>
-                                            <?php if ($row['Status_Sesi'] == 0): ?>
+                                            </button>
+                                            <?php if ($row['Status_Sesi'] == 0 && $row['is_terlewat']): ?>
+                                                <a href="../Proses/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-sm" style="padding: 5px 10px; font-size: 0.75rem; background:#fef3c7;color:#b45309;border:1px solid #fde68a;">
+                                                    <i class="bi bi-exclamation-triangle"></i> Mulai (Terlambat)
+                                                </a>
+                                            <?php elseif ($row['Status_Sesi'] == 0): ?>
                                                 <a href="../Proses/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-action-success btn-sm" style="padding: 5px 10px; font-size: 0.75rem;">
                                                     <i class="bi bi-play-fill"></i> Mulai
                                                 </a>
@@ -269,6 +322,70 @@ function getStatusIcon($status) {
         </div>
     </div>
 
+    <!-- Detail Modal -->
+    <div class="modal fade" id="detailModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="border-radius: 22px; border: 1px solid rgba(255, 228, 233, 0.8); box-shadow: 0 22px 45px rgba(213, 61, 102, 0.15);">
+                <div class="modal-header" style="border-bottom: 1px solid var(--light-pink); padding: 20px 24px;">
+                    <h5 class="modal-title fw-bold" style="color: var(--p-pink);"><i class="bi bi-eye me-2"></i>Detail Sesi Foto</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="padding: 24px;">
+                    <div class="text-center mb-4">
+                        <div id="modalStatusIcon" style="width: 70px; height: 70px; border-radius: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 1.8rem; margin-bottom: 12px;">
+                            <i class="bi bi-camera-fill"></i>
+                        </div>
+                        <div id="modalStatusBadge" class="badge-status mb-2"></div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="small fw-bold text-muted mb-1">Nama Pelanggan</label>
+                            <div class="p-2 rounded-3" style="background: var(--s-pink);">
+                                <span id="modalPelanggan" class="fw-bold" style="color: var(--text-dark);"></span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="small fw-bold text-muted mb-1">Tanggal</label>
+                            <div class="p-2 rounded-3" style="background: #f8fafc;">
+                                <span id="modalTanggal" class="fw-semibold" style="color: var(--text-dark);"></span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="small fw-bold text-muted mb-1">Waktu</label>
+                            <div class="p-2 rounded-3" style="background: #f8fafc;">
+                                <span id="modalWaktu" class="fw-semibold" style="color: var(--text-dark);"></span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="small fw-bold text-muted mb-1">Paket</label>
+                            <div class="p-2 rounded-3" style="background: #f8fafc;">
+                                <span id="modalPaket" class="fw-semibold" style="color: var(--text-dark);"></span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="small fw-bold text-muted mb-1">Ruangan</label>
+                            <div class="p-2 rounded-3" style="background: #f8fafc;">
+                                <span id="modalRuangan" class="fw-semibold" style="color: var(--text-dark);"></span>
+                            </div>
+                        </div>
+                        <div class="col-12" id="modalKeteranganWrap" style="display: none;">
+                            <label class="small fw-bold text-muted mb-1">Keterangan</label>
+                            <div class="p-2 rounded-3" style="background: #fffbeb; border: 1px solid #fde68a;">
+                                <span id="modalKeterangan" class="fw-semibold" style="color: #b45309;"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top: 1px solid var(--light-pink); padding: 16px 24px;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="border-radius: 10px; font-weight: 700; font-size: 0.8rem;">Tutup</button>
+                    <a id="modalProsesLink" href="#" class="btn btn-action" style="border-radius: 10px; font-weight: 700; font-size: 0.8rem; display: none;">
+                        <i class="bi bi-play-fill"></i> Proses Sesi
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
         document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
@@ -292,6 +409,69 @@ function getStatusIcon($status) {
         function confirmLandingPage(e) {
             e.preventDefault();
             Swal.fire({ title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama.', icon: 'info', showCancelButton: true, confirmButtonColor: '#D53D66', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal' }).then((result) => { if (result.isConfirmed) window.location.href = '../../index.php'; });
+        }
+        
+        // Detail Modal Function
+        function openDetailModal(btn) {
+            const item = btn.closest('.sesi-item');
+            const data = item.dataset;
+            
+            document.getElementById('modalPelanggan').textContent = data.pelanggan;
+            document.getElementById('modalTanggal').textContent = data.tanggal;
+            document.getElementById('modalWaktu').textContent = data.jamMulai + ' - ' + data.jamSelesai + ' (' + data.durasi + ' menit)';
+            document.getElementById('modalPaket').textContent = data.paket;
+            document.getElementById('modalRuangan').textContent = data.ruangan;
+            
+            // Status badge
+            const statusBadge = document.getElementById('modalStatusBadge');
+            const statusIcon = document.getElementById('modalStatusIcon');
+            
+            if (data.terlewat === '1') {
+                statusBadge.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i>Terlewat';
+                statusBadge.className = 'badge-status mb-2';
+                statusBadge.style.cssText = 'background:#fef3c7;color:#b45309;border:1px solid #fde68a;';
+                statusIcon.style.cssText = 'background: linear-gradient(135deg, #fffbeb, #fef3c7); color: #b45309;';
+                statusIcon.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i>';
+            } else if (data.status === '0') {
+                statusBadge.innerHTML = 'Menunggu';
+                statusBadge.className = 'badge-status badge-terjadwal mb-2';
+                statusBadge.style.cssText = '';
+                statusIcon.style.cssText = 'background: linear-gradient(135deg, #fffbeb, #fef3c7); color: #d97706;';
+                statusIcon.innerHTML = '<i class="bi bi-camera-fill"></i>';
+            } else if (data.status === '1') {
+                statusBadge.innerHTML = 'Selesai';
+                statusBadge.className = 'badge-status badge-selesai mb-2';
+                statusBadge.style.cssText = '';
+                statusIcon.style.cssText = 'background: linear-gradient(135deg, #ecfdf5, #d1fae5); color: #059669;';
+                statusIcon.innerHTML = '<i class="bi bi-check-circle-fill"></i>';
+            } else {
+                statusBadge.innerHTML = 'Dibatalkan';
+                statusBadge.className = 'badge-status badge-batal mb-2';
+                statusBadge.style.cssText = '';
+                statusIcon.style.cssText = 'background: linear-gradient(135deg, #fef2f2, #fee2e2); color: #dc2626;';
+                statusIcon.innerHTML = '<i class="bi bi-x-circle-fill"></i>';
+            }
+            
+            // Keterangan
+            const keteranganWrap = document.getElementById('modalKeteranganWrap');
+            if (data.keterangan && data.keterangan.trim() !== '') {
+                document.getElementById('modalKeterangan').textContent = data.keterangan;
+                keteranganWrap.style.display = 'block';
+            } else {
+                keteranganWrap.style.display = 'none';
+            }
+            
+            // Proses link
+            const prosesLink = document.getElementById('modalProsesLink');
+            if (data.status === '0') {
+                prosesLink.href = '../Proses/index.php?id=' + data.id;
+                prosesLink.style.display = 'inline-flex';
+            } else {
+                prosesLink.style.display = 'none';
+            }
+            
+            const modal = new bootstrap.Modal(document.getElementById('detailModal'));
+            modal.show();
         }
     </script>
 </body>
