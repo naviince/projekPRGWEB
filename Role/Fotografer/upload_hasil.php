@@ -166,20 +166,15 @@ if ($is_ajax && isset($_POST['ajax_upload'])) {
                 $id_sesi
             ));
 
-            // 2. Update status order pada tabel [Order] menjadi 2 (Menunggu Pelunasan)
-            $update_order_sql = "UPDATE [Order] SET 
-                Status_Order = 2,
-                Modified_By = ?,
-                Modified_Date = GETDATE()
-                WHERE ID_Order = ? AND Status = 1";
+            // CATATAN: Status_Order SENGAJA TIDAK diubah di sini. Status_Order
+            // sudah ditentukan dengan benar oleh sp_SelesaiSesiFoto saat sesi
+            // ditandai selesai (2=Menunggu Pelunasan, atau 3=Lunas kalau order
+            // sudah dibayar lunas sekaligus di awal). Upload hasil foto adalah
+            // urusan pengiriman file, bukan bagian dari alur status pembayaran
+            // -- mengubahnya di sini akan menimpa/merusak status yang sudah benar.
 
-            $update_order_stmt = sqlsrv_query($conn, $update_order_sql, array(
-                $username_fotografer,
-                $id_order
-            ));
-
-            // Commit jika kedua query berhasil dijalankan
-            if ($update_stmt && $update_order_stmt) {
+            // Commit jika query berhasil dijalankan
+            if ($update_stmt) {
                 sqlsrv_commit($conn);
                 $response['success'] = true;
                 $response['message'] = 'File hasil foto berhasil diupload!';
@@ -259,7 +254,7 @@ if ($is_ajax_delete) {
             unlink($file_path);
         }
 
-        // 1. Reset data File_Hasil di tabel Sesi_Foto
+        // Reset data File_Hasil di tabel Sesi_Foto
         $delete_sql = "UPDATE Sesi_Foto SET 
             File_Hasil = NULL, 
             Tanggal_Upload_Hasil = NULL,
@@ -269,16 +264,13 @@ if ($is_ajax_delete) {
 
         $delete_stmt = sqlsrv_query($conn, $delete_sql, array($username_fotografer, $id_sesi));
 
-        // 2. Kembalikan Status_Order ke 1 (DP Terverifikasi / Sesi Foto Aktif)
-        $revert_order_sql = "UPDATE [Order] SET 
-            Status_Order = 1,
-            Modified_By = ?,
-            Modified_Date = GETDATE()
-            WHERE ID_Order = ? AND Status = 1";
+        // CATATAN: Status_Order SENGAJA TIDAK diubah di sini, dengan alasan
+        // yang sama seperti di handler upload -- menghapus file hasil foto
+        // adalah urusan pengiriman file, bukan bagian dari alur status
+        // pembayaran/sesi. Status_Order tetap seperti yang sudah ditentukan
+        // sp_SelesaiSesiFoto (2=Menunggu Pelunasan atau 3=Lunas).
 
-        $revert_order_stmt = sqlsrv_query($conn, $revert_order_sql, array($username_fotografer, $id_order));
-
-        if ($delete_stmt && $revert_order_stmt) {
+        if ($delete_stmt) {
             sqlsrv_commit($conn);
             $response['success'] = true;
             $response['message'] = 'File berhasil dihapus!';
@@ -310,32 +302,7 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 
 $id_sesi = intval($_GET['id']);
 
-$q_sesi = sqlsrv_query($conn, "
-    SELECT 
-        S.ID_Sesi_Foto,
-        S.ID_Order,
-        S.File_Hasil,
-        S.Tanggal_Upload_Hasil,
-        S.Status_Sesi,
-        S.Waktu_Mulai,
-        S.Waktu_Selesai,
-        O.Keterangan AS Keterangan_Order,
-        P.Nama_Pelanggan,
-        P.Email_Pelanggan,
-        PK.Nama_Paket,
-        PK.Durasi_Waktu,
-        R.Nama_Ruangan,
-        J.Tanggal_Jadwal,
-        J.Jam_Mulai,
-        J.Jam_Selesai
-    FROM Sesi_Foto S
-    JOIN [Order] O ON S.ID_Order = O.ID_Order
-    JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
-    JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
-    JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan
-    JOIN Jadwal_Studio J ON O.ID_Jadwal = J.ID_Jadwal
-    WHERE S.ID_Sesi_Foto = ? AND S.ID_Karyawan = ? AND S.Status = 1
-", array($id_sesi, $id_fotografer));
+$q_sesi = sqlsrv_query($conn, "{CALL sp_ReadDetailSesiHasilFotografer(?, ?)}", array($id_sesi, $id_fotografer));
 
 if (!$q_sesi) {
     $errors = sqlsrv_errors();

@@ -54,8 +54,8 @@ $q_stats = "
         SUM(CASE WHEN o.Status_Order = 2 THEN 1 ELSE 0 END) as selesai,
         SUM(CASE WHEN o.Status_Order = 3 THEN 1 ELSE 0 END) as lunas,
         SUM(CASE WHEN o.Status_Order = 4 THEN 1 ELSE 0 END) as dibatalkan,
-        -- Expired: DP terverifikasi, belum assign, tapi jadwal sudah lewat
-        SUM(CASE WHEN o.Status_Order = 1 
+        -- Expired: DP terverifikasi ATAU Lunas, belum assign, tapi jadwal sudah lewat
+        SUM(CASE WHEN o.Status_Order IN (1, 3)
             AND NOT EXISTS (
                 SELECT 1 FROM Sesi_Foto sf 
                 WHERE sf.ID_Order = o.ID_Order 
@@ -82,7 +82,7 @@ if ($stmt_stats !== false) {
 // =====================================================
 // FILTER KONDISI QUERY UTAMA
 // =====================================================
-$conditions = ["o.Status = 1 AND o.Status_Order IN (1, 3)"];
+$conditions = ["o.Status = 1 AND o.Status_Order >= 1"];
 $params = [];
 
 if ($tab_filter === 'dp_terverifikasi') {
@@ -409,6 +409,8 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 .td-harga{font-weight:800;font-size:0.95rem;color:var(--p-pink);}
 .badge-status{font-size:0.72rem;font-weight:700;padding:6px 14px;border-radius:50px;display:inline-flex;align-items:center;gap:6px;}
 .badge-terlewat{margin-top:6px;font-size:0.68rem;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #fde68a;padding:4px 10px;border-radius:8px;display:inline-flex;align-items:center;gap:5px;}
+.badge-expired{margin-top:6px;font-size:0.68rem;font-weight:800;color:#dc2626;background:#fee2e2;border:1px solid #fecaca;padding:4px 10px;border-radius:8px;display:inline-flex;align-items:center;gap:5px;animation:pulseExpired 2s ease-in-out infinite;}
+@keyframes pulseExpired{0%,100%{opacity:1;}50%{opacity:0.6;}}
 .badge-dot{width:6px;height:6px;border-radius:50%;display:inline-block;}
 .btn-action-circle{width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;transition:all 0.4s;border:1.5px solid #eef2f6;background:#fff;font-size:0.85rem;text-decoration:none;margin:0 2px;cursor:pointer;}
 .btn-action-view{color:#D53D66;border-color:#FFE4E9;}
@@ -595,8 +597,10 @@ $nama_fotografer=$row['Nama_Fotografer']??null;
 // TOMBOL ASSIGN MUNCUL KALAU:
 // 1. Status_Order = 1 (DP Terverifikasi) ATAU Status_Order = 3 (Lunas)
 // 2. BELUM punya fotografer (ID_Fotografer IS NULL)
+// 3. Jadwal sesinya BELUM expired (jam selesai terakhir belum lewat)
 // =====================================================
-$bisa_assign = ((int)$row['Status_Order'] === STATUS_ORDER_DP_TERVERIFIKASI || (int)$row['Status_Order'] === STATUS_ORDER_LUNAS) && !$has_fotografer;
+$is_expired = !empty($order_terlewat[(int)$row['ID_Order']]);
+$bisa_assign = ((int)$row['Status_Order'] === STATUS_ORDER_DP_TERVERIFIKASI || (int)$row['Status_Order'] === STATUS_ORDER_LUNAS) && !$has_fotografer && !$is_expired;
 ?>
 <tr class="fade-in-up" data-id="<?= $row['ID_Order'] ?>">
 <td><div class="td-order-id"><?= $no++ ?></div></td>
@@ -619,7 +623,7 @@ $bisa_assign = ((int)$row['Status_Order'] === STATUS_ORDER_DP_TERVERIFIKASI || (
     <?php endif; ?>
 </td>
 <td><div class="td-harga">Rp <?= number_format((float)$row['Total_Harga'],0,',','.') ?></div></td>
-<td><span class="badge-status" style="background:<?= $statusInfo[2] ?>;color:<?= $statusInfo[1] ?>"><span class="badge-dot" style="background:<?= $statusInfo[1] ?>"></span><?= $statusInfo[0] ?></span><?php if((int)$row['Status_Order'] === STATUS_ORDER_DP_TERVERIFIKASI && !empty($order_terlewat[(int)$row['ID_Order']])):?><div class="badge-terlewat" title="Jadwal sudah lewat waktu tapi sesi foto belum ditandai selesai. Segera follow up / reschedule."><i class="bi bi-exclamation-triangle-fill"></i> Jadwal Terlewat</div><?php endif;?></td>
+<td><span class="badge-status" style="background:<?= $statusInfo[2] ?>;color:<?= $statusInfo[1] ?>"><span class="badge-dot" style="background:<?= $statusInfo[1] ?>"></span><?= $statusInfo[0] ?></span><?php if(in_array((int)$row['Status_Order'],[STATUS_ORDER_DP_TERVERIFIKASI,STATUS_ORDER_LUNAS]) && !$has_fotografer && $is_expired):?><div class="badge-expired" title="Jadwal sesi sudah lewat waktu dan belum punya fotografer. Assign tidak bisa dilakukan, order harus di-reschedule dulu."><i class="bi bi-clock-history"></i> Expired</div><?php endif;?></td>
 <td><?php if($has_fotografer):?><span class="fotografer-badge"><i class="bi bi-person-fill"></i><?= htmlspecialchars($nama_fotografer) ?></span><?php else:?><span class="td-detail" style="color:#94a3b8"><i class="bi bi-person-x me-1"></i>Belum diassign</span><?php endif;?></td>
 <td><button class="btn-action-circle btn-action-view" onclick="bukaDetail(<?= (int)$row['ID_Order'] ?>)" title="Lihat Detail"><i class="bi bi-eye"></i></button><?php if($bisa_assign):?><button class="btn-action-circle btn-action-assign" onclick="konfirmasiAssign(<?= (int)$row['ID_Order'] ?>)" title="Assign Fotografer"><i class="bi bi-person-plus"></i></button><?php endif;?></td>
 </tr>

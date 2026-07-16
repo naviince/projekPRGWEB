@@ -52,8 +52,8 @@ sqlsrv_free_stmt($q_check_order);
 // CEK KRUSIAL: SATU ORDER = SATU SESI FOTO
 // Jika order ini SUDAH memiliki sesi foto aktif (Status_Sesi = 0 Menunggu, atau 1 Selesai),
 // maka TOLAK assign ulang. Ini mencegah:
-// 1. Customer bayar LUNAS langsung → assign fotografer → customer bayar DP lagi → numpuk
-// 2. Customer bayar DP → assign → sesi selesai → bayar pelunasan → assign ulang → numpuk
+// 1. Customer bayar LUNAS langsung -> assign fotografer -> customer bayar DP lagi -> numpuk
+// 2. Customer bayar DP -> assign -> sesi selesai -> bayar pelunasan -> assign ulang -> numpuk
 // =====================================================
 $q_sesi_aktif = sqlsrv_query($conn, 
     "SELECT ID_Sesi_Foto, Status_Sesi FROM Sesi_Foto 
@@ -126,6 +126,27 @@ sqlsrv_free_stmt($q_jadwal);
 
 if (empty($order_schedules)) {
     header("Location: list.php?status=error&msg=" . urlencode("Order ini tidak memiliki jadwal sesi foto aktif di database."));
+    exit();
+}
+
+// =====================================================
+// VALIDASI EXPIRED: TOLAK ASSIGN KALAU JADWAL SUDAH LEWAT WAKTU
+// Dicek dari slot jadwal PALING AKHIR (jam selesai terakhir) yang
+// dimiliki order ini. Kalau itu sudah lewat dari waktu sekarang (WIB),
+// order dianggap kadaluarsa -- gak masuk akal assign fotografer untuk
+// sesi yang jadwalnya udah lewat. Admin harus reschedule dulu (ubah
+// Jadwal_Studio di Order_Jadwal) sebelum bisa assign fotografer.
+// =====================================================
+$ts_selesai_terakhir = null;
+foreach ($order_schedules as $sched) {
+    $ts = strtotime($sched['Tanggal_Jadwal_Str'] . ' ' . $sched['Jam_Selesai_Str']);
+    if ($ts_selesai_terakhir === null || $ts > $ts_selesai_terakhir) {
+        $ts_selesai_terakhir = $ts;
+    }
+}
+
+if ($ts_selesai_terakhir !== null && $ts_selesai_terakhir < time()) {
+    header("Location: list.php?status=error&msg=" . urlencode("Jadwal sesi untuk order ini sudah EXPIRED (lewat waktu). Tidak bisa assign fotografer untuk jadwal yang sudah kadaluarsa. Reschedule jadwal order ini terlebih dahulu."));
     exit();
 }
 
@@ -204,7 +225,7 @@ foreach ($order_schedules as $sched) {
 
 // =====================================================
 // SIMPAN PENUGASAN (DENGAN TRANSACTION)
-// HANYA INSERT BARU — TIDAK ADA UPDATE KARENA SATU ORDER = SATU SESI
+// HANYA INSERT BARU -- TIDAK ADA UPDATE KARENA SATU ORDER = SATU SESI
 // =====================================================
 if (!sqlsrv_begin_transaction($conn)) {
     header("Location: list.php?status=error&msg=" . urlencode("Gagal memulai transaksi database."));
@@ -215,8 +236,8 @@ try {
     $username = $_SESSION['username'] ?? 'admin';
 
     // Insert sesi foto BARU (selalu insert, tidak pernah update)
-    // Status_Sesi = 0 (Menunggu) — fotografer belum mulai sesi
-    // Waktu_Mulai = NULL — diisi nanti saat fotografer klik "Mulai Sesi"
+    // Status_Sesi = 0 (Menunggu) -- fotografer belum mulai sesi
+    // Waktu_Mulai = NULL -- diisi nanti saat fotografer klik "Mulai Sesi"
     $q_insert = sqlsrv_query($conn, 
         "INSERT INTO Sesi_Foto (ID_Order, ID_Karyawan, Waktu_Mulai, Waktu_Selesai, File_Hasil, Tanggal_Upload_Hasil, Status_Sesi, Status, Created_By, Created_Date)
          VALUES (?, ?, NULL, NULL, NULL, NULL, 0, 1, ?, GETDATE())",

@@ -203,14 +203,14 @@ function formatWaktu($time) {
                         </div>
                         <div class="mt-3 d-flex gap-2">
                             <?php if (!$is_uploaded): ?>
-                                <a href="../../Role/Fotografer/upload_hasil.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action">
+                                <a href="../Upload/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action">
                                     <i class="bi bi-cloud-upload"></i> Upload Hasil
                                 </a>
                             <?php else: ?>
                                 <a href="../../uploads/hasil/download.php?file=<?= urlencode($row['File_Hasil']) ?>" class="btn-action btn-action-success">
                                     <i class="bi bi-download"></i> Download
                                 </a>
-                                <a href="../../Role/Fotografer/upload_hasil.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-action-secondary">
+                                <a href="../Upload/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-action-secondary">
                                     <i class="bi bi-arrow-repeat"></i> Upload Ulang
                                 </a>
                             <?php endif; ?>

@@ -113,7 +113,9 @@ function formatWaktu($time) {
                         <ul class="list-unstyled">
                             <li><a href="../Jadwal/index.php" class="submenu-link"><i class="bi bi-calendar-day-fill me-2"></i>Jadwal Saya</a></li>
                             <li><a href="index.php" class="submenu-link active"><i class="bi bi-camera-reels-fill me-2"></i>Sesi Terjadwal</a></li>
-<li><a href="../Selesai/index.php" class="submenu-link"><i class="bi bi-check-circle-fill me-2"></i>Sesi Selesai</a></li>                    </div>
+                            <li><a href="../Selesai/index.php" class="submenu-link"><i class="bi bi-check-circle-fill me-2"></i>Sesi Selesai</a></li>
+                        </ul>
+                    </div>
                 </li>
                 <li class="nav-item">
                     <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuUpload"><span><i class="bi bi-cloud-upload-fill me-2"></i> Upload Hasil</span><i class="bi bi-chevron-down small icon-chevron"></i></a>
@@ -159,7 +161,17 @@ function formatWaktu($time) {
                     $is_today = ($tgl_jadwal == $today);
                     $days_left = floor((strtotime($tgl_jadwal) - strtotime($today)) / 86400);
             ?>
-                <div class="sesi-item">
+                <div class="sesi-item"
+                     data-id="<?= $row['ID_Sesi_Foto'] ?>"
+                     data-pelanggan="<?= htmlspecialchars($row['Nama_Pelanggan']) ?>"
+                     data-paket="<?= htmlspecialchars($row['Nama_Paket']) ?>"
+                     data-ruangan="<?= htmlspecialchars($row['Nama_Ruangan']) ?>"
+                     data-tanggal="<?= htmlspecialchars(formatTanggal(new DateTime($tgl_jadwal))) ?>"
+                     data-jam-mulai="<?= formatWaktu($row['Jam_Mulai']) ?>"
+                     data-jam-selesai="<?= formatWaktu($row['Jam_Selesai']) ?>"
+                     data-durasi="<?= $row['Durasi_Waktu'] ?>"
+                     data-slot="<?= (int)($row['Total_Slot'] ?? 1) ?>"
+                     data-keterangan="<?= htmlspecialchars($row['Keterangan'] ?? '') ?>">
                     <div class="sesi-icon" style="background: linear-gradient(135deg, #fffbeb, #fef3c7); color: #d97706;">
                         <i class="bi bi-hourglass-split"></i>
                     </div>
@@ -193,7 +205,7 @@ function formatWaktu($time) {
                             <a href="../Proses/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-action-success">
                                 <i class="bi bi-play-fill"></i> Mulai Sesi
                             </a>
-                            <a href="../Detail/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-action-secondary">
+                            <a href="#" class="btn-action btn-action-secondary" onclick="return openDetailModal(this, event);">
                                 <i class="bi bi-eye"></i> Detail
                             </a>
                         </div>
@@ -236,6 +248,45 @@ function formatWaktu($time) {
         function confirmLandingPage(e) {
             e.preventDefault();
             Swal.fire({ title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama.', icon: 'info', showCancelButton: true, confirmButtonColor: '#D53D66', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal' }).then((result) => { if (result.isConfirmed) window.location.href = '../../index.php'; });
+        }
+
+        // =====================================================
+        // DETAIL SESI (modal, konsisten sama pola di Sesi Selesai --
+        // TIDAK ada halaman Sesi/Detail/index.php terpisah, jadi jangan
+        // navigasi ke sana. event.preventDefault dilakukan di sini.)
+        // =====================================================
+        function openDetailModal(btn, e) {
+            if (e) e.preventDefault();
+            const item = btn.closest('.sesi-item');
+            const d = item.dataset;
+
+            const slotInfo = parseInt(d.slot, 10) > 1
+                ? '<span class="badge" style="background:#FFE4E9;color:#D53D66;font-weight:700;">' + d.slot + ' Slot Jadwal</span>'
+                : '';
+
+            const keteranganHtml = (d.keterangan && d.keterangan.trim() !== '')
+                ? '<hr style="margin:12px 0;border-color:#f1f5f9;">' +
+                  '<p style="font-size:0.85rem;color:#b45309;background:#fffbeb;border:1px solid #fde68a;padding:8px 12px;border-radius:8px;">' +
+                  '<i class="bi bi-info-circle me-1"></i>' + d.keterangan + '</p>'
+                : '';
+
+            Swal.fire({
+                title: 'Detail Sesi Foto',
+                html: '<div style="text-align:left;">' +
+                      '<p><strong>Pelanggan:</strong> ' + d.pelanggan + '</p>' +
+                      '<p><strong>Tanggal Jadwal:</strong> ' + d.tanggal + '</p>' +
+                      '<p><strong>Waktu Jadwal:</strong> ' + d.jamMulai + ' - ' + d.jamSelesai + ' (' + d.durasi + ' menit)</p>' +
+                      '<p><strong>Paket:</strong> ' + d.paket + '</p>' +
+                      '<p><strong>Ruangan:</strong> ' + d.ruangan + '</p>' +
+                      (slotInfo ? '<p>' + slotInfo + '</p>' : '') +
+                      keteranganHtml +
+                      '</div>',
+                icon: 'info',
+                confirmButtonColor: '#D53D66',
+                confirmButtonText: 'Tutup'
+            });
+
+            return false;
         }
     </script>
 </body>

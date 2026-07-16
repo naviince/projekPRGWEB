@@ -10,6 +10,16 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 
 $id_fotografer = $_SESSION['id_user'];
 
+// =====================================================
+// AUTO-EXPIRE SESI YANG JADWALNYA SUDAH LEWAT
+// Sesi dengan Status_Sesi=0 (Terjadwal) yang seluruh slot jadwalnya
+// sudah lewat waktu tapi belum diproses fotografer -> otomatis
+// ditandai Dibatalkan (2) oleh sp_AutoExpireSesiFoto. WAJIB dipanggil
+// di awal sebelum hitung stat/list, konsisten dengan cara
+// sp_ReadSesiTerjadwalFotografer bekerja di database.
+// =====================================================
+sqlsrv_query($conn, "{CALL sp_AutoExpireSesiFoto (?)}", ['system']);
+
 // Definisi Fallback SVG Avatar
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
@@ -23,8 +33,8 @@ $username_fotografer = $d_profile['username_karyawan'] ?? 'fotografer';
 $email_fotografer = $d_profile['email_karyawan'] ?? 'fotografer@spotlight.com';
 $foto_fotografer = $d_profile['foto_profil'] ?? 'default.jpg';
 
-$foto_fotografer_src = ($foto_fotografer != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_fotografer)) 
-    ? "../../assets/img/pelanggan/" . $foto_fotografer 
+$foto_fotografer_src = ($foto_fotografer != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_fotografer)) 
+    ? "../../assets/img/karyawan/" . $foto_fotografer 
     : $default_svg_avatar;
 
 // =====================================================
@@ -102,7 +112,7 @@ if (isset($_POST['update_profil'])) {
                     $error_profile = "Ukuran foto profil maksimal 2MB!";
                 } else {
                     $foto_baru = "fotografer_" . time() . "_" . uniqid() . "." . $file_ext;
-                    $target_dir = "../../assets/img/pelanggan/";
+                    $target_dir = "../../assets/img/karyawan/";
                     
                     if (!is_dir($target_dir)) { mkdir($target_dir, 0777, true); }
                     
@@ -124,8 +134,8 @@ if (isset($_POST['update_profil'])) {
                     $username_fotografer = $username_input;
                     $email_fotografer = $email_input;
                     $foto_fotografer = $foto_baru;
-                    $foto_fotografer_src = ($foto_fotografer != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_fotografer)) 
-                        ? "../../assets/img/pelanggan/" . $foto_fotografer 
+                    $foto_fotografer_src = ($foto_fotografer != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_fotografer)) 
+                        ? "../../assets/img/karyawan/" . $foto_fotografer 
                         : $default_svg_avatar;
                     $d_profile['no_hp'] = $no_hp_input;
                     $d_profile['alamat'] = $alamat_input;
@@ -145,7 +155,7 @@ if (isset($_POST['update_profil'])) {
 $q_total_sesi = sqlsrv_query($conn, "
     SELECT COUNT(*) AS total 
     FROM Sesi_Foto 
-    WHERE ID_Karyawan = ?", array($id_fotografer));
+    WHERE ID_Karyawan = ? AND Status = 1", array($id_fotografer));
 $d_total_sesi = sqlsrv_fetch_array($q_total_sesi, SQLSRV_FETCH_ASSOC);
 $total_sesi = $d_total_sesi['total'] ?? 0;
 
@@ -153,7 +163,7 @@ $total_sesi = $d_total_sesi['total'] ?? 0;
 $q_sesi_terjadwal = sqlsrv_query($conn, "
     SELECT COUNT(*) AS total 
     FROM Sesi_Foto 
-    WHERE ID_Karyawan = ? AND Status_Sesi = 0", array($id_fotografer));
+    WHERE ID_Karyawan = ? AND Status = 1 AND Status_Sesi = 0", array($id_fotografer));
 $d_sesi_terjadwal = sqlsrv_fetch_array($q_sesi_terjadwal, SQLSRV_FETCH_ASSOC);
 $sesi_terjadwal = $d_sesi_terjadwal['total'] ?? 0;
 
@@ -161,7 +171,7 @@ $sesi_terjadwal = $d_sesi_terjadwal['total'] ?? 0;
 $q_sesi_selesai = sqlsrv_query($conn, "
     SELECT COUNT(*) AS total 
     FROM Sesi_Foto 
-    WHERE ID_Karyawan = ? AND Status_Sesi = 1", array($id_fotografer));
+    WHERE ID_Karyawan = ? AND Status = 1 AND Status_Sesi = 1", array($id_fotografer));
 $d_sesi_selesai = sqlsrv_fetch_array($q_sesi_selesai, SQLSRV_FETCH_ASSOC);
 $sesi_selesai = $d_sesi_selesai['total'] ?? 0;
 
@@ -169,29 +179,41 @@ $sesi_selesai = $d_sesi_selesai['total'] ?? 0;
 $q_sesi_batal = sqlsrv_query($conn, "
     SELECT COUNT(*) AS total 
     FROM Sesi_Foto 
-    WHERE ID_Karyawan = ? AND Status_Sesi = 2", array($id_fotografer));
+    WHERE ID_Karyawan = ? AND Status = 1 AND Status_Sesi = 2", array($id_fotografer));
 $d_sesi_batal = sqlsrv_fetch_array($q_sesi_batal, SQLSRV_FETCH_ASSOC);
 $sesi_batal = $d_sesi_batal['total'] ?? 0;
 
-// 5. Sesi Hari Ini (Penyelarasan join Order_Jadwal)
+// 5. Sesi Hari Ini (FIX: pakai CROSS APPLY TOP 1 slot per sesi -- JOIN
+// langsung ke Order_Jadwal bikin 1 sesi kehitung berkali-kali kalau
+// order-nya multi-slot jadwal)
 $q_sesi_hari_ini = sqlsrv_query($conn, "
     SELECT COUNT(*) AS total 
     FROM Sesi_Foto S
-    JOIN [Order] O ON S.ID_Order = O.ID_Order
-    JOIN Order_Jadwal OJ ON O.ID_Order = OJ.ID_Order
-    JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
-    WHERE S.ID_Karyawan = ? AND S.Status_Sesi = 0 AND J.Tanggal_Jadwal = CAST(GETDATE() AS DATE)", array($id_fotografer));
+    CROSS APPLY (
+        SELECT TOP 1 J.Tanggal_Jadwal
+        FROM Order_Jadwal OJ
+        JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
+        WHERE OJ.ID_Order = S.ID_Order AND J.Status = 1 AND J.Is_Deleted = 0
+        ORDER BY J.Tanggal_Jadwal ASC, J.Jam_Mulai ASC
+    ) Slot
+    WHERE S.ID_Karyawan = ? AND S.Status = 1 AND S.Status_Sesi = 0 
+      AND Slot.Tanggal_Jadwal = CAST(GETDATE() AS DATE)", array($id_fotografer));
 $d_sesi_hari_ini = sqlsrv_fetch_array($q_sesi_hari_ini, SQLSRV_FETCH_ASSOC);
 $sesi_hari_ini = $d_sesi_hari_ini['total'] ?? 0;
 
-// 6. Sesi Minggu Ini (Penyelarasan join Order_Jadwal)
+// 6. Sesi Minggu Ini (FIX: sama, pakai CROSS APPLY TOP 1 slot per sesi)
 $q_sesi_minggu_ini = sqlsrv_query($conn, "
     SELECT COUNT(*) AS total 
     FROM Sesi_Foto S
-    JOIN [Order] O ON S.ID_Order = O.ID_Order
-    JOIN Order_Jadwal OJ ON O.ID_Order = OJ.ID_Order
-    JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
-    WHERE S.ID_Karyawan = ? AND S.Status_Sesi = 0 AND J.Tanggal_Jadwal BETWEEN CAST(GETDATE() AS DATE) AND DATEADD(DAY, 7, CAST(GETDATE() AS DATE))", array($id_fotografer));
+    CROSS APPLY (
+        SELECT TOP 1 J.Tanggal_Jadwal
+        FROM Order_Jadwal OJ
+        JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
+        WHERE OJ.ID_Order = S.ID_Order AND J.Status = 1 AND J.Is_Deleted = 0
+        ORDER BY J.Tanggal_Jadwal ASC, J.Jam_Mulai ASC
+    ) Slot
+    WHERE S.ID_Karyawan = ? AND S.Status = 1 AND S.Status_Sesi = 0 
+      AND Slot.Tanggal_Jadwal BETWEEN CAST(GETDATE() AS DATE) AND DATEADD(DAY, 7, CAST(GETDATE() AS DATE))", array($id_fotografer));
 $d_sesi_minggu_ini = sqlsrv_fetch_array($q_sesi_minggu_ini, SQLSRV_FETCH_ASSOC);
 $sesi_minggu_ini = $d_sesi_minggu_ini['total'] ?? 0;
 
@@ -199,7 +221,7 @@ $sesi_minggu_ini = $d_sesi_minggu_ini['total'] ?? 0;
 $q_belum_upload = sqlsrv_query($conn, "
     SELECT COUNT(*) AS total 
     FROM Sesi_Foto 
-    WHERE ID_Karyawan = ? AND Status_Sesi = 1 AND File_Hasil IS NULL", array($id_fotografer));
+    WHERE ID_Karyawan = ? AND Status = 1 AND Status_Sesi = 1 AND File_Hasil IS NULL", array($id_fotografer));
 $d_belum_upload = sqlsrv_fetch_array($q_belum_upload, SQLSRV_FETCH_ASSOC);
 $belum_upload = $d_belum_upload['total'] ?? 0;
 
@@ -207,7 +229,7 @@ $belum_upload = $d_belum_upload['total'] ?? 0;
 $q_sudah_upload = sqlsrv_query($conn, "
     SELECT COUNT(*) AS total 
     FROM Sesi_Foto 
-    WHERE ID_Karyawan = ? AND Status_Sesi = 1 AND File_Hasil IS NOT NULL", array($id_fotografer));
+    WHERE ID_Karyawan = ? AND Status = 1 AND Status_Sesi = 1 AND File_Hasil IS NOT NULL", array($id_fotografer));
 $d_sudah_upload = sqlsrv_fetch_array($q_sudah_upload, SQLSRV_FETCH_ASSOC);
 $sudah_upload = $d_sudah_upload['total'] ?? 0;
 
@@ -215,7 +237,9 @@ $sudah_upload = $d_sudah_upload['total'] ?? 0;
 // QUERY DATA TAMPILAN (SINKRON MULTI JADWAL)
 // =====================================================
 
-// Jadwal Sesi Foto Hari Ini (detail)
+// Jadwal Sesi Foto Hari Ini (detail) -- CROSS APPLY TOP 1 slot per sesi
+// biar order multi-slot gak muncul dobel, plus guard Status/Is_Deleted
+// yang tadinya hilang.
 $q_jadwal_hari_ini = sqlsrv_query($conn, "
     SELECT 
         S.ID_Sesi_Foto,
@@ -223,9 +247,9 @@ $q_jadwal_hari_ini = sqlsrv_query($conn, "
         P.Nama_Pelanggan,
         PK.Nama_Paket,
         R.Nama_Ruangan,
-        J.Tanggal_Jadwal,
-        J.Jam_Mulai,
-        J.Jam_Selesai,
+        Slot.Tanggal_Jadwal,
+        Slot.Jam_Mulai,
+        Slot.Jam_Selesai,
         O.Keterangan,
         S.Status_Sesi
     FROM Sesi_Foto S
@@ -233,10 +257,16 @@ $q_jadwal_hari_ini = sqlsrv_query($conn, "
     JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
     JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
     JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan
-    JOIN Order_Jadwal OJ ON O.ID_Order = OJ.ID_Order
-    JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
-    WHERE S.ID_Karyawan = ? AND J.Tanggal_Jadwal = CAST(GETDATE() AS DATE)
-    ORDER BY J.Jam_Mulai ASC
+    CROSS APPLY (
+        SELECT TOP 1 J.Tanggal_Jadwal, J.Jam_Mulai, J.Jam_Selesai
+        FROM Order_Jadwal OJ
+        JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
+        WHERE OJ.ID_Order = O.ID_Order AND J.Status = 1 AND J.Is_Deleted = 0
+        ORDER BY J.Tanggal_Jadwal ASC, J.Jam_Mulai ASC
+    ) Slot
+    WHERE S.ID_Karyawan = ? AND S.Status = 1 AND O.Status = 1
+      AND Slot.Tanggal_Jadwal = CAST(GETDATE() AS DATE)
+    ORDER BY Slot.Jam_Mulai ASC
 ", array($id_fotografer));
 
 // =====================================================
@@ -251,18 +281,18 @@ $rs_dari = isset($_GET['rs_dari']) ? trim($_GET['rs_dari']) : "";
 $rs_sampai = isset($_GET['rs_sampai']) ? trim($_GET['rs_sampai']) : "";
 
 // Jadwal Sesi Foto Mendatang (dengan filter nama customer & rentang tanggal)
-$jm_conditions = ["S.ID_Karyawan = ?", "S.Status_Sesi = 0", "J.Tanggal_Jadwal >= CAST(GETDATE() AS DATE)"];
+$jm_conditions = ["S.ID_Karyawan = ?", "S.Status_Sesi = 0"];
 $jm_params = [$id_fotografer];
 if (!empty($jm_cari)) {
     $jm_conditions[] = "P.Nama_Pelanggan LIKE ?";
     $jm_params[] = "%$jm_cari%";
 }
 if (!empty($jm_dari) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $jm_dari)) {
-    $jm_conditions[] = "CAST(J.Tanggal_Jadwal AS DATE) >= ?";
+    $jm_conditions[] = "CAST(Slot.Tanggal_Jadwal AS DATE) >= ?";
     $jm_params[] = $jm_dari;
 }
 if (!empty($jm_sampai) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $jm_sampai)) {
-    $jm_conditions[] = "CAST(J.Tanggal_Jadwal AS DATE) <= ?";
+    $jm_conditions[] = "CAST(Slot.Tanggal_Jadwal AS DATE) <= ?";
     $jm_params[] = $jm_sampai;
 }
 $jm_where = implode(" AND ", $jm_conditions);
@@ -274,19 +304,25 @@ $q_jadwal_mendatang = sqlsrv_query($conn, "
         P.Nama_Pelanggan,
         PK.Nama_Paket,
         R.Nama_Ruangan,
-        J.Tanggal_Jadwal,
-        J.Jam_Mulai,
-        J.Jam_Selesai,
+        Slot.Tanggal_Jadwal,
+        Slot.Jam_Mulai,
+        Slot.Jam_Selesai,
         S.Status_Sesi
     FROM Sesi_Foto S
     JOIN [Order] O ON S.ID_Order = O.ID_Order
     JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
     JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
     JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan
-    JOIN Order_Jadwal OJ ON O.ID_Order = OJ.ID_Order
-    JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
-    WHERE $jm_where
-    ORDER BY J.Tanggal_Jadwal ASC, J.Jam_Mulai ASC
+    CROSS APPLY (
+        SELECT TOP 1 J.Tanggal_Jadwal, J.Jam_Mulai, J.Jam_Selesai
+        FROM Order_Jadwal OJ
+        JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
+        WHERE OJ.ID_Order = O.ID_Order AND J.Status = 1 AND J.Is_Deleted = 0
+        ORDER BY J.Tanggal_Jadwal ASC, J.Jam_Mulai ASC
+    ) Slot
+    WHERE $jm_where AND S.Status = 1 AND O.Status = 1
+      AND Slot.Tanggal_Jadwal >= CAST(GETDATE() AS DATE)
+    ORDER BY Slot.Tanggal_Jadwal ASC, Slot.Jam_Mulai ASC
 ", $jm_params);
 
 // Riwayat Sesi Selesai (dengan filter nama customer & rentang tanggal selesai)
@@ -320,7 +356,7 @@ $q_riwayat_selesai = sqlsrv_query($conn, "
     JOIN [Order] O ON S.ID_Order = O.ID_Order
     JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
     JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
-    WHERE $rs_where
+    WHERE $rs_where AND S.Status = 1 AND O.Status = 1
     ORDER BY S.Waktu_Selesai DESC
 ", $rs_params);
 
@@ -330,7 +366,7 @@ $q_sesi_bulan = sqlsrv_query($conn, "
         MONTH(S.Waktu_Selesai) AS bulan,
         COUNT(*) AS total
     FROM Sesi_Foto S
-    WHERE S.ID_Karyawan = ? AND S.Status_Sesi = 1 AND S.Waktu_Selesai >= DATEADD(MONTH, -5, GETDATE())
+    WHERE S.ID_Karyawan = ? AND S.Status = 1 AND S.Status_Sesi = 1 AND S.Waktu_Selesai >= DATEADD(MONTH, -5, GETDATE())
     GROUP BY MONTH(S.Waktu_Selesai)
     ORDER BY MONTH(S.Waktu_Selesai)
 ", array($id_fotografer));

@@ -10,6 +10,11 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 
 $id_fotografer = $_SESSION['id_user'];
 
+// Auto-expire sesi Menunggu yang jadwalnya udah lewat -> Dibatalkan (2)
+// Wajib dipanggil di sini juga, jangan cuma di dashboard, karena
+// fotografer bisa langsung buka halaman ini tanpa lewat dashboard dulu.
+sqlsrv_query($conn, "{CALL sp_AutoExpireSesiFoto (?)}", ['system']);
+
 // =====================================================
 // QUERY: SEMUA JADWAL SESI FOTOGRAFER
 // =====================================================
@@ -20,25 +25,42 @@ $q_jadwal = sqlsrv_query($conn, "
         S.Status_Sesi,
         S.Waktu_Mulai,
         S.Waktu_Selesai,
+        S.File_Hasil,
         P.Nama_Pelanggan,
         PK.Nama_Paket,
         PK.Durasi_Waktu,
         R.Nama_Ruangan,
-        J.ID_Jadwal,
-        J.Tanggal_Jadwal,
-        J.Jam_Mulai,
-        J.Jam_Selesai,
+        Slot.ID_Jadwal,
+        Slot.Tanggal_Jadwal,
+        Slot.Jam_Mulai,
+        Slot.Jam_Selesai,
+        SlotCount.Total_Slot,
         O.Keterangan
     FROM Sesi_Foto S
     JOIN [Order] O ON S.ID_Order = O.ID_Order
     JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
     JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
     JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan
-    JOIN Order_Jadwal OJ ON O.ID_Order = OJ.ID_Order
-    JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
+    CROSS APPLY (
+        -- Slot jadwal paling awal untuk order ini -- dipakai sebagai
+        -- representasi tanggal/jam sesi. Cegah 1 sesi tampil berkali-kali
+        -- kalau order-nya multi-slot (pola sama kayak
+        -- sp_ReadSesiTerjadwalFotografer / sp_ReadSesiSelesaiFotografer).
+        SELECT TOP 1 J.ID_Jadwal, J.Tanggal_Jadwal, J.Jam_Mulai, J.Jam_Selesai
+        FROM Order_Jadwal OJ
+        JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
+        WHERE OJ.ID_Order = O.ID_Order AND J.Status = 1 AND J.Is_Deleted = 0
+        ORDER BY J.Tanggal_Jadwal ASC, J.Jam_Mulai ASC
+    ) Slot
+    CROSS APPLY (
+        SELECT COUNT(*) AS Total_Slot
+        FROM Order_Jadwal OJ2
+        JOIN Jadwal_Studio J2 ON OJ2.ID_Jadwal = J2.ID_Jadwal
+        WHERE OJ2.ID_Order = O.ID_Order AND J2.Status = 1 AND J2.Is_Deleted = 0
+    ) SlotCount
     WHERE S.ID_Karyawan = ? AND S.Status = 1 AND O.Status = 1 
-      AND O.Status_Order <> 4 AND J.Status = 1 AND J.Is_Deleted = 0
-    ORDER BY J.Tanggal_Jadwal ASC, J.Jam_Mulai ASC
+      AND O.Status_Order <> 4
+    ORDER BY Slot.Tanggal_Jadwal ASC, Slot.Jam_Mulai ASC
 ", array($id_fotografer));
 
 // Ambil data untuk kalender (group by tanggal)
@@ -87,8 +109,8 @@ $foto_fotografer = $d_profile['foto_profil'] ?? 'default.jpg';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
-$foto_fotografer_src = ($foto_fotografer != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_fotografer)) 
-    ? "../../assets/img/pelanggan/" . $foto_fotografer 
+$foto_fotografer_src = ($foto_fotografer != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_fotografer)) 
+    ? "../../assets/img/karyawan/" . $foto_fotografer 
     : $default_svg_avatar;
 
 function formatTanggal($date) {
@@ -261,6 +283,7 @@ function getStatusIcon($status) {
                              data-status="<?= $row['Status_Sesi'] ?>"
                              data-terlewat="<?= $row['is_terlewat'] ? '1' : '0' ?>"
                              data-keterangan="<?= htmlspecialchars($row['Keterangan'] ?? '') ?>"
+                             data-file-hasil="<?= !empty($row['File_Hasil']) ? '1' : '0' ?>"
                              data-id-order="<?= $row['ID_Order'] ?>">
                             <div class="sesi-icon" style="<?= $row['is_terlewat'] ? 'background: linear-gradient(135deg, #fffbeb, #fef3c7); color: #b45309;' : getStatusIcon($row['Status_Sesi']) ?>">
                                 <i class="bi <?= $row['is_terlewat'] ? 'bi-exclamation-triangle-fill' : 'bi-camera-fill' ?>"></i>
@@ -299,7 +322,7 @@ function getStatusIcon($status) {
                                                     <i class="bi bi-play-fill"></i> Mulai
                                                 </a>
                                             <?php elseif ($row['Status_Sesi'] == 1 && empty($row['File_Hasil'])): ?>
-                                                <a href="../../Role/Fotografer/upload_hasil.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-sm" style="padding: 5px 10px; font-size: 0.75rem;">
+                                                <a href="../Upload/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-sm" style="padding: 5px 10px; font-size: 0.75rem;">
                                                     <i class="bi bi-cloud-upload"></i> Upload
                                                 </a>
                                             <?php endif; ?>
@@ -461,10 +484,15 @@ function getStatusIcon($status) {
                 keteranganWrap.style.display = 'none';
             }
             
-            // Proses link
+            // Proses / Upload link
             const prosesLink = document.getElementById('modalProsesLink');
             if (data.status === '0') {
                 prosesLink.href = '../Proses/index.php?id=' + data.id;
+                prosesLink.innerHTML = '<i class="bi bi-play-fill"></i> Proses Sesi';
+                prosesLink.style.display = 'inline-flex';
+            } else if (data.status === '1' && data.fileHasil === '0') {
+                prosesLink.href = '../Upload/index.php?id=' + data.id;
+                prosesLink.innerHTML = '<i class="bi bi-cloud-upload"></i> Upload Hasil';
                 prosesLink.style.display = 'inline-flex';
             } else {
                 prosesLink.style.display = 'none';

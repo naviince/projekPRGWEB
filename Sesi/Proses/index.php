@@ -18,17 +18,9 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 $id_sesi = intval($_GET['id']);
 
 // Cek sesi milik fotografer dan status menunggu
-$q_sesi = sqlsrv_query($conn, "
-    SELECT S.*, P.Nama_Pelanggan, PK.Nama_Paket, R.Nama_Ruangan,
-           J.Tanggal_Jadwal, J.Jam_Mulai, J.Jam_Selesai
-    FROM Sesi_Foto S
-    JOIN [Order] O ON S.ID_Order = O.ID_Order
-    JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
-    JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
-    JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan
-    JOIN Jadwal_Studio J ON O.ID_Jadwal = J.ID_Jadwal
-    WHERE S.ID_Sesi_Foto = ? AND S.ID_Karyawan = ? AND S.Status = 1 AND S.Status_Sesi = 0
-", array($id_sesi, $id_fotografer));
+// (pakai SP: JOIN Jadwal_Studio sebelumnya lewat O.ID_Jadwal yang TIDAK ADA
+// di tabel [Order] -- itu penyebab query selalu gagal & redirect ?error=notfound)
+$q_sesi = sqlsrv_query($conn, "{CALL sp_ReadDetailSesiFotografer(?, ?)}", array($id_sesi, $id_fotografer));
 
 if (!$q_sesi || !sqlsrv_has_rows($q_sesi)) {
     header("Location: ../Terjadwal/index.php?error=notfound");
@@ -39,16 +31,34 @@ $sesi = sqlsrv_fetch_array($q_sesi, SQLSRV_FETCH_ASSOC);
 
 // Proses: Mulai Sesi
 if (isset($_POST['mulai_sesi'])) {
-    $sql = "UPDATE Sesi_Foto SET Waktu_Mulai = GETDATE(), Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Sesi_Foto = ?";
-    sqlsrv_query($conn, $sql, array($username_fotografer, $id_sesi));
+    $q_mulai = sqlsrv_query($conn, "{CALL sp_MulaiProsesSesiFoto(?, ?, ?)}", array($id_sesi, $id_fotografer, $username_fotografer));
+    if ($q_mulai === false) {
+        $errors = sqlsrv_errors();
+        $err_msg = $errors ? $errors[0]['message'] : 'Gagal memulai sesi.';
+        header("Location: index.php?id=" . $id_sesi . "&error=" . urlencode($err_msg));
+        exit();
+    }
     header("Location: index.php?id=" . $id_sesi . "&success=started");
     exit();
 }
 
 // Proses: Selesai Sesi
+// Pakai sp_SelesaiSesiFoto (bukan raw UPDATE) karena SP ini yang menangani
+// update Status_Order secara otomatis (2=Menunggu Pelunasan, atau langsung
+// 3=Lunas kalau order sudah dibayar lunas sekaligus di awal) -- raw UPDATE
+// sebelumnya HANYA mengubah tabel Sesi_Foto dan tidak pernah menyentuh
+// Status_Order sama sekali, sehingga order jadi "nyangkut" & tidak pernah
+// muncul di antrian Verifikasi Pelunasan / laporan admin manapun.
+// File_Hasil sengaja dikirim NULL di sini karena upload hasil foto dilakukan
+// terpisah lewat upload_hasil.php setelah sesi ditandai selesai.
 if (isset($_POST['selesai_sesi'])) {
-    $sql = "UPDATE Sesi_Foto SET Waktu_Selesai = GETDATE(), Status_Sesi = 1, Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Sesi_Foto = ?";
-    sqlsrv_query($conn, $sql, array($username_fotografer, $id_sesi));
+    $q_selesai = sqlsrv_query($conn, "{CALL sp_SelesaiSesiFoto(?, ?, ?)}", array($id_sesi, null, $username_fotografer));
+    if ($q_selesai === false) {
+        $errors = sqlsrv_errors();
+        $err_msg = $errors ? $errors[0]['message'] : 'Gagal menyelesaikan sesi.';
+        header("Location: index.php?id=" . $id_sesi . "&error=" . urlencode($err_msg));
+        exit();
+    }
     header("Location: ../Selesai/index.php?success=completed");
     exit();
 }
@@ -234,13 +244,13 @@ $is_completed = !empty($sesi['Waktu_Selesai']);
                 <?php endif; ?>
             </div>
 
-            <form method="POST" class="text-center">
+            <form method="POST" class="text-center" id="formSesi">
                 <?php if (!$is_started && !$is_completed): ?>
-                    <button type="submit" name="mulai_sesi" class="btn-action" onclick="return confirmMulai()">
+                    <button type="button" name="mulai_sesi" class="btn-action" onclick="confirmMulai()">
                         <i class="bi bi-play-fill"></i> Mulai Sesi Foto
                     </button>
                 <?php elseif ($is_started && !$is_completed): ?>
-                    <button type="submit" name="selesai_sesi" class="btn-action btn-action-success" onclick="return confirmSelesai()">
+                    <button type="button" name="selesai_sesi" class="btn-action btn-action-success" onclick="confirmSelesai()">
                         <i class="bi bi-check-lg"></i> Selesaikan Sesi
                     </button>
                 <?php else: ?>
@@ -261,10 +271,48 @@ $is_completed = !empty($sesi['Waktu_Selesai']);
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
         function confirmMulai() {
-            return confirm('Mulai sesi foto sekarang? Waktu mulai akan dicatat.');
+            Swal.fire({
+                title: 'Mulai Sesi Foto?',
+                text: 'Waktu mulai akan dicatat sekarang.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#D53D66',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Mulai',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const form = document.getElementById('formSesi');
+                    const hidden = document.createElement('input');
+                    hidden.type = 'hidden';
+                    hidden.name = 'mulai_sesi';
+                    hidden.value = '1';
+                    form.appendChild(hidden);
+                    form.submit();
+                }
+            });
         }
         function confirmSelesai() {
-            return confirm('Selesaikan sesi foto? Pastikan semua foto sudah diambil.');
+            Swal.fire({
+                title: 'Selesaikan Sesi Foto?',
+                text: 'Pastikan semua foto sudah diambil sebelum melanjutkan.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#059669',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Selesaikan',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const form = document.getElementById('formSesi');
+                    const hidden = document.createElement('input');
+                    hidden.type = 'hidden';
+                    hidden.name = 'selesai_sesi';
+                    hidden.value = '1';
+                    form.appendChild(hidden);
+                    form.submit();
+                }
+            });
         }
         document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
             button.addEventListener('click', function(e) {

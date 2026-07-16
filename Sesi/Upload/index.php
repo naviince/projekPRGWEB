@@ -35,33 +35,7 @@ if (isset($_GET['error'])) {
 // =====================================================
 // QUERY: SESI SELESAI YANG BELUM DIUPLOAD (File_Hasil IS NULL)
 // =====================================================
-$q_list = sqlsrv_query($conn, "
-    SELECT 
-        S.ID_Sesi_Foto,
-        S.ID_Order,
-        S.File_Hasil,
-        S.Tanggal_Upload_Hasil,
-        S.Waktu_Selesai,
-        P.Nama_Pelanggan,
-        PK.Nama_Paket,
-        R.Nama_Ruangan,
-        J.Tanggal_Jadwal,
-        J.Jam_Mulai,
-        J.Jam_Selesai,
-        O.Status_Order
-    FROM Sesi_Foto S
-    JOIN [Order] O ON S.ID_Order = O.ID_Order
-    JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan
-    JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
-    JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan
-    JOIN Jadwal_Studio J ON O.ID_Jadwal = J.ID_Jadwal
-    WHERE S.ID_Karyawan = ? 
-      AND S.Status = 1 
-      AND S.Status_Sesi = 1
-      AND S.File_Hasil IS NULL
-      AND O.Status_Order <> 4
-    ORDER BY S.Waktu_Selesai DESC
-", array($id_fotografer));
+$q_list = sqlsrv_query($conn, "{CALL sp_ReadListSesiBelumUploadFotografer(?)}", array($id_fotografer));
 
 // =====================================================
 // QUERY: STATISTIK
