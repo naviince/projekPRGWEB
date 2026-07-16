@@ -15,188 +15,184 @@ $username_fotografer = $_SESSION['username'] ?? 'fotografer';
 // KONFIGURASI UPLOAD
 // =====================================================
 $upload_dir = '../../uploads/hasil/';
-$max_file_size = 100 * 1024 * 1024; // 100 MB
-$allowed_extensions = ['zip', 'jpg', 'jpeg', 'png', 'rar', 'pdf'];
+$max_total_size = 300 * 1024 * 1024; // 300 MB TOTAL per sesi (bukan per-file)
+$allowed_extensions_image = ['jpg', 'jpeg', 'png'];
+$allowed_extensions_archive = ['zip', 'rar'];
+$allowed_extensions = array_merge($allowed_extensions_image, $allowed_extensions_archive);
 $allowed_mime_types = [
-    'application/zip',
-    'application/x-zip-compressed',
-    'application/x-rar-compressed',
-    'image/jpeg',
-    'image/png',
-    'application/pdf'
+    'image/jpeg', 'image/png',
+    'application/zip', 'application/x-zip-compressed', 'application/x-rar-compressed'
 ];
 
 // =====================================================
-// HANDLE AJAX UPLOAD (Fetch API)
+// STATUS_ORDER (LUNAS) TERKAIT SESI -- DIPAKAI DI SEMUA HANDLER
 // =====================================================
-$is_ajax = isset($_SERVER['HTTP_X_REQUESTED_WITH']) && 
-           strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
-
-if ($is_ajax && isset($_POST['ajax_upload'])) {
-    header('Content-Type: application/json');
-
-    $response = ['success' => false, 'message' => ''];
-
-    if (!isset($_GET['id']) || empty($_GET['id'])) {
-        $response['message'] = 'ID Sesi tidak valid!';
-        echo json_encode($response);
-        exit();
-    }
-
-    $id_sesi = intval($_GET['id']);
-
-    // Validasi sesi
-    $q_sesi = sqlsrv_query($conn, "
-        SELECT S.ID_Sesi_Foto, S.ID_Order, S.File_Hasil, S.Status_Sesi
+function getStatusOrderSesi($conn, $id_sesi, $id_fotografer) {
+    $q = sqlsrv_query($conn, "
+        SELECT O.Status_Order, S.ID_Order
         FROM Sesi_Foto S
         JOIN [Order] O ON S.ID_Order = O.ID_Order
         WHERE S.ID_Sesi_Foto = ? AND S.ID_Karyawan = ? AND S.Status = 1
     ", array($id_sesi, $id_fotografer));
+    if (!$q) return null;
+    return sqlsrv_fetch_array($q, SQLSRV_FETCH_ASSOC);
+}
 
-    if (!$q_sesi || !sqlsrv_has_rows($q_sesi)) {
+// Total ukuran file aktif yang sudah ada di sesi ini
+function getTotalUkuranSesi($conn, $id_sesi) {
+    $q = sqlsrv_query($conn, "
+        SELECT ISNULL(SUM(Ukuran_Bytes), 0) AS total
+        FROM Hasil_Foto WHERE ID_Sesi_Foto = ? AND Status = 1
+    ", array($id_sesi));
+    $d = sqlsrv_fetch_array($q, SQLSRV_FETCH_ASSOC);
+    return (int)($d['total'] ?? 0);
+}
+
+// =====================================================
+// HANDLE AJAX UPLOAD (MULTI-FILE, FETCH API)
+// =====================================================
+$is_ajax = isset($_SERVER['HTTP_X_REQUESTED_WITH']) &&
+           strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+
+if ($is_ajax && isset($_POST['ajax_upload'])) {
+    header('Content-Type: application/json');
+    $response = ['success' => false, 'message' => ''];
+
+    if (!isset($_GET['id']) || empty($_GET['id'])) {
+        $response['message'] = 'ID Sesi tidak valid!';
+        echo json_encode($response); exit();
+    }
+    $id_sesi = intval($_GET['id']);
+
+    $sesi_info = getStatusOrderSesi($conn, $id_sesi, $id_fotografer);
+    if (!$sesi_info) {
         $response['message'] = 'Sesi tidak ditemukan atau Anda tidak berhak mengaksesnya.';
-        echo json_encode($response);
-        exit();
+        echo json_encode($response); exit();
     }
 
-    $sesi_data = sqlsrv_fetch_array($q_sesi, SQLSRV_FETCH_ASSOC);
-    if ($sesi_data['Status_Sesi'] != 1) {
-        $response['message'] = 'Sesi belum selesai. Hanya sesi selesai yang bisa diupload.';
-        echo json_encode($response);
-        exit();
+    // =====================================================
+    // SYARAT WAJIB: ORDER HARUS LUNAS (Status_Order = 3)
+    // Order yang baru DP terverifikasi (1) atau sesi selesai tapi
+    // masih Menunggu Pelunasan (2) TIDAK boleh upload hasil. Ini
+    // mencegah hasil foto "bocor" ke customer yang belum bayar lunas.
+    // =====================================================
+    if ((int)$sesi_info['Status_Order'] !== 3) {
+        $pesan_status = ((int)$sesi_info['Status_Order'] === 2)
+            ? 'Customer belum melunasi pembayaran (masih Menunggu Pelunasan). Upload hasil foto hanya bisa dilakukan setelah status order LUNAS.'
+            : 'Order ini belum berstatus Lunas. Upload hasil foto tidak diperbolehkan.';
+        $response['message'] = $pesan_status;
+        echo json_encode($response); exit();
     }
 
-    if (!isset($_FILES['file_hasil']) || $_FILES['file_hasil']['error'] === UPLOAD_ERR_NO_FILE) {
-        $response['message'] = 'Silakan pilih file untuk diupload!';
-        echo json_encode($response);
-        exit();
+    if (empty($_FILES['file_hasil']) || empty($_FILES['file_hasil']['name'][0])) {
+        $response['message'] = 'Silakan pilih minimal 1 file untuk diupload!';
+        echo json_encode($response); exit();
     }
 
-    $file = $_FILES['file_hasil'];
-    $file_name = $file['name'];
-    $file_tmp = $file['tmp_name'];
-    $file_size = $file['size'];
-    $file_error = $file['error'];
+    $files = $_FILES['file_hasil'];
+    $jumlah_file = count($files['name']);
 
-    if ($file_error !== UPLOAD_ERR_OK) {
-        $response['message'] = 'Terjadi kesalahan saat upload file. Error code: ' . $file_error;
-        echo json_encode($response);
-        exit();
-    }
-
-    if ($file_size > $max_file_size) {
-        $response['message'] = 'Ukuran file terlalu besar! Maksimal 100 MB.';
-        echo json_encode($response);
-        exit();
-    }
-
-    $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
-    if (!in_array($file_ext, $allowed_extensions)) {
-        $response['message'] = 'Format file tidak didukung! Format yang diizinkan: ZIP, JPG, JPEG, PNG, RAR, PDF.';
-        echo json_encode($response);
-        exit();
-    }
-
-    // Validasi MIME type
-    $finfo = finfo_open(FILEINFO_MIME_TYPE);
-    $mime_type = finfo_file($finfo, $file_tmp);
-    finfo_close($finfo);
-
-    $mime_valid = false;
-    foreach ($allowed_mime_types as $allowed) {
-        if (strpos($mime_type, $allowed) !== false || strpos($allowed, $mime_type) !== false) {
-            $mime_valid = true;
-            break;
+    // Hitung total ukuran file BARU yang mau diupload
+    $total_ukuran_baru = 0;
+    for ($i = 0; $i < $jumlah_file; $i++) {
+        if ($files['error'][$i] === UPLOAD_ERR_OK) {
+            $total_ukuran_baru += $files['size'][$i];
         }
     }
-    if (!$mime_valid && in_array($file_ext, $allowed_extensions)) {
-        $mime_valid = true;
+
+    $total_ukuran_existing = getTotalUkuranSesi($conn, $id_sesi);
+    $total_setelah_upload = $total_ukuran_existing + $total_ukuran_baru;
+
+    // =====================================================
+    // VALIDASI TOTAL UKURAN (bukan per-file, tapi akumulasi semua
+    // file dalam 1 sesi -- konsisten sama permintaan bisnis: fotografer
+    // bebas upload banyak foto asal totalnya gak lewat kuota per sesi)
+    // =====================================================
+    if ($total_setelah_upload > $max_total_size) {
+        $sisa_mb = round(($max_total_size - $total_ukuran_existing) / 1024 / 1024, 1);
+        $sisa_mb = max(0, $sisa_mb);
+        $response['message'] = "Total ukuran file untuk sesi ini melebihi batas 300 MB. Sisa kuota Anda: {$sisa_mb} MB. Kurangi jumlah/ukuran file, atau kompres jadi ZIP.";
+        echo json_encode($response); exit();
     }
 
-    if (!$mime_valid) {
-        $response['message'] = 'Tipe file tidak valid!';
-        echo json_encode($response);
-        exit();
+    // Validasi tiap file dulu (ekstensi + MIME) SEBELUM ada yang dipindah,
+    // biar gak ada file "nyangkut" setengah kalau salah satu file invalid.
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    for ($i = 0; $i < $jumlah_file; $i++) {
+        if ($files['error'][$i] !== UPLOAD_ERR_OK) {
+            $response['message'] = "File '{$files['name'][$i]}' gagal diupload (error code: {$files['error'][$i]}).";
+            echo json_encode($response); finfo_close($finfo); exit();
+        }
+        $ext = strtolower(pathinfo($files['name'][$i], PATHINFO_EXTENSION));
+        if (!in_array($ext, $allowed_extensions)) {
+            $response['message'] = "Format file '{$files['name'][$i]}' tidak didukung. Format yang diizinkan: JPG, JPEG, PNG, ZIP, RAR.";
+            echo json_encode($response); finfo_close($finfo); exit();
+        }
+        $mime = finfo_file($finfo, $files['tmp_name'][$i]);
+        $mime_valid = false;
+        foreach ($allowed_mime_types as $allowed) {
+            if (strpos($mime, $allowed) !== false || strpos($allowed, $mime) !== false) { $mime_valid = true; break; }
+        }
+        if (!$mime_valid) {
+            $response['message'] = "Tipe file '{$files['name'][$i]}' tidak valid.";
+            echo json_encode($response); finfo_close($finfo); exit();
+        }
     }
+    finfo_close($finfo);
 
-    // Buat direktori upload jika belum ada
     if (!is_dir($upload_dir)) {
         if (!mkdir($upload_dir, 0777, true)) {
             $response['message'] = 'Gagal membuat folder upload. Periksa permission folder.';
-            echo json_encode($response);
-            exit();
+            echo json_encode($response); exit();
         }
     }
 
-    // Generate nama file unik
-    $id_order = $sesi_data['ID_Order'];
-    $timestamp = time();
-    $uniqid = uniqid();
-    $new_file_name = "hasil_order{$id_order}_{$timestamp}_{$uniqid}.{$file_ext}";
-    $target_path = $upload_dir . $new_file_name;
+    $id_order = $sesi_info['ID_Order'];
+    $q_max_urutan = sqlsrv_query($conn, "SELECT ISNULL(MAX(Urutan), 0) AS m FROM Hasil_Foto WHERE ID_Sesi_Foto = ? AND Status = 1", array($id_sesi));
+    $d_max_urutan = sqlsrv_fetch_array($q_max_urutan, SQLSRV_FETCH_ASSOC);
+    $urutan_next = (int)($d_max_urutan['m'] ?? 0) + 1;
 
-    // =====================================================
-    // TRANSACTION (UPLOAD BERHASIL & UPDATE STATUS ORDER)
-    // =====================================================
     sqlsrv_begin_transaction($conn);
-
+    $moved_paths = [];
     try {
-        // Hapus file lama jika ada
-        if (!empty($sesi_data['File_Hasil'])) {
-            $old_file = $upload_dir . $sesi_data['File_Hasil'];
-            if (file_exists($old_file)) {
-                unlink($old_file);
+        $berhasil_count = 0;
+        for ($i = 0; $i < $jumlah_file; $i++) {
+            $ext = strtolower(pathinfo($files['name'][$i], PATHINFO_EXTENSION));
+            $tipe_file = in_array($ext, $allowed_extensions_archive) ? 'archive' : 'image';
+            $new_file_name = "hasil_order{$id_order}_" . time() . '_' . uniqid() . ".{$ext}";
+            $target_path = $upload_dir . $new_file_name;
+
+            if (!move_uploaded_file($files['tmp_name'][$i], $target_path)) {
+                throw new Exception("Gagal memindahkan file '{$files['name'][$i]}' ke server.");
             }
-        }
+            $moved_paths[] = $target_path;
 
-        // Pindahkan file ke server
-        if (move_uploaded_file($file_tmp, $target_path)) {
-            
-            // 1. Update data di tabel Sesi_Foto
-            $update_sql = "UPDATE Sesi_Foto SET 
-                File_Hasil = ?, 
-                Tanggal_Upload_Hasil = GETDATE(),
-                Modified_By = ?,
-                Modified_Date = GETDATE()
-                WHERE ID_Sesi_Foto = ? AND Status = 1";
+            $q_insert = sqlsrv_query($conn, "
+                INSERT INTO Hasil_Foto (ID_Sesi_Foto, Nama_File, Tipe_File, Ukuran_Bytes, Urutan, Created_By, Created_Date)
+                VALUES (?, ?, ?, ?, ?, ?, GETDATE())
+            ", array($id_sesi, $new_file_name, $tipe_file, $files['size'][$i], $urutan_next, $username_fotografer));
 
-            $update_stmt = sqlsrv_query($conn, $update_sql, array(
-                $new_file_name,
-                $username_fotografer,
-                $id_sesi
-            ));
-
-            // CATATAN: Status_Order SENGAJA TIDAK diubah di sini. Status_Order
-            // sudah ditentukan dengan benar oleh sp_SelesaiSesiFoto saat sesi
-            // ditandai selesai (2=Menunggu Pelunasan, atau 3=Lunas kalau order
-            // sudah dibayar lunas sekaligus di awal). Upload hasil foto adalah
-            // urusan pengiriman file, bukan bagian dari alur status pembayaran
-            // -- mengubahnya di sini akan menimpa/merusak status yang sudah benar.
-
-            // Commit jika query berhasil dijalankan
-            if ($update_stmt) {
-                sqlsrv_commit($conn);
-                $response['success'] = true;
-                $response['message'] = 'File hasil foto berhasil diupload!';
-                $response['redirect'] = '../../Sesi/RiwayatUpload/index.php?uploaded=1';
-            } else {
+            if (!$q_insert) {
                 $errors = sqlsrv_errors();
-                $response['message'] = 'Gagal memperbarui database: ' . ($errors[0]['message'] ?? 'Unknown error');
-                sqlsrv_rollback($conn);
-                if (file_exists($target_path)) {
-                    unlink($target_path);
-                }
+                throw new Exception("Gagal simpan data file '{$files['name'][$i]}': " . ($errors ? $errors[0]['message'] : 'Unknown error'));
             }
-        } else {
-            $response['message'] = 'Gagal memindahkan file ke server! Periksa permission folder uploads/hasil/.';
-            sqlsrv_rollback($conn);
+            $urutan_next++;
+            $berhasil_count++;
         }
+
+        // Tandai Sesi_Foto sudah pernah diupload (dipakai badge "Sudah
+        // Upload" di halaman lain -- Tanggal_Upload_Hasil = kapan upload
+        // TERAKHIR terjadi untuk sesi ini)
+        sqlsrv_query($conn, "UPDATE Sesi_Foto SET Tanggal_Upload_Hasil = GETDATE(), Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Sesi_Foto = ?", array($username_fotografer, $id_sesi));
+
+        sqlsrv_commit($conn);
+        $response['success'] = true;
+        $response['message'] = "{$berhasil_count} file berhasil diupload!";
+        $response['redirect'] = '../../Sesi/RiwayatUpload/index.php?uploaded=1';
     } catch (Exception $e) {
-        $response['message'] = 'Terjadi kesalahan: ' . $e->getMessage();
         sqlsrv_rollback($conn);
-        if (file_exists($target_path)) {
-            unlink($target_path);
-        }
+        foreach ($moved_paths as $p) { if (file_exists($p)) unlink($p); }
+        $response['message'] = $e->getMessage();
     }
 
     echo json_encode($response);
@@ -204,9 +200,9 @@ if ($is_ajax && isset($_POST['ajax_upload'])) {
 }
 
 // =====================================================
-// HANDLE HAPUS FILE (AJAX)
+// HANDLE HAPUS 1 FILE HASIL (AJAX)
 // =====================================================
-$is_ajax_delete = isset($_SERVER['HTTP_X_REQUESTED_WITH']) && 
+$is_ajax_delete = isset($_SERVER['HTTP_X_REQUESTED_WITH']) &&
                   strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest' &&
                   isset($_POST['ajax_hapus']);
 
@@ -214,75 +210,45 @@ if ($is_ajax_delete) {
     header('Content-Type: application/json');
     $response = ['success' => false, 'message' => ''];
 
-    if (!isset($_GET['id']) || empty($_GET['id'])) {
-        $response['message'] = 'ID Sesi tidak valid!';
-        echo json_encode($response);
-        exit();
+    $id_sesi = isset($_GET['id']) ? intval($_GET['id']) : 0;
+    $id_hasil_foto = isset($_POST['id_hasil_foto']) ? intval($_POST['id_hasil_foto']) : 0;
+
+    if ($id_sesi <= 0 || $id_hasil_foto <= 0) {
+        $response['message'] = 'Data tidak valid.';
+        echo json_encode($response); exit();
     }
 
-    $id_sesi = intval($_GET['id']);
-
-    // Mengambil File_Hasil sekaligus ID_Order untuk mengembalikan status order
-    $q_sesi = sqlsrv_query($conn, "
-        SELECT S.File_Hasil, S.ID_Order FROM Sesi_Foto S
-        JOIN [Order] O ON S.ID_Order = O.ID_Order
-        WHERE S.ID_Sesi_Foto = ? AND S.ID_Karyawan = ? AND S.Status = 1
-    ", array($id_sesi, $id_fotografer));
-
-    if (!$q_sesi || !sqlsrv_has_rows($q_sesi)) {
-        $response['message'] = 'Sesi tidak ditemukan.';
-        echo json_encode($response);
-        exit();
+    $sesi_info = getStatusOrderSesi($conn, $id_sesi, $id_fotografer);
+    if (!$sesi_info) {
+        $response['message'] = 'Sesi tidak ditemukan atau Anda tidak berhak mengaksesnya.';
+        echo json_encode($response); exit();
     }
 
-    $sesi_data_del = sqlsrv_fetch_array($q_sesi, SQLSRV_FETCH_ASSOC);
-
-    if (empty($sesi_data_del['File_Hasil'])) {
-        $response['message'] = 'Tidak ada file yang bisa dihapus.';
-        echo json_encode($response);
-        exit();
+    $q_file = sqlsrv_query($conn, "SELECT Nama_File FROM Hasil_Foto WHERE ID_Hasil_Foto = ? AND ID_Sesi_Foto = ? AND Status = 1", array($id_hasil_foto, $id_sesi));
+    $d_file = $q_file ? sqlsrv_fetch_array($q_file, SQLSRV_FETCH_ASSOC) : null;
+    if (!$d_file) {
+        $response['message'] = 'File tidak ditemukan.';
+        echo json_encode($response); exit();
     }
 
-    $id_order = $sesi_data_del['ID_Order'];
-
-    // Mulai proses transaksi hapus
     sqlsrv_begin_transaction($conn);
-
     try {
-        $file_path = $upload_dir . $sesi_data_del['File_Hasil'];
-        if (file_exists($file_path)) {
-            unlink($file_path);
-        }
+        $file_path = $upload_dir . $d_file['Nama_File'];
 
-        // Reset data File_Hasil di tabel Sesi_Foto
-        $delete_sql = "UPDATE Sesi_Foto SET 
-            File_Hasil = NULL, 
-            Tanggal_Upload_Hasil = NULL,
-            Modified_By = ?,
-            Modified_Date = GETDATE()
-            WHERE ID_Sesi_Foto = ? AND Status = 1";
-
-        $delete_stmt = sqlsrv_query($conn, $delete_sql, array($username_fotografer, $id_sesi));
-
-        // CATATAN: Status_Order SENGAJA TIDAK diubah di sini, dengan alasan
-        // yang sama seperti di handler upload -- menghapus file hasil foto
-        // adalah urusan pengiriman file, bukan bagian dari alur status
-        // pembayaran/sesi. Status_Order tetap seperti yang sudah ditentukan
-        // sp_SelesaiSesiFoto (2=Menunggu Pelunasan atau 3=Lunas).
-
-        if ($delete_stmt) {
-            sqlsrv_commit($conn);
-            $response['success'] = true;
-            $response['message'] = 'File berhasil dihapus!';
-            $response['redirect'] = '../../Sesi/Upload/index.php?deleted=1';
-        } else {
+        $q_del = sqlsrv_query($conn, "UPDATE Hasil_Foto SET Status = 0, Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Hasil_Foto = ?", array($username_fotografer, $id_hasil_foto));
+        if (!$q_del) {
             $errors = sqlsrv_errors();
-            $response['message'] = 'Gagal menghapus dari database: ' . ($errors[0]['message'] ?? 'Unknown error');
-            sqlsrv_rollback($conn);
+            throw new Exception('Gagal menghapus dari database: ' . ($errors ? $errors[0]['message'] : 'Unknown error'));
         }
+
+        if (file_exists($file_path)) unlink($file_path);
+
+        sqlsrv_commit($conn);
+        $response['success'] = true;
+        $response['message'] = 'File berhasil dihapus!';
     } catch (Exception $e) {
-        $response['message'] = 'Terjadi kesalahan: ' . $e->getMessage();
         sqlsrv_rollback($conn);
+        $response['message'] = $e->getMessage();
     }
 
     echo json_encode($response);
@@ -292,9 +258,6 @@ if ($is_ajax_delete) {
 // =====================================================
 // AMBIL DATA SESI FOTO (untuk tampilan halaman)
 // =====================================================
-$error = "";
-$sesi_data = null;
-
 if (!isset($_GET['id']) || empty($_GET['id'])) {
     header("Location: ../../Sesi/Upload/index.php?error=noid");
     exit();
@@ -324,6 +287,31 @@ if ($sesi_data['status_sesi'] != 1) {
     exit();
 }
 
+// Ambil Status_Order buat tau apakah boleh upload (harus Lunas)
+$sesi_info_order = getStatusOrderSesi($conn, $id_sesi, $id_fotografer);
+$status_order = (int)($sesi_info_order['Status_Order'] ?? 0);
+$boleh_upload = ($status_order === 3);
+
+// =====================================================
+// AMBIL SEMUA FILE HASIL YANG SUDAH ADA UNTUK SESI INI
+// =====================================================
+$daftar_file = [];
+$total_ukuran_terpakai = 0;
+$q_files = sqlsrv_query($conn, "
+    SELECT ID_Hasil_Foto, Nama_File, Tipe_File, Ukuran_Bytes, Created_Date
+    FROM Hasil_Foto
+    WHERE ID_Sesi_Foto = ? AND Status = 1
+    ORDER BY Urutan ASC, Created_Date ASC
+", array($id_sesi));
+if ($q_files) {
+    while ($f = sqlsrv_fetch_array($q_files, SQLSRV_FETCH_ASSOC)) {
+        $daftar_file[] = $f;
+        $total_ukuran_terpakai += (int)$f['Ukuran_Bytes'];
+    }
+}
+$jumlah_foto = count(array_filter($daftar_file, fn($f) => $f['Tipe_File'] === 'image'));
+$jumlah_arsip = count(array_filter($daftar_file, fn($f) => $f['Tipe_File'] === 'archive'));
+
 // =====================================================
 // AMBIL DATA PROFIL FOTOGRAFER
 // =====================================================
@@ -338,38 +326,28 @@ $foto_fotografer = $d_profile['foto_profil'] ?? 'default.jpg';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
-$foto_fotografer_src = ($foto_fotografer != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_fotografer)) 
-    ? "../../assets/img/pelanggan/" . $foto_fotografer 
+$foto_fotografer_src = ($foto_fotografer != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_fotografer))
+    ? "../../assets/img/karyawan/" . $foto_fotografer
     : $default_svg_avatar;
 
-// Format tanggal
 function formatTanggal($date) {
     if (!$date) return '-';
-    if (is_string($date)) {
-        $date = new DateTime($date);
-    }
-    $bulan = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-              'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    if (is_string($date)) $date = new DateTime($date);
+    $bulan = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
     return $date->format('d') . ' ' . $bulan[intval($date->format('m')) - 1] . ' ' . $date->format('Y');
 }
-
 function formatWaktu($time) {
     if (!$time) return '-';
-    if (is_string($time)) {
-        $time = new DateTime($time);
-    }
+    if (is_string($time)) $time = new DateTime($time);
     return $time->format('H:i');
 }
-
-// Tentukan tipe file untuk preview
-$file_ext_preview = '';
-if (!empty($sesi_data['file_hasil'])) {
-    $file_ext_preview = strtolower(pathinfo($sesi_data['file_hasil'], PATHINFO_EXTENSION));
+function formatUkuran($bytes) {
+    if ($bytes <= 0) return '0 KB';
+    $units = ['Bytes', 'KB', 'MB', 'GB'];
+    $i = floor(log($bytes, 1024));
+    return round($bytes / pow(1024, $i), 2) . ' ' . $units[$i];
 }
-$is_image_preview = in_array($file_ext_preview, ['jpg', 'jpeg', 'png']);
-$is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
 ?>
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -383,395 +361,80 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <style>
-        :root { 
-            --p-pink: #D53D66; 
-            --d-pink: #CA3366; 
-            --s-pink: #FFF0F3; 
-            --light-pink: #FFE4E9;
-            --accent-pink: #E85D84;
-            --text-dark: #1e1e24;
-            --text-muted: #718096;
-            --sidebar-bg: #ffffff;
-            --body-bg: #f8fafc;
+        :root {
+            --p-pink: #D53D66; --d-pink: #CA3366; --s-pink: #FFF0F3;
+            --light-pink: #FFE4E9; --accent-pink: #E85D84;
+            --text-dark: #1e1e24; --text-muted: #718096;
+            --sidebar-bg: #ffffff; --body-bg: #f8fafc;
             --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-
-        body { 
-            font-family: 'Plus Jakarta Sans', sans-serif; 
-            background-color: var(--body-bg);
-            color: var(--text-dark);
-            overflow-x: hidden;
-        }
-
-        /* SIDEBAR */
-        .sidebar {
-            width: 260px;
-            height: 100vh;
-            background: var(--sidebar-bg);
-            position: fixed;
-            top: 0;
-            left: 0;
-            border-right: 1px solid rgba(255, 228, 233, 0.8);
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            padding: 30px 20px;
-            z-index: 100;
-        }
-        .sidebar-brand {
-            font-weight: 800;
-            font-size: 1.5rem;
-            color: var(--p-pink);
-            text-decoration: none;
-            letter-spacing: -1px;
-            margin-bottom: 40px;
-            display: block;
-        }
-        .sidebar-brand span {
-            color: var(--text-dark);
-            font-size: 0.85rem;
-            font-weight: 600;
-        }
-        .sidebar-menu-wrapper {
-            flex-grow: 1;
-            overflow-y: auto;
-            margin-bottom: 20px;
-            scrollbar-width: none;
-        }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--body-bg); color: var(--text-dark); overflow-x: hidden; }
+        .sidebar { width: 260px; height: 100vh; background: var(--sidebar-bg); position: fixed; top: 0; left: 0; border-right: 1px solid rgba(255, 228, 233, 0.8); display: flex; flex-direction: column; justify-content: space-between; padding: 30px 20px; z-index: 100; }
+        .sidebar-brand { font-weight: 800; font-size: 1.5rem; color: var(--p-pink); text-decoration: none; letter-spacing: -1px; margin-bottom: 40px; display: block; }
+        .sidebar-brand span { color: var(--text-dark); font-size: 0.85rem; font-weight: 600; }
+        .sidebar-menu-wrapper { flex-grow: 1; overflow-y: auto; margin-bottom: 20px; scrollbar-width: none; }
         .sidebar-menu-wrapper::-webkit-scrollbar { display: none; }
-
-        .nav-menu {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
+        .nav-menu { list-style: none; padding: 0; margin: 0; }
         .nav-item { margin-bottom: 8px; }
-        .nav-link-custom {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 18px;
-            color: #4a5568;
-            font-weight: 700;
-            text-decoration: none;
-            border-radius: 12px;
-            font-size: 0.9rem;
-            transition: var(--transition-3d);
-        }
-        .nav-link-custom:hover, .nav-link-custom.active {
-            background-color: var(--light-pink);
-            color: var(--p-pink);
-            transform: translateX(4px);
-        }
-        .submenu {
-            list-style: none;
-            padding-left: 20px;
-            margin-top: 5px;
-            display: none;
-            transition: var(--transition-3d);
-        }
+        .nav-link-custom { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; color: #4a5568; font-weight: 700; text-decoration: none; border-radius: 12px; font-size: 0.9rem; transition: var(--transition-3d); }
+        .nav-link-custom:hover, .nav-link-custom.active { background-color: var(--light-pink); color: var(--p-pink); transform: translateX(4px); }
+        .submenu { list-style: none; padding-left: 20px; margin-top: 5px; display: none; transition: var(--transition-3d); }
         .submenu.show { display: block !important; }
-        .submenu-link {
-            display: flex;
-            align-items: center;
-            padding: 8px 18px;
-            color: #718096;
-            font-weight: 600;
-            font-size: 0.85rem;
-            text-decoration: none;
-            border-radius: 10px;
-            transition: 0.3s;
-        }
-        .submenu-link:hover, .submenu-link.active {
-            color: var(--p-pink);
-            background-color: rgba(213, 61, 102, 0.03);
-            padding-left: 22px;
-        }
-        .btn-logout {
-            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            color: #ffffff;
-            border: none;
-            width: 100%;
-            padding: 12px;
-            border-radius: 12px;
-            font-weight: 800;
-            font-size: 0.85rem;
-            transition: var(--transition-3d);
-        }
-        .btn-logout:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2);
-        }
-
-        /* MAIN CONTENT */
-        .main-content {
-            margin-left: 260px;
-            padding: 40px;
-            min-height: 100vh;
-        }
-
-        /* CARDS */
-        .card-3d {
-            background: #ffffff;
-            border-radius: 22px;
-            border: 1px solid rgba(255, 228, 233, 0.8);
-            box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03);
-            transition: var(--transition-3d);
-            padding: 25px;
-            position: relative;
-            overflow: hidden;
-        }
-        .card-3d::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 4px;
-            background: linear-gradient(90deg, var(--p-pink), var(--accent-pink));
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        .card-3d:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 22px 45px rgba(213, 61, 102, 0.1); 
-            border-color: var(--p-pink);
-        }
+        .submenu-link { display: flex; align-items: center; padding: 8px 18px; color: #718096; font-weight: 600; font-size: 0.85rem; text-decoration: none; border-radius: 10px; transition: 0.3s; }
+        .submenu-link:hover, .submenu-link.active { color: var(--p-pink); background-color: rgba(213, 61, 102, 0.03); padding-left: 22px; }
+        .btn-logout { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; width: 100%; padding: 12px; border-radius: 12px; font-weight: 800; font-size: 0.85rem; transition: var(--transition-3d); }
+        .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
+        .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
+        .card-3d { background: #ffffff; border-radius: 22px; border: 1px solid rgba(255, 228, 233, 0.8); box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03); transition: var(--transition-3d); padding: 25px; position: relative; overflow: hidden; }
+        .card-3d::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: linear-gradient(90deg, var(--p-pink), var(--accent-pink)); opacity: 0; transition: opacity 0.3s ease; }
+        .card-3d:hover { transform: translateY(-4px); box-shadow: 0 22px 45px rgba(213, 61, 102, 0.1); border-color: var(--p-pink); }
         .card-3d:hover::before { opacity: 1; }
-
-        .content-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        .content-title {
-            font-weight: 700;
-            font-size: 1.1rem;
-            color: var(--text-dark);
-        }
-
-        /* INFO ITEM */
-        .info-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 12px 0;
-            border-bottom: 1px solid #f1f5f9;
-        }
+        .content-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .content-title { font-weight: 700; font-size: 1.1rem; color: var(--text-dark); }
+        .info-item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
         .info-item:last-child { border-bottom: none; }
-        .info-label {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            font-weight: 600;
-        }
-        .info-value {
-            font-size: 0.85rem;
-            font-weight: 700;
-            color: var(--text-dark);
-            text-align: right;
-        }
-
-        /* UPLOAD ZONE */
-        .upload-zone {
-            border: 2px dashed var(--light-pink);
-            border-radius: 20px;
-            padding: 40px;
-            text-align: center;
-            background: linear-gradient(135deg, #ffffff, var(--s-pink));
-            transition: var(--transition-3d);
-            cursor: pointer;
-        }
-        .upload-zone:hover, .upload-zone.dragover {
-            border-color: var(--p-pink);
-            background: linear-gradient(135deg, #ffffff, #FFE4E9);
-            transform: scale(1.01);
-        }
-        .upload-zone i {
-            font-size: 3rem;
-            color: var(--p-pink);
-            margin-bottom: 15px;
-        }
-        .upload-zone-text {
-            font-weight: 700;
-            color: var(--text-dark);
-            margin-bottom: 5px;
-        }
-        .upload-zone-sub {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-        }
-
-        /* FILE PREVIEW */
-        .file-preview-area {
-            margin-bottom: 20px;
-        }
-        .file-preview-card {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 16px;
-            background: linear-gradient(135deg, #ecfdf5, #d1fae5);
-            border-radius: 16px;
-            border: 2px solid #a7f3d0;
-            margin-bottom: 12px;
-        }
-        .file-preview-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 14px;
-            background: #059669;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            flex-shrink: 0;
-        }
-        .file-preview-info { flex: 1; }
-        .file-preview-name {
-            font-weight: 700;
-            font-size: 0.9rem;
-            color: var(--text-dark);
-            word-break: break-all;
-        }
-        .file-preview-meta {
-            font-size: 0.75rem;
-            color: #059669;
-            font-weight: 600;
-        }
-
-        /* PREVIEW GAMBAR */
-        .image-preview-wrapper {
-            position: relative;
-            border-radius: 16px;
-            overflow: hidden;
-            border: 2px solid var(--light-pink);
-            background: #f8fafc;
-            margin-bottom: 16px;
-            display: none;
-        }
-        .image-preview-wrapper.show { display: block; }
-        .image-preview-wrapper img {
-            width: 100%;
-            max-height: 300px;
-            object-fit: contain;
-            display: block;
-        }
-        .image-preview-overlay {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-        }
-        .image-preview-overlay button {
-            background: rgba(220, 38, 38, 0.9);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            padding: 6px 12px;
-            font-size: 0.75rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        .image-preview-overlay button:hover {
-            background: rgba(185, 28, 28, 1);
-        }
-
-        /* BUTTONS */
-        .btn-action {
-            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            color: #ffffff;
-            border: none;
-            border-radius: 12px;
-            padding: 12px 24px;
-            font-weight: 800;
-            font-size: 0.9rem;
-            transition: var(--transition-3d);
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .btn-action:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(213, 61, 102, 0.3);
-            color: #ffffff;
-        }
-        .btn-action-success {
-            background: linear-gradient(135deg, #059669, #047857);
-        }
-        .btn-action-success:hover {
-            box-shadow: 0 8px 20px rgba(5, 150, 105, 0.3);
-        }
-        .btn-action-danger {
-            background: linear-gradient(135deg, #dc2626, #b91c1c);
-        }
-        .btn-action-danger:hover {
-            box-shadow: 0 8px 20px rgba(220, 38, 38, 0.3);
-        }
-        .btn-action-secondary {
-            background: #f1f5f9;
-            color: var(--text-muted);
-        }
-        .btn-action-secondary:hover {
-            background: #e2e8f0;
-            color: var(--text-dark);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        }
-
-        /* BADGE */
-        .badge-status {
-            padding: 6px 14px;
-            border-radius: 50px;
-            font-size: 0.75rem;
-            font-weight: 700;
-            display: inline-block;
-        }
+        .info-label { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; }
+        .info-value { font-size: 0.85rem; font-weight: 700; color: var(--text-dark); text-align: right; }
+        .upload-zone { border: 2px dashed var(--light-pink); border-radius: 20px; padding: 40px; text-align: center; background: linear-gradient(135deg, #ffffff, var(--s-pink)); transition: var(--transition-3d); cursor: pointer; }
+        .upload-zone:hover, .upload-zone.dragover { border-color: var(--p-pink); background: linear-gradient(135deg, #ffffff, #FFE4E9); transform: scale(1.01); }
+        .upload-zone i { font-size: 3rem; color: var(--p-pink); margin-bottom: 15px; }
+        .upload-zone-text { font-weight: 700; color: var(--text-dark); margin-bottom: 5px; }
+        .upload-zone-sub { font-size: 0.8rem; color: var(--text-muted); }
+        .btn-action { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; border-radius: 12px; padding: 12px 24px; font-weight: 800; font-size: 0.9rem; transition: var(--transition-3d); text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+        .btn-action:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(213, 61, 102, 0.3); color: #ffffff; }
+        .btn-action-success { background: linear-gradient(135deg, #059669, #047857); }
+        .btn-action-danger { background: linear-gradient(135deg, #dc2626, #b91c1c); }
+        .btn-action-secondary { background: #f1f5f9; color: var(--text-muted); }
+        .btn-action-secondary:hover { background: #e2e8f0; color: var(--text-dark); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        .badge-status { padding: 6px 14px; border-radius: 50px; font-size: 0.75rem; font-weight: 700; display: inline-block; }
         .badge-selesai { background: #ecfdf5; color: #059669; }
         .badge-upload { background: #dbeafe; color: #2563eb; }
-
-        /* PROGRESS BAR */
-        .progress-wrapper {
-            display: none;
-            margin-top: 20px;
-        }
+        .badge-locked { background: #fef3c7; color: #b45309; }
+        .progress-wrapper { display: none; margin-top: 20px; }
         .progress-wrapper.show { display: block; }
-        .progress {
-            height: 10px;
-            border-radius: 10px;
-            background: #f1f5f9;
-            overflow: hidden;
-        }
-        .progress-bar {
-            background: linear-gradient(90deg, var(--p-pink), var(--accent-pink));
-            border-radius: 10px;
-            transition: width 0.3s ease;
-        }
+        .progress { height: 10px; border-radius: 10px; background: #f1f5f9; overflow: hidden; }
+        .progress-bar { background: linear-gradient(90deg, var(--p-pink), var(--accent-pink)); border-radius: 10px; transition: width 0.3s ease; }
+        .error-alert { border-radius: 14px; background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 16px 20px; margin-bottom: 20px; }
+        .quota-bar-wrapper { margin-bottom: 20px; }
+        .quota-bar { height: 8px; border-radius: 8px; background: #f1f5f9; overflow: hidden; }
+        .quota-bar-fill { height: 100%; background: linear-gradient(90deg, var(--p-pink), var(--accent-pink)); border-radius: 8px; transition: width 0.4s ease; }
+        .quota-bar-fill.warning { background: linear-gradient(90deg, #f59e0b, #d97706); }
+        .quota-bar-fill.danger { background: linear-gradient(90deg, #dc2626, #b91c1c); }
 
-        /* ERROR ALERT */
-        .error-alert {
-            border-radius: 14px;
-            background: #fef2f2;
-            border: 1px solid #fecaca;
-            color: #dc2626;
-            padding: 16px 20px;
-            margin-bottom: 20px;
-        }
+        /* GALERI FOTO */
+        .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; margin-bottom: 20px; }
+        .gallery-item { position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 1/1; cursor: pointer; border: 1px solid #f1f5f9; background: #f8fafc; }
+        .gallery-item img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s ease; }
+        .gallery-item:hover img { transform: scale(1.08); }
+        .gallery-item-archive { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 4px; color: var(--p-pink); background: var(--s-pink); }
+        .gallery-item-archive i { font-size: 1.8rem; }
+        .gallery-item-archive span { font-size: 0.6rem; font-weight: 700; text-align: center; padding: 0 4px; word-break: break-all; }
+        .gallery-item-del { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 50%; background: rgba(220,38,38,0.9); color: #fff; border: none; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; opacity: 0; transition: opacity 0.2s; }
+        .gallery-item:hover .gallery-item-del { opacity: 1; }
 
-        /* ANIMATION */
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in {
-            animation: fadeInUp 0.6s ease-out forwards;
-        }
-
-        /* RESPONSIVE */
-        @media (max-width: 992px) {
-            .main-content { margin-left: 0; padding: 20px; }
-            .sidebar { transform: translateX(-100%); }
-        }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeInUp 0.6s ease-out forwards; }
+        @media (max-width: 992px) { .main-content { margin-left: 0; padding: 20px; } .sidebar { transform: translateX(-100%); } }
     </style>
 </head>
 <body>
@@ -780,17 +443,14 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
     <div class="sidebar">
         <div class="sidebar-menu-wrapper">
             <a href="../../index.php" class="sidebar-brand">
-                SpotLight.<br>
-                <span>Panel Fotografer</span>
+                SpotLight.<br><span>Panel Fotografer</span>
             </a>
-
             <ul class="nav-menu">
                 <li class="nav-item">
                     <a href="index.php" class="nav-link-custom">
                         <span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span>
                     </a>
                 </li>
-
                 <li class="nav-item">
                     <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuJadwal">
                         <span><i class="bi bi-calendar-week-fill me-2"></i> Jadwal & Sesi</span>
@@ -804,7 +464,6 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
                         </ul>
                     </div>
                 </li>
-
                 <li class="nav-item">
                     <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuUpload">
                         <span><i class="bi bi-cloud-upload-fill me-2"></i> Upload Hasil</span>
@@ -817,7 +476,6 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
                         </ul>
                     </div>
                 </li>
-
                 <li class="nav-item">
                     <a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)">
                         <span><i class="bi bi-house-door-fill me-2"></i> Beranda</span>
@@ -825,7 +483,6 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
                 </li>
             </ul>
         </div>
-
         <div>
             <button onclick="confirmLogout(event)" class="btn btn-logout text-center d-block w-100">
                 <i class="bi bi-box-arrow-right me-2"></i> Keluar
@@ -835,8 +492,6 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
 
     <!-- MAIN CONTENT -->
     <div class="main-content">
-
-        <!-- HEADER -->
         <div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
             <div>
                 <nav aria-label="breadcrumb">
@@ -854,60 +509,36 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
             </a>
         </div>
 
+        <?php if (!$boleh_upload): ?>
+        <div class="error-alert mb-4 animate-fade-in">
+            <i class="bi bi-lock-fill me-2"></i>
+            <strong>Upload terkunci.</strong>
+            <?php if ($status_order === 2): ?>
+                Customer belum melunasi pembayaran (masih <strong>Menunggu Pelunasan</strong>). Upload hasil foto baru bisa dilakukan setelah status order <strong>LUNAS</strong> dan diverifikasi Admin.
+            <?php else: ?>
+                Order ini belum berstatus Lunas.
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
         <div class="row g-4">
             <!-- INFO SESI -->
             <div class="col-lg-5 animate-fade-in">
                 <div class="card-3d h-100">
                     <div class="content-header">
                         <h5 class="content-title"><i class="bi bi-info-circle-fill text-danger me-2"></i>Detail Sesi</h5>
-                        <span class="badge-status badge-selesai">Selesai</span>
+                        <span class="badge-status <?= $boleh_upload ? 'badge-selesai' : 'badge-locked' ?>"><?= $boleh_upload ? 'Lunas' : 'Terkunci' ?></span>
                     </div>
-
-                    <div class="info-item">
-                        <span class="info-label">ID Sesi</span>
-                        <span class="info-value">#<?= $sesi_data['id_sesi_foto'] ?></span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">ID Order</span>
-                        <span class="info-value">#<?= $sesi_data['id_order'] ?></span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Nama Pelanggan</span>
-                        <span class="info-value"><?= htmlspecialchars($sesi_data['nama_pelanggan']) ?></span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Email Pelanggan</span>
-                        <span class="info-value"><?= htmlspecialchars($sesi_data['email_pelanggan']) ?></span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Paket Foto</span>
-                        <span class="info-value"><?= htmlspecialchars($sesi_data['nama_paket']) ?> (<?= $sesi_data['durasi_waktu'] ?> menit)</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Ruangan</span>
-                        <span class="info-value"><?= htmlspecialchars($sesi_data['nama_ruangan']) ?></span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Tanggal Sesi</span>
-                        <span class="info-value"><?= formatTanggal($sesi_data['tanggal_jadwal']) ?></span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Jam Sesi</span>
-                        <span class="info-value"><?= formatWaktu($sesi_data['jam_mulai']) ?> - <?= formatWaktu($sesi_data['jam_selesai']) ?></span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Waktu Mulai</span>
-                        <span class="info-value"><?= $sesi_data['waktu_mulai'] ? formatTanggal($sesi_data['waktu_mulai']) . ' ' . formatWaktu($sesi_data['waktu_mulai']) : '-' ?></span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Waktu Selesai</span>
-                        <span class="info-value"><?= $sesi_data['waktu_selesai'] ? formatTanggal($sesi_data['waktu_selesai']) . ' ' . formatWaktu($sesi_data['waktu_selesai']) : '-' ?></span>
-                    </div>
+                    <div class="info-item"><span class="info-label">ID Sesi</span><span class="info-value">#<?= $sesi_data['id_sesi_foto'] ?></span></div>
+                    <div class="info-item"><span class="info-label">ID Order</span><span class="info-value">#<?= $sesi_data['id_order'] ?></span></div>
+                    <div class="info-item"><span class="info-label">Nama Pelanggan</span><span class="info-value"><?= htmlspecialchars($sesi_data['nama_pelanggan']) ?></span></div>
+                    <div class="info-item"><span class="info-label">Email Pelanggan</span><span class="info-value"><?= htmlspecialchars($sesi_data['email_pelanggan']) ?></span></div>
+                    <div class="info-item"><span class="info-label">Paket Foto</span><span class="info-value"><?= htmlspecialchars($sesi_data['nama_paket']) ?> (<?= $sesi_data['durasi_waktu'] ?> menit)</span></div>
+                    <div class="info-item"><span class="info-label">Ruangan</span><span class="info-value"><?= htmlspecialchars($sesi_data['nama_ruangan']) ?></span></div>
+                    <div class="info-item"><span class="info-label">Tanggal Sesi</span><span class="info-value"><?= formatTanggal($sesi_data['tanggal_jadwal']) ?></span></div>
+                    <div class="info-item"><span class="info-label">Jam Sesi</span><span class="info-value"><?= formatWaktu($sesi_data['jam_mulai']) ?> - <?= formatWaktu($sesi_data['jam_selesai']) ?></span></div>
                     <?php if (!empty($sesi_data['keterangan_order'])): ?>
-                    <div class="info-item">
-                        <span class="info-label">Keterangan</span>
-                        <span class="info-value"><?= htmlspecialchars($sesi_data['keterangan_order']) ?></span>
-                    </div>
+                    <div class="info-item"><span class="info-label">Keterangan</span><span class="info-value"><?= htmlspecialchars($sesi_data['keterangan_order']) ?></span></div>
                     <?php endif; ?>
                 </div>
             </div>
@@ -916,155 +547,73 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
             <div class="col-lg-7 animate-fade-in" style="animation-delay: 0.1s;">
                 <div class="card-3d h-100">
                     <div class="content-header">
-                        <h5 class="content-title"><i class="bi bi-cloud-upload-fill text-danger me-2"></i>Upload File Hasil</h5>
-                        <?php if (!empty($sesi_data['file_hasil'])): ?>
-                            <span class="badge-status badge-upload">Sudah Upload</span>
-                        <?php else: ?>
-                            <span class="badge-status badge-selesai">Belum Upload</span>
-                        <?php endif; ?>
+                        <h5 class="content-title"><i class="bi bi-cloud-upload-fill text-danger me-2"></i>Hasil Foto</h5>
+                        <span class="badge-status <?= count($daftar_file) > 0 ? 'badge-upload' : 'badge-selesai' ?>">
+                            <?= $jumlah_foto ?> Foto<?= $jumlah_arsip > 0 ? ' + ' . $jumlah_arsip . ' Arsip' : '' ?>
+                        </span>
                     </div>
 
-                    <?php if (!empty($sesi_data['file_hasil'])): ?>
-                        <!-- FILE SUDAH ADA -->
-                        <div class="file-preview-area">
-                            <!-- PREVIEW GAMBAR JIKA FILE ADALAH GAMBAR -->
-                            <?php if ($is_image_preview): ?>
-                            <div class="image-preview-wrapper show" id="existingImagePreview">
-                                <img src="../../uploads/hasil/<?= rawurlencode($sesi_data['file_hasil']) ?>" alt="Preview Hasil Foto" id="existingPreviewImg">
+                    <!-- KUOTA TOTAL UKURAN -->
+                    <div class="quota-bar-wrapper">
+                        <?php
+                            $persen_pakai = min(100, round(($total_ukuran_terpakai / $max_total_size) * 100, 1));
+                            $kelas_bar = $persen_pakai >= 90 ? 'danger' : ($persen_pakai >= 70 ? 'warning' : '');
+                        ?>
+                        <div class="d-flex justify-content-between mb-1">
+                            <span style="font-size:0.75rem;font-weight:700;color:var(--text-muted);">Kuota Terpakai</span>
+                            <span style="font-size:0.75rem;font-weight:700;color:var(--p-pink);"><?= formatUkuran($total_ukuran_terpakai) ?> / <?= formatUkuran($max_total_size) ?></span>
+                        </div>
+                        <div class="quota-bar"><div class="quota-bar-fill <?= $kelas_bar ?>" style="width: <?= $persen_pakai ?>%"></div></div>
+                    </div>
+
+                    <!-- GALERI FILE YANG SUDAH DIUPLOAD -->
+                    <?php if (!empty($daftar_file)): ?>
+                    <div class="gallery-grid" id="galleryGrid">
+                        <?php foreach ($daftar_file as $f): ?>
+                            <?php if ($f['Tipe_File'] === 'image'): ?>
+                            <div class="gallery-item" onclick="bukaPopupFoto('../../uploads/hasil/<?= rawurlencode($f['Nama_File']) ?>', '<?= htmlspecialchars(addslashes($f['Nama_File'])) ?>')">
+                                <img src="../../uploads/hasil/<?= rawurlencode($f['Nama_File']) ?>" alt="Hasil Foto" loading="lazy">
+                                <?php if ($boleh_upload): ?>
+                                <button type="button" class="gallery-item-del" onclick="event.stopPropagation(); hapusFile(<?= $f['ID_Hasil_Foto'] ?>, '<?= htmlspecialchars(addslashes($f['Nama_File'])) ?>')" title="Hapus"><i class="bi bi-x-lg"></i></button>
+                                <?php endif; ?>
+                            </div>
+                            <?php else: ?>
+                            <div class="gallery-item gallery-item-archive" onclick="window.open('../../uploads/hasil/<?= rawurlencode($f['Nama_File']) ?>', '_blank')">
+                                <i class="bi bi-file-earmark-zip-fill"></i>
+                                <span><?= htmlspecialchars($f['Nama_File']) ?></span>
+                                <?php if ($boleh_upload): ?>
+                                <button type="button" class="gallery-item-del" onclick="event.stopPropagation(); hapusFile(<?= $f['ID_Hasil_Foto'] ?>, '<?= htmlspecialchars(addslashes($f['Nama_File'])) ?>')" title="Hapus"><i class="bi bi-x-lg"></i></button>
+                                <?php endif; ?>
                             </div>
                             <?php endif; ?>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
 
-                            <div class="file-preview-card">
-                                <div class="file-preview-icon">
-                                    <?php if ($is_image_preview): ?>
-                                        <i class="bi bi-image"></i>
-                                    <?php elseif ($is_zip_preview): ?>
-                                        <i class="bi bi-file-earmark-zip"></i>
-                                    <?php else: ?>
-                                        <i class="bi bi-file-earmark"></i>
-                                    <?php endif; ?>
-                                </div>
-                                <div class="file-preview-info">
-                                    <div class="file-preview-name"><?= htmlspecialchars($sesi_data['file_hasil']) ?></div>
-                                    <div class="file-preview-meta">
-                                        <i class="bi bi-clock-history me-1"></i>
-                                        Diupload: <?= $sesi_data['tanggal_upload_hasil'] ? formatTanggal($sesi_data['tanggal_upload_hasil']) . ' ' . formatWaktu($sesi_data['tanggal_upload_hasil']) : '-' ?>
-                                    </div>
-                                </div>
-                                <a href="../../uploads/hasil/<?= rawurlencode($sesi_data['file_hasil']) ?>" 
-                                   class="btn-action btn-action-success" 
-                                   download 
-                                   title="Download File">
-                                    <i class="bi bi-download"></i>
-                                </a>
-                            </div>
+                    <?php if ($boleh_upload): ?>
+                    <!-- FORM UPLOAD MULTI-FILE -->
+                    <form id="formUpload" enctype="multipart/form-data">
+                        <div class="upload-zone mb-3" onclick="document.getElementById('fileInput').click();" id="dropZone">
+                            <i class="bi bi-cloud-arrow-up"></i>
+                            <div class="upload-zone-text">Klik atau seret banyak file sekaligus ke sini</div>
+                            <div class="upload-zone-sub">Format: JPG, JPEG, PNG (foto), ZIP, RAR (arsip borongan) &bull; Total kuota 300 MB / sesi</div>
+                            <input type="file" name="file_hasil[]" id="fileInput" class="d-none" accept=".jpg,.jpeg,.png,.zip,.rar" multiple>
                         </div>
 
-                        <div class="alert border-0 mb-4" style="background: linear-gradient(135deg, #fffbeb, #fef3c7); border-radius: 14px;">
-                            <div class="d-flex align-items-center gap-2">
-                                <i class="bi bi-info-circle-fill text-warning"></i>
-                                <span style="font-size: 0.85rem; font-weight: 600; color: #92400e;">
-                                    File sudah pernah diupload. Upload ulang akan menimpa file lama.
-                                    <br><small class="text-muted">File hanya akan tersedia untuk customer setelah pelunasan terverifikasi oleh admin.</small>
-                                </span>
+                        <div id="fileSelectedList" class="mb-3"></div>
+
+                        <div class="progress-wrapper" id="progressWrapper">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted);">Mengupload...</span>
+                                <span style="font-size: 0.75rem; font-weight: 700; color: var(--p-pink);" id="progressText">0%</span>
                             </div>
+                            <div class="progress"><div class="progress-bar" id="progressBar" style="width: 0%"></div></div>
                         </div>
 
-                        <!-- FORM UPLOAD ULANG -->
-                        <form id="formUpload" enctype="multipart/form-data">
-                            <!-- PREVIEW GAMBAR BARU -->
-                            <div class="image-preview-wrapper" id="newImagePreview">
-                                <img src="" alt="Preview File Baru" id="newPreviewImg">
-                                <div class="image-preview-overlay">
-                                    <button type="button" onclick="clearFileSelection()">
-                                        <i class="bi bi-x-lg"></i> Hapus
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div class="upload-zone mb-3" onclick="document.getElementById('fileInput').click();" id="dropZone">
-                                <i class="bi bi-cloud-arrow-up"></i>
-                                <div class="upload-zone-text">Klik atau seret file ke sini</div>
-                                <div class="upload-zone-sub">Format: ZIP, JPG, JPEG, PNG, RAR, PDF (Max 100 MB)</div>
-                                <input type="file" name="file_hasil" id="fileInput" class="d-none" 
-                                       accept=".zip,.jpg,.jpeg,.png,.rar,.pdf" required>
-                            </div>
-
-                            <div id="fileSelected" class="d-none mb-3">
-                                <div class="d-flex align-items-center gap-2 p-3" style="background: #f0fdf4; border-radius: 12px; border: 1px solid #bbf7d0;">
-                                    <i class="bi bi-file-earmark-check text-success fs-4"></i>
-                                    <div>
-                                        <div class="fw-bold" style="font-size: 0.85rem; color: #166534;" id="selectedFileName">-</div>
-                                        <div style="font-size: 0.75rem; color: #22c55e;" id="selectedFileSize">-</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="progress-wrapper" id="progressWrapper">
-                                <div class="d-flex justify-content-between mb-1">
-                                    <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted);">Mengupload...</span>
-                                    <span style="font-size: 0.75rem; font-weight: 700; color: var(--p-pink);" id="progressText">0%</span>
-                                </div>
-                                <div class="progress">
-                                    <div class="progress-bar" id="progressBar" style="width: 0%"></div>
-                                </div>
-                            </div>
-
-                            <div class="d-flex gap-2">
-                                <button type="button" class="btn-action flex-fill" id="btnUpload" onclick="submitUpload()">
-                                    <i class="bi bi-cloud-upload"></i> Upload Ulang
-                                </button>
-                                <button type="button" class="btn-action btn-action-danger" onclick="confirmHapus()">
-                                    <i class="bi bi-trash"></i> Hapus
-                                </button>
-                            </div>
-                        </form>
-
-                    <?php else: ?>
-                        <!-- FILE BELUM ADA -->
-                        <form id="formUpload" enctype="multipart/form-data">
-                            <!-- PREVIEW GAMBAR BARU -->
-                            <div class="image-preview-wrapper" id="newImagePreview">
-                                <img src="" alt="Preview File Baru" id="newPreviewImg">
-                                <div class="image-preview-overlay">
-                                    <button type="button" onclick="clearFileSelection()">
-                                        <i class="bi bi-x-lg"></i> Hapus
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div class="upload-zone mb-3" onclick="document.getElementById('fileInput').click();" id="dropZone">
-                                <i class="bi bi-cloud-arrow-up"></i>
-                                <div class="upload-zone-text">Klik atau seret file ke sini</div>
-                                <div class="upload-zone-sub">Format: ZIP, JPG, JPEG, PNG, RAR, PDF (Max 100 MB)</div>
-                                <input type="file" name="file_hasil" id="fileInput" class="d-none" 
-                                       accept=".zip,.jpg,.jpeg,.png,.rar,.pdf" required>
-                            </div>
-
-                            <div id="fileSelected" class="d-none mb-3">
-                                <div class="d-flex align-items-center gap-2 p-3" style="background: #f0fdf4; border-radius: 12px; border: 1px solid #bbf7d0;">
-                                    <i class="bi bi-file-earmark-check text-success fs-4"></i>
-                                    <div>
-                                        <div class="fw-bold" style="font-size: 0.85rem; color: #166534;" id="selectedFileName">-</div>
-                                        <div style="font-size: 0.75rem; color: #22c55e;" id="selectedFileSize">-</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="progress-wrapper" id="progressWrapper">
-                                <div class="d-flex justify-content-between mb-1">
-                                    <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted);">Mengupload...</span>
-                                    <span style="font-size: 0.75rem; font-weight: 700; color: var(--p-pink);" id="progressText">0%</span>
-                                </div>
-                                <div class="progress">
-                                    <div class="progress-bar" id="progressBar" style="width: 0%"></div>
-                                </div>
-                            </div>
-
-                            <button type="button" class="btn-action w-100" id="btnUpload" onclick="submitUpload()">
-                                <i class="bi bi-cloud-upload"></i> Upload Hasil Foto
-                            </button>
-                        </form>
+                        <button type="button" class="btn-action w-100" id="btnUpload" onclick="submitUpload()">
+                            <i class="bi bi-cloud-upload"></i> Upload File Terpilih
+                        </button>
+                    </form>
                     <?php endif; ?>
 
                     <!-- PETUNJUK -->
@@ -1073,11 +622,11 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
                             <i class="bi bi-lightbulb-fill text-warning me-1"></i> Petunjuk Upload
                         </h6>
                         <ul class="mb-0 ps-3" style="font-size: 0.75rem; color: var(--text-muted);">
-                            <li>Gunakan format <strong>ZIP</strong> untuk mengupload banyak foto sekaligus.</li>
-                            <li>Pastikan file tidak melebihi <strong>100 MB</strong>.</li>
-                            <li>Beri nama file yang jelas (contoh: hasil_foto_nama_customer.zip).</li>
+                            <li>Bisa pilih <strong>banyak foto sekaligus</strong>, atau upload <strong>1 file ZIP/RAR</strong> untuk borongan.</li>
+                            <li>Total ukuran semua file dalam 1 sesi maksimal <strong>300 MB</strong> (bukan per-file).</li>
+                            <li>Upload hasil foto hanya bisa dilakukan setelah order berstatus <strong>Lunas</strong>.</li>
+                            <li>Customer akan melihat foto dalam bentuk galeri, bisa klik untuk memperbesar.</li>
                             <li>Pastikan kualitas foto sudah di-edit sebelum diupload.</li>
-                            <li>File akan tersedia untuk customer setelah <strong>pelunasan terverifikasi</strong> oleh admin.</li>
                         </ul>
                     </div>
                 </div>
@@ -1086,7 +635,6 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
     </div>
 
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
-
     <script>
         // Toggle Submenu
         document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
@@ -1095,122 +643,107 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
                 const targetId = this.getAttribute('data-target');
                 const targetEl = document.querySelector(targetId);
                 const chevron = this.querySelector('.icon-chevron');
-
                 if (targetEl) {
                     const isShown = targetEl.classList.contains('show');
                     document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
                     document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
-
-                    if (!isShown) {
-                        targetEl.classList.add('show');
-                        if (chevron) chevron.style.transform = 'rotate(180deg)';
-                    }
+                    if (!isShown) { targetEl.classList.add('show'); if (chevron) chevron.style.transform = 'rotate(180deg)'; }
                 }
             });
         });
 
         // =====================================================
-        // FILE INPUT HANDLER + PREVIEW GAMBAR
+        // POPUP LIHAT FOTO (pakai SweetAlert2 imageUrl -- lightbox instan)
         // =====================================================
+        function bukaPopupFoto(src, nama) {
+            Swal.fire({
+                imageUrl: src,
+                imageAlt: nama,
+                width: 'min(90vw, 700px)',
+                showCloseButton: true,
+                showConfirmButton: false,
+                title: nama,
+                background: '#fff'
+            });
+        }
+
+        // =====================================================
+        // MULTI-FILE INPUT HANDLER
+        // =====================================================
+        const MAX_TOTAL_SIZE = <?= $max_total_size ?>;
+        const TOTAL_TERPAKAI = <?= $total_ukuran_terpakai ?>;
         const fileInput = document.getElementById('fileInput');
-        const fileSelected = document.getElementById('fileSelected');
-        const selectedFileName = document.getElementById('selectedFileName');
-        const selectedFileSize = document.getElementById('selectedFileSize');
+        const fileSelectedList = document.getElementById('fileSelectedList');
         const dropZone = document.getElementById('dropZone');
-        const newImagePreview = document.getElementById('newImagePreview');
-        const newPreviewImg = document.getElementById('newPreviewImg');
-        const existingImagePreview = document.getElementById('existingImagePreview');
+        let selectedFiles = [];
 
         function formatFileSize(bytes) {
             if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const k = 1024, sizes = ['Bytes', 'KB', 'MB', 'GB'];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
-        function isImageFile(filename) {
-            const ext = filename.split('.').pop().toLowerCase();
-            return ['jpg', 'jpeg', 'png'].includes(ext);
+        function renderSelectedFiles() {
+            if (!fileSelectedList) return;
+            fileSelectedList.innerHTML = '';
+            if (selectedFiles.length === 0) return;
+
+            let totalBaru = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+            let sisaKuota = MAX_TOTAL_SIZE - TOTAL_TERPAKAI;
+            let overQuota = totalBaru > sisaKuota;
+
+            const summary = document.createElement('div');
+            summary.className = 'p-2 mb-2';
+            summary.style.cssText = 'font-size:0.8rem;font-weight:700;border-radius:10px;padding:10px 14px;' +
+                (overQuota ? 'background:#fef2f2;color:#dc2626;' : 'background:#f0fdf4;color:#166534;');
+            summary.innerHTML = selectedFiles.length + ' file dipilih (' + formatFileSize(totalBaru) + ')' +
+                (overQuota ? ' — melebihi sisa kuota ' + formatFileSize(Math.max(0, sisaKuota)) + '!' : '');
+            fileSelectedList.appendChild(summary);
+
+            selectedFiles.forEach((f, idx) => {
+                const row = document.createElement('div');
+                row.className = 'd-flex align-items-center justify-content-between p-2 mb-1';
+                row.style.cssText = 'background:#f8fafc;border-radius:10px;font-size:0.8rem;';
+                row.innerHTML = '<span><i class="bi bi-file-earmark-check text-success me-1"></i>' + f.name + ' <span class="text-muted">(' + formatFileSize(f.size) + ')</span></span>' +
+                    '<button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="removeSelectedFile(' + idx + ')"><i class="bi bi-x-lg"></i></button>';
+                fileSelectedList.appendChild(row);
+            });
         }
 
-        function handleFileSelect(file) {
-            if (!file) return;
-
-            selectedFileName.textContent = file.name;
-            selectedFileSize.textContent = formatFileSize(file.size);
-            fileSelected.classList.remove('d-none');
-
-            // PREVIEW GAMBAR JIKA FILE ADALAH GAMBAR
-            if (isImageFile(file.name)) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    newPreviewImg.src = e.target.result;
-                    newImagePreview.classList.add('show');
-                    // Sembunyikan preview lama jika ada
-                    if (existingImagePreview) {
-                        existingImagePreview.style.display = 'none';
-                    }
-                };
-                reader.readAsDataURL(file);
-            } else {
-                // Bukan gambar, sembunyikan preview gambar
-                newImagePreview.classList.remove('show');
-                newPreviewImg.src = '';
-            }
+        function syncFileInput() {
+            const dt = new DataTransfer();
+            selectedFiles.forEach(f => dt.items.add(f));
+            fileInput.files = dt.files;
         }
 
-        function clearFileSelection() {
-            fileInput.value = '';
-            fileSelected.classList.add('d-none');
-            selectedFileName.textContent = '-';
-            selectedFileSize.textContent = '-';
-            newImagePreview.classList.remove('show');
-            newPreviewImg.src = '';
-            // Tampilkan kembali preview lama jika ada
-            if (existingImagePreview) {
-                existingImagePreview.style.display = 'block';
-            }
+        function removeSelectedFile(idx) {
+            selectedFiles.splice(idx, 1);
+            syncFileInput();
+            renderSelectedFiles();
+        }
+
+        function handleFilesSelect(fileList) {
+            for (const f of fileList) selectedFiles.push(f);
+            syncFileInput();
+            renderSelectedFiles();
         }
 
         if (fileInput) {
-            fileInput.addEventListener('change', function(e) {
-                const file = e.target.files[0];
-                handleFileSelect(file);
-            });
+            fileInput.addEventListener('change', function(e) { handleFilesSelect(e.target.files); });
         }
 
-        // Drag & Drop
         if (dropZone) {
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                dropZone.addEventListener(eventName, preventDefaults, false);
+                dropZone.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false);
             });
-
-            function preventDefaults(e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-
-            ['dragenter', 'dragover'].forEach(eventName => {
-                dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
-            });
-
-            ['dragleave', 'drop'].forEach(eventName => {
-                dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
-            });
-
-            dropZone.addEventListener('drop', function(e) {
-                const dt = e.dataTransfer;
-                const files = dt.files;
-                if (files.length > 0) {
-                    fileInput.files = files;
-                    handleFileSelect(files[0]);
-                }
-            });
+            ['dragenter', 'dragover'].forEach(eventName => dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover')));
+            ['dragleave', 'drop'].forEach(eventName => dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover')));
+            dropZone.addEventListener('drop', function(e) { handleFilesSelect(e.dataTransfer.files); });
         }
 
         // =====================================================
-        // AJAX UPLOAD DENGAN FETCH API
+        // AJAX UPLOAD MULTI-FILE
         // =====================================================
         const progressWrapper = document.getElementById('progressWrapper');
         const progressBar = document.getElementById('progressBar');
@@ -1218,208 +751,112 @@ $is_zip_preview = in_array($file_ext_preview, ['zip', 'rar']);
         const btnUpload = document.getElementById('btnUpload');
 
         function submitUpload() {
-            if (!fileInput.files || fileInput.files.length === 0) {
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'File Belum Dipilih',
-                    text: 'Silakan pilih file terlebih dahulu.',
-                    confirmButtonColor: '#D53D66'
-                });
+            if (selectedFiles.length === 0) {
+                Swal.fire({ icon: 'warning', title: 'File Belum Dipilih', text: 'Silakan pilih minimal 1 file.', confirmButtonColor: '#D53D66' });
                 return;
             }
 
-            const file = fileInput.files[0];
-            const maxSize = 100 * 1024 * 1024; // 100 MB
-            if (file.size > maxSize) {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Ukuran File Terlalu Besar',
-                    text: 'Maksimal ukuran file adalah 100 MB.',
-                    confirmButtonColor: '#D53D66'
-                });
+            const totalBaru = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+            const sisaKuota = MAX_TOTAL_SIZE - TOTAL_TERPAKAI;
+            if (totalBaru > sisaKuota) {
+                Swal.fire({ icon: 'error', title: 'Kuota Terlampaui', text: 'Total ukuran file yang dipilih melebihi sisa kuota ' + formatFileSize(Math.max(0, sisaKuota)) + '.', confirmButtonColor: '#D53D66' });
                 return;
             }
 
-            // Validasi ekstensi
-            const allowedExt = ['zip', 'jpg', 'jpeg', 'png', 'rar', 'pdf'];
-            const ext = file.name.split('.').pop().toLowerCase();
-            if (!allowedExt.includes(ext)) {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Format Tidak Didukung',
-                    text: 'Format yang diizinkan: ZIP, JPG, JPEG, PNG, RAR, PDF.',
-                    confirmButtonColor: '#D53D66'
-                });
-                return;
+            const allowedExt = ['jpg', 'jpeg', 'png', 'zip', 'rar'];
+            for (const f of selectedFiles) {
+                const ext = f.name.split('.').pop().toLowerCase();
+                if (!allowedExt.includes(ext)) {
+                    Swal.fire({ icon: 'error', title: 'Format Tidak Didukung', text: "File '" + f.name + "' formatnya tidak didukung.", confirmButtonColor: '#D53D66' });
+                    return;
+                }
             }
 
-            // Tampilkan progress bar
             progressWrapper.classList.add('show');
             btnUpload.disabled = true;
             btnUpload.innerHTML = '<i class="bi bi-hourglass-split"></i> Mengupload...';
 
-            // Simulasi progress bar
             let progress = 0;
             const progressInterval = setInterval(() => {
-                progress += Math.random() * 15;
-                if (progress >= 90) {
-                    progress = 90;
-                    clearInterval(progressInterval);
-                }
+                progress += Math.random() * 10;
+                if (progress >= 90) { progress = 90; clearInterval(progressInterval); }
                 progressBar.style.width = progress + '%';
                 progressText.textContent = Math.round(progress) + '%';
             }, 200);
 
-            // Kirim via Fetch API
             const formData = new FormData();
-            formData.append('file_hasil', file);
+            selectedFiles.forEach(f => formData.append('file_hasil[]', f));
             formData.append('ajax_upload', '1');
 
-            fetch(window.location.href, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                clearInterval(progressInterval);
-                progressBar.style.width = '100%';
-                progressText.textContent = '100%';
+            fetch(window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(response => response.json())
+                .then(data => {
+                    clearInterval(progressInterval);
+                    progressBar.style.width = '100%';
+                    progressText.textContent = '100%';
 
-                if (data.success) {
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Upload Berhasil!',
-                        html: '<div style="text-align:left"><p>File hasil foto berhasil diupload dan tersimpan di sistem.</p><hr style="border-color:#f1f5f9;margin:10px 0"><p style="color:#718096;font-size:0.85rem"><i class="bi bi-info-circle-fill text-warning me-1"></i> File akan tersedia untuk customer setelah <strong style="color:#D53D66">pelunasan terverifikasi</strong> oleh admin.</p></div>',
-                        confirmButtonColor: '#D53D66',
-                        confirmButtonText: 'Lihat Riwayat'
-                    }).then(() => {
-                        window.location.href = data.redirect;
-                    });
-                } else {
+                    if (data.success) {
+                        Swal.fire({
+                            icon: 'success', title: 'Upload Berhasil!', text: data.message,
+                            confirmButtonColor: '#D53D66', confirmButtonText: 'Lihat Riwayat'
+                        }).then(() => { window.location.href = data.redirect; });
+                    } else {
+                        btnUpload.disabled = false;
+                        btnUpload.innerHTML = '<i class="bi bi-cloud-upload"></i> Upload File Terpilih';
+                        progressWrapper.classList.remove('show');
+                        progressBar.style.width = '0%'; progressText.textContent = '0%';
+                        Swal.fire({ icon: 'error', title: 'Upload Gagal!', text: data.message, confirmButtonColor: '#D53D66' });
+                    }
+                })
+                .catch(error => {
+                    clearInterval(progressInterval);
                     btnUpload.disabled = false;
-                    btnUpload.innerHTML = '<i class="bi bi-cloud-upload"></i> Upload Hasil Foto';
+                    btnUpload.innerHTML = '<i class="bi bi-cloud-upload"></i> Upload File Terpilih';
                     progressWrapper.classList.remove('show');
-                    progressBar.style.width = '0%';
-                    progressText.textContent = '0%';
-
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Upload Gagal!',
-                        text: data.message,
-                        confirmButtonColor: '#D53D66'
-                    });
-                }
-            })
-            .catch(error => {
-                clearInterval(progressInterval);
-                btnUpload.disabled = false;
-                btnUpload.innerHTML = '<i class="bi bi-cloud-upload"></i> Upload Hasil Foto';
-                progressWrapper.classList.remove('show');
-                progressBar.style.width = '0%';
-                progressText.textContent = '0%';
-
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Upload Gagal!',
-                    text: 'Terjadi kesalahan saat mengupload file. Silakan coba lagi.',
-                    confirmButtonColor: '#D53D66'
+                    progressBar.style.width = '0%'; progressText.textContent = '0%';
+                    Swal.fire({ icon: 'error', title: 'Upload Gagal!', text: 'Terjadi kesalahan saat mengupload file.', confirmButtonColor: '#D53D66' });
+                    console.error('Upload error:', error);
                 });
-                console.error('Upload error:', error);
-            });
         }
 
         // =====================================================
-        // AJAX HAPUS FILE
+        // HAPUS 1 FILE
         // =====================================================
-        function confirmHapus() {
+        function hapusFile(idHasilFoto, namaFile) {
             Swal.fire({
                 title: 'Hapus File?',
-                text: 'File hasil foto akan dihapus permanen dari sistem, dan status order akan diturunkan kembali. Lanjutkan?',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#dc2626',
-                cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Hapus',
-                cancelButtonText: 'Batal'
+                text: "'" + namaFile + "' akan dihapus permanen dari sistem. Lanjutkan?",
+                icon: 'warning', showCancelButton: true,
+                confirmButtonColor: '#dc2626', cancelButtonColor: '#718096',
+                confirmButtonText: 'Ya, Hapus', cancelButtonText: 'Batal'
             }).then((result) => {
                 if (result.isConfirmed) {
                     const formData = new FormData();
                     formData.append('ajax_hapus', '1');
-
-                    fetch(window.location.href, {
-                        method: 'POST',
-                        body: formData,
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            Swal.fire({
-                                icon: 'success',
-                                title: 'File Dihapus!',
-                                text: data.message,
-                                confirmButtonColor: '#D53D66',
-                                confirmButtonText: 'Oke'
-                            }).then(() => {
-                                window.location.href = data.redirect;
-                            });
-                        } else {
-                            Swal.fire({
-                                icon: 'error',
-                                title: 'Gagal Menghapus!',
-                                text: data.message,
-                                confirmButtonColor: '#D53D66'
-                            });
-                        }
-                    })
-                    .catch(error => {
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Gagal Menghapus!',
-                            text: 'Terjadi kesalahan saat menghapus file.',
-                            confirmButtonColor: '#D53D66'
-                        });
-                        console.error('Delete error:', error);
-                    });
+                    formData.append('id_hasil_foto', idHasilFoto);
+                    fetch(window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                Swal.fire({ icon: 'success', title: 'File Dihapus!', confirmButtonColor: '#D53D66' }).then(() => location.reload());
+                            } else {
+                                Swal.fire({ icon: 'error', title: 'Gagal Menghapus!', text: data.message, confirmButtonColor: '#D53D66' });
+                            }
+                        })
+                        .catch(() => Swal.fire({ icon: 'error', title: 'Gagal Menghapus!', text: 'Terjadi kesalahan.', confirmButtonColor: '#D53D66' }));
                 }
             });
         }
 
         function confirmLogout(e) {
             e.preventDefault();
-            Swal.fire({
-                title: 'Keluar?',
-                text: 'Apakah Anda yakin ingin keluar?',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#D53D66',
-                cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Keluar',
-                cancelButtonText: 'Batal'
-            }).then((result) => {
-                if (result.isConfirmed) window.location.href = '../../logout.php';
-            });
+            Swal.fire({ title: 'Keluar?', text: 'Apakah Anda yakin ingin keluar?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#D53D66', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Keluar', cancelButtonText: 'Batal' })
+                .then((result) => { if (result.isConfirmed) window.location.href = '../../logout.php'; });
         }
-
         function confirmLandingPage(e) {
             e.preventDefault();
-            Swal.fire({
-                title: 'Kembali ke Beranda?',
-                text: 'Anda akan dialihkan ke halaman utama.',
-                icon: 'info',
-                showCancelButton: true,
-                confirmButtonColor: '#D53D66',
-                cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Kembali',
-                cancelButtonText: 'Batal'
-            }).then((result) => {
-                if (result.isConfirmed) window.location.href = '../../index.php';
-            });
+            Swal.fire({ title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama.', icon: 'info', showCancelButton: true, confirmButtonColor: '#D53D66', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal' })
+                .then((result) => { if (result.isConfirmed) window.location.href = '../../index.php'; });
         }
     </script>
 </body>
