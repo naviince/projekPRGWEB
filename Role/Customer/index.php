@@ -163,14 +163,6 @@ $foto_customer_src = ($foto_customer != 'default.jpg' && file_exists("../../asse
 // =====================================================
 // QUERY PAKET FOTO - DIPERBAIKI SESUAI DATABASE
 // =====================================================
-// Validasi logika nyata:
-// 1. Paket aktif (Status=1, Is_Deleted=0)
-// 2. Paket punya ruangan via Paket_Ruangan (junction table)
-// 3. Ruangan aktif (Status=1, Is_Deleted=0)
-// 4. Ruangan punya tema via Ruangan_Tema
-// 5. Tema aktif (Status=1, Is_Deleted=0)
-// 6. Ruangan punya jadwal tersedia di masa depan
-
 $sql_paket = "SELECT 
     p.ID_Paket, 
     p.Nama_Paket, 
@@ -259,6 +251,7 @@ function fmtTgl($d) {
             --text-dark: #1e1e24;
             --text-muted: #718096;
             --body-bg: #f8fafc;
+            --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html { scroll-behavior: smooth; }
@@ -962,617 +955,266 @@ function fmtTgl($d) {
         }
         .pwd-requirement.valid { color: #059669; }
 
+        /* ===== CSS BARU: SINKRONISASI TOMBOL FILTER SESUAI REFERENSI ===== */
+        .btn-filter-trigger {
+            background: #ffffff;
+            border: 1.5px solid #e2e8f0;
+            color: #334155;
+            padding: 10px 22px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 800;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: var(--transition-smooth);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+        }
+        .btn-filter-trigger:hover {
+            border-color: var(--p-pink);
+            color: var(--p-pink);
+            background-color: var(--s-pink);
+        }
+        .btn-filter-trigger i {
+            font-size: 0.95rem;
+        }
+        .form-label-custom-filter {
+            font-weight: 800;
+            font-size: 0.725rem;
+            color: #475569;
+            letter-spacing: 0.6px;
+            margin-bottom: 8px;
+            display: block;
+            text-transform: uppercase;
+        }
+        .btn-filter-reset {
+            background: #f1f5f9;
+            color: #475569;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 14px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            transition: var(--transition-smooth);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+        .btn-filter-reset:hover {
+            background: #e2e8f0;
+            color: var(--text-dark);
+        }
+        .btn-filter-apply {
+            flex-grow: 1;
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #ffffff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 14px;
+            font-weight: 800;
+            font-size: 0.85rem;
+            transition: var(--transition-smooth);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+        .btn-filter-apply:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(216, 63, 102, 0.25);
+        }
+
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-5px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
-
         /* ========== RESPONSIVE BREAKPOINTS ========== */
-        /* Tablet & Mobile (max-width: 991.98px) */
         @media (max-width: 991.98px) {
-            .top-navbar {
-                padding: 12px 16px;
-            }
-            .nav-logo {
-                font-size: 1.4rem;
-            }
-            .nav-logo span {
-                font-size: 0.75rem;
-            }
-            .nav-menu-center {
-                display: none;
-            }
-            .nav-btn-booking {
-                padding: 8px 16px;
-                font-size: 0.8rem;
-            }
-            .nav-avatar {
-                width: 36px;
-                height: 36px;
-            }
-            .hero-banner {
-                padding: 40px 20px;
-            }
-            .hero-title {
-                font-size: 1.8rem;
-            }
-            .hero-subtitle {
-                font-size: 0.9rem;
-            }
-            .hero-btn {
-                padding: 12px 28px;
-                font-size: 0.9rem;
-            }
-            .booking-steps {
-                display: none;
-            }
-            .main-container {
-                padding: 20px 16px;
-            }
-            .stats-bar {
-                gap: 10px;
-            }
-            .stat-chip {
-                padding: 10px 14px;
-            }
-            .stat-chip-icon {
-                width: 32px;
-                height: 32px;
-                font-size: 0.9rem;
-            }
-            .stat-chip-text {
-                font-size: 0.8rem;
-            }
-            .stat-chip-sub {
-                font-size: 0.7rem;
-            }
-            .section-title {
-                font-size: 1.1rem;
-            }
-            .paket-card {
-                min-width: 260px;
-                max-width: 260px;
-            }
-            .paket-img-wrapper {
-                height: 180px;
-            }
-            .paket-nama {
-                font-size: 1rem;
-            }
-            .paket-harga {
-                font-size: 1.1rem;
-            }
-            .paket-btn {
-                padding: 10px 20px;
-                font-size: 0.8rem;
-            }
-            .scroll-nav-btn {
-                display: none !important;
-            }
-            .info-section {
-                grid-template-columns: 1fr;
-            }
-            .info-card {
-                padding: 20px;
-            }
-            .modal-dialog.modal-lg {
-                max-width: 95%;
-                margin: 10px auto;
-            }
-            .modal-body-custom {
-                padding: 16px;
-            }
-            .img-preview-container {
-                width: 90px;
-                height: 90px;
-            }
-            .form-control-custom {
-                padding: 8px 12px;
-                font-size: 0.85rem;
-            }
-            .nav-dropdown {
-                right: -10px;
-                min-width: 200px;
-            }
+            .top-navbar { padding: 12px 16px; }
+            .nav-logo { font-size: 1.4rem; }
+            .nav-logo span { font-size: 0.75rem; }
+            .nav-menu-center { display: none; }
+            .nav-btn-booking { padding: 8px 16px; font-size: 0.8rem; }
+            .nav-avatar { width: 36px; height: 36px; }
+            .hero-banner { padding: 40px 20px; }
+            .hero-title { font-size: 1.8rem; }
+            .hero-subtitle { font-size: 0.9rem; }
+            .hero-btn { padding: 12px 28px; font-size: 0.9rem; }
+            .booking-steps { display: none; }
+            .main-container { padding: 20px 16px; }
+            .stats-bar { gap: 10px; }
+            .stat-chip { padding: 10px 14px; }
+            .stat-chip-icon { width: 32px; height: 32px; font-size: 0.9rem; }
+            .stat-chip-text { font-size: 0.8rem; }
+            .stat-chip-sub { font-size: 0.7rem; }
+            .section-title { font-size: 1.1rem; }
+            .paket-card { min-width: 260px; max-width: 260px; }
+            .paket-img-wrapper { height: 180px; }
+            .paket-nama { font-size: 1rem; }
+            .paket-harga { font-size: 1.1rem; }
+            .paket-btn { padding: 10px 20px; font-size: 0.8rem; }
+            .scroll-nav-btn { display: none !important; }
+            .info-section { grid-template-columns: 1fr; }
+            .info-card { padding: 20px; }
+            .modal-dialog.modal-lg { max-width: 95%; margin: 10px auto; }
+            .modal-body-custom { padding: 16px; }
+            .img-preview-container { width: 90px; height: 90px; }
+            .form-control-custom { padding: 8px 12px; font-size: 0.85rem; }
+            .nav-dropdown { right: -10px; min-width: 200px; }
         }
 
-        /* Mobile Landscape & Small Tablets (max-width: 767.98px) */
         @media (max-width: 767.98px) {
-            .top-navbar {
-                padding: 10px 12px;
-            }
-            .nav-logo {
-                font-size: 1.2rem;
-            }
-            .nav-logo span {
-                display: none;
-            }
-            .nav-right {
-                gap: 10px;
-            }
-            .nav-btn-booking {
-                padding: 8px 12px;
-                font-size: 0.75rem;
-            }
-            .nav-btn-booking i {
-                display: none;
-            }
-            .hero-banner {
-                padding: 30px 16px;
-            }
-            .hero-title {
-                font-size: 1.5rem;
-                letter-spacing: -0.5px;
-            }
-            .hero-subtitle {
-                font-size: 0.85rem;
-                margin-bottom: 20px;
-            }
-            .hero-btn {
-                padding: 10px 24px;
-                font-size: 0.85rem;
-            }
-            .main-container {
-                padding: 16px 12px;
-            }
-            .stats-bar {
-                gap: 8px;
-                padding-bottom: 6px;
-            }
-            .stat-chip {
-                padding: 8px 12px;
-                border-radius: 12px;
-            }
-            .stat-chip-icon {
-                width: 28px;
-                height: 28px;
-                font-size: 0.8rem;
-                border-radius: 8px;
-            }
-            .stat-chip-text {
-                font-size: 0.75rem;
-            }
-            .stat-chip-sub {
-                font-size: 0.65rem;
-            }
-            .section-header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 12px;
-                margin-bottom: 16px;
-            }
-            .section-title {
-                font-size: 1rem;
-            }
-            .section-title i {
-                font-size: 1.1rem;
-            }
-            .d-flex.flex-wrap.justify-content-between.align-items-center.gap-3 {
-                flex-direction: column !important;
-                align-items: stretch !important;
-            }
-            .d-flex.flex-wrap.justify-content-between.align-items-center.gap-3 .position-relative {
-                max-width: 100% !important;
-                min-width: 100% !important;
-            }
-            .d-flex.flex-wrap.justify-content-between.align-items-center.gap-3 > div:last-child {
-                min-width: 100% !important;
-            }
-            #sortPaket {
-                width: 100%;
-            }
-            .paket-scroll-wrapper {
-                margin-bottom: 30px;
-            }
-            .paket-card {
-                min-width: 240px;
-                max-width: 240px;
-                border-radius: 16px;
-            }
-            .paket-img-wrapper {
-                height: 160px;
-            }
-            .paket-badge-durasi,
-            .paket-badge-kapasitas {
-                padding: 4px 10px;
-                font-size: 0.7rem;
-            }
-            .paket-body {
-                padding: 14px;
-            }
-            .paket-nama {
-                font-size: 0.95rem;
-            }
-            .paket-desc {
-                font-size: 0.8rem;
-                margin-bottom: 12px;
-            }
-            .paket-meta {
-                gap: 8px;
-                margin-bottom: 12px;
-            }
-            .paket-meta-item {
-                padding: 4px 8px;
-                font-size: 0.75rem;
-            }
-            .paket-footer {
-                padding-top: 12px;
-            }
-            .paket-harga {
-                font-size: 1rem;
-            }
-            .paket-harga-satuan {
-                font-size: 0.7rem;
-            }
-            .paket-btn {
-                padding: 8px 16px;
-                font-size: 0.8rem;
-                border-radius: 10px;
-            }
-            .info-section {
-                gap: 16px;
-                margin-top: 24px;
-            }
-            .info-card {
-                padding: 16px;
-                border-radius: 16px;
-            }
-            .info-card-title {
-                font-size: 1rem;
-                margin-bottom: 12px;
-            }
-            .info-item {
-                padding: 10px 0;
-            }
-            .info-icon {
-                width: 36px;
-                height: 36px;
-                font-size: 0.9rem;
-            }
-            .info-text {
-                font-size: 0.85rem;
-            }
-            .info-sub {
-                font-size: 0.75rem;
-            }
-            .info-btn {
-                padding: 5px 12px;
-                font-size: 0.7rem;
-            }
-            .barang-cetak-scroll-container {
-                max-height: 200px;
-            }
-            .modal-content-custom {
-                border-radius: 20px;
-            }
-            .modal-header-custom {
-                padding: 16px;
-            }
-            .modal-header-custom h5 {
-                font-size: 1rem;
-            }
-            .modal-body-custom {
-                padding: 16px;
-            }
-            .profile-nav-tabs .nav-link {
-                padding: 8px 14px;
-                font-size: 0.85rem;
-            }
-            .img-preview-container {
-                width: 80px;
-                height: 80px;
-            }
-            .btn-upload-trigger {
-                width: 28px;
-                height: 28px;
-            }
-            .form-label-custom {
-                font-size: 0.8rem;
-            }
-            .form-control-custom {
-                padding: 8px 12px;
-                font-size: 0.85rem;
-                border-radius: 10px;
-            }
-            .pwd-requirement {
-                font-size: 0.7rem;
-            }
-            .modal-footer-custom {
-                padding: 12px 16px;
-                flex-direction: column-reverse;
-                gap: 8px;
-            }
-            .modal-footer-custom .btn {
-                width: 100%;
-                padding: 10px;
-            }
-            .nav-dropdown {
-                right: -5px;
-                min-width: 180px;
-                border-radius: 12px;
-                padding: 8px;
-            }
-            .dropdown-header {
-                font-size: 0.9rem;
-                padding: 6px 12px;
-            }
-            .dropdown-item {
-                padding: 10px 12px;
-                font-size: 0.85rem;
-            }
+            .top-navbar { padding: 10px 12px; }
+            .nav-logo { font-size: 1.2rem; }
+            .nav-logo span { display: none; }
+            .nav-right { gap: 10px; }
+            .nav-btn-booking { padding: 8px 12px; font-size: 0.75rem; }
+            .nav-btn-booking i { display: none; }
+            .hero-banner { padding: 30px 16px; }
+            .hero-title { font-size: 1.5rem; letter-spacing: -0.5px; }
+            .hero-subtitle { font-size: 0.85rem; margin-bottom: 20px; }
+            .hero-btn { padding: 10px 24px; font-size: 0.85rem; }
+            .main-container { padding: 16px 12px; }
+            .stats-bar { gap: 8px; padding-bottom: 6px; }
+            .stat-chip { padding: 8px 12px; border-radius: 12px; }
+            .stat-chip-icon { width: 28px; height: 28px; font-size: 0.8rem; border-radius: 8px; }
+            .stat-chip-text { font-size: 0.75rem; }
+            .stat-chip-sub { font-size: 0.65rem; }
+            .section-header { flex-direction: column; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+            .section-title { font-size: 1rem; }
+            .section-title i { font-size: 1.1rem; }
+            .d-flex.flex-wrap.justify-content-between.align-items-center.gap-3 { flex-direction: column !important; align-items: stretch !important; }
+            .d-flex.flex-wrap.justify-content-between.align-items-center.gap-3 .position-relative { max-width: 100% !important; min-width: 100% !important; }
+            .d-flex.flex-wrap.justify-content-between.align-items-center.gap-3 > div:last-child { min-width: 100% !important; }
+            #sortPaket { width: 100%; }
+            .paket-scroll-wrapper { margin-bottom: 30px; }
+            .paket-card { min-width: 240px; max-width: 240px; border-radius: 16px; }
+            .paket-img-wrapper { height: 160px; }
+            .paket-badge-durasi, .paket-badge-kapasitas { padding: 4px 10px; font-size: 0.7rem; }
+            .paket-body { padding: 14px; }
+            .paket-nama { font-size: 0.95rem; }
+            .paket-desc { font-size: 0.8rem; margin-bottom: 12px; }
+            .paket-meta { gap: 8px; margin-bottom: 12px; }
+            .paket-meta-item { padding: 4px 8px; font-size: 0.75rem; }
+            .paket-footer { padding-top: 12px; }
+            .paket-harga { font-size: 1rem; }
+            .paket-harga-satuan { font-size: 0.7rem; }
+            .paket-btn { padding: 8px 16px; font-size: 0.8rem; border-radius: 10px; }
+            .info-section { gap: 16px; margin-top: 24px; }
+            .info-card { padding: 16px; border-radius: 16px; }
+            .info-card-title { font-size: 1rem; margin-bottom: 12px; }
+            .info-item { padding: 10px 0; }
+            .info-icon { width: 36px; height: 36px; font-size: 0.9rem; }
+            .info-text { font-size: 0.85rem; }
+            .info-sub { font-size: 0.75rem; }
+            .info-btn { padding: 5px 12px; font-size: 0.7rem; }
+            .barang-cetak-scroll-container { max-height: 200px; }
+            .modal-content-custom { border-radius: 20px; }
+            .modal-header-custom { padding: 16px; }
+            .modal-header-custom h5 { font-size: 1rem; }
+            .modal-body-custom { padding: 16px; }
+            .profile-nav-tabs .nav-link { padding: 8px 14px; font-size: 0.85rem; }
+            .img-preview-container { width: 80px; height: 80px; }
+            .btn-upload-trigger { width: 28px; height: 28px; }
+            .form-label-custom { font-size: 0.8rem; }
+            .form-control-custom { padding: 8px 12px; font-size: 0.85rem; border-radius: 10px; }
+            .pwd-requirement { font-size: 0.7rem; }
+            .modal-footer-custom { padding: 12px 16px; flex-direction: column-reverse; gap: 8px; }
+            .modal-footer-custom .btn { width: 100%; padding: 10px; }
+            .nav-dropdown { right: -5px; min-width: 180px; border-radius: 12px; padding: 8px; }
+            .dropdown-header { font-size: 0.9rem; padding: 6px 12px; }
+            .dropdown-item { padding: 10px 12px; font-size: 0.85rem; }
         }
 
-        /* Small Mobile (max-width: 575.98px) */
         @media (max-width: 575.98px) {
-            .top-navbar {
-                padding: 8px 10px;
-            }
-            .nav-logo {
-                font-size: 1.1rem;
-            }
-            .nav-btn-booking {
-                padding: 6px 10px;
-                font-size: 0.7rem;
-                border-radius: 8px;
-            }
-            .nav-avatar {
-                width: 32px;
-                height: 32px;
-            }
-            .hero-banner {
-                padding: 24px 12px;
-            }
-            .hero-title {
-                font-size: 1.3rem;
-            }
-            .hero-subtitle {
-                font-size: 0.8rem;
-            }
-            .hero-btn {
-                padding: 10px 20px;
-                font-size: 0.8rem;
-            }
-            .main-container {
-                padding: 12px 10px;
-            }
-            .stats-bar {
-                gap: 6px;
-            }
-            .stat-chip {
-                padding: 6px 10px;
-                border-radius: 10px;
-            }
-            .stat-chip-icon {
-                width: 24px;
-                height: 24px;
-                font-size: 0.7rem;
-            }
-            .stat-chip-text {
-                font-size: 0.7rem;
-            }
-            .stat-chip-sub {
-                font-size: 0.6rem;
-            }
-            .paket-card {
-                min-width: 220px;
-                max-width: 220px;
-            }
-            .paket-img-wrapper {
-                height: 140px;
-            }
-            .paket-badge-durasi,
-            .paket-badge-kapasitas {
-                padding: 3px 8px;
-                font-size: 0.65rem;
-            }
-            .paket-body {
-                padding: 12px;
-            }
-            .paket-nama {
-                font-size: 0.9rem;
-            }
-            .paket-desc {
-                font-size: 0.75rem;
-                -webkit-line-clamp: 2;
-            }
-            .paket-meta {
-                gap: 6px;
-                margin-bottom: 10px;
-            }
-            .paket-meta-item {
-                padding: 3px 6px;
-                font-size: 0.7rem;
-                border-radius: 6px;
-            }
-            .paket-footer {
-                padding-top: 10px;
-            }
-            .paket-harga {
-                font-size: 0.9rem;
-            }
-            .paket-btn {
-                padding: 6px 12px;
-                font-size: 0.75rem;
-            }
-            .info-card {
-                padding: 14px;
-                border-radius: 14px;
-            }
-            .info-card-title {
-                font-size: 0.95rem;
-            }
-            .info-item {
-                padding: 8px 0;
-            }
-            .info-icon {
-                width: 32px;
-                height: 32px;
-                font-size: 0.8rem;
-            }
-            .info-text {
-                font-size: 0.8rem;
-            }
-            .info-sub {
-                font-size: 0.7rem;
-            }
-            .info-btn {
-                padding: 4px 10px;
-                font-size: 0.65rem;
-            }
-            .section-count {
-                font-size: 0.75rem;
-            }
-            .modal-dialog {
-                margin: 5px;
-            }
-            .modal-content-custom {
-                border-radius: 16px;
-            }
-            .modal-header-custom {
-                padding: 14px;
-            }
-            .modal-body-custom {
-                padding: 14px;
-            }
-            .profile-nav-tabs {
-                flex-wrap: nowrap;
-                overflow-x: auto;
-                scrollbar-width: none;
-            }
-            .profile-nav-tabs::-webkit-scrollbar {
-                display: none;
-            }
-            .profile-nav-tabs .nav-link {
-                padding: 8px 12px;
-                font-size: 0.8rem;
-                white-space: nowrap;
-            }
-            .row.g-3 > [class*="col-"] {
-                padding-left: 8px;
-                padding-right: 8px;
-            }
-            .form-control-custom {
-                padding: 8px 10px;
-                font-size: 0.8rem;
-            }
-            .img-preview-container {
-                width: 70px;
-                height: 70px;
-            }
-            .nav-dropdown {
-                right: 0;
-                min-width: 170px;
-                border-radius: 10px;
-            }
-            .dropdown-item {
-                padding: 8px 10px;
-                font-size: 0.8rem;
-            }
+            .top-navbar { padding: 8px 10px; }
+            .nav-logo { font-size: 1.1rem; }
+            .nav-btn-booking { padding: 6px 10px; font-size: 0.7rem; border-radius: 8px; }
+            .nav-avatar { width: 32px; height: 32px; }
+            .hero-banner { padding: 24px 12px; }
+            .hero-title { font-size: 1.3rem; }
+            .hero-subtitle { font-size: 0.8rem; }
+            .hero-btn { padding: 10px 20px; font-size: 0.8rem; }
+            .main-container { padding: 12px 10px; }
+            .stats-bar { gap: 6px; }
+            .stat-chip { padding: 6px 10px; border-radius: 10px; }
+            .stat-chip-icon { width: 24px; height: 24px; font-size: 0.7rem; }
+            .stat-chip-text { font-size: 0.7rem; }
+            .stat-chip-sub { font-size: 0.6rem; }
+            .paket-card { min-width: 220px; max-width: 220px; }
+            .paket-img-wrapper { height: 140px; }
+            .paket-badge-durasi, .paket-badge-kapasitas { padding: 3px 8px; font-size: 0.65rem; }
+            .paket-body { padding: 12px; }
+            .paket-nama { font-size: 0.9rem; }
+            .paket-desc { font-size: 0.75rem; -webkit-line-clamp: 2; }
+            .paket-meta { gap: 6px; margin-bottom: 10px; }
+            .paket-meta-item { padding: 3px 6px; font-size: 0.7rem; border-radius: 6px; }
+            .paket-footer { padding-top: 10px; }
+            .paket-harga { font-size: 0.9rem; }
+            .paket-btn { padding: 6px 12px; font-size: 0.75rem; }
+            .info-card { padding: 14px; border-radius: 14px; }
+            .info-card-title { font-size: 0.95rem; }
+            .info-item { padding: 8px 0; }
+            .info-icon { width: 32px; height: 32px; font-size: 0.8rem; }
+            .info-text { font-size: 0.8rem; }
+            .info-sub { font-size: 0.7rem; }
+            .info-btn { padding: 4px 10px; font-size: 0.65rem; }
+            .section-count { font-size: 0.75rem; }
+            .modal-dialog { margin: 5px; }
+            .modal-content-custom { border-radius: 16px; }
+            .modal-header-custom { padding: 14px; }
+            .modal-body-custom { padding: 14px; }
+            .profile-nav-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+            .profile-nav-tabs::-webkit-scrollbar { display: none; }
+            .profile-nav-tabs .nav-link { padding: 8px 12px; font-size: 0.8rem; white-space: nowrap; }
+            .row.g-3 > [class*="col-"] { padding-left: 8px; padding-right: 8px; }
+            .form-control-custom { padding: 8px 10px; font-size: 0.8rem; }
+            .img-preview-container { width: 70px; height: 70px; }
+            .nav-dropdown { right: 0; min-width: 170px; border-radius: 10px; }
+            .dropdown-item { padding: 8px 10px; font-size: 0.8rem; }
         }
 
-        /* Extra Small Mobile (max-width: 359.98px) */
         @media (max-width: 359.98px) {
-            .nav-logo {
-                font-size: 1rem;
-            }
-            .nav-btn-booking {
-                padding: 5px 8px;
-                font-size: 0.65rem;
-            }
-            .hero-title {
-                font-size: 1.1rem;
-            }
-            .hero-subtitle {
-                font-size: 0.75rem;
-            }
-            .hero-btn {
-                padding: 8px 16px;
-                font-size: 0.75rem;
-            }
-            .paket-card {
-                min-width: 200px;
-                max-width: 200px;
-            }
-            .paket-img-wrapper {
-                height: 120px;
-            }
-            .paket-nama {
-                font-size: 0.85rem;
-            }
-            .paket-desc {
-                font-size: 0.7rem;
-            }
-            .paket-meta-item {
-                font-size: 0.65rem;
-            }
-            .paket-harga {
-                font-size: 0.85rem;
-            }
-            .paket-btn {
-                padding: 5px 10px;
-                font-size: 0.7rem;
-            }
-            .stat-chip-text {
-                font-size: 0.65rem;
-            }
-            .info-text {
-                font-size: 0.75rem;
-            }
+            .nav-logo { font-size: 1rem; }
+            .nav-btn-booking { padding: 5px 8px; font-size: 0.65rem; }
+            .hero-title { font-size: 1.1rem; }
+            .hero-subtitle { font-size: 0.75rem; }
+            .hero-btn { padding: 8px 16px; font-size: 0.75rem; }
+            .paket-card { min-width: 200px; max-width: 200px; }
+            .paket-img-wrapper { height: 120px; }
+            .paket-nama { font-size: 0.85rem; }
+            .paket-desc { font-size: 0.7rem; }
+            .paket-meta-item { font-size: 0.65rem; }
+            .paket-harga { font-size: 0.85rem; }
+            .paket-btn { padding: 5px 10px; font-size: 0.7rem; }
+            .stat-chip-text { font-size: 0.65rem; }
+            .info-text { font-size: 0.75rem; }
         }
 
-        /* Large Screens (min-width: 1200px) */
         @media (min-width: 1200px) {
-            .main-container {
-                max-width: 1320px;
-            }
-            .paket-card {
-                min-width: 320px;
-                max-width: 320px;
-            }
-            .paket-img-wrapper {
-                height: 240px;
-            }
+            .main-container { max-width: 1320px; }
+            .paket-card { min-width: 320px; max-width: 320px; }
+            .paket-img-wrapper { height: 240px; }
         }
 
-        /* Touch Device Optimizations */
         @media (hover: none) and (pointer: coarse) {
-            .paket-card:hover {
-                transform: none;
-            }
-            .paket-card:active {
-                transform: scale(0.98);
-            }
-            .stat-chip:hover {
-                transform: none;
-            }
-            .info-btn:hover {
-                background: var(--s-pink);
-                color: var(--p-pink);
-            }
-            .nav-avatar:hover {
-                transform: none;
-            }
-            .hero-btn:hover {
-                transform: none;
-            }
-            .nav-btn-booking:hover {
-                transform: none;
-            }
+            .paket-card:hover { transform: none; }
+            .paket-card:active { transform: scale(0.98); }
+            .stat-chip:hover { transform: none; }
+            .info-btn:hover { background: var(--s-pink); color: var(--p-pink); }
+            .nav-avatar:hover { transform: none; }
+            .hero-btn:hover { transform: none; }
+            .nav-btn-booking:hover { transform: none; }
         }
 
-        /* Reduced Motion Preference */
         @media (prefers-reduced-motion: reduce) {
-            * {
-                animation-duration: 0.01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
-            }
-            html {
-                scroll-behavior: auto;
-            }
+            * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+            html { scroll-behavior: auto; }
         }
-
     </style>
 </head>
 <body>
@@ -1701,18 +1343,16 @@ function fmtTgl($d) {
                     Paket Foto <span>Populer</span>
                 </div>
 
+                <!-- ALIGNMENT PENCARIAN & FILTER MODAL SESUAI GAMBAR REFERENSI -->
                 <div class="d-flex flex-wrap align-items-center gap-2" style="flex: 1; max-width: 600px; justify-content: flex-end;">
                     <div class="position-relative" style="flex: 1; min-width: 180px; max-width: 300px;">
                         <i class="bi bi-search position-absolute text-muted" style="left: 14px; top: 50%; transform: translateY(-50%);"></i>
                         <input type="text" id="searchPaket" class="form-control form-control-custom ps-5" placeholder="Cari nama paket..." onkeyup="filterPaketGrid()">
                     </div>
-                    <div style="min-width: 150px;">
-                        <select id="sortPaket" class="form-select form-control-custom" onchange="filterPaketGrid()">
-                            <option value="all">Urutkan Harga</option>
-                            <option value="murah">Termurah</option>
-                            <option value="mahal">Termahal</option>
-                        </select>
-                    </div>
+                    <!-- Tombol Filter Elegan yang memicu modal filter baru (Sesuai Referensi) -->
+                    <button type="button" class="btn-filter-trigger" data-bs-toggle="modal" data-bs-target="#modalFilterPaket">
+                        <i class="bi bi-funnel-fill text-danger"></i> Filter <i class="bi bi-chevron-down ms-1" style="font-size: 0.7rem; color:#718096"></i>
+                    </button>
                 </div>
             </div>
             <div class="d-flex justify-content-between align-items-center">
@@ -1728,6 +1368,7 @@ function fmtTgl($d) {
                 <i class="bi bi-chevron-left"></i>
             </button>
 
+            <!-- Menambahkan Data Attribute agar penyaringan filter modal berjalan lancar -->
             <div class="paket-scroll-container" id="paketContainer">
                 <?php
                 $ada_paket = false;
@@ -1744,7 +1385,9 @@ function fmtTgl($d) {
                     <a href="Layanan/Paket/pilih_paket.php?id_paket=<?= $row['ID_Paket'] ?>" 
                        class="paket-card" 
                        data-nama="<?= strtolower(htmlspecialchars($row['Nama_Paket'])) ?>" 
-                       data-harga="<?= (int)$row['Harga_Paket'] ?>">
+                       data-harga="<?= (int)$row['Harga_Paket'] ?>"
+                       data-kapasitas="<?= (int)$row['Kapasitas_Orang'] ?>"
+                       data-durasi="<?= (int)$row['Durasi_Waktu'] ?>">
                         <div class="paket-img-wrapper">
                             <?php if ($foto_paket): ?>
                                 <img src="<?= $foto_paket ?>" class="paket-img" alt="<?= htmlspecialchars($row['Nama_Paket']) ?>">
@@ -1875,6 +1518,64 @@ function fmtTgl($d) {
         </div>
 
     </main>
+
+    <!-- MODAL FILTER DATA (PERSIS SEPERTI GAMBAR REFERENSI DENGAN DESAIN YANG DIKEMBANGKAN) -->
+    <div class="modal fade" id="modalFilterPaket" tabindex="-1" aria-labelledby="modalFilterLabel" aria-hidden="true" style="backdrop-filter: blur(8px);">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 380px;">
+            <div class="modal-content" style="border-radius: 28px; border: none; box-shadow: 0 20px 50px rgba(0,0,0,0.12); overflow: hidden; background: #ffffff;">
+                <!-- Header Modal -->
+                <div class="modal-header border-0 px-4 pt-4 pb-0 d-flex justify-content-between align-items-center">
+                    <h5 class="modal-title fw-bold text-dark d-flex align-items-center gap-2" id="modalFilterLabel" style="font-size: 1.15rem;">
+                        <i class="bi bi-funnel-fill" style="color: var(--p-pink);"></i> Filter Data
+                    </h5>
+                    <button type="button" class="btn-close shadow-none" data-bs-dismiss="modal" aria-label="Close" style="font-size: 0.85rem;"></button>
+                </div>
+                <!-- Body Modal Form -->
+                <div class="modal-body px-4 pt-4 pb-4">
+                    <form id="formFilterPaket" onsubmit="event.preventDefault(); applyFilter();">
+                        <!-- 1. Urutkan Berdasarkan -->
+                        <div class="mb-4">
+                            <label class="form-label-custom-filter">URUT BERDASARKAN</label>
+                            <select id="filterSort" class="form-select form-control-custom">
+                                <option value="all">Pilih Urutan</option>
+                                <option value="murah">Harga: Termurah</option>
+                                <option value="mahal">Harga: Termahal</option>
+                                <option value="nama-az">Nama Paket: A - Z</option>
+                                <option value="nama-za">Nama Paket: Z - A</option>
+                            </select>
+                        </div>
+
+                        <!-- 2. Saringan Kapasitas (Minimal Orang) -->
+                        <div class="mb-4">
+                            <label class="form-label-custom-filter">KAPASITAS MINIMAL (ORANG)</label>
+                            <input type="number" id="filterKapasitas" class="form-control form-control-custom" placeholder="Contoh: 2" min="1">
+                        </div>
+
+                        <!-- 3. Saringan Durasi Maksimal -->
+                        <div class="mb-4">
+                            <label class="form-label-custom-filter">DURASI MAKSIMAL (MENIT)</label>
+                            <select id="filterDurasi" class="form-select form-control-custom">
+                                <option value="all">Semua Durasi</option>
+                                <option value="30">Sesi Singkat (≤ 30 Menit)</option>
+                                <option value="60">Sesi Standar (≤ 60 Menit)</option>
+                                <option value="120">Sesi Panjang (≤ 120 Menit)</option>
+                            </select>
+                        </div>
+
+                        <!-- Tombol Aksi Sesuai Layout Referensi -->
+                        <div class="d-flex justify-content-between align-items-center gap-3 mt-4">
+                            <button type="button" class="btn-filter-reset" onclick="resetFilter();">
+                                <i class="bi bi-arrow-counterclockwise"></i> Reset
+                            </button>
+                            <button type="submit" class="btn-filter-apply">
+                                <i class="bi bi-check-lg"></i> Terapkan
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- MODAL DETAIL PROFIL & KATA SANDI -->
     <div class="modal fade" id="modalProfil" data-bs-backdrop="static" tabindex="-1" aria-labelledby="modalProfilLabel" aria-hidden="true">
@@ -2052,7 +1753,6 @@ function fmtTgl($d) {
             <?php endif; ?>
         });
 
-        // FUNGSI SCROLL PAKET KIRI/KANAN
         function scrollPaket(direction) {
             const container = document.getElementById('paketContainer');
             const scrollAmount = 320;
@@ -2063,8 +1763,6 @@ function fmtTgl($d) {
             }
         }
 
-
-        // ===== INTERSECTION OBSERVER UNTUK NAVBAR ACTIVE =====
         document.addEventListener("DOMContentLoaded", function() {
             const dashboardLink = document.querySelector('a[href="index.php"]');
             const bookingLink = document.getElementById('navBookingBaru');
@@ -2074,36 +1772,58 @@ function fmtTgl($d) {
                 const observer = new IntersectionObserver((entries) => {
                     entries.forEach(entry => {
                         if (entry.isIntersecting) {
-                            // Section paket terlihat → Booking Baru aktif
                             dashboardLink.classList.remove('active');
                             bookingLink.classList.add('active');
                         } else {
-                            // Section paket tidak terlihat → Dashboard aktif
                             bookingLink.classList.remove('active');
                             dashboardLink.classList.add('active');
                         }
                     });
                 }, {
-                    threshold: 0.3,  // Aktif ketika 30% section terlihat
-                    rootMargin: '-80px 0px -50% 0px'  // Offset untuk navbar sticky
+                    threshold: 0.3,
+                    rootMargin: '-80px 0px -50% 0px'
                 });
 
                 observer.observe(paketSection);
             }
         });
-        // FUNGSI FILTER PAKET - PENCARIAN & PENGURUTAN REALTIME
+
+        // =====================================================
+        // JAVASCRIPT: LOGIKA PENYARINGAN FILTER & SEARCH (SINKRON REALTIME)
+        // =====================================================
         function filterPaketGrid() {
+            applyFilter();
+        }
+
+        function applyFilter() {
             const searchVal = document.getElementById('searchPaket').value.toLowerCase().trim();
-            const sortVal = document.getElementById('sortPaket').value;
+            const sortVal = document.getElementById('filterSort').value;
+            const minKapasitas = parseInt(document.getElementById('filterKapasitas').value) || 0;
+            const maxDurasi = document.getElementById('filterDurasi').value;
+
             const container = document.getElementById('paketContainer');
             const cards = Array.from(container.querySelectorAll('.paket-card'));
 
             let visibleCount = 0;
 
-            // 1. Filter Berdasarkan Pencarian
             cards.forEach(card => {
                 const name = card.getAttribute('data-nama');
-                if (name && name.includes(searchVal)) {
+                const kapasitas = parseInt(card.getAttribute('data-kapasitas')) || 0;
+                const durasi = parseInt(card.getAttribute('data-durasi')) || 0;
+
+                // Validasi kesesuaian Kata Kunci Pencarian
+                const matchSearch = !searchVal || (name && name.includes(searchVal));
+                
+                // Validasi kesesuaian Kapasitas Minimal (Orang) [2]
+                const matchKapasitas = kapasitas >= minKapasitas;
+                
+                // Validasi kesesuaian Durasi Maksimal (Menit)
+                let matchDurasi = true;
+                if (maxDurasi !== 'all') {
+                    matchDurasi = durasi <= parseInt(maxDurasi);
+                }
+
+                if (matchSearch && matchKapasitas && matchDurasi) {
                     card.style.display = 'block';
                     visibleCount++;
                 } else {
@@ -2111,20 +1831,24 @@ function fmtTgl($d) {
                 }
             });
 
-            // 2. Sort Berdasarkan Urutan Harga
+            // Logika Pengurutan Sesuai Pilihan Dropdown Modal
             if (sortVal === 'murah') {
                 cards.sort((a, b) => parseInt(a.getAttribute('data-harga')) - parseInt(b.getAttribute('data-harga')));
             } else if (sortVal === 'mahal') {
                 cards.sort((a, b) => parseInt(b.getAttribute('data-harga')) - parseInt(a.getAttribute('data-harga')));
+            } else if (sortVal === 'nama-az') {
+                cards.sort((a, b) => a.getAttribute('data-nama').localeCompare(b.getAttribute('data-nama')));
+            } else if (sortVal === 'nama-za') {
+                cards.sort((a, b) => b.getAttribute('data-nama').localeCompare(a.getAttribute('data-nama')));
             }
 
-            // Kembalikan elemen kartu yang telah diurutkan ke dalam kontainer
+            // Memasukkan kembali elemen kartu yang telah diurutkan ke dalam kontainer
             cards.forEach(card => container.appendChild(card));
 
             // Perbarui indikator jumlah data paket yang aktif
             document.getElementById('active-paket-count').innerText = visibleCount;
 
-            // Tampilkan / Sembunyikan pesan jika tidak ada data yang cocok
+            // Tampilkan atau Sembunyikan pesan jika tidak ada data yang cocok
             let noDataMsg = container.querySelector('.no-data-card');
             if (visibleCount === 0 && cards.length > 0) {
                 if (!noDataMsg) {
@@ -2133,11 +1857,10 @@ function fmtTgl($d) {
                     noDataMsg.style.cssText = 'min-width: 100%; flex-shrink: 0;';
                     noDataMsg.innerHTML = `
                         <i class="bi bi-search fs-1 mb-3" style="color: #cbd5e1; display: block;"></i>
-                        <p class="text-muted">Paket "${searchVal}" tidak ditemukan.</p>
+                        <p class="text-muted">Tidak ada paket yang sesuai dengan kriteria filter Anda.</p>
                     `;
                     container.appendChild(noDataMsg);
                 } else {
-                    noDataMsg.querySelector('p').innerText = `Paket "${searchVal}" tidak ditemukan.`;
                     noDataMsg.style.display = 'block';
                 }
             } else {
@@ -2145,6 +1868,20 @@ function fmtTgl($d) {
                     noDataMsg.style.display = 'none';
                 }
             }
+
+            // Tutup Modal Filter setelah form dikirimkan
+            const filterModalEl = document.getElementById('modalFilterPaket');
+            if (filterModalEl) {
+                const modalInstance = bootstrap.Modal.getInstance(filterModalEl);
+                if (modalInstance) modalInstance.hide();
+            }
+        }
+
+        // Fungsi Reset Filter Form kembali seperti semula [1]
+        function resetFilter() {
+            document.getElementById('formFilterPaket').reset();
+            document.getElementById('searchPaket').value = '';
+            applyFilter();
         }
 
         function previewImage(event) {
