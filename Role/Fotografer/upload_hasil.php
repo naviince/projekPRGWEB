@@ -16,6 +16,7 @@ $username_fotografer = $_SESSION['username'] ?? 'fotografer';
 // =====================================================
 $upload_dir = '../../uploads/hasil/';
 $max_total_size = 300 * 1024 * 1024; // 300 MB TOTAL per sesi (bukan per-file)
+$max_files_per_batch = 50; // maksimal jumlah file per sekali klik upload (cegah spam file kecil)
 $allowed_extensions_image = ['jpg', 'jpeg', 'png'];
 $allowed_extensions_archive = ['zip', 'rar'];
 $allowed_extensions = array_merge($allowed_extensions_image, $allowed_extensions_archive);
@@ -38,12 +39,10 @@ function getStatusOrderSesi($conn, $id_sesi, $id_fotografer) {
     return sqlsrv_fetch_array($q, SQLSRV_FETCH_ASSOC);
 }
 
-// Total ukuran file aktif yang sudah ada di sesi ini
+// Total ukuran file aktif yang sudah ada di sesi ini (pakai UDF fn_TotalUkuranHasilFoto
+// biar rumusnya konsisten di satu tempat -- sama yang dipakai trigger kuota di DB)
 function getTotalUkuranSesi($conn, $id_sesi) {
-    $q = sqlsrv_query($conn, "
-        SELECT ISNULL(SUM(Ukuran_Bytes), 0) AS total
-        FROM Hasil_Foto WHERE ID_Sesi_Foto = ? AND Status = 1
-    ", array($id_sesi));
+    $q = sqlsrv_query($conn, "SELECT dbo.fn_TotalUkuranHasilFoto(?) AS total", array($id_sesi));
     $d = sqlsrv_fetch_array($q, SQLSRV_FETCH_ASSOC);
     return (int)($d['total'] ?? 0);
 }
@@ -91,6 +90,19 @@ if ($is_ajax && isset($_POST['ajax_upload'])) {
 
     $files = $_FILES['file_hasil'];
     $jumlah_file = count($files['name']);
+
+    if ($jumlah_file > $max_files_per_batch) {
+        $response['message'] = "Maksimal {$max_files_per_batch} file per sekali upload. Kamu memilih {$jumlah_file} file, silakan upload bertahap.";
+        echo json_encode($response); exit();
+    }
+
+    // Tolak file kosong (0 byte) -- biasanya indikasi file korup/gagal terbaca browser
+    for ($i = 0; $i < $jumlah_file; $i++) {
+        if ($files['error'][$i] === UPLOAD_ERR_OK && (int)$files['size'][$i] <= 0) {
+            $response['message'] = "File '{$files['name'][$i]}' kosong (0 byte) dan tidak bisa diupload.";
+            echo json_encode($response); exit();
+        }
+    }
 
     // Hitung total ukuran file BARU yang mau diupload
     $total_ukuran_baru = 0;
@@ -154,6 +166,7 @@ if ($is_ajax && isset($_POST['ajax_upload'])) {
 
     sqlsrv_begin_transaction($conn);
     $moved_paths = [];
+    $preview_files = []; // dipakai buat popup galeri "hasil baru diupload"
     try {
         $berhasil_count = 0;
         for ($i = 0; $i < $jumlah_file; $i++) {
@@ -167,10 +180,8 @@ if ($is_ajax && isset($_POST['ajax_upload'])) {
             }
             $moved_paths[] = $target_path;
 
-            $q_insert = sqlsrv_query($conn, "
-                INSERT INTO Hasil_Foto (ID_Sesi_Foto, Nama_File, Tipe_File, Ukuran_Bytes, Urutan, Created_By, Created_Date)
-                VALUES (?, ?, ?, ?, ?, ?, GETDATE())
-            ", array($id_sesi, $new_file_name, $tipe_file, $files['size'][$i], $urutan_next, $username_fotografer));
+            $q_insert = sqlsrv_query($conn, "{CALL sp_InsertHasilFoto(?, ?, ?, ?, ?, ?)}",
+                array($id_sesi, $new_file_name, $tipe_file, $files['size'][$i], $urutan_next, $username_fotografer));
 
             if (!$q_insert) {
                 $errors = sqlsrv_errors();
@@ -178,16 +189,23 @@ if ($is_ajax && isset($_POST['ajax_upload'])) {
             }
             $urutan_next++;
             $berhasil_count++;
+
+            if ($tipe_file === 'image') {
+                $preview_files[] = [
+                    'url' => '../../uploads/hasil/' . rawurlencode($new_file_name),
+                    'nama' => $files['name'][$i],
+                ];
+            }
         }
 
-        // Tandai Sesi_Foto sudah pernah diupload (dipakai badge "Sudah
-        // Upload" di halaman lain -- Tanggal_Upload_Hasil = kapan upload
-        // TERAKHIR terjadi untuk sesi ini)
-        sqlsrv_query($conn, "UPDATE Sesi_Foto SET Tanggal_Upload_Hasil = GETDATE(), Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Sesi_Foto = ?", array($username_fotografer, $id_sesi));
+        // CATATAN: penanda Sesi_Foto.Tanggal_Upload_Hasil sudah otomatis
+        // diperbarui di dalam sp_InsertHasilFoto setiap kali dipanggil,
+        // jadi tidak perlu UPDATE terpisah lagi di sini.
 
         sqlsrv_commit($conn);
         $response['success'] = true;
         $response['message'] = "{$berhasil_count} file berhasil diupload!";
+        $response['preview_files'] = $preview_files;
         $response['redirect'] = '../../Sesi/RiwayatUpload/index.php?uploaded=1';
     } catch (Exception $e) {
         sqlsrv_rollback($conn);
@@ -231,23 +249,19 @@ if ($is_ajax_delete) {
         echo json_encode($response); exit();
     }
 
-    sqlsrv_begin_transaction($conn);
     try {
-        $file_path = $upload_dir . $d_file['Nama_File'];
-
-        $q_del = sqlsrv_query($conn, "UPDATE Hasil_Foto SET Status = 0, Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Hasil_Foto = ?", array($username_fotografer, $id_hasil_foto));
+        $q_del = sqlsrv_query($conn, "{CALL sp_DeleteHasilFoto(?, ?, ?, ?)}", array($id_hasil_foto, $id_sesi, $id_fotografer, $username_fotografer));
         if (!$q_del) {
             $errors = sqlsrv_errors();
             throw new Exception('Gagal menghapus dari database: ' . ($errors ? $errors[0]['message'] : 'Unknown error'));
         }
 
+        $file_path = $upload_dir . $d_file['Nama_File'];
         if (file_exists($file_path)) unlink($file_path);
 
-        sqlsrv_commit($conn);
         $response['success'] = true;
         $response['message'] = 'File berhasil dihapus!';
     } catch (Exception $e) {
-        sqlsrv_rollback($conn);
         $response['message'] = $e->getMessage();
     }
 
@@ -297,12 +311,7 @@ $boleh_upload = ($status_order === 3);
 // =====================================================
 $daftar_file = [];
 $total_ukuran_terpakai = 0;
-$q_files = sqlsrv_query($conn, "
-    SELECT ID_Hasil_Foto, Nama_File, Tipe_File, Ukuran_Bytes, Created_Date
-    FROM Hasil_Foto
-    WHERE ID_Sesi_Foto = ? AND Status = 1
-    ORDER BY Urutan ASC, Created_Date ASC
-", array($id_sesi));
+$q_files = sqlsrv_query($conn, "{CALL sp_ReadHasilFotoBySesi(?)}", array($id_sesi));
 if ($q_files) {
     while ($f = sqlsrv_fetch_array($q_files, SQLSRV_FETCH_ASSOC)) {
         $daftar_file[] = $f;
@@ -561,9 +570,10 @@ function formatUkuran($bytes) {
                         ?>
                         <div class="d-flex justify-content-between mb-1">
                             <span style="font-size:0.75rem;font-weight:700;color:var(--text-muted);">Kuota Terpakai</span>
-                            <span style="font-size:0.75rem;font-weight:700;color:var(--p-pink);"><?= formatUkuran($total_ukuran_terpakai) ?> / <?= formatUkuran($max_total_size) ?></span>
+                            <span style="font-size:0.75rem;font-weight:700;color:var(--p-pink);" id="quotaText"><?= formatUkuran($total_ukuran_terpakai) ?> / <?= formatUkuran($max_total_size) ?></span>
                         </div>
-                        <div class="quota-bar"><div class="quota-bar-fill <?= $kelas_bar ?>" style="width: <?= $persen_pakai ?>%"></div></div>
+                        <div class="quota-bar"><div class="quota-bar-fill <?= $kelas_bar ?>" id="quotaBarFill" style="width: <?= $persen_pakai ?>%"></div></div>
+                        <div id="quotaPendingNote" style="font-size:0.7rem;color:var(--text-muted);margin-top:4px;display:none;"></div>
                     </div>
 
                     <!-- GALERI FILE YANG SUDAH DIUPLOAD -->
@@ -684,9 +694,41 @@ function formatUkuran($bytes) {
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
+        function updateQuotaBarLive() {
+            const totalBaru = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+            const totalProyeksi = Math.min(TOTAL_TERPAKAI + totalBaru, MAX_TOTAL_SIZE);
+            const persen = Math.min(100, (totalProyeksi / MAX_TOTAL_SIZE) * 100);
+            const overQuota = (TOTAL_TERPAKAI + totalBaru) > MAX_TOTAL_SIZE;
+
+            const barFill = document.getElementById('quotaBarFill');
+            const quotaText = document.getElementById('quotaText');
+            const pendingNote = document.getElementById('quotaPendingNote');
+            if (!barFill || !quotaText) return;
+
+            barFill.style.width = persen + '%';
+            barFill.classList.remove('warning', 'danger');
+            if (overQuota || persen >= 90) barFill.classList.add('danger');
+            else if (persen >= 70) barFill.classList.add('warning');
+
+            if (selectedFiles.length > 0) {
+                quotaText.textContent = formatFileSize(TOTAL_TERPAKAI + totalBaru) + ' / ' + formatFileSize(MAX_TOTAL_SIZE);
+                if (pendingNote) {
+                    pendingNote.style.display = 'block';
+                    pendingNote.textContent = overQuota
+                        ? 'Melebihi kuota! Kurangi file yang dipilih.'
+                        : '(' + formatFileSize(totalBaru) + ' dari file yang baru dipilih, belum diupload)';
+                    pendingNote.style.color = overQuota ? '#dc2626' : 'var(--text-muted)';
+                }
+            } else {
+                quotaText.textContent = formatFileSize(TOTAL_TERPAKAI) + ' / ' + formatFileSize(MAX_TOTAL_SIZE);
+                if (pendingNote) pendingNote.style.display = 'none';
+            }
+        }
+
         function renderSelectedFiles() {
             if (!fileSelectedList) return;
             fileSelectedList.innerHTML = '';
+            updateQuotaBarLive();
             if (selectedFiles.length === 0) return;
 
             let totalBaru = selectedFiles.reduce((sum, f) => sum + f.size, 0);
@@ -701,12 +743,28 @@ function formatUkuran($bytes) {
                 (overQuota ? ' — melebihi sisa kuota ' + formatFileSize(Math.max(0, sisaKuota)) + '!' : '');
             fileSelectedList.appendChild(summary);
 
+            const imageExt = ['jpg', 'jpeg', 'png'];
             selectedFiles.forEach((f, idx) => {
+                const ext = f.name.split('.').pop().toLowerCase();
+                const isImage = imageExt.includes(ext);
+
                 const row = document.createElement('div');
                 row.className = 'd-flex align-items-center justify-content-between p-2 mb-1';
-                row.style.cssText = 'background:#f8fafc;border-radius:10px;font-size:0.8rem;';
-                row.innerHTML = '<span><i class="bi bi-file-earmark-check text-success me-1"></i>' + f.name + ' <span class="text-muted">(' + formatFileSize(f.size) + ')</span></span>' +
-                    '<button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="removeSelectedFile(' + idx + ')"><i class="bi bi-x-lg"></i></button>';
+                row.style.cssText = 'background:#f8fafc;border-radius:10px;font-size:0.8rem;gap:8px;';
+
+                let thumbHtml;
+                if (isImage) {
+                    if (!f._previewUrl) f._previewUrl = URL.createObjectURL(f);
+                    thumbHtml = '<img src="' + f._previewUrl + '" alt="' + f.name.replace(/"/g, '&quot;') + '" ' +
+                        'style="width:36px;height:36px;object-fit:cover;border-radius:6px;cursor:pointer;flex-shrink:0;" ' +
+                        'onclick="bukaPopupFoto(\'' + f._previewUrl + '\', \'' + f.name.replace(/'/g, "\\'") + ' (belum diupload)\')">';
+                } else {
+                    thumbHtml = '<span style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:var(--s-pink);color:var(--p-pink);border-radius:6px;flex-shrink:0;"><i class="bi bi-file-earmark-zip-fill"></i></span>';
+                }
+
+                row.innerHTML = '<span class="d-flex align-items-center" style="min-width:0;">' + thumbHtml +
+                    '<span class="ms-2" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + f.name + ' <span class="text-muted">(' + formatFileSize(f.size) + ')</span></span></span>' +
+                    '<button type="button" class="btn btn-sm btn-link text-danger p-0 flex-shrink-0" onclick="removeSelectedFile(' + idx + ')"><i class="bi bi-x-lg"></i></button>';
                 fileSelectedList.appendChild(row);
             });
         }
@@ -718,6 +776,8 @@ function formatUkuran($bytes) {
         }
 
         function removeSelectedFile(idx) {
+            const f = selectedFiles[idx];
+            if (f && f._previewUrl) URL.revokeObjectURL(f._previewUrl);
             selectedFiles.splice(idx, 1);
             syncFileInput();
             renderSelectedFiles();
@@ -796,10 +856,32 @@ function formatUkuran($bytes) {
                     progressText.textContent = '100%';
 
                     if (data.success) {
+                        const previews = data.preview_files || [];
+                        let galleryHtml = '';
+                        if (previews.length > 0) {
+                            galleryHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;max-height:260px;overflow-y:auto;margin-top:12px;">' +
+                                previews.map(p => '<img src="' + p.url + '" alt="' + p.nama.replace(/"/g, '&quot;') + '" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid #f1f5f9;" onclick="bukaPopupFoto(\'' + p.url + '\', \'' + p.nama.replace(/'/g, "\\'") + '\')">').join('') +
+                                '</div>';
+                        }
+
                         Swal.fire({
-                            icon: 'success', title: 'Upload Berhasil!', text: data.message,
-                            confirmButtonColor: '#D53D66', confirmButtonText: 'Lihat Riwayat'
-                        }).then(() => { window.location.href = data.redirect; });
+                            icon: 'success',
+                            title: 'Upload Berhasil!',
+                            html: '<p>' + data.message + '</p>' + (previews.length > 0 ? '<p style="font-size:0.8rem;color:#64748b;">Klik salah satu foto untuk melihat ukuran penuh.</p>' + galleryHtml : ''),
+                            confirmButtonColor: '#D53D66',
+                            confirmButtonText: 'Selesai, Lihat Galeri',
+                            showDenyButton: true,
+                            denyButtonText: 'Ke Riwayat Upload',
+                            denyButtonColor: '#718096'
+                        }).then((result) => {
+                            if (result.isDenied) {
+                                window.location.href = data.redirect;
+                            } else {
+                                // Tetap di halaman ini, galeri di-refresh supaya foto baru langsung
+                                // kelihatan (bukan dipindah paksa ke halaman lain seperti sebelumnya).
+                                location.reload();
+                            }
+                        });
                     } else {
                         btnUpload.disabled = false;
                         btnUpload.innerHTML = '<i class="bi bi-cloud-upload"></i> Upload File Terpilih';
