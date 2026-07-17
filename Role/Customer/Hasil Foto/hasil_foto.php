@@ -80,6 +80,7 @@ function formatWaktu($time) {
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
+        /* SINKRONISASI VARIABEL DESIGN SYSTEM DARI RIWAYAT.PHP */
         :root {
             --p-pink: #d83f67;
             --d-pink: #c73165;
@@ -89,64 +90,91 @@ function formatWaktu($time) {
             --text-dark: #1e1e24;
             --text-muted: #718096;
             --body-bg: #f8fafc;
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --glass-border: rgba(255, 255, 255, 0.5);
+            --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.06);
+            --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.08);
+            --shadow-hover: 0 20px 48px rgba(216, 63, 103, 0.18);
+            --shadow-glow: 0 0 40px rgba(216, 63, 103, 0.15);
+            --radius-sm: 12px;
+            --radius-md: 16px;
+            --radius-lg: 24px;
+            --radius-xl: 32px;
+            --transition-smooth: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-bounce: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             --success: #059669;
             --warning: #d97706;
-            --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            background: var(--body-bg);
-            color: var(--text-dark);
+            --danger: #dc2626;
         }
 
-        /* ===== NAVBAR ATAS ===== */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #f8fafc 100%);
+            background-attachment: fixed;
+            color: var(--text-dark);
+            min-height: 100vh;
+        }
+
+        /* ===== NAVBAR ATAS SINKRON ===== */
         .top-navbar {
-            background: #ffffff;
-            padding: 16px 40px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 14px 40px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             position: sticky;
             top: 0;
             z-index: 1000;
-            box-shadow: 0 4px 30px rgba(0,0,0,0.03);
-            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: var(--shadow-soft);
+            border-bottom: 1px solid var(--glass-border);
         }
         .nav-logo {
             font-weight: 900;
-            font-size: 1.8rem;
+            font-size: 1.7rem;
             color: var(--p-pink);
             text-decoration: none;
             letter-spacing: -1.5px;
+            transition: var(--transition-smooth);
         }
-        .nav-logo span { color: var(--text-dark); font-weight: 700; font-size: 0.9rem; }
+        .nav-logo:hover { transform: scale(1.02); }
+        .nav-logo span { color: var(--text-dark); font-weight: 700; font-size: 0.85rem; }
+        
         .nav-menu-center {
             display: flex;
-            gap: 32px;
+            gap: 36px;
             align-items: center;
         }
         .nav-link-item {
-            color: #4a5568;
+            color: #64748b;
             text-decoration: none;
             font-weight: 700;
-            font-size: 0.9rem;
+            font-size: 0.88rem;
             transition: var(--transition-smooth);
-            padding: 8px 0;
+            padding: 8px 4px;
             position: relative;
+        }
+        .nav-link-item::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 50%;
+            width: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--p-pink), var(--accent-pink));
+            border-radius: 3px;
+            transition: var(--transition-smooth);
+            transform: translateX(-50%);
         }
         .nav-link-item:hover, .nav-link-item.active {
             color: var(--p-pink);
         }
-        .nav-link-item.active::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
+        .nav-link-item:hover::after, .nav-link-item.active::after {
             width: 100%;
-            height: 3px;
-            background: var(--p-pink);
-            border-radius: 3px;
         }
         .nav-right {
             display: flex;
@@ -157,57 +185,64 @@ function formatWaktu($time) {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
             color: #fff;
             padding: 10px 24px;
-            border-radius: 12px;
+            border-radius: var(--radius-md);
             font-weight: 800;
             font-size: 0.85rem;
             text-decoration: none;
             transition: var(--transition-smooth);
-            box-shadow: 0 4px 15px rgba(216, 63, 103, 0.25);
+            box-shadow: 0 4px 16px rgba(216, 63, 103, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
         .nav-btn-booking:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(216, 63, 103, 0.35);
+            transform: translateY(-3px) scale(1.03);
+            box-shadow: 0 8px 28px rgba(216, 63, 103, 0.4);
             color: #fff;
         }
-        .nav-avatar-wrapper {
-            position: relative;
-        }
+        .nav-avatar-wrapper { position: relative; }
         .nav-avatar {
             width: 42px;
             height: 42px;
             border-radius: 50%;
             object-fit: cover;
-            border: 2px solid var(--light-pink);
+            border: 2.5px solid var(--light-pink);
             cursor: pointer;
             transition: var(--transition-smooth);
+            box-shadow: 0 2px 8px rgba(216, 63, 103, 0.15);
         }
         .nav-avatar:hover {
-            transform: scale(1.05);
+            transform: scale(1.12) rotate(3deg);
             border-color: var(--p-pink);
+            box-shadow: 0 4px 16px rgba(216, 63, 103, 0.25);
         }
         .nav-dropdown {
             position: absolute;
-            top: 55px;
-            right: 0;
-            background: #ffffff;
-            border-radius: 16px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+            top: 58px;
+            right: -8px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-card), 0 0 0 1px rgba(0,0,0,0.04);
             padding: 12px;
-            min-width: 220px;
+            min-width: 240px;
             display: none;
             z-index: 1001;
-            border: 1px solid #f1f5f9;
+            border: 1px solid var(--glass-border);
+            animation: dropdownSlide 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        .nav-dropdown.show {
-            display: block;
-            animation: fadeIn 0.2s ease;
+        .nav-dropdown.show { display: block; }
+        @keyframes dropdownSlide {
+            from { opacity: 0; transform: translateY(-10px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
         }
         .dropdown-item {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             padding: 12px 16px;
-            border-radius: 12px;
+            border-radius: var(--radius-md);
             color: #4a5568;
             font-weight: 600;
             font-size: 0.9rem;
@@ -221,64 +256,104 @@ function formatWaktu($time) {
         .dropdown-item:hover {
             background: var(--s-pink);
             color: var(--p-pink);
+            transform: translateX(4px);
         }
+        .dropdown-item i { font-size: 1.1rem; width: 22px; text-align: center; }
         .dropdown-divider {
             height: 1px;
-            background: #f1f5f9;
+            background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
             margin: 8px 0;
         }
-        .dropdown-item.logout {
-            color: #dc2626;
-        }
-        .dropdown-item.logout:hover {
-            background: #fef2f2;
-        }
+        .dropdown-item.logout { color: #dc2626; }
+        .dropdown-item.logout:hover { background: #fef2f2; }
         .dropdown-header {
-            padding: 8px 16px;
+            padding: 10px 16px;
             font-weight: 800;
             color: var(--text-dark);
             font-size: 0.95rem;
         }
 
+        /* ===== BREADCRUMB BAR SINKRON ===== */
+        .breadcrumb-bar {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            padding: 14px 40px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .breadcrumb-inner {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            flex-wrap: wrap;
+        }
+        .breadcrumb-inner a {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: var(--transition-smooth);
+            padding: 4px 8px;
+            border-radius: 8px;
+        }
+        .breadcrumb-inner a:hover { 
+            color: var(--p-pink); 
+            background: var(--s-pink);
+        }
+        .breadcrumb-inner .separator { color: #cbd5e1; font-size: 0.75rem; }
+        .breadcrumb-inner .current { 
+            color: var(--p-pink); 
+            font-weight: 800; 
+            background: linear-gradient(135deg, var(--s-pink), var(--light-pink));
+            padding: 4px 14px;
+            border-radius: 20px;
+        }
+
         /* ===== MAIN CONTAINER ===== */
         .main-container {
-            padding: 40px;
+            padding: 32px 40px;
             max-width: 1400px;
             margin: 0 auto;
         }
 
-        /* ===== HERO ===== */
-        .hero-hasil {
-            background: linear-gradient(135deg, var(--p-pink) 0%, var(--d-pink) 50%, #b82e52 100%);
-            border-radius: 24px;
-            padding: 40px;
-            margin-bottom: 40px;
-            color: #ffffff;
-            position: relative;
-            overflow: hidden;
-            box-shadow: 0 10px 30px rgba(216, 63, 103, 0.15);
+        /* ===== PAGE HEADER ===== */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+            flex-wrap: wrap;
+            gap: 16px;
         }
-        .hero-title {
-            font-size: 2rem;
+        .page-title h1 {
+            color: var(--text-dark);
+            font-size: 1.8rem;
             font-weight: 900;
-            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
-        .hero-subtitle {
-            font-size: 1rem;
-            opacity: 0.9;
-            font-weight: 500;
+        .page-title h1 i { color: var(--p-pink); font-size: 1.5rem; }
+        .page-title p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-top: 4px;
+            font-weight: 600;
         }
 
-        /* ===== WAITING CARD ===== */
+        /* ===== WAITING CARD SINKRON ===== */
         .waiting-card {
             background: linear-gradient(135deg, #fffbeb, #fef3c7);
             border: 1px solid #fcd34d;
-            border-radius: 20px;
+            border-radius: var(--radius-lg);
             padding: 24px 30px;
             display: flex;
             align-items: center;
             gap: 20px;
             margin-bottom: 32px;
+            box-shadow: var(--shadow-soft);
         }
         .waiting-icon {
             width: 50px;
@@ -305,21 +380,19 @@ function formatWaktu($time) {
             line-height: 1.5;
         }
 
-        /* ===== INFO ALERT ===== */
+        /* ===== INFO ALERT SINKRON ===== */
         .info-alert {
             background: linear-gradient(135deg, #eff6ff, #dbeafe);
-            border-radius: 16px;
+            border-radius: var(--radius-md);
             padding: 18px 24px;
             margin-bottom: 32px;
             border: 1px solid #bfdbfe;
             display: flex;
             gap: 15px;
             align-items: center;
+            box-shadow: var(--shadow-soft);
         }
-        .info-alert i {
-            font-size: 1.4rem;
-            color: #1e40af;
-        }
+        .info-alert i { font-size: 1.4rem; color: #1e40af; }
         .info-alert-text {
             font-size: 0.85rem;
             color: #1e40af;
@@ -327,324 +400,374 @@ function formatWaktu($time) {
             line-height: 1.5;
         }
 
-        /* ===== HASIL GRID ===== */
-        .hasil-grid {
+        /* ===== ORDER CARDS SINKRON DENGAN RIWAYAT.PHP ===== */
+        .orders-container { display: flex; flex-direction: column; gap: 20px; }
+        .order-card {
+            background: var(--glass-bg);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-soft);
+            overflow: hidden;
+            transition: var(--transition-smooth);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(16px);
+            animation: fadeSlideUp 0.5s ease forwards;
+        }
+        .order-card:hover { 
+            box-shadow: var(--shadow-card); 
+            border-color: var(--light-pink); 
+            transform: translateY(-3px);
+        }
+        .order-card.lunas { border-left: 4px solid var(--success); }
+
+        .order-header {
+            padding: 18px 24px;
+            background: linear-gradient(135deg, #fafafa 0%, #f8fafc 100%);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .order-id { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
+        .order-id strong { color: var(--p-pink); font-size: 1rem; font-weight: 900; }
+        .order-date { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+        .order-date i { color: var(--p-pink); }
+
+        .order-body { padding: 24px; }
+        .order-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            grid-template-columns: 1fr 1fr;
             gap: 28px;
         }
-        .hasil-card {
-            background: #ffffff;
-            border-radius: 24px;
-            overflow: hidden;
-            border: 1px solid rgba(0, 0, 0, 0.04);
+        @media (max-width: 992px) { .order-grid { grid-template-columns: 1fr; } }
+
+        .paket-section { display: flex; gap: 16px; }
+        .paket-img {
+            width: 100px;
+            height: 100px;
+            border-radius: var(--radius-md);
+            object-fit: cover;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+            border: 3px solid #ffffff;
             transition: var(--transition-smooth);
-            position: relative;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
         }
-        .hasil-card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 20px 40px rgba(216, 63, 103, 0.1);
+        .paket-section:hover .paket-img { transform: scale(1.05) rotate(2deg); }
+        .paket-info h3 { color: var(--text-dark); font-size: 1.1rem; font-weight: 800; margin-bottom: 8px; }
+        .paket-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .paket-meta span {
+            background: var(--s-pink);
+            color: var(--p-pink);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .paket-price { font-size: 1.3rem; font-weight: 900; color: var(--p-pink); letter-spacing: -0.5px; }
+
+        .detail-section { display: flex; flex-direction: column; gap: 10px; }
+        .detail-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 14px;
+            background: linear-gradient(135deg, #fafafa, #ffffff);
+            border-radius: var(--radius-md);
+            transition: var(--transition-smooth);
+            border: 1px solid transparent;
+        }
+        .detail-item:hover {
+            transform: translateX(4px);
             border-color: var(--light-pink);
+            box-shadow: 0 4px 12px rgba(216, 63, 103, 0.06);
         }
-        .hasil-header {
-            background: linear-gradient(135deg, var(--s-pink), #ffffff);
-            padding: 24px;
-            border-bottom: 1px solid #f3f4f6;
+        .detail-item i {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: var(--s-pink);
+            color: var(--p-pink);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+            margin-top: 2px;
+            transition: var(--transition-smooth);
         }
-        .hasil-badge {
+        .detail-item:hover i { background: var(--p-pink); color: #fff; transform: scale(1.1); }
+        .detail-item .detail-label { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 2px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+        .detail-item .detail-value { font-size: 0.9rem; color: var(--text-dark); font-weight: 700; }
+
+        /* ===== FOOTER CARDS / AKSI BAR ===== */
+        .order-aksi {
+            padding: 16px 24px;
+            background: linear-gradient(135deg, #fafafa, #f8fafc);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            border-top: 1px solid #f1f5f9;
+        }
+        .btn-aksi {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: var(--radius-md);
+            font-size: 0.82rem;
+            font-weight: 800;
+            text-decoration: none !important;
+            transition: var(--transition-smooth);
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .btn-aksi:hover { transform: translateY(-2px); box-shadow: var(--shadow-card); }
+        
+        .btn-download-zip {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #fff !important;
+        }
+        .btn-download-zip:hover { box-shadow: 0 6px 20px rgba(216, 63, 103, 0.3); }
+
+        .btn-buka-galeri {
+            background: #1e1e24;
+            color: #fff !important;
+        }
+        .btn-buka-galeri:hover { background: #32323d; }
+
+        /* ===== BADGES ===== */
+        .badge {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            background: #ecfdf5;
-            color: var(--success);
             padding: 6px 14px;
-            border-radius: 50px;
+            border-radius: 20px;
             font-size: 0.75rem;
             font-weight: 800;
-            margin-bottom: 12px;
-            border: 1px solid #a7f3d0;
         }
-        .hasil-paket {
-            font-size: 1.25rem;
-            font-weight: 800;
-            color: var(--text-dark);
-            margin-bottom: 4px;
-            letter-spacing: -0.5px;
-        }
-        .hasil-ruangan {
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            font-weight: 600;
-        }
-        .hasil-body {
-            padding: 20px 24px;
-        }
-        .hasil-info {
-            display: flex;
-            justify-content: space-between;
-            padding: 12px 0;
-            border-bottom: 1px solid #f3f4f6;
-        }
-        .hasil-info:last-child {
-            border-bottom: none;
-        }
-        .hasil-label {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            font-weight: 600;
-        }
-        .hasil-value {
-            font-size: 0.85rem;
-            font-weight: 700;
-            color: var(--text-dark);
-        }
-        .hasil-footer {
-            padding: 0 24px 24px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        
-        /* === TOMBOL UTAMA: BUKA GALERI (Dark Style) === */
-        .btn-gallery-trigger {
-            background: #1e1e24;
-            color: #ffffff;
-            border: none;
-            padding: 14px;
-            border-radius: 12px;
-            font-size: 0.85rem;
-            font-weight: 800;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            transition: var(--transition-smooth);
-            cursor: pointer;
-        }
-        .btn-gallery-trigger:hover {
-            background: #32323d;
-            color: #ffffff;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
-        }
+        .badge-lunas { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
 
-        /* === TOMBOL BARU: DOWNLOAD ZIP (Elegant Pink Gradient) === */
-        .btn-download {
+        /* ===== EMPTY STATE SINKRON ===== */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            animation: fadeSlideUp 0.5s ease forwards;
+        }
+        .empty-state i { font-size: 4rem; color: #e2e8f0; margin-bottom: 20px; display: block; }
+        .empty-state h3 { color: var(--text-dark); font-size: 1.2rem; font-weight: 800; margin-bottom: 8px; }
+        .empty-state p { color: var(--text-muted); font-size: 0.9rem; font-weight: 600; }
+        .empty-state .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 20px;
+            padding: 12px 28px;
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            color: #ffffff !important;
-            border: none;
-            padding: 14px;
-            border-radius: 12px;
-            font-size: 0.85rem;
+            color: #fff;
+            border-radius: var(--radius-md);
+            text-decoration: none;
             font-weight: 800;
-            text-decoration: none !important;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
+            font-size: 0.85rem;
             transition: var(--transition-smooth);
-            box-shadow: 0 4px 15px rgba(216, 63, 103, 0.15);
+            box-shadow: 0 4px 16px rgba(216, 63, 103, 0.25);
         }
-        .btn-download:hover {
-            background: linear-gradient(135deg, #e0456f, var(--p-pink));
-            color: #ffffff !important;
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(216, 63, 103, 0.3);
-        }
+        .empty-state .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(216, 63, 103, 0.35); }
 
-        /* ===== CUSTOM LIGHTBOX SLIDER (MODAL) ===== */
-        .lightbox-modal {
+        /* ===== POPUP MODAL LIGHTBOX SINKRON VARIABEL RIWAYAT.PHP ===== */
+        .modal-overlay {
+            display: none;
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
             background: rgba(15, 23, 42, 0.95);
             backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             z-index: 2000;
-            display: none;
             justify-content: center;
             align-items: center;
-            opacity: 0;
-            transition: opacity 0.3s ease;
+            padding: 20px;
+            overflow-y: auto;
         }
-        .lightbox-modal.show {
-            display: flex;
-            opacity: 1;
-        }
-        .lightbox-container {
-            position: relative;
-            width: 90%;
-            max-width: 900px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            user-select: none;
-        }
-        .lightbox-img-wrapper {
-            position: relative;
-            max-height: 70vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            overflow: hidden;
-            border-radius: 12px;
-            background: #000;
-        }
-        .lightbox-img {
-            max-width: 100%;
-            max-height: 70vh;
-            object-fit: contain;
-            display: block;
-            transition: transform 0.25s ease-out;
-        }
-        /* Navigation Controls */
-        .lightbox-nav {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            background: rgba(255, 255, 255, 0.1);
+        .modal-overlay.active { display: flex; }
+        .modal-content-popup {
+            background: rgba(30, 41, 59, 0.7);
             border: 1px solid rgba(255, 255, 255, 0.15);
-            color: #ffffff;
-            width: 50px;
-            height: 50px;
+            border-radius: var(--radius-xl);
+            padding: 0;
+            width: 100%;
+            max-width: 900px;
+            box-shadow: var(--shadow-hover);
+            animation: modalIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            overflow: hidden;
+        }
+        @keyframes modalIn {
+            from { opacity: 0; transform: translateY(-30px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .modal-header-popup {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
+            color: #fff;
+            padding: 20px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-header-popup h3 {
+            font-size: 1.2rem;
+            font-weight: 900;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .modal-close-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: #fff;
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            font-size: 1.25rem;
-            transition: var(--transition-smooth);
-            z-index: 2010;
+            transition: all 0.3s;
+            font-size: 1.2rem;
         }
-        .lightbox-nav:hover {
-            background: var(--p-pink);
-            border-color: var(--p-pink);
-            transform: translateY(-50%) scale(1.1);
+        .modal-close-btn:hover { background: rgba(255,255,255,0.4); transform: rotate(90deg); }
+        .modal-body-popup { padding: 32px; text-align: center; }
+
+        /* Detail Slider */
+        .lightbox-wrapper {
+            position: relative;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            user-select: none;
         }
-        .lightbox-prev { left: -70px; }
-        .lightbox-next { right: -70px; }
-        
-        .lightbox-close {
-            position: absolute;
-            top: -50px;
-            right: 0;
-            color: #ffffff;
-            font-size: 1.5rem;
-            cursor: pointer;
-            transition: var(--transition-smooth);
+        .lightbox-main {
             display: flex;
             align-items: center;
-            gap: 6px;
-            font-weight: 700;
-        }
-        .lightbox-close:hover {
-            color: var(--p-pink);
-        }
-        .lightbox-info {
+            justify-content: center;
             width: 100%;
-            text-align: center;
-            margin-top: 15px;
+            gap: 20px;
+            position: relative;
+            margin: 10px 0;
+        }
+        .lightbox-img-container {
+            max-width: 100%;
+            max-height: 60vh;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            background: #000000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow-card);
+        }
+        .lightbox-img-container img {
+            max-width: 100%;
+            max-height: 60vh;
+            object-fit: contain;
+            display: block;
+            transition: var(--transition-smooth);
+        }
+        .lightbox-nav-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #ffffff;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: var(--transition-smooth);
+            z-index: 10;
+            flex-shrink: 0;
+        }
+        .lightbox-nav-btn:hover {
+            background: var(--p-pink);
+            border-color: var(--p-pink);
+            transform: scale(1.1);
             color: #ffffff;
         }
-        .lightbox-title {
+        .lightbox-details {
+            text-align: center;
+            color: #ffffff;
+            margin-top: 15px;
+        }
+        .lightbox-caption {
             font-size: 0.95rem;
             font-weight: 700;
-            margin-bottom: 4px;
             color: #f1f5f9;
+            margin-bottom: 4px;
         }
         .lightbox-counter {
             font-size: 0.8rem;
             color: #94a3b8;
             font-weight: 600;
+            margin-bottom: 12px;
         }
-        .lightbox-download-single {
+        .btn-download-single {
             display: inline-flex;
             align-items: center;
             gap: 6px;
             color: #ffffff;
             background: rgba(216, 63, 103, 0.2);
             border: 1px solid rgba(216, 63, 103, 0.4);
-            padding: 6px 14px;
+            padding: 8px 18px;
             border-radius: 50px;
             text-decoration: none;
-            font-size: 0.75rem;
-            font-weight: 700;
-            margin-top: 10px;
+            font-size: 0.78rem;
+            font-weight: 800;
             transition: var(--transition-smooth);
         }
-        .lightbox-download-single:hover {
+        .btn-download-single:hover {
             background: var(--p-pink);
             color: #ffffff;
             border-color: var(--p-pink);
-        }
-
-        /* ===== EMPTY STATE ===== */
-        .empty-hasil {
-            text-align: center;
-            padding: 80px 20px;
-        }
-        .empty-hasil i {
-            font-size: 5rem;
-            color: #e2e8f0;
-            margin-bottom: 20px;
-        }
-        .empty-hasil h3 {
-            font-size: 1.3rem;
-            font-weight: 800;
-            color: var(--text-dark);
-            margin-bottom: 8px;
-        }
-        .empty-hasil p {
-            color: var(--text-muted);
-            font-size: 0.95rem;
-            max-width: 500px;
-            margin: 0 auto;
-        }
-        .empty-hasil .btn-action {
-            margin-top: 20px;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            color: #ffffff;
-            padding: 12px 28px;
-            border-radius: 12px;
-            font-weight: 800;
-            font-size: 0.9rem;
-            text-decoration: none;
-            transition: var(--transition-smooth);
-        }
-        .empty-hasil .btn-action:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(216, 63, 103, 0.25);
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-5px); }
+        /* ===== ANIMATIONS ===== */
+        @keyframes fadeSlideUp {
+            from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
-        @media (max-width: 1100px) {
-            .lightbox-prev { left: 10px; }
-            .lightbox-next { right: 10px; }
-            .lightbox-close { right: 10px; }
-        }
+        /* ===== RESPONSIVE ===== */
         @media (max-width: 992px) {
-            .main-container { padding: 20px; }
-            .top-navbar { padding: 16px 20px; }
+            .top-navbar { padding: 14px 20px; }
             .nav-menu-center { display: none; }
-            .hero-hasil { padding: 30px 20px; }
-            .hasil-grid { grid-template-columns: 1fr; }
-            .waiting-card { flex-direction: column; text-align: center; }
-            .info-alert { flex-direction: column; align-items: flex-start; }
+            .main-container { padding: 20px; }
+            .breadcrumb-bar { padding: 14px 20px; }
+            .modal-content-popup { max-width: 100%; }
+        }
+        @media (max-width: 768px) {
+            .lightbox-main { gap: 10px; }
+            .lightbox-nav-btn { width: 38px; height: 38px; font-size: 1rem; }
+        }
+        @media (max-width: 480px) {
+            .order-header { flex-direction: column; align-items: flex-start; }
+            .paket-section { flex-direction: column; }
+            .btn-aksi { width: 100%; justify-content: center; }
         }
     </style>
 </head>
 <body>
 
-    <!-- NAVBAR ATAS -->
+    <!-- NAVBAR ATAS SINKRON -->
     <nav class="top-navbar">
         <a href="../../../index.php" class="nav-logo">
             SpotLight.<span>StudioFoto</span>
@@ -676,13 +799,24 @@ function formatWaktu($time) {
         </div>
     </nav>
 
+    <!-- BREADCRUMB SINKRON -->
+    <div class="breadcrumb-bar">
+        <div class="breadcrumb-inner">
+            <a href="../index.php">Home</a>
+            <span class="separator"><i class="bi bi-chevron-right"></i></span>
+            <span class="current"><i class="bi bi-images"></i> Hasil Foto Saya</span>
+        </div>
+    </div>
+
     <!-- MAIN CONTENT -->
     <main class="main-container">
 
-        <!-- HERO -->
-        <div class="hero-hasil">
-            <div class="hero-title"><i class="bi bi-images me-2"></i>Hasil Foto Saya</div>
-            <div class="hero-subtitle">Unduh dokumentasi hasil pemotretan dari setiap sesi pemotretan Anda</div>
+        <!-- PAGE HEADER SINKRON -->
+        <div class="page-header">
+            <div class="page-title">
+                <h1><i class="bi bi-images"></i> Hasil Foto Saya</h1>
+                <p>Unduh dokumentasi hasil pemotretan dari setiap sesi pemotretan Anda</p>
+            </div>
         </div>
 
         <?php if ($total_menunggu > 0): ?>
@@ -693,7 +827,7 @@ function formatWaktu($time) {
             </div>
             <div>
                 <h4>Ada <?= (int)$total_menunggu ?> Hasil Foto Menunggu Pelunasan</h4>
-                <p>Proses unggah hasil foto oleh fotografer telah selesai. Namun berkas belum dapat diakses sepenuhnya karena status administrasi order Anda masih menunggu pelunasan. Silakan selesaikan pelunasan pembayaran Anda terlebih dahulu.</p>
+                <p>Proses unggah hasil foto oleh fotografer telah selesai. Namun berkas belum dapat diakses sepenuhnya karena status administrasi order Anda masih menunggu pelunasan. Silakan selesaikan pelunasan pembayaran Anda terlebih dahulu pada tab Riwayat.</p>
             </div>
         </div>
         <?php endif; ?>
@@ -706,60 +840,86 @@ function formatWaktu($time) {
             </div>
         </div>
 
-        <!-- HASIL GRID -->
-        <div class="hasil-grid">
+        <!-- ORDERS CONTAINER (SINKRON DENGAN RIWAYAT.PHP) -->
+        <div class="orders-container">
             <?php
             $has_data = false;
             if ($q_hasil && sqlsrv_has_rows($q_hasil)):
                 $has_data = true;
+                $card_delay = 0;
                 while ($row = sqlsrv_fetch_array($q_hasil, SQLSRV_FETCH_ASSOC)):
                     $safe_id_order = htmlspecialchars($row['ID_Order'], ENT_QUOTES, 'UTF-8');
+                    $card_delay += 0.05;
             ?>
-                <div class="hasil-card">
-                    <div class="hasil-header">
-                        <div class="hasil-badge">
-                            <i class="bi bi-check-circle-fill"></i> Lunas &amp; Siap Diambil
+                <div class="order-card lunas" style="animation-delay: <?= $card_delay; ?>s;">
+                    <div class="order-header">
+                        <div class="order-id">
+                            <strong>#ORDER-<?= str_pad($row['ID_Order'], 4, '0', STR_PAD_LEFT) ?></strong>
                         </div>
-                        <div class="hasil-paket"><?= htmlspecialchars($row['Nama_Paket'], ENT_QUOTES, 'UTF-8') ?></div>
-                        <div class="hasil-ruangan"><i class="bi bi-geo-alt-fill me-1"></i><?= htmlspecialchars($row['Nama_Ruangan'], ENT_QUOTES, 'UTF-8') ?></div>
-                    </div>
-                    <div class="hasil-body">
-                        <div class="hasil-info">
-                            <span class="hasil-label">ID Order</span>
-                            <span class="hasil-value">#<?= $safe_id_order ?></span>
-                        </div>
-                        <div class="hasil-info">
-                            <span class="hasil-label">Tanggal Sesi</span>
-                            <span class="hasil-value"><?= formatTanggal($row['Tanggal_Jadwal']) ?></span>
-                        </div>
-                        <div class="hasil-info">
-                            <span class="hasil-label">Jam Sesi</span>
-                            <span class="hasil-value"><?= formatWaktu($row['Jam_Mulai']) ?> - <?= formatWaktu($row['Jam_Selesai']) ?></span>
-                        </div>
-                        <div class="hasil-info">
-                            <span class="hasil-label">Durasi</span>
-                            <span class="hasil-value"><?= (int)$row['Durasi_Waktu'] ?> menit</span>
-                        </div>
-                        <div class="hasil-info">
-                            <span class="hasil-label">Total Sesi</span>
-                            <span class="hasil-value" style="color: var(--p-pink);">Rp<?= number_format($row['Total_Harga'], 0, ',', '.') ?></span>
-                        </div>
-                        <div class="hasil-info">
-                            <span class="hasil-label">Jumlah Berkas</span>
-                            <span class="hasil-value" style="color: var(--p-pink);"><i class="bi bi-images me-1"></i><?= (int)$row['Total_Foto'] ?> foto (<?= formatUkuran($row['Total_Ukuran']) ?>)</span>
-                        </div>
-                        <div class="hasil-info">
-                            <span class="hasil-label">Tanggal Upload</span>
-                            <span class="hasil-value"><?= formatTanggal($row['Tanggal_Upload_Hasil']) ?> <?= formatWaktu($row['Tanggal_Upload_Hasil']) ?> WIB</span>
+                        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                            <div class="order-date">
+                                <i class="bi bi-calendar3"></i>
+                                Diupload: <?= formatTanggal($row['Tanggal_Upload_Hasil']) ?>
+                            </div>
+                            <span class="badge badge-lunas"><i class="bi bi-check2-all"></i> Lunas &amp; Siap Diambil</span>
                         </div>
                     </div>
-                    <div class="hasil-footer">
-                        <!-- Tombol Buka Galeri (Sleek Dark Style) -->
-                        <button type="button" class="btn-gallery-trigger" onclick="lihatGaleriFoto(<?= $safe_id_order ?>)">
+
+                    <div class="order-body">
+                        <div class="order-grid">
+                            <!-- KIRI: Paket Info -->
+                            <div class="paket-section">
+                                <?php 
+                                $foto_paket = $row['Foto_Paket'] ?? 'default_paket.jpg';
+                                $foto_src = file_exists("../../../assets/img/paket/" . $foto_paket) 
+                                    ? "../../../assets/img/paket/" . $foto_paket 
+                                    : "../../../assets/img/paket/default_paket.jpg";
+                                ?>
+                                <img src="<?= $foto_src ?>" alt="Paket" class="paket-img">
+                                <div class="paket-info">
+                                    <h3><?= htmlspecialchars($row['Nama_Paket'], ENT_QUOTES, 'UTF-8') ?></h3>
+                                    <div class="paket-meta">
+                                        <span><i class="bi bi-clock"></i><?= $row['Durasi_Waktu'] ?> menit</span>
+                                        <span><i class="bi bi-people"></i>Max <?= (int)$row['Kapasitas_Orang'] ?> orang</span>
+                                        <span><i class="bi bi-door-open"></i><?= htmlspecialchars($row['Nama_Ruangan'], ENT_QUOTES, 'UTF-8') ?></span>
+                                    </div>
+                                    <div class="paket-price">Rp<?= number_format($row['Total_Harga'], 0, ',', '.') ?></div>
+                                </div>
+                            </div>
+
+                            <!-- KANAN: Detail Info -->
+                            <div class="detail-section">
+                                <div class="detail-item">
+                                    <i class="bi bi-calendar-check"></i>
+                                    <div>
+                                        <div class="detail-label">Tanggal Sesi</div>
+                                        <div class="detail-value"><?= formatTanggal($row['Tanggal_Jadwal']) ?></div>
+                                    </div>
+                                </div>
+                                <div class="detail-item">
+                                    <i class="bi bi-clock-history"></i>
+                                    <div>
+                                        <div class="detail-label">Jam Sesi</div>
+                                        <div class="detail-value"><?= formatWaktu($row['Jam_Mulai']) ?> - <?= formatWaktu($row['Jam_Selesai']) ?> WIB</div>
+                                    </div>
+                                </div>
+                                <div class="detail-item" style="background: linear-gradient(135deg, var(--s-pink), #ffffff);">
+                                    <i class="bi bi-images" style="background: var(--p-pink); color: #fff;"></i>
+                                    <div>
+                                        <div class="detail-label">Jumlah Berkas</div>
+                                        <div class="detail-value" style="color:var(--p-pink);font-weight:900;"><?= (int)$row['Total_Foto'] ?> foto (<?= formatUkuran($row['Total_Ukuran']) ?>)</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AKSI BUTTONS SINKRON FORMAT BENTUK DAN WARNA -->
+                    <div class="order-aksi">
+                        <button type="button" class="btn-aksi btn-buka-galeri" onclick="lihatGaleriFoto(<?= $safe_id_order ?>)">
                             <i class="bi bi-images"></i> Buka Galeri Foto
                         </button>
-                        <!-- Tombol Download ZIP (Sleek Pink Gradient Style) -->
-                        <a href="download_zip.php?id_order=<?= $safe_id_order ?>" class="btn-download">
+                        <a href="download_zip.php?id_order=<?= $safe_id_order ?>" class="btn-aksi btn-download-zip">
                             <i class="bi bi-file-earmark-zip"></i> Download Semua (ZIP)
                         </a>
                     </div>
@@ -771,46 +931,53 @@ function formatWaktu($time) {
         </div>
 
         <?php if (!$has_data): ?>
-        <!-- EMPTY STATE -->
-        <div class="empty-hasil">
+        <!-- EMPTY STATE SINKRON -->
+        <div class="empty-state">
             <i class="bi bi-images"></i>
             <h3>Belum Ada Hasil Foto</h3>
-            <p>Sesi foto Anda belum memiliki berkas unggahan hasil yang siap diakses. Sesi dokumentasi akan tampil di sini secara otomatis setelah pelunasan selesai divalidasi admin.</p>
-            <a href="../Layanan/Paket/pilih_paket.php" class="btn-action">
-                <i class="bi bi-calendar-plus"></i> Mulai Booking Baru
+            <p>Sesi foto Anda belum memiliki berkas unggahan hasil yang siap diakses. Sesi dokumentasi akan tampil di sini secara otomatis setelah pelunasan selesai divalidasi admin pada menu Riwayat.</p>
+            <a href="../Layanan/Paket/pilih_paket.php" class="btn-primary">
+                <i class="bi bi-plus-lg"></i> Mulai Booking Baru
             </a>
         </div>
         <?php endif; ?>
 
     </main>
 
-    <!-- ===== LIGHTBOX INTERAKTIF SLIDER MODAL ===== -->
-    <div class="lightbox-modal" id="lightboxModal">
-        <div class="lightbox-container">
-            <div class="lightbox-close" onclick="closeLightbox()">
-                <i class="bi bi-x-circle-fill"></i> Tutup
+    <!-- ===== POPUP MODAL LIGHTBOX SINKRON DENGAN RIWAYAT.PHP ===== -->
+    <div class="modal-overlay" id="lightboxModal">
+        <div class="modal-content-popup">
+            <div class="modal-header-popup">
+                <h3><i class="bi bi-images"></i> Galeri Hasil Foto</h3>
+                <button class="modal-close-btn" onclick="closeLightbox()"><i class="bi bi-x-lg"></i></button>
             </div>
-            
-            <!-- Tombol Navigasi Kiri -->
-            <button class="lightbox-nav lightbox-prev" onclick="prevImage()" aria-label="Foto Sebelumnya">
-                <i class="bi bi-chevron-left"></i>
-            </button>
-            
-            <div class="lightbox-img-wrapper" id="lightboxTouchArea">
-                <img id="lightboxImg" class="lightbox-img" src="" alt="Hasil Foto SpotLight Studio">
-            </div>
-            
-            <!-- Tombol Navigasi Kanan -->
-            <button class="lightbox-nav lightbox-next" onclick="nextImage()" aria-label="Foto Selanjutnya">
-                <i class="bi bi-chevron-right"></i>
-            </button>
-            
-            <div class="lightbox-info">
-                <div class="lightbox-title" id="lightboxCaption">-</div>
-                <div class="lightbox-counter" id="lightboxCounter">0 dari 0</div>
-                <a href="#" id="lightboxDownloadBtn" download class="lightbox-download-single">
-                    <i class="bi bi-cloud-arrow-down-fill"></i> Download Gambar Ini
-                </a>
+            <div class="modal-body-popup">
+                <div class="lightbox-wrapper">
+                    <div class="lightbox-main">
+                        <!-- Tombol Navigasi Kiri -->
+                        <button class="lightbox-nav-btn" onclick="prevImage()" aria-label="Foto Sebelumnya">
+                            <i class="bi bi-chevron-left"></i>
+                        </button>
+                        
+                        <!-- Kontainer Image -->
+                        <div class="lightbox-img-container" id="lightboxTouchArea">
+                            <img id="lightboxImg" src="" alt="Hasil Foto SpotLight Studio">
+                        </div>
+                        
+                        <!-- Tombol Navigasi Kanan -->
+                        <button class="lightbox-nav-btn" onclick="nextImage()" aria-label="Foto Selanjutnya">
+                            <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="lightbox-details">
+                        <div class="lightbox-caption" id="lightboxCaption">-</div>
+                        <div class="lightbox-counter" id="lightboxCounter">0 dari 0</div>
+                        <a href="#" id="lightboxDownloadBtn" download class="btn-download-single">
+                            <i class="bi bi-cloud-arrow-down-fill"></i> Download Gambar Ini
+                        </a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -928,7 +1095,7 @@ function formatWaktu($time) {
         }
 
         // =====================================================
-        // LIGHTBOX CONTROLLER (GESER GAMBAR KANAN KIRI)
+        // LIGHTBOX CONTROLLER (GESER GAMBAR KANAN KIRI) SINKRON OVERLAY
         // =====================================================
         function startLightbox(index) {
             // Tutup Sweetalert Grid Mini
@@ -938,12 +1105,10 @@ function formatWaktu($time) {
             currentIndex = index;
             updateLightboxContent();
 
-            // Tampilkan Modal Lightbox dengan animasi transisi
+            // Tampilkan Modal Lightbox dengan efek transisi aktif
             const modal = document.getElementById('lightboxModal');
-            modal.style.display = 'flex';
-            setTimeout(() => {
-                modal.classList.add('show');
-            }, 10);
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
 
             // Pasang Event Keyboard & Gestur Swipe
             document.addEventListener('keydown', handleKeyPress);
@@ -989,10 +1154,8 @@ function formatWaktu($time) {
 
         function closeLightbox() {
             const modal = document.getElementById('lightboxModal');
-            modal.classList.remove('show');
-            setTimeout(() => {
-                modal.style.display = 'none';
-            }, 300);
+            modal.classList.remove('active');
+            document.body.style.overflow = '';
 
             // Lepas event listener untuk menghemat memori
             document.removeEventListener('keydown', handleKeyPress);
