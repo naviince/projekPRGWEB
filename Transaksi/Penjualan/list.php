@@ -157,7 +157,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Transaksi Penjualan Barang Cetak - SpotLight Studio</title>
-
+    <link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -191,6 +191,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             border-right: 1px solid rgba(255, 228, 233, 0.8);
             display: flex; flex-direction: column; justify-content: space-between;
             padding: 30px 20px; z-index: 100;
+            transition: var(--transition-3d);
         }
         .sidebar-brand {
             font-weight: 800; font-size: 1.5rem; color: var(--p-pink);
@@ -232,10 +233,12 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
         .dashboard-header {
             display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px;
+            flex-wrap: wrap; gap: 12px;
         }
         .profile-header-btn {
             width: 44px; height: 44px; border-radius: 50%; overflow: hidden;
             border: 2px solid #ffffff; cursor: pointer; transition: var(--transition-3d); background: #ffffff;
+            flex-shrink: 0;
         }
         .profile-header-btn:hover {
             transform: scale(1.08) translateY(-2px);
@@ -254,17 +257,22 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         .stats-scroll-wrapper::-webkit-scrollbar-thumb { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); border-radius: 10px; }
         .stats-row { display: flex; gap: 16px; min-width: max-content; }
         .stat-card-item { min-width: 220px; max-width: 280px; flex: 0 0 auto; }
+
+        /* card-3d = struktur visual dasar (statistik, tabel, info non-klik, TIDAK ada hover).
+           card-3d-clickable = modifier opt-in untuk elemen yang benar-benar bisa diklik. */
         .card-3d {
             background: #ffffff; border-radius: 22px;
             border: 1px solid rgba(255, 228, 233, 0.8);
             box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03);
-            transition: var(--transition-3d); padding: 20px;
+            padding: 20px;
             height: 100%; position: relative; overflow: hidden;
         }
-        .card-3d:hover {
+        .card-3d-clickable { transition: var(--transition-3d); cursor: pointer; }
+        .card-3d-clickable:hover {
             transform: translateY(-8px) scale(1.01);
             box-shadow: 0 22px 45px rgba(213, 61, 102, 0.14); border-color: var(--p-pink);
         }
+
         .stat-card { display: flex; align-items: center; gap: 14px; }
         .stat-icon {
             width: 48px; height: 48px; border-radius: 14px;
@@ -288,7 +296,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             background: linear-gradient(135deg, #fef2f2, #fff7ed);
             border: 2px dashed #fca5a5; border-radius: 20px;
             padding: 16px 24px; margin-bottom: 25px;
-            display: flex; align-items: center; gap: 16px;
+            display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
         }
         .stock-alert-icon {
             width: 44px; height: 44px; border-radius: 14px;
@@ -296,7 +304,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             display: flex; align-items: center; justify-content: center;
             color: #fff; font-size: 1.3rem; flex-shrink: 0;
         }
-        .stock-alert-text { flex: 1; }
+        .stock-alert-text { flex: 1; min-width: 200px; }
         .stock-alert-title { font-size: 0.95rem; font-weight: 800; color: #991b1b; }
         .stock-alert-sub { font-size: 0.8rem; color: #b91c1c; font-weight: 600; }
 
@@ -327,8 +335,8 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             display: flex; align-items: center; gap: 12px;
             margin-bottom: 25px; flex-wrap: wrap;
         }
-        .search-form-flex { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 300px; }
-        .search-input-wrapper { position: relative; flex: 1; }
+        .search-form-flex { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 300px; flex-wrap: wrap; }
+        .search-input-wrapper { position: relative; flex: 1; min-width: 220px; }
         .search-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 1rem; z-index: 2; }
         .search-input-main {
             width: 100%; border: 2px solid #e2e8f0; border-radius: 14px;
@@ -336,14 +344,16 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             color: #1e293b; transition: var(--transition-3d); background: #ffffff;
         }
         .search-input-main:focus { outline: none; border-color: var(--p-pink); box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); }
+
+        /* Tombol Filter: gaya outline ringan (BUKAN solid sama seperti tombol aksi utama) */
         .btn-filter-modal {
-            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            color: #ffffff; border: none; border-radius: 14px;
-            padding: 12px 24px; font-weight: 700; font-size: 0.9rem;
-            display: inline-flex; align-items: center; cursor: pointer;
-            transition: var(--transition-3d); white-space: nowrap;
+            position: relative; display: inline-flex; align-items: center; gap: 8px;
+            background: var(--s-pink); color: var(--p-pink);
+            border: 1.5px solid var(--light-pink);
+            padding: 12px 20px; border-radius: 14px; font-weight: 700; font-size: 0.85rem;
+            cursor: pointer; transition: var(--transition-3d); white-space: nowrap;
         }
-        .btn-filter-modal:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(213, 61, 102, 0.3); }
+        .btn-filter-modal:hover { background: var(--light-pink); border-color: var(--p-pink); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(213, 61, 102, 0.2); }
         .btn-search-icon {
             background: #ffffff; border: 2px solid #e2e8f0; border-radius: 14px;
             padding: 12px 16px; color: #94a3b8; cursor: pointer; transition: var(--transition-3d);
@@ -435,10 +445,11 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             background: #ffffff; border-radius: 20px;
             border: 1px solid rgba(255, 228, 233, 0.8);
             box-shadow: 0 4px 15px rgba(213, 61, 102, 0.04);
+            flex-wrap: wrap; gap: 12px;
         }
         .pagination-info { font-size: 0.85rem; color: #718096; font-weight: 600; }
         .pagination-info span { color: var(--p-pink); font-weight: 700; }
-        .pagination-nav { display: flex; gap: 6px; align-items: center; }
+        .pagination-nav { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
         .page-link-pag {
             display: flex; align-items: center; justify-content: center;
             min-width: 40px; height: 40px; padding: 0 14px;
@@ -464,16 +475,94 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         }
         .fade-in-up { animation: fadeIn 0.5s ease-out; }
 
+        /* =====================================================
+           RESPONSIVE ENHANCEMENTS
+           ===================================================== */
+        .mobile-menu-btn {
+            display: none; width: 44px; height: 44px; border-radius: 12px;
+            background: #ffffff; border: 2px solid var(--light-pink); color: var(--p-pink);
+            align-items: center; justify-content: center; font-size: 1.4rem; cursor: pointer;
+            transition: var(--transition-3d); flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .mobile-menu-btn:hover { background: var(--s-pink); transform: scale(1.05); }
+
+        .sidebar-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(30,30,36,0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            z-index: 99; opacity: 0; transition: opacity 0.35s ease;
+        }
+        .sidebar-overlay.show { display: block; opacity: 1; }
+
+        @media (max-width: 1199px) {
+            .stats-row { gap: 12px; }
+            .stat-card-item { min-width: 200px; }
+        }
+
         @media (max-width: 992px) {
-            .main-content { margin-left: 0; padding: 20px; }
-            .sidebar { transform: translateX(-100%); }
+            .mobile-menu-btn { display: inline-flex; }
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                box-shadow: none;
+            }
+            .sidebar.mobile-open { transform: translateX(0); box-shadow: 10px 0 50px rgba(0,0,0,0.15); }
+            .main-content { margin-left: 0; padding: 24px; }
+            .dashboard-header { flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
+            .dashboard-header h3 { font-size: 1.35rem; }
+        }
+
+        @media (max-width: 768px) {
+            .main-content { padding: 18px; }
+            .dashboard-header { margin-bottom: 22px; }
+            .dashboard-header h3 { font-size: 1.15rem; }
+            .dashboard-header p { font-size: 0.8rem; }
+
+            .tab-filter-container { gap: 6px; }
+            .tab-filter { padding: 9px 16px; font-size: 0.8rem; }
+
+            .search-filter-bar { flex-direction: column; align-items: stretch; gap: 10px; }
+            .search-form-flex { min-width: 100%; flex-wrap: wrap; }
+            .search-input-wrapper { width: 100%; }
+            .btn-filter-modal { width: 100%; justify-content: center; }
+            .btn-search-icon { width: 100%; }
+
+            .stock-alert-banner { flex-direction: column; align-items: flex-start; }
+            .stock-alert-banner a { width: 100%; text-align: center; }
+
+            .pagination-wrapper { flex-direction: column; gap: 12px; padding: 16px; }
+            .pagination-nav { justify-content: center; flex-wrap: wrap; }
+            .stat-card-item { min-width: 170px; }
+        }
+
+        @media (max-width: 576px) {
+            .main-content { padding: 14px; }
+            .dashboard-header h3 { font-size: 1.05rem; }
+
+            .tab-filter { font-size: 0.75rem; padding: 8px 12px; }
+            .tab-filter .badge-count { font-size: 0.7rem; padding: 1px 6px; }
+
+            .data-table tbody td { padding: 12px 14px; }
+            .data-table tbody td:first-child { padding-left: 16px; border-radius: 10px 0 0 10px; }
+            .data-table tbody td:last-child { padding-right: 16px; border-radius: 0 10px 10px 0; }
+            .badge-status-penjualan { font-size: 0.65rem; padding: 5px 10px; }
+            .btn-action-circle { width: 32px; height: 32px; font-size: 0.8rem; margin: 0 2px; }
+            .page-link-pag { min-width: 36px; height: 36px; padding: 0 10px; font-size: 0.85rem; }
+            .stat-val { font-size: 1.25rem; }
+            .stat-icon { width: 40px; height: 40px; font-size: 1.2rem; }
+        }
+
+        @media (max-width: 375px) {
+            .dashboard-header h3 { font-size: 0.95rem; }
         }
     </style>
 </head>
 <body>
 
+    <!-- Sidebar Overlay (Mobile) -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
     <!-- SIDEBAR -->
-    <div class="sidebar">
+    <div class="sidebar" id="sidebar">
         <div class="sidebar-menu-wrapper">
             <a href="../../index.php" class="sidebar-brand">
                 SpotLight.<br><span>Panel Administrator</span>
@@ -533,10 +622,15 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
     <div class="main-content">
 
         <!-- HEADER -->
-        <div class="dashboard-header" data-aos="fade-up">
-            <div>
-                <h3 class="fw-bold mb-1">Transaksi Penjualan Barang Cetak</h3>
-                <p class="text-muted small mb-0">Kelola dan verifikasi penjualan barang cetak dari pelanggan.</p>
+        <div class="dashboard-header fade-in-up">
+            <div class="d-flex align-items-center gap-3">
+                <button class="mobile-menu-btn" onclick="toggleSidebar()" title="Menu" aria-label="Toggle Menu">
+                    <i class="bi bi-list"></i>
+                </button>
+                <div>
+                    <h3 class="fw-bold mb-1">Transaksi Penjualan Barang Cetak</h3>
+                    <p class="text-muted small mb-0">Kelola dan verifikasi penjualan barang cetak dari pelanggan.</p>
+                </div>
             </div>
             <div class="d-flex align-items-center gap-3">
                 <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
@@ -649,8 +743,8 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                     <input type="text" name="cari" class="search-input-main" placeholder="Cari nama customer, no. order, atau nama barang..." value="<?= htmlspecialchars($cari) ?>">
                 </div>
                 <button type="button" class="btn-filter-modal" onclick="bukaModalFilter()">
-                    <i class="bi bi-funnel-fill me-2"></i>Filter
-                    <i class="bi bi-chevron-down ms-2"></i>
+                    <i class="bi bi-funnel-fill"></i>Filter
+                    <i class="bi bi-chevron-down"></i>
                 </button>
                 <button type="submit" class="btn-search-icon" title="Cari">
                     <i class="bi bi-search"></i>
@@ -854,6 +948,32 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
     <script>
+        // ===== SIDEBAR TOGGLE (MOBILE) =====
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.toggle('mobile-open');
+            overlay.classList.toggle('show');
+            document.body.style.overflow = sidebar.classList.contains('mobile-open') ? 'hidden' : '';
+        }
+        document.querySelectorAll('.sidebar .nav-link-custom, .sidebar .submenu-link, .sidebar .btn-logout').forEach(el => {
+            el.addEventListener('click', function() {
+                if (window.innerWidth <= 992) {
+                    const sidebar = document.getElementById('sidebar');
+                    if (sidebar.classList.contains('mobile-open')) toggleSidebar();
+                }
+            });
+        });
+        window.addEventListener('resize', function() {
+            if (window.innerWidth > 992) {
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('sidebarOverlay');
+                sidebar.classList.remove('mobile-open');
+                overlay.classList.remove('show');
+                document.body.style.overflow = '';
+            }
+        });
+
         // Toggle Submenu
         document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
             button.addEventListener('click', function(e) {

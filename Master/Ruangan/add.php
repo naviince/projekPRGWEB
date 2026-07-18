@@ -225,6 +225,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tambah Ruangan – SpotLight Studio</title>
+    <link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -328,7 +329,192 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
         .loading-spinner { width: 50px; height: 50px; border: 4px solid var(--light-pink); border-top-color: var(--p-pink); border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .loading-text { margin-top: 16px; font-weight: 700; color: var(--p-pink); }
-        @media (max-width: 992px) { .main-content { margin-left: 0; padding: 20px; } .sidebar { transform: translateX(-100%); } }
+        /* Mobile Menu Button */
+        .mobile-menu-btn {
+            display: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: #ffffff;
+            border: 2px solid var(--light-pink);
+            color: var(--p-pink);
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            cursor: pointer;
+            transition: var(--transition-3d);
+            flex-shrink: 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .mobile-menu-btn:hover {
+            background: var(--s-pink);
+            transform: scale(1.05);
+        }
+
+        /* Sidebar Overlay */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(30, 30, 36, 0.45);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 99;
+            opacity: 0;
+            transition: opacity 0.35s ease;
+        }
+        .sidebar-overlay.show {
+            display: block;
+            opacity: 1;
+        }
+
+        /* =====================================================
+           RESPONSIVE ENHANCEMENTS
+           ===================================================== */
+        @media (max-width: 1199px) {
+            .form-card-body { padding: 35px; }
+            .paket-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+        }
+
+        @media (max-width: 992px) {
+            .mobile-menu-btn { display: inline-flex; }
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                box-shadow: none;
+            }
+            .sidebar.mobile-open {
+                transform: translateX(0);
+                box-shadow: 10px 0 50px rgba(0,0,0,0.15);
+            }
+            .main-content { margin-left: 0; padding: 24px; }
+            .dashboard-header {
+                flex-wrap: wrap;
+                gap: 12px;
+                margin-bottom: 28px;
+            }
+            .dashboard-header h3 { font-size: 1.35rem; }
+            .form-card { border-radius: 20px; }
+            .form-card-header { padding: 25px 30px; }
+            .form-card-header h4 { font-size: 1.2rem; }
+            .form-card-body { padding: 30px; }
+            .paket-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+            .paket-checkbox-item { padding: 12px; }
+            .paket-checkbox-item img { width: 40px !important; height: 40px !important; }
+            .btn-group-bottom {
+                flex-direction: column;
+                gap: 10px !important;
+            }
+            .btn-submit, .btn-batal {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content { padding: 18px; }
+            .dashboard-header { margin-bottom: 22px; }
+            .dashboard-header h3 { font-size: 1.15rem; }
+            .dashboard-header p { font-size: 0.8rem; }
+            .form-card { border-radius: 18px; }
+            .form-card-header { padding: 22px 24px; }
+            .form-card-header h4 { font-size: 1.1rem; }
+            .form-card-body { padding: 24px 18px; }
+            .form-control-custom {
+                padding: 12px 14px;
+                font-size: 0.85rem;
+                border-radius: 12px;
+            }
+            .form-label { font-size: 0.7rem; }
+            .input-hint { font-size: 0.7rem; }
+            .file-upload-zone {
+                padding: 24px 16px;
+            }
+            .file-upload-zone i {
+                font-size: 2rem;
+            }
+            .file-upload-zone p {
+                font-size: 0.85rem;
+            }
+            .paket-grid { grid-template-columns: 1fr; }
+            .paket-checkbox-item { padding: 14px; }
+            .paket-checkbox-item img { width: 50px !important; height: 50px !important; }
+            .info-card {
+                padding: 14px 16px;
+                font-size: 0.8rem;
+                gap: 10px;
+            }
+            .info-card i { font-size: 1.3rem; }
+            .alert-custom {
+                padding: 12px 14px;
+                font-size: 0.8rem;
+            }
+            .btn-submit, .btn-batal {
+                padding: 12px 20px;
+                font-size: 0.9rem;
+                border-radius: 12px;
+            }
+            .profile-header-btn {
+                width: 40px;
+                height: 40px;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .main-content { padding: 14px; }
+            .dashboard-header h3 { font-size: 1.05rem; }
+            .form-card { border-radius: 16px; }
+            .form-card-header { padding: 18px 20px; }
+            .form-card-header h4 { font-size: 1rem; }
+            .form-card-body { padding: 20px 14px; }
+            .form-control-custom {
+                padding: 10px 12px;
+                font-size: 0.85rem;
+                border-radius: 10px;
+            }
+            textarea.form-control-custom { min-height: 80px; }
+            .file-upload-zone {
+                padding: 20px 14px;
+                border-radius: 12px;
+            }
+            .file-upload-zone i {
+                font-size: 1.8rem;
+            }
+            .file-upload-zone p {
+                font-size: 0.8rem;
+            }
+            .file-upload-zone small {
+                font-size: 0.7rem;
+            }
+            #preview-container img {
+                max-height: 180px;
+            }
+            .paket-checkbox-item { padding: 12px; }
+            .paket-checkbox-item img { width: 40px !important; height: 40px !important; }
+            .paket-checkbox-item .paket-nama { font-size: 0.8rem; }
+            .paket-checkbox-item .paket-harga { font-size: 0.78rem; }
+            .btn-submit, .btn-batal {
+                padding: 12px 16px;
+                font-size: 0.85rem;
+                border-radius: 10px;
+            }
+            .loading-text { font-size: 0.9rem; }
+            .loading-spinner { width: 40px; height: 40px; }
+        }
+
+        @media (max-width: 375px) {
+            .dashboard-header h3 { font-size: 0.95rem; }
+            .form-card-body { padding: 18px 12px; }
+            .btn-submit, .btn-batal {
+                padding: 10px 14px;
+                font-size: 0.8rem;
+            }
+            .paket-checkbox-item { padding: 10px; }
+            .paket-checkbox-item img { width: 36px !important; height: 36px !important; }
+        }
     </style>
 </head>
 <body>
@@ -336,6 +522,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
         <div class="loading-spinner"></div>
         <div class="loading-text">Menyimpan ruangan...</div>
     </div>
+
+    <!-- Sidebar Overlay (Mobile) -->
+    <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
 
     <div class="sidebar">
         <div class="sidebar-menu-wrapper">
@@ -381,9 +570,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
 
     <div class="main-content">
         <div class="dashboard-header">
-            <div>
-                <h3 class="fw-bold mb-1">Tambah Ruangan</h3>
-                <p class="text-muted small mb-0">Tambah ruangan studio baru dan tentukan paket foto yang bisa menggunakannya.</p>
+            <div class="d-flex align-items-center gap-3">
+                <button class="mobile-menu-btn" onclick="toggleSidebar()" title="Menu" aria-label="Toggle Menu">
+                    <i class="bi bi-list"></i>
+                </button>
+                <div>
+                    <h3 class="fw-bold mb-1">Tambah Ruangan</h3>
+                    <p class="text-muted small mb-0">Tambah ruangan studio baru dan tentukan paket foto yang bisa menggunakannya.</p>
+                </div>
             </div>
             <div class="d-flex align-items-center gap-3">
                 <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;"><i class="bi bi-clock-history me-1 text-danger"></i> <span id="live-clock">Memuat waktu...</span></span>
@@ -519,6 +713,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
     <script>
+        // =====================================================
+        // MOBILE SIDEBAR TOGGLE
+        // =====================================================
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            const overlay = document.querySelector('.sidebar-overlay');
+            const isOpen = sidebar.classList.toggle('mobile-open');
+            overlay.classList.toggle('show', isOpen);
+            document.body.style.overflow = isOpen ? 'hidden' : '';
+        }
+
+        // Auto-close sidebar when clicking nav links on mobile
+        document.querySelectorAll('.sidebar .nav-link-custom, .sidebar .submenu-link, .sidebar .btn-logout').forEach(el => {
+            el.addEventListener('click', function() {
+                if (window.innerWidth <= 992) {
+                    const sidebar = document.querySelector('.sidebar');
+                    if (sidebar.classList.contains('mobile-open')) {
+                        toggleSidebar();
+                    }
+                }
+            });
+        });
+
+        // Handle resize: if going back to desktop, reset mobile sidebar state
+        window.addEventListener('resize', function() {
+            if (window.innerWidth > 992) {
+                const sidebar = document.querySelector('.sidebar');
+                const overlay = document.querySelector('.sidebar-overlay');
+                sidebar.classList.remove('mobile-open');
+                overlay.classList.remove('show');
+                document.body.style.overflow = '';
+            }
+        });
+
         // Toggle Submenu
         document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
             button.addEventListener('click', function(e) {

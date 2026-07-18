@@ -67,7 +67,6 @@ $foto_admin = $admin_data['Foto_Profil'] ?? 'default.jpg';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
-// *Penyesuaian: Lokasi direktori foto Karyawan diperbaiki dari pelanggan menjadi karyawan
 $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
     ? "../../assets/img/karyawan/" . $foto_admin 
     : $default_svg_avatar;
@@ -85,7 +84,6 @@ if (!$ruangan) {
     exit();
 }
 
-// Ambil semua paket foto (Status dihilangkan dari kueri filter)
 $daftar_paket = [];
 $q_daftar_paket = safe_sqlsrv_query($conn, 
     "SELECT ID_Paket, Nama_Paket, Harga_Paket, Kapasitas_Orang, Foto_Paket, Durasi_Waktu 
@@ -99,7 +97,6 @@ if ($q_daftar_paket) {
     }
 }
 
-// Ambil semua paket foto terhubung saat ini langsung dari tabel junction Paket_Ruangan
 $paket_terhubung_ids = [];
 $q_terhubung = safe_sqlsrv_query($conn, "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?", [$id]);
 if ($q_terhubung) {
@@ -112,7 +109,6 @@ $error = "";
 $success = false;
 $field_errors = [];
 
-// Inisialisasi awal variabel dengan data paket yang sudah terhubung dari database
 $paket_terpilih = $paket_terhubung_ids; 
 
 // =====================================================
@@ -122,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
 
     $nama           = trim($_POST['nama_ruangan'] ?? '');
     $deskripsi      = trim($_POST['deskripsi'] ?? '');
-    $paket_terpilih = $_POST['paket'] ?? []; // Timpa nilai dengan pilihan baru dari form
+    $paket_terpilih = $_POST['paket'] ?? [];
 
     if (empty($nama)) {
         $field_errors['nama_ruangan'] = "Nama ruangan wajib diisi!";
@@ -136,12 +132,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
         $field_errors['deskripsi'] = "Maksimal 255 karakter!";
     }
 
-    // Memilih satu atau lebih paket foto diperbolehkan sesuai skema many-to-many
     if (empty($paket_terpilih)) {
         $field_errors['paket'] = "Pilih minimal 1 paket!";
     }
 
-    // Cek Duplikat Nama Ruangan (Diubah ke SQL Langsung karena sp_CekDuplikatRuangan tidak tersedia)
     if (empty($field_errors)) {
         $sql_dup = "SELECT COUNT(*) AS total FROM Ruangan WHERE Nama_Ruangan = ? AND ID_Ruangan <> ? AND Is_Deleted = 0";
         $stmt_dup = safe_sqlsrv_query($conn, $sql_dup, [$nama, $id]);
@@ -151,7 +145,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
         }
     }
 
-    // Ambil relasi paket ruangan saat ini di database untuk proses sinkronisasi
     $paket_sekarang = [];
     $q_now = safe_sqlsrv_query($conn, "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?", [$id]);
     if ($q_now) {
@@ -160,7 +153,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
         }
     }
 
-    // Pengaman: Jika admin menghapus relasi paket lama, pastikan tidak ada order aktif yang mengikat kombinasi paket-ruangan tersebut
     if (empty($field_errors)) {
         foreach ($paket_sekarang as $id_paket_lama) {
             if (!in_array($id_paket_lama, $paket_terpilih)) {
@@ -229,7 +221,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
             if (!empty($upload_path) && file_exists($upload_path)) @unlink($upload_path);
         } else {
             try {
-                // Update Ruangan tanpa menyertakan kolom ID_Paket (many-to-many)
                 $sql_update = "UPDATE Ruangan SET 
                     Nama_Ruangan = ?, Deskripsi = ?, 
                     Foto_Ruangan = ?, Modified_By = ?, Modified_Date = GETDATE() 
@@ -241,7 +232,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
                     throw new Exception("Gagal update ruangan: " . json_encode(sqlsrv_errors()));
                 }
 
-                // Tambahkan relasi baru ke tabel junction Paket_Ruangan via sp_InsertPaketRuangan
                 foreach ($paket_terpilih as $id_paket) {
                     $id_paket = (int)$id_paket;
                     if (!in_array($id_paket, $paket_sekarang)) {
@@ -261,7 +251,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
                     }
                 }
 
-                // Hapus relasi lama yang tidak terpilih kembali
                 foreach ($paket_sekarang as $id_paket_lama) {
                     if (!in_array($id_paket_lama, $paket_terpilih)) {
                         $sql_delete = "DELETE FROM Paket_Ruangan WHERE ID_Paket = ? AND ID_Ruangan = ?";
@@ -283,7 +272,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
 
                 $success = true;
 
-                // Reload data terbaru ke halaman
                 $ruangan = safe_sqlsrv_fetch(sqlsrv_query($conn, "SELECT * FROM Ruangan WHERE ID_Ruangan = ?", [$id]));
                 $paket_terhubung_ids = [];
                 $q_reload_ids = safe_sqlsrv_query($conn, "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?", [$id]);
@@ -311,8 +299,9 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Edit Ruangan – SpotLight Studio</title>
+    <link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -326,8 +315,25 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
             --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             --error-red: #dc2626; --error-bg: #fef2f2;
         }
+        * { -webkit-tap-highlight-color: transparent; }
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--body-bg); color: var(--text-dark); overflow-x: hidden; }
-        .sidebar { width: 260px; height: 100vh; background: var(--sidebar-bg); position: fixed; top: 0; left: 0; border-right: 1px solid rgba(255, 228, 233, 0.8); display: flex; flex-direction: column; justify-content: space-between; padding: 30px 20px; z-index: 100; }
+
+        /* SIDEBAR */
+        .sidebar { 
+            width: 260px; 
+            height: 100vh; 
+            background: var(--sidebar-bg); 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            border-right: 1px solid rgba(255, 228, 233, 0.8); 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: space-between; 
+            padding: 30px 20px; 
+            z-index: 1040; 
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
         .sidebar-brand { font-weight: 800; font-size: 1.5rem; color: var(--p-pink); text-decoration: none; letter-spacing: -1px; margin-bottom: 40px; display: block; }
         .sidebar-brand span { color: var(--text-dark); font-size: 0.85rem; font-weight: 600; }
         .sidebar-menu-wrapper { flex-grow: 1; overflow-y: auto; margin-bottom: 20px; scrollbar-width: none; }
@@ -342,9 +348,81 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
         .submenu-link:hover, .submenu-link.active { color: var(--p-pink); background-color: rgba(213, 61, 102, 0.03); padding-left: 22px; }
         .btn-logout { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; width: 100%; padding: 12px; border-radius: 12px; font-weight: 800; font-size: 0.85rem; transition: var(--transition-3d); }
         .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
+
+        /* SIDEBAR OVERLAY */
+        .sidebar-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            backdrop-filter: blur(2px);
+            z-index: 1035;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        .sidebar-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* MOBILE HEADER */
+        .mobile-header {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: #fff;
+            border-bottom: 1px solid rgba(255,228,233,.8);
+            z-index: 1020;
+            padding: 0 20px;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .mobile-brand {
+            font-weight: 800;
+            font-size: 1.25rem;
+            color: var(--p-pink);
+            text-decoration: none;
+            letter-spacing: -0.5px;
+        }
+        .hamburger-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            border: none;
+            background: var(--s-pink);
+            color: var(--p-pink);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            cursor: pointer;
+            transition: var(--transition-3d);
+        }
+        .hamburger-btn:active { transform: scale(0.92); }
+
         .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
-        .dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; }
-        .profile-header-btn { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; border: 2px solid #ffffff; cursor: pointer; transition: var(--transition-3d); background: #ffffff; }
+        .dashboard-header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 35px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .profile-header-btn { 
+            width: 44px; 
+            height: 44px; 
+            border-radius: 50%; 
+            overflow: hidden; 
+            border: 2px solid #ffffff; 
+            cursor: pointer; 
+            transition: var(--transition-3d); 
+            background: #ffffff; 
+            flex-shrink: 0;
+        }
         .profile-header-btn:hover { transform: scale(1.08) translateY(-2px); box-shadow: 0 8px 20px rgba(213, 61, 102, 0.15); border-color: var(--p-pink); }
         .profile-header-btn img { width: 100%; height: 100%; object-fit: cover; }
         .form-card { background: #ffffff; border-radius: 22px; border: 1px solid rgba(255, 228, 233, 0.8); box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03); overflow: hidden; }
@@ -353,7 +431,7 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
         .form-card-header p { opacity: 0.85; font-size: 0.85rem; margin: 0; }
         .form-card-body { padding: 40px; }
         .info-card { background: linear-gradient(135deg, #FFF0F3, #FFF8F0); border-radius: 16px; padding: 16px 20px; margin-bottom: 25px; border: 1px solid rgba(255, 228, 233, 0.8); display: flex; align-items: center; gap: 12px; }
-        .info-card i { font-size: 1.5rem; color: var(--p-pink); }
+        .info-card i { font-size: 1.5rem; color: var(--p-pink); flex-shrink: 0; }
         .info-card .info-text { font-size: 0.85rem; color: #4a5568; font-weight: 600; line-height: 1.5; }
         .info-card .info-text strong { color: var(--p-pink); }
         .form-label { font-weight: 700; font-size: 0.75rem; color: var(--text-dark); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
@@ -382,7 +460,6 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
         #preview-container .remove-preview { position: absolute; top: 10px; right: 10px; background: rgba(220, 38, 38, 0.9); color: #fff; border: none; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
         #preview-container .remove-preview:hover { background: #dc2626; transform: scale(1.1); }
         
-        /* CARD INTERACTIVE GRID STYLE */
         .paket-section { background: #f8fafc; border-radius: 16px; padding: 24px; border: 2px solid #e2e8f0; transition: var(--transition-3d); }
         .paket-section.is-error { border-color: var(--error-red) !important; background-color: var(--error-bg) !important; }
         .paket-section-title { font-weight: 800; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-dark); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
@@ -402,12 +479,10 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
         .paket-checkbox-item.has-order:hover { border-color: #e2e8f0; transform: none; }
         .paket-checkbox-item.has-order.selected { border-color: #059669; background: #ecfdf5; }
         .order-badge { font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 50px; background: #fef3c7; color: #d97706; margin-left: 6px; }
-        .lock-icon { color: #dc2626; font-size: 1rem; margin-left: 8px; }
         .paket-empty { text-align: center; padding: 30px; color: var(--text-muted); font-size: 0.85rem; }
         .paket-section-error { display: none; font-size: 0.8rem; color: var(--error-red); font-weight: 700; margin-top: 8px; align-items: center; gap: 4px; }
         .paket-section-error.show { display: flex; }
         
-        /* BUTTONS */
         .btn-submit { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; border-radius: 14px; padding: 14px 32px; font-weight: 800; font-size: 0.95rem; transition: var(--transition-3d); display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
         .btn-submit:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(213, 61, 102, 0.35); color: #ffffff; }
         .btn-batal { background: #f1f5f9; color: #475569; border: none; border-radius: 14px; padding: 14px 32px; font-weight: 800; font-size: 0.95rem; transition: var(--transition-3d); display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
@@ -421,7 +496,162 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
         .loading-spinner { width: 50px; height: 50px; border: 4px solid var(--light-pink); border-top-color: var(--p-pink); border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .loading-text { margin-top: 16px; font-weight: 700; color: var(--p-pink); }
-        @media (max-width: 992px) { .main-content { margin-left: 0; padding: 20px; } .sidebar { transform: translateX(-100%); } }
+
+        /* ============================================
+           RESPONSIVE BREAKPOINTS
+           ============================================ */
+
+        /* Tablet & below */
+        @media (max-width: 991.98px) {
+            .sidebar {
+                transform: translateX(-100%);
+                box-shadow: 4px 0 24px rgba(0,0,0,0.08);
+            }
+            .sidebar.show-mobile {
+                transform: translateX(0);
+            }
+            .mobile-header {
+                display: flex;
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 80px 20px 30px;
+            }
+            .dashboard-header {
+                margin-bottom: 25px;
+            }
+            .dashboard-header h3 {
+                font-size: 1.25rem;
+            }
+            .form-card-header {
+                padding: 24px;
+            }
+            .form-card-body {
+                padding: 24px;
+            }
+            .form-card-header h4 {
+                font-size: 1.15rem;
+            }
+        }
+
+        /* Small phones */
+        @media (max-width: 575.98px) {
+            .main-content {
+                padding: 70px 14px 20px;
+            }
+            .dashboard-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .dashboard-header > div:last-child {
+                width: 100%;
+                justify-content: space-between;
+            }
+            .form-card {
+                border-radius: 16px;
+            }
+            .form-card-header {
+                padding: 20px;
+            }
+            .form-card-header h4 {
+                font-size: 1.1rem;
+            }
+            .form-card-header p {
+                font-size: .8rem;
+            }
+            .form-card-body {
+                padding: 20px 16px;
+            }
+            .form-control-custom {
+                padding: 12px 14px;
+                font-size: .88rem;
+                border-radius: 12px;
+            }
+            .form-label {
+                font-size: .7rem;
+            }
+            .info-card {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+                padding: 14px;
+            }
+            .info-card i {
+                font-size: 1.25rem;
+            }
+            .info-card .info-text {
+                font-size: .8rem;
+            }
+            
+            /* Current foto */
+            .current-foto-box {
+                border-radius: 12px;
+            }
+            .current-foto-box img {
+                max-height: 160px;
+            }
+
+            /* Paket grid */
+            .paket-grid {
+                grid-template-columns: 1fr;
+            }
+            .paket-section {
+                padding: 16px;
+            }
+            .paket-checkbox-item {
+                padding: 12px;
+            }
+
+            /* Buttons */
+            .btn-group-bottom {
+                flex-direction: column !important;
+                gap: 10px !important;
+            }
+            .btn-submit, .btn-batal {
+                width: 100%;
+                justify-content: center;
+                padding: 13px;
+                font-size: .9rem;
+            }
+
+            /* File upload */
+            .file-upload-zone {
+                padding: 20px 14px;
+            }
+            .file-upload-zone i {
+                font-size: 1.6rem;
+            }
+            .file-upload-zone p {
+                font-size: .8rem;
+            }
+
+            /* Alert */
+            .alert-custom {
+                font-size: .78rem;
+                padding: 12px 14px;
+            }
+        }
+
+        /* Extra small */
+        @media (max-width: 359.98px) {
+            .mobile-header {
+                padding: 0 14px;
+            }
+            .mobile-brand {
+                font-size: 1.1rem;
+            }
+            .form-card-body {
+                padding: 16px 12px;
+            }
+        }
+
+        /* Large screens */
+        @media (min-width: 1400px) {
+            .paket-grid {
+                grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            }
+        }
     </style>
 </head>
 <body>
@@ -430,7 +660,19 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
         <div class="loading-text">Menyimpan perubahan...</div>
     </div>
 
-    <div class="sidebar">
+    <!-- MOBILE HEADER -->
+    <div class="mobile-header">
+        <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu">
+            <i class="bi bi-list"></i>
+        </button>
+        <a href="../../index.php" class="mobile-brand">SpotLight.</a>
+        <div style="width:40px;"></div>
+    </div>
+
+    <!-- SIDEBAR OVERLAY -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+    <div class="sidebar" id="sidebar">
         <div class="sidebar-menu-wrapper">
             <a href="../../index.php" class="sidebar-brand">SpotLight.<br><span>Panel Administrator</span></a>
             <ul class="nav-menu">
@@ -503,7 +745,7 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
 
                 <form method="POST" enctype="multipart/form-data" id="formRuangan" action="">
                     <div class="row">
-                        <div class="col-md-12 mb-4">
+                        <div class="col-12 col-md-12 mb-4">
                             <label class="form-label"><i class="bi bi-type"></i> Nama Ruangan <span class="required">*</span><span class="badge-wajib">Wajib</span></label>
                             <input type="text" name="nama_ruangan" id="nama_ruangan" class="form-control-custom <?= isset($field_errors['nama_ruangan']) ? 'is-error' : '' ?>" required maxlength="100" placeholder="Contoh: Studio A Minimalis" value="<?= htmlspecialchars($ruangan['Nama_Ruangan']) ?>">
                             <div class="input-hint"><i class="bi bi-info-circle"></i>  Maksimal 100 karakter, nama harus unik</div>
@@ -602,7 +844,7 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
             </div>
             <div class="card-3d p-3 border-0 mb-3" style="border-radius: 20px; background-color: #f8fafc;">
               <div class="row g-3">
-                <div class="col-12"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Email Karyawan</small><span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_admin['email_karyawan'] ?? 'admin@spotlight.com') ?></span></div>
+                <div class="col-12"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Email Karyawan</small><span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($admin_data['Email_Karyawan'] ?? 'admin@spotlight.com') ?></span></div>
                 <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Hak Akses Sistem</small><span class="fw-bold text-dark" style="font-size: 0.85rem;">Administrator (Admin)</span></div>
               </div>
             </div>
@@ -614,6 +856,27 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
 
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Toggle Sidebar Mobile
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.toggle('show-mobile');
+            overlay.classList.toggle('active');
+            document.body.style.overflow = sidebar.classList.contains('show-mobile') ? 'hidden' : '';
+        }
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 991) {
+                document.getElementById('sidebar').classList.remove('show-mobile');
+                document.getElementById('sidebarOverlay').classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        });
+
+        function bukaModalBiodata() {
+            const modal = new bootstrap.Modal(document.getElementById('modalBiodataAdmin'));
+            modal.show();
+        }
+
         document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
             button.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -628,7 +891,6 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
                 }
             });
         });
-        function selectStatus(el, val) { document.querySelectorAll('.status-option').forEach(opt => opt.classList.remove('active')); el.classList.add('active'); el.querySelector('input').checked = true; }
         function handleFileSelect(event) { const file = event.target.files[0]; const previewContainer = document.getElementById('preview-container'); const previewImg = document.getElementById('preview-img'); const uploadIcon = document.getElementById('upload-icon'); const uploadText = document.getElementById('upload-text'); if (file) { if (file.size > 2097152) { Swal.fire({ icon: 'error', title: 'Ukuran Terlalu Besar', text: 'Ukuran gambar maksimal 2MB.', confirmButtonColor: '#D53D66' }); event.target.value = ''; return; } const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']; if (!allowed.includes(file.type)) { Swal.fire({ icon: 'error', title: 'Format Tidak Valid', text: 'Format gambar harus JPG, JPEG, PNG, atau WEBP.', confirmButtonColor: '#D53D66' }); event.target.value = ''; return; } const reader = new FileReader(); reader.onload = function(e) { previewImg.src = e.target.result; previewContainer.style.display = 'block'; uploadIcon.style.display = 'none'; uploadText.textContent = 'Foto baru: ' + file.name; }; reader.readAsDataURL(file); clearFieldError('foto'); } }
         function removePreview(e) { e.stopPropagation(); const input = document.getElementById('foto-input'); const previewContainer = document.getElementById('preview-container'); const uploadIcon = document.getElementById('upload-icon'); const uploadText = document.getElementById('upload-text'); input.value = ''; previewContainer.style.display = 'none'; uploadIcon.style.display = 'block'; uploadText.textContent = 'Klik untuk ganti foto (opsional)'; }
         const dropzone = document.getElementById('dropzone');
@@ -643,47 +905,31 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
         document.getElementById('nama_ruangan').addEventListener('input', function() { if (this.value.trim()) clearFieldError('nama_ruangan'); });
         document.getElementById('deskripsi').addEventListener('input', function() { if (this.value.trim()) clearFieldError('deskripsi'); });
         
-        // Single unified event listener for package selection (MUTUALLY EXCLUSIVE / RADIO BEHAVIOR)
         document.querySelectorAll('.paket-checkbox-item').forEach(item => {
             item.addEventListener('click', function(e) {
-                // Abaikan jika terkunci oleh order aktif
-                if (this.classList.contains('has-order')) {
-                    return;
-                }
-                
+                if (this.classList.contains('has-order')) return;
                 if (e.target.tagName === 'INPUT') return;
-                
                 const checkbox = this.querySelector('input[type="checkbox"]');
                 const wasChecked = checkbox.checked;
-                
-                // Batalkan seleksi semua paket lain yang tidak dikunci order
                 document.querySelectorAll('.paket-checkbox-item input[type="checkbox"]').forEach(otherChk => {
                     if (!otherChk.closest('.paket-checkbox-item').classList.contains('has-order')) {
                         otherChk.checked = false;
                         otherChk.closest('.paket-checkbox-item').classList.remove('selected');
                     }
                 });
-                
                 checkbox.checked = !wasChecked;
-                if (checkbox.checked) {
-                    this.classList.add('selected');
-                } else {
-                    this.classList.remove('selected');
-                }
+                if (checkbox.checked) this.classList.add('selected'); else this.classList.remove('selected');
                 updatePaketCount();
                 clearFieldError('paket');
             });
         });
 
-        // Trigger change pada checkbox (MUTUALLY EXCLUSIVE / RADIO BEHAVIOR)
         document.querySelectorAll('.paket-checkbox-item input[type="checkbox"]').forEach(chk => {
             chk.addEventListener('change', function(e) {
                 e.stopPropagation();
                 const row = this.closest('.paket-checkbox-item');
                 if (row.classList.contains('has-order')) return;
-                
                 if (this.checked) {
-                    // Batalkan seleksi semua paket lain yang tidak dikunci order
                     document.querySelectorAll('.paket-checkbox-item input[type="checkbox"]').forEach(otherChk => {
                         if (otherChk !== this && !otherChk.closest('.paket-checkbox-item').classList.contains('has-order')) {
                             otherChk.checked = false;

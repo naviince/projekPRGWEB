@@ -188,7 +188,7 @@ if (isset($_POST['simpan'])) {
             if ($stmt_insert === false) {
                 throw new Exception('Gagal insert barang: '.print_r(sqlsrv_errors(), true));
             }
-            
+
             $row_barang = sqlsrv_fetch_array($stmt_insert, SQLSRV_FETCH_ASSOC);
             $id_barang_baru = $row_barang['ID_Barang'] ?? null;
             sqlsrv_free_stmt($stmt_insert);
@@ -219,6 +219,7 @@ if (isset($_POST['simpan'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tambah Barang Cetak – SpotLight Studio</title>
+    <link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -288,16 +289,6 @@ if (isset($_POST['simpan'])) {
 
         .input-hint { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; margin-top: 6px; display: flex; align-items: center; gap: 4px; }
 
-        /* STATUS TOGGLE */
-        .status-toggle-group { display: flex; gap: 12px; margin-top: 8px; }
-        .status-option { flex: 1; padding: 14px 16px; border-radius: 14px; border: 2px solid #e2e8f0; cursor: pointer; text-align: center; transition: var(--transition-3d); background: #ffffff; }
-        .status-option:hover { border-color: var(--p-pink); }
-        .status-option.active { border-color: var(--p-pink); background: var(--s-pink); }
-        .status-option input { display: none; }
-        .status-option .status-icon { font-size: 1.3rem; margin-bottom: 4px; }
-        .status-option .status-label { font-weight: 700; font-size: 0.85rem; }
-        .status-option .status-desc { font-size: 0.7rem; color: var(--text-muted); }
-
         /* BUTTONS */
         .btn-submit { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; border-radius: 14px; padding: 14px 32px; font-weight: 800; font-size: 0.95rem; transition: var(--transition-3d); display: inline-flex; align-items: center; gap: 8px; }
         .btn-submit:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(213, 61, 102, 0.35); color: #ffffff; }
@@ -320,16 +311,174 @@ if (isset($_POST['simpan'])) {
         .preview-container img { width: 100%; height: 100%; object-fit: cover; }
         .preview-container i { font-size: 32px; color: #cbd5e0; }
 
+        /* Mobile Menu Button */
+        .mobile-menu-btn {
+            display: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: #ffffff;
+            border: 2px solid var(--light-pink);
+            color: var(--p-pink);
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            cursor: pointer;
+            transition: var(--transition-3d);
+            flex-shrink: 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .mobile-menu-btn:hover {
+            background: var(--s-pink);
+            transform: scale(1.05);
+        }
+
+        /* Sidebar Overlay */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(30, 30, 36, 0.45);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 99;
+            opacity: 0;
+            transition: opacity 0.35s ease;
+        }
+        .sidebar-overlay.show {
+            display: block;
+            opacity: 1;
+        }
+
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
         .fade-in-up { animation: fadeIn 0.5s ease-out; }
 
+        /* =====================================================
+           RESPONSIVE ENHANCEMENTS
+           ===================================================== */
+        @media (max-width: 1199px) {
+            .form-card-body { padding: 35px; }
+        }
+
         @media (max-width: 992px) {
-            .main-content { margin-left: 0; padding: 20px; }
-            .sidebar { transform: translateX(-100%); }
+            .mobile-menu-btn { display: inline-flex; }
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                box-shadow: none;
+            }
+            .sidebar.mobile-open {
+                transform: translateX(0);
+                box-shadow: 10px 0 50px rgba(0,0,0,0.15);
+            }
+            .main-content { margin-left: 0; padding: 24px; }
+            .dashboard-header {
+                flex-wrap: wrap;
+                gap: 12px;
+                margin-bottom: 28px;
+            }
+            .dashboard-header h3 { font-size: 1.35rem; }
+            .form-card { border-radius: 20px; }
+            .form-card-header { padding: 25px 30px; }
+            .form-card-header h4 { font-size: 1.2rem; }
+            .form-card-body { padding: 30px; }
+            .breadcrumb-custom { font-size: 0.8rem; margin-bottom: 20px; }
+        }
+
+        @media (max-width: 768px) {
+            .main-content { padding: 18px; }
+            .dashboard-header { margin-bottom: 22px; }
+            .dashboard-header h3 { font-size: 1.15rem; }
+            .dashboard-header p { font-size: 0.8rem; }
+            .form-card { border-radius: 18px; }
+            .form-card-header { padding: 22px 24px; }
+            .form-card-header h4 { font-size: 1.1rem; }
+            .form-card-header p { font-size: 0.8rem; }
+            .form-card-body { padding: 24px 18px; }
+            .form-control-custom {
+                padding: 12px 14px;
+                font-size: 0.85rem;
+                border-radius: 12px;
+            }
+            .form-label { font-size: 0.7rem; }
+            .input-hint { font-size: 0.7rem; }
+            .info-box { padding: 12px 14px; font-size: 0.75rem; }
+            .preview-container { width: 100px; height: 100px; }
+            .btn-submit, .btn-batal {
+                padding: 12px 20px;
+                font-size: 0.9rem;
+                border-radius: 12px;
+                flex: 1;
+                justify-content: center;
+            }
+            .d-flex.gap-3.mt-5 {
+                flex-direction: column;
+                gap: 10px !important;
+            }
+            .alert-custom-error, .alert-custom-success {
+                padding: 12px 14px;
+                font-size: 0.8rem;
+            }
+            .breadcrumb-custom {
+                flex-wrap: wrap;
+                gap: 6px;
+                font-size: 0.75rem;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .main-content { padding: 14px; }
+            .dashboard-header h3 { font-size: 1.05rem; }
+            .form-card { border-radius: 16px; }
+            .form-card-header { padding: 18px 20px; }
+            .form-card-header h4 { font-size: 1rem; }
+            .form-card-body { padding: 20px 14px; }
+            .form-control-custom {
+                padding: 10px 12px;
+                font-size: 0.85rem;
+                border-radius: 10px;
+            }
+            textarea.form-control-custom { min-height: 80px; }
+            .preview-container { width: 90px; height: 90px; border-radius: 12px; }
+            .preview-container i { font-size: 24px; }
+            .btn-submit, .btn-batal {
+                padding: 12px 16px;
+                font-size: 0.85rem;
+                border-radius: 10px;
+                width: 100%;
+            }
+            .d-flex.gap-3.mt-5 {
+                flex-direction: column;
+                gap: 8px !important;
+                margin-top: 24px !important;
+            }
+            .info-box {
+                padding: 10px 12px;
+                font-size: 0.7rem;
+            }
+            .profile-header-btn {
+                width: 40px;
+                height: 40px;
+            }
+        }
+
+        @media (max-width: 375px) {
+            .dashboard-header h3 { font-size: 0.95rem; }
+            .form-card-body { padding: 18px 12px; }
+            .btn-submit, .btn-batal {
+                padding: 10px 14px;
+                font-size: 0.8rem;
+            }
         }
     </style>
 </head>
 <body>
+
+<!-- Sidebar Overlay (Mobile) -->
+<div class="sidebar-overlay" onclick="toggleSidebar()"></div>
 
 <!-- SIDEBAR -->
 <div class="sidebar">
@@ -391,9 +540,14 @@ if (isset($_POST['simpan'])) {
 <!-- MAIN CONTENT -->
 <div class="main-content">
     <div class="dashboard-header">
-        <div>
-            <h3 class="fw-bold mb-1">Tambah Barang Cetak</h3>
-            <p class="text-muted small mb-0">Tambahkan produk baru ke dalam katalog cetak studio.</p>
+        <div class="d-flex align-items-center gap-3">
+            <button class="mobile-menu-btn" onclick="toggleSidebar()" title="Menu" aria-label="Toggle Menu">
+                <i class="bi bi-list"></i>
+            </button>
+            <div>
+                <h3 class="fw-bold mb-1">Tambah Barang Cetak</h3>
+                <p class="text-muted small mb-0">Tambahkan produk baru ke dalam katalog cetak studio.</p>
+            </div>
         </div>
         <div class="d-flex align-items-center gap-3">
             <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
@@ -567,13 +721,6 @@ function updateLiveClock() {
 setInterval(updateLiveClock, 1000);
 updateLiveClock();
 
-// Status Toggle
-function selectStatus(el, val) {
-    document.querySelectorAll('.status-option').forEach(opt => opt.classList.remove('active'));
-    el.classList.add('active');
-    el.querySelector('input').checked = true;
-}
-
 // Preview Image
 function previewFile() {
     const file = document.getElementById('foto_barang').files[0];
@@ -610,6 +757,40 @@ document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
     });
 });
 
+// =====================================================
+// MOBILE SIDEBAR TOGGLE
+// =====================================================
+function toggleSidebar() {
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.querySelector('.sidebar-overlay');
+    const isOpen = sidebar.classList.toggle('mobile-open');
+    overlay.classList.toggle('show', isOpen);
+    document.body.style.overflow = isOpen ? 'hidden' : '';
+}
+
+// Auto-close sidebar when clicking nav links on mobile
+document.querySelectorAll('.sidebar .nav-link-custom, .sidebar .submenu-link, .sidebar .btn-logout').forEach(el => {
+    el.addEventListener('click', function() {
+        if (window.innerWidth <= 992) {
+            const sidebar = document.querySelector('.sidebar');
+            if (sidebar.classList.contains('mobile-open')) {
+                toggleSidebar();
+            }
+        }
+    });
+});
+
+// Handle resize: if going back to desktop, reset mobile sidebar state
+window.addEventListener('resize', function() {
+    if (window.innerWidth > 992) {
+        const sidebar = document.querySelector('.sidebar');
+        const overlay = document.querySelector('.sidebar-overlay');
+        sidebar.classList.remove('mobile-open');
+        overlay.classList.remove('show');
+        document.body.style.overflow = '';
+    }
+});
+
 // Konfirmasi Logout
 function confirmLogout(e) {
     e.preventDefault();
@@ -644,6 +825,15 @@ function confirmLandingPage(e) {
         if (result.isConfirmed) {
             window.location.href = '../../index.php';
         }
+    });
+}
+
+function bukaModalBiodata() {
+    Swal.fire({
+        title: '<?= htmlspecialchars($nama_admin) ?>',
+        text: 'Administrator - SpotLight Studio',
+        icon: 'info',
+        confirmButtonColor: '#D53D66'
     });
 }
 

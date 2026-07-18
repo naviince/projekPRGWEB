@@ -103,11 +103,6 @@ foreach ($detail_barang as $b) {
     $total_qty += $b['Jumlah'];
 }
 
-// Guard tambahan: penjualan tanpa item barang sama sekali ("transaksi hantu",
-// bisa terjadi kalau header Penjualan sempat dibuat tapi item barangnya
-// belum/gagal diinput) sengaja disembunyikan dari list.php -- tolak juga
-// akses langsung ke halaman detail-nya (mis. lewat bookmark/URL lama) demi
-// konsistensi, daripada menampilkan halaman detail kosong yang membingungkan.
 if (empty($detail_barang)) {
     header("Location: list.php?status_sukses=error&message=" . urlencode("Data penjualan ini tidak memiliki item barang dan tidak dapat ditampilkan."));
     exit();
@@ -120,7 +115,7 @@ if (empty($detail_barang)) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Detail Penjualan #<?= $id_penjualan ?> – SpotLight Studio</title>
-
+    <link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -140,6 +135,8 @@ if (empty($detail_barang)) {
             --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
+        * { -webkit-tap-highlight-color: transparent; }
+
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
             background-color: var(--body-bg);
@@ -147,13 +144,14 @@ if (empty($detail_barang)) {
             overflow-x: hidden;
         }
 
-        /* SIDEBAR */
+        /* ===== SIDEBAR (SAMAIN PERSIS LIST.PHP) ===== */
         .sidebar {
             width: 260px; height: 100vh; background: var(--sidebar-bg);
             position: fixed; top: 0; left: 0;
             border-right: 1px solid rgba(255, 228, 233, 0.8);
             display: flex; flex-direction: column; justify-content: space-between;
             padding: 30px 20px; z-index: 100;
+            transition: var(--transition-3d);
         }
         .sidebar-brand {
             font-weight: 800; font-size: 1.5rem; color: var(--p-pink);
@@ -191,14 +189,33 @@ if (empty($detail_barang)) {
         }
         .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
 
-        /* MAIN CONTENT */
+        /* Sidebar Overlay */
+        .sidebar-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(30,30,36,0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            z-index: 99; opacity: 0; transition: opacity 0.35s ease;
+        }
+        .sidebar-overlay.show { display: block; opacity: 1; }
+
+        /* ===== MOBILE MENU BUTTON (SAMAIN PERSIS LIST.PHP) ===== */
+        .mobile-menu-btn {
+            display: none; width: 44px; height: 44px; border-radius: 12px;
+            background: #ffffff; border: 2px solid var(--light-pink); color: var(--p-pink);
+            align-items: center; justify-content: center; font-size: 1.4rem; cursor: pointer;
+            transition: var(--transition-3d); flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .mobile-menu-btn:hover { background: var(--s-pink); transform: scale(1.05); }
+
+        /* ===== MAIN CONTENT ===== */
         .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
         .dashboard-header {
             display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px;
+            flex-wrap: wrap; gap: 12px;
         }
         .profile-header-btn {
             width: 44px; height: 44px; border-radius: 50%; overflow: hidden;
             border: 2px solid #ffffff; cursor: pointer; transition: var(--transition-3d); background: #ffffff;
+            flex-shrink: 0;
         }
         .profile-header-btn:hover {
             transform: scale(1.08) translateY(-2px);
@@ -206,32 +223,33 @@ if (empty($detail_barang)) {
         }
         .profile-header-btn img { width: 100%; height: 100%; object-fit: cover; }
 
-        /* CARD 3D */
-        .card-3d {
-            background: #ffffff; border-radius: 22px;
+        /* ===== CARDS ===== */
+        .card-base {
+            background: #ffffff; border-radius: 20px;
             border: 1px solid rgba(255, 228, 233, 0.8);
-            box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03);
-            transition: var(--transition-3d); padding: 24px;
-            position: relative; overflow: hidden;
+            box-shadow: 0 4px 16px rgba(213, 61, 102, 0.04);
+            padding: 22px; position: relative; overflow: hidden;
         }
-        .card-3d:hover {
-            transform: translateY(-8px) scale(1.01);
-            box-shadow: 0 22px 45px rgba(213, 61, 102, 0.14); border-color: var(--p-pink);
+        .card-static {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .card-static:hover {
+            border-color: rgba(255, 228, 233, 1);
         }
 
-        /* INFO CARDS */
+        /* ===== INFO CARDS ===== */
         .info-label {
-            font-size: 0.7rem; font-weight: 800; color: #94a3b8;
-            text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;
+            font-size: 0.68rem; font-weight: 800; color: #94a3b8;
+            text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 6px;
         }
         .info-value {
-            font-size: 0.95rem; font-weight: 700; color: var(--text-dark);
+            font-size: 0.92rem; font-weight: 700; color: var(--text-dark);
         }
         .info-value-large {
-            font-size: 1.5rem; font-weight: 800; color: var(--p-pink);
+            font-size: 1.4rem; font-weight: 800; color: var(--p-pink);
         }
 
-        /* BADGE STATUS */
+        /* ===== BADGE STATUS ===== */
         .badge-status-penjualan {
             font-size: 0.72rem; font-weight: 700; padding: 6px 14px;
             border-radius: 50px; display: inline-flex; align-items: center; gap: 6px;
@@ -247,91 +265,132 @@ if (empty($detail_barang)) {
         .badge-proses .badge-dot { background: #d97706; }
         .badge-selesai .badge-dot { background: #059669; }
 
-        /* BARANG ITEM */
+        /* ===== BARANG ITEM ===== */
         .barang-item {
-            display: flex; align-items: center; gap: 16px;
-            padding: 16px 0; border-bottom: 1px solid #f1f5f9;
+            display: flex; align-items: center; gap: 14px;
+            padding: 14px 0; border-bottom: 1px solid #f1f5f9;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .barang-item:last-child { border-bottom: none; }
         .barang-img {
-            width: 60px; height: 60px; object-fit: cover;
-            border-radius: 14px; border: 2px solid var(--light-pink);
-            transition: var(--transition-3d);
+            width: 56px; height: 56px; object-fit: cover;
+            border-radius: 12px; border: 2px solid var(--light-pink);
+            transition: var(--transition-3d); flex-shrink: 0;
         }
-        .barang-item:hover .barang-img { transform: scale(1.08) rotate(2deg); }
-        .barang-info { flex: 1; }
-        .barang-nama { font-weight: 700; font-size: 0.9rem; color: var(--text-dark); }
-        .barang-harga { font-size: 0.8rem; color: #718096; font-weight: 600; }
+        .barang-item:hover .barang-img { transform: scale(1.06) rotate(1deg); }
+        .barang-info { flex: 1; min-width: 0; }
+        .barang-nama { font-weight: 700; font-size: 0.88rem; color: var(--text-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .barang-harga { font-size: 0.78rem; color: #718096; font-weight: 600; }
         .barang-qty {
             background: linear-gradient(135deg, var(--s-pink), var(--light-pink));
-            color: var(--p-pink); padding: 6px 14px; border-radius: 10px;
-            font-weight: 700; font-size: 0.8rem;
+            color: var(--p-pink); padding: 5px 12px; border-radius: 10px;
+            font-weight: 700; font-size: 0.78rem; flex-shrink: 0;
         }
-        .barang-subtotal { font-weight: 800; color: var(--p-pink); font-size: 1rem; }
+        .barang-subtotal { font-weight: 800; color: var(--p-pink); font-size: 0.95rem; flex-shrink: 0; text-align: right; min-width: 90px; }
 
-        /* TOTAL SECTION */
+        /* ===== TOTAL SECTION ===== */
         .total-section {
             background: linear-gradient(135deg, var(--s-pink), #ffffff);
-            border-radius: 20px; padding: 24px;
+            border-radius: 18px; padding: 20px;
             border: 2px solid var(--light-pink);
         }
         .total-row {
             display: flex; justify-content: space-between; align-items: center;
-            padding: 8px 0; font-size: 0.9rem;
+            padding: 7px 0; font-size: 0.88rem;
         }
         .total-row.grand {
-            border-top: 2px solid var(--light-pink); padding-top: 16px; margin-top: 8px;
+            border-top: 2px solid var(--light-pink); padding-top: 14px; margin-top: 6px;
         }
         .total-label { font-weight: 600; color: #718096; }
         .total-value { font-weight: 700; color: var(--text-dark); }
-        .total-value-grand { font-weight: 800; color: var(--p-pink); font-size: 1.5rem; }
+        .total-value-grand { font-weight: 800; color: var(--p-pink); font-size: 1.35rem; }
 
-        /* BUTTON */
+        /* ===== BUTTONS ===== */
         .btn-back {
             background: #f1f5f9; color: #475569; border: none;
-            border-radius: 14px; padding: 12px 24px; font-weight: 700;
-            transition: var(--transition-3d); text-decoration: none; display: inline-flex;
-            align-items: center; gap: 8px;
+            border-radius: 12px; padding: 11px 22px; font-weight: 700;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); text-decoration: none; display: inline-flex;
+            align-items: center; gap: 8px; font-size: 0.88rem;
         }
-        .btn-back:hover { background: #e2e8f0; transform: translateY(-2px); }
+        .btn-back:hover { background: #e2e8f0; transform: translateY(-1px); }
         .btn-action {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            color: #ffffff; border: none; border-radius: 14px;
-            padding: 12px 28px; font-weight: 800; font-size: 0.9rem;
+            color: #ffffff; border: none; border-radius: 12px;
+            padding: 11px 24px; font-weight: 800; font-size: 0.88rem;
             transition: var(--transition-3d); display: inline-flex;
             align-items: center; gap: 8px; cursor: pointer;
         }
         .btn-action:hover {
-            transform: translateY(-4px) scale(1.03);
-            box-shadow: 0 12px 25px rgba(213, 61, 102, 0.35);
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 10px 22px rgba(213, 61, 102, 0.32);
         }
         .btn-action-success {
             background: linear-gradient(135deg, #059669, #047857);
         }
         .btn-action-success:hover {
-            box-shadow: 0 12px 25px rgba(5, 150, 105, 0.35);
+            box-shadow: 0 10px 22px rgba(5, 150, 105, 0.32);
         }
         .btn-action-disabled {
             background: #e2e8f0; color: #94a3b8; cursor: not-allowed;
         }
         .btn-action-disabled:hover { transform: none; box-shadow: none; }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
+        /* ===== ANIMATIONS ===== */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(16px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .fade-in-up { animation: fadeIn 0.5s ease-out; }
+        .fade-in-up { animation: fadeInUp 0.5s ease-out both; }
 
+        /* ===== RESPONSIVE (SAMAIN PERSIS LIST.PHP) ===== */
         @media (max-width: 992px) {
-            .main-content { margin-left: 0; padding: 20px; }
-            .sidebar { transform: translateX(-100%); }
+            .mobile-menu-btn { display: inline-flex; }
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                box-shadow: none;
+            }
+            .sidebar.mobile-open { transform: translateX(0); box-shadow: 10px 0 50px rgba(0,0,0,0.15); }
+            .main-content { margin-left: 0; padding: 24px; }
+            .dashboard-header { flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
+            .dashboard-header h3 { font-size: 1.35rem; }
+        }
+
+        @media (max-width: 768px) {
+            .main-content { padding: 18px; }
+            .dashboard-header { margin-bottom: 22px; }
+            .dashboard-header h3 { font-size: 1.15rem; }
+            .dashboard-header p { font-size: 0.8rem; }
+        }
+
+        @media (max-width: 576px) {
+            .main-content { padding: 14px; }
+            .dashboard-header h3 { font-size: 1.05rem; }
+            
+            .barang-item { flex-wrap: wrap; gap: 8px; }
+            .barang-info { width: calc(100% - 60px); }
+            .barang-qty { order: 3; margin-left: 60px; }
+            .barang-subtotal { order: 4; margin-left: auto; }
+            
+            .card-base { padding: 14px; }
+            
+            .btn-back { width: 100%; justify-content: center; margin-bottom: 8px; }
+            .d-flex.gap-3 { flex-direction: column; width: 100%; }
+            .btn-action { width: 100%; justify-content: center; }
+        }
+
+        @media (max-width: 375px) {
+            .dashboard-header h3 { font-size: 0.95rem; }
         }
     </style>
 </head>
 <body>
 
+    <!-- Sidebar Overlay (Mobile) -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
     <!-- SIDEBAR -->
-    <div class="sidebar">
+    <div class="sidebar" id="sidebar">
         <div class="sidebar-menu-wrapper">
             <a href="../../index.php" class="sidebar-brand">
                 SpotLight.<br><span>Panel Administrator</span>
@@ -366,11 +425,10 @@ if (empty($detail_barang)) {
                     </a>
                     <div class="submenu show" id="submenuTransaksi">
                         <ul class="list-unstyled">
-                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-calendar-check-fill me-2"></i>Kelola Booking</a></li>
-                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran</a></li>
-                            <li><a href="../../Transaksi/Pembatalan/list.php" class="submenu-link"><i class="bi bi-calendar-x-fill me-2"></i>Pembatalan Booking</a></li>
-                            <li><a href="../../Transaksi/Sesi Foto/list.php" class="submenu-link"><i class="bi bi-camera-reels-fill me-2"></i>Upload Hasil Foto</a></li>
-                            <li><a href="list.php" class="submenu-link active"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-calendar-check-fill me-2"></i>Booking Customer</a></li>
+                            <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                            <li><a href="list.php" class="submenu-link active"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                         </ul>
                     </div>
                 </li>
@@ -392,10 +450,15 @@ if (empty($detail_barang)) {
     <div class="main-content">
 
         <!-- HEADER -->
-        <div class="dashboard-header" data-aos="fade-up">
-            <div>
-                <h3 class="fw-bold mb-1">Detail Penjualan Barang Cetak</h3>
-                <p class="text-muted small mb-0">No. Order #<?= $penjualan['ID_Order'] ?> | Penjualan #<?= $id_penjualan ?></p>
+        <div class="dashboard-header fade-in-up">
+            <div class="d-flex align-items-center gap-3">
+                <button class="mobile-menu-btn" onclick="toggleSidebar()" title="Menu" aria-label="Toggle Menu">
+                    <i class="bi bi-list"></i>
+                </button>
+                <div>
+                    <h3 class="fw-bold mb-1">Detail Penjualan Barang Cetak</h3>
+                    <p class="text-muted small mb-0">No. Order #<?= $penjualan['ID_Order'] ?> | Penjualan #<?= $id_penjualan ?></p>
+                </div>
             </div>
             <div class="d-flex align-items-center gap-3">
                 <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
@@ -408,10 +471,9 @@ if (empty($detail_barang)) {
         </div>
 
         <!-- INFO CARDS ROW -->
-        <div class="row g-4 mb-4">
-            <!-- Status Penjualan -->
-            <div class="col-lg-3 col-md-6 fade-in-up">
-                <div class="card-3d text-center">
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-lg-3 fade-in-up">
+                <div class="card-base card-static text-center">
                     <div class="info-label">Status Penjualan</div>
                     <span class="badge-status-penjualan <?= $badge_class ?> mt-2">
                         <span class="badge-dot"></span>
@@ -419,23 +481,20 @@ if (empty($detail_barang)) {
                     </span>
                 </div>
             </div>
-            <!-- Tanggal Penjualan -->
-            <div class="col-lg-3 col-md-6 fade-in-up" style="animation-delay: 0.1s;">
-                <div class="card-3d text-center">
+            <div class="col-6 col-lg-3 fade-in-up" style="animation-delay: 0.08s;">
+                <div class="card-base card-static text-center">
                     <div class="info-label">Tanggal Penjualan</div>
                     <div class="info-value mt-2"><?= $tanggal_penjualan ?></div>
                 </div>
             </div>
-            <!-- Total Barang -->
-            <div class="col-lg-3 col-md-6 fade-in-up" style="animation-delay: 0.2s;">
-                <div class="card-3d text-center">
+            <div class="col-6 col-lg-3 fade-in-up" style="animation-delay: 0.16s;">
+                <div class="card-base card-static text-center">
                     <div class="info-label">Total Barang</div>
-                    <div class="info-value-large mt-2"><?= $total_qty ?> <small style="font-size: 0.7rem; color: #94a3b8;">qty</small></div>
+                    <div class="info-value-large mt-2"><?= $total_qty ?> <small style="font-size: 0.65rem; color: #94a3b8;">qty</small></div>
                 </div>
             </div>
-            <!-- Total Harga -->
-            <div class="col-lg-3 col-md-6 fade-in-up" style="animation-delay: 0.3s;">
-                <div class="card-3d text-center">
+            <div class="col-6 col-lg-3 fade-in-up" style="animation-delay: 0.24s;">
+                <div class="card-base card-static text-center">
                     <div class="info-label">Total Harga</div>
                     <div class="info-value-large mt-2">Rp <?= number_format($penjualan['Total_Penjualan'] ?? 0, 0, ',', '.') ?></div>
                 </div>
@@ -443,18 +502,18 @@ if (empty($detail_barang)) {
         </div>
 
         <!-- ROW 2: CUSTOMER INFO & BARANG LIST -->
-        <div class="row g-4">
+        <div class="row g-3">
             <!-- Customer Info -->
             <div class="col-lg-4 fade-in-up">
-                <div class="card-3d" style="height: 100%;">
-                    <h5 class="fw-bold mb-4"><i class="bi bi-person-fill text-danger me-2"></i>Informasi Pelanggan</h5>
+                <div class="card-base card-static" style="height: 100%;">
+                    <h5 class="fw-bold mb-3" style="font-size: 1rem;"><i class="bi bi-person-fill text-danger me-2"></i>Informasi Pelanggan</h5>
                     <div class="mb-3">
                         <div class="info-label">Nama Pelanggan</div>
                         <div class="info-value"><?= htmlspecialchars($penjualan['Nama_Pelanggan'] ?? 'Unknown') ?></div>
                     </div>
                     <div class="mb-3">
                         <div class="info-label">Email</div>
-                        <div class="info-value"><?= htmlspecialchars($penjualan['Email_Pelanggan'] ?? '-') ?></div>
+                        <div class="info-value" style="word-break: break-all;"><?= htmlspecialchars($penjualan['Email_Pelanggan'] ?? '-') ?></div>
                     </div>
                     <div class="mb-3">
                         <div class="info-label">No. Telepon</div>
@@ -462,7 +521,7 @@ if (empty($detail_barang)) {
                     </div>
                     <div class="mb-3">
                         <div class="info-label">Alamat</div>
-                        <div class="info-value"><?= htmlspecialchars($penjualan['Alamat'] ?? '-') ?></div>
+                        <div class="info-value" style="line-height: 1.5;"><?= htmlspecialchars($penjualan['Alamat'] ?? '-') ?></div>
                     </div>
                     <div class="mb-3">
                         <div class="info-label">No. Order</div>
@@ -484,18 +543,18 @@ if (empty($detail_barang)) {
 
             <!-- Barang List -->
             <div class="col-lg-8 fade-in-up" style="animation-delay: 0.1s;">
-                <div class="card-3d" style="height: 100%;">
-                    <h5 class="fw-bold mb-4"><i class="bi bi-box-seam-fill text-danger me-2"></i>Daftar Barang Cetak</h5>
+                <div class="card-base card-static" style="height: 100%;">
+                    <h5 class="fw-bold mb-3" style="font-size: 1rem;"><i class="bi bi-box-seam-fill text-danger me-2"></i>Daftar Barang Cetak</h5>
                     <?php foreach ($detail_barang as $b): 
                         $path_img = "../../assets/img/barang/" . ($b['Foto_Barang'] ?? '');
                         $img_src = (!empty($b['Foto_Barang']) && file_exists($path_img)) ? $path_img : $default_svg_avatar;
                     ?>
                     <div class="barang-item">
-                        <img src="<?= $img_src ?>" class="barang-img" alt="<?= htmlspecialchars($b['Nama_Barang']) ?>">
+                        <img src="<?= $img_src ?>" class="barang-img" alt="<?= htmlspecialchars($b['Nama_Barang']) ?>" loading="lazy">
                         <div class="barang-info">
                             <div class="barang-nama"><?= htmlspecialchars($b['Nama_Barang']) ?></div>
                             <div class="barang-harga">Rp <?= number_format($b['Harga_Satuan'] ?? 0, 0, ',', '.') ?> / unit</div>
-                            <div class="barang-harga" style="font-size: 0.75rem; color: #94a3b8;">Stok tersisa: <?= $b['Stok_Barang'] ?? 0 ?></div>
+                            <div class="barang-harga" style="font-size: 0.72rem; color: #94a3b8;">Stok tersisa: <?= $b['Stok_Barang'] ?? 0 ?></div>
                         </div>
                         <div class="barang-qty">x<?= $b['Jumlah'] ?></div>
                         <div class="barang-subtotal">Rp <?= number_format($b['Subtotal'] ?? 0, 0, ',', '.') ?></div>
@@ -503,13 +562,13 @@ if (empty($detail_barang)) {
                     <?php endforeach; ?>
 
                     <!-- Total Section -->
-                    <div class="total-section mt-4">
+                    <div class="total-section mt-3">
                         <div class="total-row">
                             <span class="total-label">Total Barang</span>
                             <span class="total-value"><?= $total_qty ?> item</span>
                         </div>
                         <div class="total-row grand">
-                            <span class="total-label" style="font-size: 1.1rem;">Total Penjualan</span>
+                            <span class="total-label" style="font-size: 1rem;">Total Penjualan</span>
                             <span class="total-value-grand">Rp <?= number_format($penjualan['Total_Penjualan'] ?? 0, 0, ',', '.') ?></span>
                         </div>
                     </div>
@@ -518,9 +577,9 @@ if (empty($detail_barang)) {
         </div>
 
         <!-- ACTION BUTTONS -->
-        <div class="row g-4 mt-2">
+        <div class="row g-3 mt-1">
             <div class="col-12 fade-in-up">
-                <div class="card-3d d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div class="card-base card-static d-flex justify-content-between align-items-center flex-wrap gap-3">
                     <a href="list.php" class="btn-back">
                         <i class="bi bi-arrow-left"></i> Kembali ke List
                     </a>
@@ -544,6 +603,32 @@ if (empty($detail_barang)) {
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
     <script>
+        // ===== SIDEBAR TOGGLE (SAMAIN PERSIS LIST.PHP) =====
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.toggle('mobile-open');
+            overlay.classList.toggle('show');
+            document.body.style.overflow = sidebar.classList.contains('mobile-open') ? 'hidden' : '';
+        }
+        document.querySelectorAll('.sidebar .nav-link-custom, .sidebar .submenu-link, .sidebar .btn-logout').forEach(el => {
+            el.addEventListener('click', function() {
+                if (window.innerWidth <= 992) {
+                    const sidebar = document.getElementById('sidebar');
+                    if (sidebar.classList.contains('mobile-open')) toggleSidebar();
+                }
+            });
+        });
+        window.addEventListener('resize', function() {
+            if (window.innerWidth > 992) {
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('sidebarOverlay');
+                sidebar.classList.remove('mobile-open');
+                overlay.classList.remove('show');
+                document.body.style.overflow = '';
+            }
+        });
+
         // Toggle Submenu
         document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
             button.addEventListener('click', function(e) {

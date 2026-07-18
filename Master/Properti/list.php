@@ -176,7 +176,7 @@ $properti_list = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Master Properti – SpotLight Studio</title>
-
+    <link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -283,18 +283,31 @@ $properti_list = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
         .stats-scroll-wrapper::-webkit-scrollbar-thumb { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); border-radius: 10px; }
         .stats-row { display: flex; gap: 16px; min-width: max-content; }
         .stat-card-item { min-width: 220px; max-width: 280px; flex: 0 0 auto; }
+        /* card-3d = struktur visual dasar (dipakai statistik & info non-klik).
+           card-3d-clickable = modifier opt-in untuk elemen yang benar-benar bisa diklik,
+           supaya efek hover-lift hanya muncul saat memang ada aksi. */
         .card-3d {
             background: #ffffff; border-radius: 22px;
             border: 1px solid rgba(255, 228, 233, 0.8);
             box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03);
-            transition: var(--transition-3d); padding: 20px;
-            height: 100%; position: relative; overflow: hidden;
+            padding: 20px; height: 100%; position: relative; overflow: hidden;
         }
-        .card-3d:hover {
-            transform: translateY(-8px) scale(1.01);
-            box-shadow: 0 22px 45px rgba(213, 61, 102, 0.14);
+        .card-3d-clickable {
+            transition: var(--transition-3d);
+            cursor: pointer;
+        }
+        .card-3d-clickable::before {
+            content: '';
+            position: absolute; top: 0; left: 0; width: 100%; height: 4px;
+            background: linear-gradient(90deg, var(--p-pink), var(--accent-pink));
+            opacity: 0; transition: opacity 0.3s ease;
+        }
+        .card-3d-clickable:hover {
+            transform: translateY(-6px) scale(1.01);
+            box-shadow: 0 18px 40px rgba(213, 61, 102, 0.12);
             border-color: var(--p-pink);
         }
+        .card-3d-clickable:hover::before { opacity: 1; }
         .stat-card { display: flex; align-items: center; gap: 14px; }
         .stat-icon {
             width: 48px; height: 48px; border-radius: 14px;
@@ -324,14 +337,28 @@ $properti_list = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
             color: #1e293b; transition: var(--transition-3d); background: #ffffff;
         }
         .search-input-main:focus { outline: none; border-color: var(--p-pink); box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); }
+        /* Filter: gaya outline ringan (sinkron dengan tombol "Verifikasi Semua" di dashboard),
+           supaya tidak terlihat sama seperti tombol solid "Tambah Properti". */
         .btn-filter-modal {
-            background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
-            color: #ffffff; border: none; border-radius: 14px;
-            padding: 12px 24px; font-weight: 700; font-size: 0.9rem;
-            display: inline-flex; align-items: center; cursor: pointer;
-            transition: var(--transition-3d); white-space: nowrap;
+            background: var(--s-pink);
+            color: var(--p-pink);
+            border: 1.5px solid var(--light-pink);
+            border-radius: 14px;
+            padding: 12px 24px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+            transition: var(--transition-3d);
+            white-space: nowrap;
         }
-        .btn-filter-modal:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(213, 61, 102, 0.3); }
+        .btn-filter-modal:hover {
+            background: var(--light-pink);
+            border-color: var(--p-pink);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(213, 61, 102, 0.2);
+        }
         .btn-search-icon {
             background: #ffffff; border: 2px solid #e2e8f0; border-radius: 14px;
             padding: 12px 16px; color: #94a3b8; cursor: pointer; transition: var(--transition-3d);
@@ -381,7 +408,7 @@ $properti_list = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
         .data-table tbody td:last-child { padding-right: 24px; text-align: center; }
         .data-table tbody tr:nth-child(even) { background-color: #FFF8F0; }
         .data-table tbody tr:nth-child(odd) { background-color: #ffffff; }
-        .data-table tbody tr:hover { background-color: #FFEDD5 !important; transform: scale(1.002); }
+        .data-table tbody tr:hover { background-color: #fff8f9 !important; transform: translateX(2px); }
 
         .properti-preview {
             width: 70px; height: 70px; object-fit: cover;
@@ -463,12 +490,89 @@ $properti_list = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
             .main-content { margin-left: 0; padding: 20px; }
             .sidebar { transform: translateX(-100%); }
         }
+
+/* =====================================================
+   RESPONSIVE ENHANCEMENTS
+   ===================================================== */
+.mobile-menu-btn {
+    display: none; width: 44px; height: 44px; border-radius: 12px;
+    background: #ffffff; border: 2px solid var(--light-pink); color: var(--p-pink);
+    align-items: center; justify-content: center; font-size: 1.4rem; cursor: pointer;
+    transition: var(--transition-3d); flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.mobile-menu-btn:hover { background: var(--s-pink); transform: scale(1.05); }
+
+.sidebar-overlay {
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(30, 30, 36, 0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    z-index: 99; opacity: 0; transition: opacity 0.35s ease;
+}
+.sidebar-overlay.show { display: block; opacity: 1; }
+
+@media (max-width: 1199px) {
+    .stats-row { gap: 12px; }
+    .stat-card-item { min-width: 200px; }
+}
+
+@media (max-width: 992px) {
+    .mobile-menu-btn { display: inline-flex; }
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        box-shadow: none;
+    }
+    .sidebar.mobile-open { transform: translateX(0); box-shadow: 10px 0 50px rgba(0,0,0,0.15); }
+    .main-content { margin-left: 0; padding: 24px; }
+    .dashboard-header { flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
+    .dashboard-header h3 { font-size: 1.35rem; }
+}
+
+@media (max-width: 768px) {
+    .main-content { padding: 18px; }
+    .dashboard-header { margin-bottom: 22px; }
+    .dashboard-header h3 { font-size: 1.15rem; }
+    .dashboard-header p { font-size: 0.8rem; }
+
+    .search-filter-bar { flex-direction: column; align-items: stretch; gap: 10px; }
+    .search-form-flex { min-width: 100%; flex-wrap: wrap; }
+    .search-input-wrapper { width: 100%; }
+    .btn-reg-header { width: 100%; justify-content: center; }
+    .pagination-wrapper { flex-direction: column; gap: 12px; padding: 16px; }
+    .pagination-nav { justify-content: center; flex-wrap: wrap; }
+    .stat-card-item { min-width: 170px; }
+}
+
+@media (max-width: 576px) {
+    .main-content { padding: 14px; }
+    .dashboard-header h3 { font-size: 1.05rem; }
+
+    .data-table tbody td { padding: 12px 14px; }
+    .data-table tbody td:first-child { padding-left: 16px; border-radius: 10px 0 0 10px; }
+    .data-table tbody td:last-child { padding-right: 16px; border-radius: 0 10px 10px 0; }
+    .properti-preview { width: 48px; height: 48px; border-radius: 10px; }
+    .td-nama { font-size: 0.85rem; }
+    .td-deskripsi { font-size: 0.75rem; }
+    .badge-status { font-size: 0.65rem; padding: 5px 10px; }
+    .btn-action-circle { width: 32px; height: 32px; font-size: 0.8rem; margin: 0 2px; }
+    .page-link-pag { min-width: 36px; height: 36px; padding: 0 10px; font-size: 0.85rem; }
+    .stat-val { font-size: 1.25rem; }
+    .stat-icon { width: 40px; height: 40px; font-size: 1.2rem; }
+    .modal-dialog { margin: 12px; }
+    .modal-content { border-radius: 20px !important; }
+}
+
+@media (max-width: 375px) {
+    .dashboard-header h3 { font-size: 0.95rem; }
+}
     </style>
 </head>
 <body>
 
+    <!-- Sidebar Overlay (Mobile) -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
     <!-- SIDEBAR -->
-    <div class="sidebar">
+    <div class="sidebar" id="sidebar">
         <div class="sidebar-menu-wrapper">
             <a href="../../index.php" class="sidebar-brand">
                 SpotLight.<br><span>Panel Administrator</span>
@@ -528,10 +632,15 @@ $properti_list = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
     <div class="main-content">
 
         <!-- HEADER -->
-        <div class="dashboard-header" data-aos="fade-up">
-            <div>
-                <h3 class="fw-bold mb-1">Master Properti</h3>
-                <p class="text-muted small mb-0">Kelola data properti pendukung ruangan studio untuk sesi foto pelanggan.</p>
+        <div class="dashboard-header fade-in-up">
+            <div class="d-flex align-items-center gap-3">
+                <button class="mobile-menu-btn" onclick="toggleSidebar()" title="Menu" aria-label="Toggle Menu">
+                    <i class="bi bi-list"></i>
+                </button>
+                <div>
+                    <h3 class="fw-bold mb-1">Master Properti</h3>
+                    <p class="text-muted small mb-0">Kelola data properti pendukung ruangan studio untuk sesi foto pelanggan.</p>
+                </div>
             </div>
             <div class="d-flex align-items-center gap-3">
                 <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
@@ -833,6 +942,32 @@ $properti_list = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
     <script>
+        // ===== SIDEBAR TOGGLE (MOBILE) =====
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.toggle('mobile-open');
+            overlay.classList.toggle('show');
+            document.body.style.overflow = sidebar.classList.contains('mobile-open') ? 'hidden' : '';
+        }
+        document.querySelectorAll('.sidebar .nav-link-custom, .sidebar .submenu-link, .sidebar .btn-logout').forEach(el => {
+            el.addEventListener('click', function() {
+                if (window.innerWidth <= 992) {
+                    const sidebar = document.getElementById('sidebar');
+                    if (sidebar.classList.contains('mobile-open')) toggleSidebar();
+                }
+            });
+        });
+        window.addEventListener('resize', function() {
+            if (window.innerWidth > 992) {
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('sidebarOverlay');
+                sidebar.classList.remove('mobile-open');
+                overlay.classList.remove('show');
+                document.body.style.overflow = '';
+            }
+        });
+
         // Toggle Submenu
         document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
             button.addEventListener('click', function(e) {

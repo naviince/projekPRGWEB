@@ -60,7 +60,6 @@ $foto_admin = $admin_data['Foto_Profil'] ?? 'default.jpg';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
-// *Penyesuaian: Menggunakan SVG berlatar pink lembut dan ikon gambar beraksen merah muda tajam sebagai fallback produk cetak yang tidak pecah
 $default_svg_item = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='100%25' height='100%25' fill='%23FFF0F3'/%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z' fill='%23D53D66' transform='scale(0.8) translate(3, 3)'/%3E%3C/svg%3e";
 
 $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
@@ -104,16 +103,11 @@ if (isset($_POST['simpan'])) {
     $status = isset($_POST['status']) ? (int)$_POST['status'] : 1;
     $foto_lama = $_POST['foto_lama'] ?? $data_lama['Foto_Barang'];
 
-    // --- LAYER 1: Validasi Nama Barang (Wajib) ---
     if (empty($nama_barang)) {
         $errors[] = 'Nama barang wajib diisi!';
-    }
-    // --- LAYER 2: Validasi Max Length (100 karakter) ---
-    elseif (strlen($nama_barang) > 100) {
+    } elseif (strlen($nama_barang) > 100) {
         $errors[] = 'Nama barang maksimal 100 karakter!';
-    }
-    // --- LAYER 3: Cek Duplikat Nama (Unik, EXCLUDE ID SENDIRI) ---
-    else {
+    } else {
         $count = safe_sqlsrv_count($conn, 
             "SELECT COUNT(*) as total FROM Barang_Cetak WHERE Nama_Barang = ? AND ID_Barang <> ? AND Is_Deleted = 0", 
             [$nama_barang, $id_barang]
@@ -123,32 +117,24 @@ if (isset($_POST['simpan'])) {
         }
     }
 
-    // --- LAYER 4: Validasi Harga (Wajib) ---
     if ($harga_barang === '' || $harga_barang === null) {
         $errors[] = 'Harga barang wajib diisi!';
-    }
-    // --- LAYER 5: Validasi Harga >= 0 ---
-    elseif (!is_numeric($harga_barang) || (float)$harga_barang < 0) {
+    } elseif (!is_numeric($harga_barang) || (float)$harga_barang < 0) {
         $errors[] = 'Harga barang tidak boleh negatif!';
     }
 
-    // --- LAYER 6: Validasi Stok (Wajib) ---
     if ($stok_barang === '' || $stok_barang === null) {
         $errors[] = 'Stok barang wajib diisi!';
-    }
-    // --- LAYER 7: Validasi Stok >= 0 ---
-    elseif (!is_numeric($stok_barang) || (int)$stok_barang < 0) {
+    } elseif (!is_numeric($stok_barang) || (int)$stok_barang < 0) {
         $errors[] = 'Stok barang tidak boleh negatif!';
     }
 
-    // --- LAYER 8: Validasi Stok Minimum <= Stok Saat Ini ---
     if (!is_numeric($stok_minimum) || (int)$stok_minimum < 0) {
         $errors[] = 'Stok minimum tidak boleh negatif!';
     } elseif ((int)$stok_minimum > (int)$stok_barang) {
         $errors[] = 'Stok minimum ('.$stok_minimum.') tidak boleh lebih besar dari stok saat ini ('.$stok_barang.')!';
     }
 
-    // --- LAYER 9: Validasi File Upload (Opsional) ---
     $new_filename = $foto_lama;
     $upload_error = '';
     $file_changed = false;
@@ -192,7 +178,6 @@ if (isset($_POST['simpan'])) {
                 $new_filename = $foto_lama;
                 $file_changed = false;
             } else {
-                // Siapkan file lama untuk dihapus kalau update berhasil
                 if ($foto_lama != 'default_barang.jpg' && file_exists($upload_dir . $foto_lama)) {
                     $old_file_to_delete = $upload_dir . $foto_lama;
                 }
@@ -200,12 +185,10 @@ if (isset($_POST['simpan'])) {
         }
     }
 
-    // --- LAYER 10: Update Database (Transaction & Stored Procedure) ---
     if (empty($errors)) {
         sqlsrv_begin_transaction($conn);
 
         try {
-            // Pemanggilan Stored Procedure sp_UpdateBarangCetak
             $sql_update = "EXEC sp_UpdateBarangCetak ?, ?, ?, ?, ?, ?, ?, ?, ?";
 
             $params = [
@@ -230,12 +213,10 @@ if (isset($_POST['simpan'])) {
             sqlsrv_commit($conn);
             $success = true;
 
-            // Hapus file lama kalau ada dan berbeda
             if (!empty($old_file_to_delete) && file_exists($old_file_to_delete)) {
                 unlink($old_file_to_delete);
             }
 
-            // Update data_lama untuk tampilan
             $data_lama['Nama_Barang'] = $nama_barang;
             $data_lama['Harga_Barang'] = $harga_barang;
             $data_lama['Stok_Barang'] = $stok_barang;
@@ -248,7 +229,6 @@ if (isset($_POST['simpan'])) {
             sqlsrv_rollback($conn);
             $errors[] = 'Gagal menyimpan perubahan: '.$e->getMessage();
 
-            // Hapus file baru yang sudah diupload kalau gagal
             if ($file_changed && isset($target_path) && file_exists($target_path)) {
                 unlink($target_path);
             }
@@ -256,9 +236,6 @@ if (isset($_POST['simpan'])) {
     }
 }
 
-// =====================================================
-// PATH FOTO BARANG (Penyelarasan menggunakan SVG fallback jika gambar pecah/tidak ditemukan)
-// =====================================================
 $upload_dir = '../../uploads/barang/';
 $foto_barang_src = $default_svg_item;
 if (!empty($data_lama['Foto_Barang'])) {
@@ -274,6 +251,7 @@ if (!empty($data_lama['Foto_Barang'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Edit Barang Cetak – SpotLight Studio</title>
+    <link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -290,7 +268,14 @@ if (!empty($data_lama['Foto_Barang'])) {
             --body-bg: #f8fafc;
             --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--body-bg); color: var(--text-dark); overflow-x: hidden; }
+        * { box-sizing: border-box; }
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background-color: var(--body-bg); 
+            color: var(--text-dark); 
+            overflow-x: hidden; 
+            margin: 0;
+        }
 
         /* SIDEBAR */
         .sidebar {
@@ -298,54 +283,145 @@ if (!empty($data_lama['Foto_Barang'])) {
             position: fixed; top: 0; left: 0;
             border-right: 1px solid rgba(255, 228, 233, 0.8);
             display: flex; flex-direction: column; justify-content: space-between;
-            padding: 30px 20px; z-index: 100;
+            padding: 30px 20px; z-index: 1000;
+            transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        .sidebar-brand { font-weight: 800; font-size: 1.5rem; color: var(--p-pink); text-decoration: none; letter-spacing: -1px; margin-bottom: 40px; display: block; }
+        .sidebar-brand { 
+            font-weight: 800; font-size: 1.5rem; color: var(--p-pink); 
+            text-decoration: none; letter-spacing: -1px; margin-bottom: 40px; display: block; 
+        }
         .sidebar-brand span { color: var(--text-dark); font-size: 0.85rem; font-weight: 600; }
         .sidebar-menu-wrapper { flex-grow: 1; overflow-y: auto; margin-bottom: 20px; scrollbar-width: none; }
         .sidebar-menu-wrapper::-webkit-scrollbar { display: none; }
         .nav-menu { list-style: none; padding: 0; margin: 0; }
         .nav-item { margin-bottom: 8px; }
-        .nav-link-custom { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; color: #4a5568; font-weight: 700; text-decoration: none; border-radius: 12px; font-size: 0.9rem; transition: var(--transition-3d); }
-        .nav-link-custom:hover, .nav-link-custom.active { background-color: var(--light-pink); color: var(--p-pink); transform: translateX(4px); }
+        .nav-link-custom { 
+            display: flex; align-items: center; justify-content: space-between; 
+            padding: 12px 18px; color: #4a5568; font-weight: 700; 
+            text-decoration: none; border-radius: 12px; font-size: 0.9rem; 
+            transition: var(--transition-3d); 
+        }
+        .nav-link-custom:hover, .nav-link-custom.active { 
+            background-color: var(--light-pink); color: var(--p-pink); transform: translateX(4px); 
+        }
         .submenu { list-style: none; padding-left: 20px; margin-top: 5px; display: none; }
         .submenu.show { display: block !important; }
-        .submenu-link { display: flex; align-items: center; padding: 8px 18px; color: #718096; font-weight: 600; font-size: 0.85rem; text-decoration: none; border-radius: 10px; transition: 0.3s; }
-        .submenu-link:hover, .submenu-link.active { color: var(--p-pink); background-color: rgba(213,61,102,0.03); padding-left: 22px; }
-        .btn-logout { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; width: 100%; padding: 12px; border-radius: 12px; font-weight: 800; font-size: 0.85rem; transition: var(--transition-3d); }
+        .submenu-link { 
+            display: flex; align-items: center; padding: 8px 18px; color: #718096; 
+            font-weight: 600; font-size: 0.85rem; text-decoration: none; 
+            border-radius: 10px; transition: 0.3s; 
+        }
+        .submenu-link:hover, .submenu-link.active { 
+            color: var(--p-pink); background-color: rgba(213,61,102,0.03); padding-left: 22px; 
+        }
+        .btn-logout { 
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); 
+            color: #ffffff; border: none; width: 100%; padding: 12px; 
+            border-radius: 12px; font-weight: 800; font-size: 0.85rem; 
+            transition: var(--transition-3d); 
+        }
         .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
 
+        /* MOBILE HEADER / HAMBURGER */
+        .mobile-header {
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: #ffffff;
+            border-bottom: 1px solid rgba(255, 228, 233, 0.8);
+            position: sticky;
+            top: 0;
+            z-index: 999;
+        }
+        .mobile-brand {
+            font-weight: 800; font-size: 1.2rem; color: var(--p-pink);
+            text-decoration: none; letter-spacing: -0.5px;
+        }
+        .hamburger-btn {
+            width: 40px; height: 40px; border-radius: 10px;
+            border: none; background: var(--s-pink); color: var(--p-pink);
+            font-size: 1.4rem; display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: 0.2s;
+        }
+        .hamburger-btn:hover { background: var(--light-pink); }
+        .sidebar-overlay {
+            display: none;
+            position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+            z-index: 999; backdrop-filter: blur(2px);
+        }
+        .sidebar-overlay.show { display: block; }
+
         .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
-        .dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; }
-        .profile-header-btn { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; border: 2px solid #fff; cursor: pointer; transition: var(--transition-3d); background: #fff; }
-        .profile-header-btn:hover { transform: scale(1.08) translateY(-2px); box-shadow: 0 8px 20px rgba(213, 61, 102, 0.15); border-color: var(--p-pink); }
+        
+        .dashboard-header { 
+            display: flex; justify-content: space-between; align-items: center; 
+            margin-bottom: 35px; flex-wrap: wrap; gap: 12px;
+        }
+        .profile-header-btn { 
+            width: 44px; height: 44px; border-radius: 50%; overflow: hidden; 
+            border: 2px solid #fff; cursor: pointer; transition: var(--transition-3d); background: #fff; 
+            flex-shrink: 0;
+        }
+        .profile-header-btn:hover { 
+            transform: scale(1.08) translateY(-2px); 
+            box-shadow: 0 8px 20px rgba(213, 61, 102, 0.15); border-color: var(--p-pink); 
+        }
         .profile-header-btn img { width: 100%; height: 100%; object-fit: cover; }
 
-        .breadcrumb-custom { display: flex; align-items: center; gap: 8px; margin-bottom: 25px; font-size: 0.85rem; font-weight: 600; }
+        .breadcrumb-custom { 
+            display: flex; align-items: center; gap: 8px; 
+            margin-bottom: 25px; font-size: 0.85rem; font-weight: 600; 
+            flex-wrap: wrap;
+        }
         .breadcrumb-custom a { color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
         .breadcrumb-custom a:hover { color: var(--p-pink); }
         .breadcrumb-custom .active { color: var(--p-pink); }
         .breadcrumb-custom i { color: #cbd5e1; font-size: 0.7rem; }
 
         /* FORM CARD */
-        .form-card { background: #ffffff; border-radius: 22px; border: 1px solid rgba(255, 228, 233, 0.8); box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03); overflow: hidden; }
-        .form-card-header { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); padding: 30px 40px; color: #ffffff; }
+        .form-card { 
+            background: #ffffff; border-radius: 22px; 
+            border: 1px solid rgba(255, 228, 233, 0.8); 
+            box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03); overflow: hidden; 
+        }
+        .form-card-header { 
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); 
+            padding: 30px 40px; color: #ffffff; 
+        }
         .form-card-header h4 { font-weight: 800; font-size: 1.4rem; margin-bottom: 4px; }
         .form-card-header p { opacity: 0.85; font-size: 0.85rem; margin: 0; }
         .form-card-body { padding: 40px; }
 
-        .form-label { font-weight: 700; font-size: 0.75rem; color: var(--text-dark); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+        .form-label { 
+            font-weight: 700; font-size: 0.75rem; color: var(--text-dark); 
+            text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; 
+        }
         .form-label .required { color: #dc2626; margin-left: 2px; }
-        .form-control-custom { width: 100%; border: 2px solid #e2e8f0; border-radius: 14px; padding: 14px 18px; font-weight: 600; font-size: 0.9rem; color: #1e293b; transition: var(--transition-3d); background: #ffffff; }
-        .form-control-custom:focus { outline: none; border-color: var(--p-pink); box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); }
+        .form-control-custom { 
+            width: 100%; border: 2px solid #e2e8f0; border-radius: 14px; 
+            padding: 14px 18px; font-weight: 600; font-size: 0.9rem; 
+            color: #1e293b; transition: var(--transition-3d); background: #ffffff; 
+        }
+        .form-control-custom:focus { 
+            outline: none; border-color: var(--p-pink); 
+            box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); 
+        }
         .form-control-custom::placeholder { color: #a0aec0; font-weight: 500; }
         textarea.form-control-custom { min-height: 120px; resize: vertical; }
 
-        .input-hint { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+        .input-hint { 
+            font-size: 0.75rem; color: var(--text-muted); font-weight: 600; 
+            margin-top: 6px; display: flex; align-items: center; gap: 4px; 
+        }
 
         /* STATUS TOGGLE */
         .status-toggle-group { display: flex; gap: 12px; margin-top: 8px; }
-        .status-option { flex: 1; padding: 14px 16px; border-radius: 14px; border: 2px solid #e2e8f0; cursor: pointer; text-align: center; transition: var(--transition-3d); background: #ffffff; }
+        .status-option { 
+            flex: 1; padding: 14px 16px; border-radius: 14px; 
+            border: 2px solid #e2e8f0; cursor: pointer; text-align: center; 
+            transition: var(--transition-3d); background: #ffffff; 
+        }
         .status-option:hover { border-color: var(--p-pink); }
         .status-option.active { border-color: var(--p-pink); background: var(--s-pink); }
         .status-option input { display: none; }
@@ -354,30 +430,64 @@ if (!empty($data_lama['Foto_Barang'])) {
         .status-option .status-desc { font-size: 0.7rem; color: var(--text-muted); }
 
         /* BUTTONS */
-        .btn-submit { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; border-radius: 14px; padding: 14px 32px; font-weight: 800; font-size: 0.95rem; transition: var(--transition-3d); display: inline-flex; align-items: center; gap: 8px; }
-        .btn-submit:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(213, 61, 102, 0.35); color: #ffffff; }
-        .btn-batal { background: #f1f5f9; color: #475569; border: none; border-radius: 14px; padding: 14px 32px; font-weight: 800; font-size: 0.95rem; transition: var(--transition-3d); display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+        .btn-submit { 
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); 
+            color: #ffffff; border: none; border-radius: 14px; 
+            padding: 14px 32px; font-weight: 800; font-size: 0.95rem; 
+            transition: var(--transition-3d); display: inline-flex; align-items: center; gap: 8px; 
+        }
+        .btn-submit:hover { 
+            transform: translateY(-3px); 
+            box-shadow: 0 12px 28px rgba(213, 61, 102, 0.35); color: #ffffff; 
+        }
+        .btn-batal { 
+            background: #f1f5f9; color: #475569; border: none; 
+            border-radius: 14px; padding: 14px 32px; font-weight: 800; 
+            font-size: 0.95rem; transition: var(--transition-3d); 
+            display: inline-flex; align-items: center; gap: 8px; text-decoration: none; 
+        }
         .btn-batal:hover { background: #e2e8f0; color: #1e293b; transform: translateY(-3px); }
 
         /* ALERT */
-        .alert-custom-error { background: #fef2f2; border: none; border-left: 4px solid #dc2626; border-radius: 12px; color: #991b1b; font-size: 0.85rem; padding: 14px 18px; margin-bottom: 24px; display: flex; align-items: start; gap: 10px; }
+        .alert-custom-error { 
+            background: #fef2f2; border: none; border-left: 4px solid #dc2626; 
+            border-radius: 12px; color: #991b1b; font-size: 0.85rem; 
+            padding: 14px 18px; margin-bottom: 24px; display: flex; align-items: start; gap: 10px; 
+        }
         .alert-custom-error i { font-size: 1.1rem; margin-top: 2px; }
-        .alert-custom-success { background: #f0fdf4; border: none; border-left: 4px solid #22c55e; border-radius: 12px; color: #166534; font-size: 0.85rem; padding: 14px 18px; margin-bottom: 24px; display: flex; align-items: center; gap: 10px; }
+        .alert-custom-success { 
+            background: #f0fdf4; border: none; border-left: 4px solid #22c55e; 
+            border-radius: 12px; color: #166534; font-size: 0.85rem; 
+            padding: 14px 18px; margin-bottom: 24px; display: flex; align-items: center; gap: 10px; 
+        }
         .alert-custom-success i { font-size: 1.1rem; }
 
         /* INFO BOX */
-        .info-box { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; padding: 14px 18px; margin-bottom: 24px; font-size: 0.8rem; color: #0369a1; font-weight: 600; }
+        .info-box { 
+            background: #f0f9ff; border: 1px solid #bae6fd; 
+            border-radius: 12px; padding: 14px 18px; margin-bottom: 24px; 
+            font-size: 0.8rem; color: #0369a1; font-weight: 600; 
+        }
         .info-box i { margin-right: 8px; }
 
         /* CURRENT FOTO */
         .current-foto-box { 
             border: 2px solid var(--light-pink); border-radius: 16px; padding: 16px; 
             background: var(--s-pink); display: flex; align-items: center; gap: 16px; margin-bottom: 12px; 
+            flex-wrap: wrap;
         }
-        .current-foto-box img { width: 80px; height: 80px; border-radius: 12px; object-fit: cover; border: 2px solid #fff; }
+        .current-foto-box img { 
+            width: 80px; height: 80px; border-radius: 12px; 
+            object-fit: cover; border: 2px solid #fff; flex-shrink: 0;
+        }
 
         /* PREVIEW IMAGE */
-        .preview-container { width: 120px; height: 120px; border: 2px dashed #cbd5e0; border-radius: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s ease; overflow: hidden; background: #f8fafc; }
+        .preview-container { 
+            width: 120px; height: 120px; border: 2px dashed #cbd5e0; 
+            border-radius: 16px; display: flex; align-items: center; justify-content: center; 
+            cursor: pointer; transition: all 0.3s ease; overflow: hidden; background: #f8fafc; 
+            flex-shrink: 0;
+        }
         .preview-container:hover { border-color: var(--p-pink); background: var(--s-pink); }
         .preview-container img { width: 100%; height: 100%; object-fit: cover; }
         .preview-container i { font-size: 32px; color: #cbd5e0; }
@@ -385,16 +495,173 @@ if (!empty($data_lama['Foto_Barang'])) {
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
         .fade-in-up { animation: fadeIn 0.5s ease-out; }
 
+        /* ================= RESPONSIVE ================= */
+
+        /* Tablet & below */
         @media (max-width: 992px) {
-            .main-content { margin-left: 0; padding: 20px; }
-            .sidebar { transform: translateX(-100%); }
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            .sidebar.show {
+                transform: translateX(0);
+            }
+            .mobile-header {
+                display: flex;
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 24px;
+            }
+            .dashboard-header {
+                margin-top: 0;
+                margin-bottom: 24px;
+            }
+            .dashboard-header h3 {
+                font-size: 1.3rem;
+            }
+        }
+
+        /* Small tablet */
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 20px 16px;
+            }
+            .form-card-header {
+                padding: 24px;
+            }
+            .form-card-header h4 {
+                font-size: 1.2rem;
+            }
+            .form-card-body {
+                padding: 24px;
+            }
+            .dashboard-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .breadcrumb-custom {
+                font-size: 0.8rem;
+                gap: 6px;
+            }
+            .status-toggle-group {
+                flex-direction: column;
+            }
+            .status-option {
+                display: flex;
+                align-items: center;
+                justify-content: flex-start;
+                gap: 12px;
+                text-align: left;
+                padding: 12px 16px;
+            }
+            .status-option .status-icon {
+                margin-bottom: 0;
+                font-size: 1.2rem;
+            }
+            .current-foto-box {
+                flex-direction: column;
+                align-items: flex-start;
+                text-align: left;
+            }
+            .current-foto-box img {
+                width: 100%;
+                height: 180px;
+                border-radius: 12px;
+            }
+            .d-flex.gap-3.mt-5 {
+                flex-direction: column;
+            }
+            .btn-submit, .btn-batal {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        /* Mobile phone */
+        @media (max-width: 576px) {
+            .mobile-header {
+                padding: 12px 16px;
+            }
+            .mobile-brand {
+                font-size: 1.1rem;
+            }
+            .main-content {
+                padding: 16px 12px;
+            }
+            .form-card {
+                border-radius: 16px;
+            }
+            .form-card-header {
+                padding: 20px;
+            }
+            .form-card-header h4 {
+                font-size: 1.1rem;
+            }
+            .form-card-header p {
+                font-size: 0.8rem;
+            }
+            .form-card-body {
+                padding: 20px 16px;
+            }
+            .form-control-custom {
+                padding: 12px 14px;
+                font-size: 16px; /* Prevents iOS zoom on focus */
+                border-radius: 12px;
+            }
+            .form-label {
+                font-size: 0.7rem;
+            }
+            .input-hint {
+                font-size: 0.7rem;
+            }
+            .preview-container {
+                width: 100px;
+                height: 100px;
+            }
+            .info-box {
+                font-size: 0.75rem;
+                padding: 12px;
+            }
+            .alert-custom-error,
+            .alert-custom-success {
+                font-size: 0.8rem;
+                padding: 12px;
+            }
+            .dashboard-header h3 {
+                font-size: 1.15rem;
+            }
+            .dashboard-header p {
+                font-size: 0.8rem;
+            }
+            .profile-header-btn {
+                width: 40px;
+                height: 40px;
+            }
+            .btn-submit, .btn-batal {
+                padding: 14px 20px;
+                font-size: 0.9rem;
+            }
         }
     </style>
 </head>
 <body>
 
+<!-- MOBILE HEADER -->
+<div class="mobile-header">
+    <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu">
+        <i class="bi bi-list"></i>
+    </button>
+    <a href="../../index.php" class="mobile-brand">SpotLight.</a>
+    <div class="profile-header-btn shadow-sm" onclick="bukaModalBiodata()" style="width:36px;height:36px;border-width:1px;">
+        <img src="<?= $foto_admin_src ?>" alt="Admin Profil">
+    </div>
+</div>
+
+<!-- SIDEBAR OVERLAY -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
 <!-- SIDEBAR -->
-<div class="sidebar">
+<div class="sidebar" id="sidebar">
     <div class="sidebar-menu-wrapper">
         <a href="../../index.php" class="sidebar-brand">
             SpotLight.<br><span>Panel Administrator</span>
@@ -458,10 +725,10 @@ if (!empty($data_lama['Foto_Barang'])) {
             <p class="text-muted small mb-0">Sesuaikan informasi produk katalog studio.</p>
         </div>
         <div class="d-flex align-items-center gap-3">
-            <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
+            <span class="badge px-3 py-2 text-dark border-0 shadow-sm d-none d-md-inline-flex" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
                 <i class="bi bi-clock-history me-1 text-danger"></i> <span id="live-clock">Memuat waktu...</span>
             </span>
-            <div class="profile-header-btn shadow-sm" onclick="bukaModalBiodata()" title="Klik untuk melihat profil Anda">
+            <div class="profile-header-btn shadow-sm d-none d-md-block" onclick="bukaModalBiodata()" title="Klik untuk melihat profil Anda">
                 <img src="<?= $foto_admin_src ?>" alt="Admin Profil">
             </div>
         </div>
@@ -527,7 +794,7 @@ if (!empty($data_lama['Foto_Barang'])) {
                                value="<?= isset($_POST['nama_barang']) ? htmlspecialchars($_POST['nama_barang']) : htmlspecialchars($data_lama['Nama_Barang']) ?>"
                                required>
                         <div class="input-hint">
-                            <i class="bi bi-info-circle"></i> Maksimal 100 karakter. Harus unik, tidak boleh sama dengan barang lain.
+                            <i class="bi bi-info-circle"></i> Maksimal 100 karakter. Harus unik.
                         </div>
                     </div>
                     <!-- Harga -->
@@ -593,7 +860,7 @@ if (!empty($data_lama['Foto_Barang'])) {
                     </div>
 
                     <!-- Upload Foto Baru -->
-                    <div class="d-flex align-items-center gap-3">
+                    <div class="d-flex align-items-center gap-3 flex-wrap">
                         <div class="preview-container" onclick="document.getElementById('foto_barang').click()">
                             <img id="previewImg" src="" alt="" style="display: none;">
                             <i class="bi bi-camera" id="previewIcon"></i>
@@ -615,7 +882,7 @@ if (!empty($data_lama['Foto_Barang'])) {
                 </div>
 
                 <!-- Buttons -->
-                <div class="d-flex gap-3 mt-5">
+                <div class="d-flex gap-3 mt-5 flex-wrap">
                     <button type="submit" name="simpan" class="btn-submit">
                         <i class="bi bi-save2"></i> Simpan Perubahan
                     </button>
@@ -642,11 +909,12 @@ function updateLiveClock() {
 setInterval(updateLiveClock, 1000);
 updateLiveClock();
 
-// Status Toggle
-function selectStatus(el, val) {
-    document.querySelectorAll('.status-option').forEach(opt => opt.classList.remove('active'));
-    el.classList.add('active');
-    el.querySelector('input').checked = true;
+// Sidebar Toggle (Mobile)
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    sidebar.classList.toggle('show');
+    overlay.classList.toggle('show');
 }
 
 // Preview Image
@@ -696,7 +964,7 @@ function confirmLogout(e) {
         confirmButtonColor: '#D53D66',
         cancelButtonColor: '#718096',
         confirmButtonText: 'Ya, Keluar',
-        confirmButtonText: 'Batal'
+        cancelButtonText: 'Batal'
     }).then((result) => {
         if (result.isConfirmed) {
             window.location.href = '../../logout.php';

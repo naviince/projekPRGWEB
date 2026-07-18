@@ -77,6 +77,7 @@ $query_detail = sqlsrv_query($conn, $sql_detail, [$tgl_mulai, $tgl_selesai]);
 <head>
 <meta charset="UTF-8">
 <title>Cetak Laporan Pembatalan</title>
+<link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
 <style>
     body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 10px; color: #333; line-height: 1.4; margin: 30px; }
     

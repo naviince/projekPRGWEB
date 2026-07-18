@@ -10,6 +10,11 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 $id_admin = $_SESSION['id_user'];
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
+// Filter tahun global untuk kebutuhan laporan (saat ini menggerakkan chart Tren Booking Bulanan)
+$tahun_sekarang = (int) date('Y');
+$tahun_filter = (isset($_GET['tahun']) && ctype_digit($_GET['tahun'])) ? (int) $_GET['tahun'] : $tahun_sekarang;
+$tahun_options = range($tahun_sekarang, $tahun_sekarang - 4);
+
 $q_profile = sqlsrv_query($conn, "SELECT * FROM Karyawan WHERE ID_Karyawan = ?", array($id_admin));
 $d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
 if ($d_profile) { $d_profile = array_change_key_case($d_profile, CASE_LOWER); }
@@ -159,7 +164,7 @@ $total_penjualan_rp = $d_total_penjualan['total'] ?? 0;
 $q_status_booking = sqlsrv_query($conn, "SELECT ISNULL(SUM(CASE WHEN Status_Order = 0 THEN 1 ELSE 0 END), 0) AS menunggu_dp, ISNULL(SUM(CASE WHEN Status_Order = 1 THEN 1 ELSE 0 END), 0) AS dp_verified, ISNULL(SUM(CASE WHEN Status_Order = 2 THEN 1 ELSE 0 END), 0) AS tunggu_pelunasan, ISNULL(SUM(CASE WHEN Status_Order = 3 THEN 1 ELSE 0 END), 0) AS lunas, ISNULL(SUM(CASE WHEN Status_Order = 4 THEN 1 ELSE 0 END), 0) AS dibatalkan FROM [Order] WHERE Status = 1");
 $d_status_booking = sqlsrv_fetch_array($q_status_booking, SQLSRV_FETCH_ASSOC);
 
-$q_booking_bulan = sqlsrv_query($conn, "SELECT MONTH(Tanggal_Booking) AS bulan, COUNT(*) AS total FROM [Order] WHERE Tanggal_Booking >= DATEADD(MONTH, -5, GETDATE()) AND Status = 1 GROUP BY MONTH(Tanggal_Booking) ORDER BY MONTH(Tanggal_Booking)");
+$q_booking_bulan = sqlsrv_query($conn, "SELECT MONTH(Tanggal_Booking) AS bulan, COUNT(*) AS total FROM [Order] WHERE YEAR(Tanggal_Booking) = ? AND Status = 1 GROUP BY MONTH(Tanggal_Booking) ORDER BY MONTH(Tanggal_Booking)", array($tahun_filter));
 $booking_bulan_data = array_fill(0, 12, 0);
 while ($row = sqlsrv_fetch_array($q_booking_bulan, SQLSRV_FETCH_ASSOC)) {
     $booking_bulan_data[$row['bulan'] - 1] = $row['total'];
@@ -178,6 +183,7 @@ $q_stok_alert = sqlsrv_query($conn, "SELECT TOP 3 Nama_Barang, Stok_Barang, Stok
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Panel Admin - SpotLight Studio</title>
+<link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
 <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
 <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -401,6 +407,107 @@ body{
     font-size: 0.85rem;
 }
 
+.admin-name-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    background:linear-gradient(135deg,var(--p-pink),var(--d-pink));
+    color:#ffffff;
+    font-weight:700;
+    font-size:0.78rem;
+    padding:6px 14px;
+    border-radius:50px;
+    box-shadow:0 4px 12px rgba(213,61,102,0.2);
+    white-space:nowrap;
+}
+.admin-username-tag{
+    font-size:0.72rem;
+    font-weight:700;
+    color:var(--text-muted);
+    white-space:nowrap;
+}
+.admin-id-chip{
+    text-align:right;
+    line-height:1.4;
+}
+
+/* ========== TOOLBAR: LIVE CLOCK + FILTER LAPORAN (di luar card, berlaku untuk seluruh dashboard) ========== */
+.dashboard-toolbar{
+    background:#ffffff;
+    border:1px solid rgba(255,228,233,0.8);
+    border-radius:16px;
+    padding:12px 18px;
+    box-shadow:0 4px 14px rgba(213,61,102,0.04);
+}
+.live-clock-chip{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    background:var(--light-pink);
+    color:var(--text-dark);
+    font-weight:700;
+    font-size:0.8rem;
+    padding:8px 14px;
+    border-radius:10px;
+}
+.live-clock-chip i{color:var(--p-pink);}
+.year-filter-form{
+    margin:0;
+}
+.year-filter-label{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-size:0.78rem;
+    font-weight:800;
+    color:var(--text-muted);
+    text-transform:uppercase;
+    letter-spacing:0.5px;
+    margin:0;
+}
+.year-filter-label i{color:var(--p-pink);}
+.year-filter-select{
+    appearance:none;
+    -webkit-appearance:none;
+    -moz-appearance:none;
+    background:#ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23D53D66'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 12px center;
+    background-size:14px;
+    border:1.5px solid rgba(213,61,102,0.25);
+    color:var(--p-pink);
+    font-weight:800;
+    font-size:0.85rem;
+    padding:8px 34px 8px 16px;
+    border-radius:10px;
+    cursor:pointer;
+    transition:var(--transition-3d);
+}
+.year-filter-select:hover,
+.year-filter-select:focus{
+    border-color:var(--p-pink);
+    box-shadow:0 6px 15px rgba(213,61,102,0.15);
+    outline:none;
+}
+
+/* Tombol verifikasi: hover jelas menunjukkan ada aksi klik */
+.btn-verifikasi-all{
+    display:inline-block;
+    transition:var(--transition-3d);
+}
+.btn-verifikasi-all:hover{
+    transform:translateY(-2px);
+    box-shadow:0 6px 16px rgba(213,61,102,0.25);
+    border:1px solid var(--p-pink);
+}
+.btn-verifikasi-row{
+    display:inline-flex;
+    align-items:center;
+    transition:var(--transition-3d);
+}
+.btn-verifikasi-row:hover{
+    transform:translateY(-2px) scale(1.03);
+    box-shadow:0 10px 22px rgba(213,61,102,0.35);
+}
+
 .profile-header-btn{
     width:44px;
     height:44px;
@@ -452,13 +559,18 @@ body{
     border-radius:20px;
     border:1px solid rgba(255,228,233,0.8);
     box-shadow:0 6px 20px rgba(213,61,102,0.03);
-    transition:var(--transition-3d);
     padding:18px;
     height:100%;
     position:relative;
     overflow:hidden;
 }
-.card-3d::before{
+/* Hover-lift is opt-in: only elements that are actually clickable (wrapped in a real
+   link/button) get the .card-3d-clickable modifier. Non-interactive cards (stat
+   summaries, biodata info box) stay flat so they don't imply an action that isn't there. */
+.card-3d-clickable{
+    transition:var(--transition-3d);
+}
+.card-3d-clickable::before{
     content:'';
     position:absolute;
     top:0;
@@ -469,12 +581,12 @@ body{
     opacity:0;
     transition:opacity 0.3s ease;
 }
-.card-3d:hover{
+.card-3d-clickable:hover{
     transform:translateY(-6px) scale(1.01);
     box-shadow:0 18px 40px rgba(213,61,102,0.12);
     border-color:var(--p-pink);
 }
-.card-3d:hover::before{opacity:1;}
+.card-3d-clickable:hover::before{opacity:1;}
 .stat-card{
     display:flex;
     align-items:center;
@@ -491,7 +603,7 @@ body{
     transition:var(--transition-3d);
     flex-shrink:0;
 }
-.card-3d:hover .stat-icon{transform:scale(1.1) rotate(5deg);}
+.card-3d-clickable:hover .stat-icon{transform:scale(1.1) rotate(5deg);}
 .stat-icon-pink{background:linear-gradient(135deg,#FFF0F3,#FFE4E9);color:#D53D66;}
 .stat-icon-green{background:linear-gradient(135deg,#ecfdf5,#d1fae5);color:#059669;}
 .stat-icon-orange{background:linear-gradient(135deg,#fffbeb,#fef3c7);color:#d97706;}
@@ -536,13 +648,8 @@ body{
     border-radius:20px;
     border:1px solid rgba(255,228,233,0.8);
     box-shadow:0 6px 20px rgba(213,61,102,0.03);
-    transition:var(--transition-3d);
     padding:22px;
     height:100%;
-}
-.chart-card:hover{
-    transform:translateY(-6px);
-    box-shadow:0 16px 35px rgba(213,61,102,0.1);
 }
 .chart-header{
     display:flex;
@@ -609,12 +716,7 @@ body{
 .table-custom tbody tr{
     background:#ffffff;
     box-shadow:0 2px 8px rgba(0,0,0,0.04);
-    transition:var(--transition-3d);
     border-radius:12px;
-}
-.table-custom tbody tr:hover{
-    transform:translateX(4px);
-    box-shadow:0 8px 20px rgba(213,61,102,0.08);
 }
 .table-custom td{
     padding:12px 14px;
@@ -888,6 +990,21 @@ body{
         padding: 4px 10px;
         font-size: 0.68rem;
     }
+    .dashboard-toolbar {
+        padding: 10px 14px;
+        border-radius: 14px;
+    }
+    .live-clock-chip {
+        font-size: 0.72rem;
+        padding: 7px 12px;
+    }
+    .year-filter-label {
+        font-size: 0.7rem;
+    }
+    .year-filter-select {
+        font-size: 0.78rem;
+        padding: 7px 30px 7px 12px;
+    }
     /* Table horizontal scroll on mobile */
     .table-responsive-custom {
         overflow-x: auto;
@@ -1068,17 +1185,33 @@ body{
 <!-- HEADER -->
 <div class="dashboard-header animate-fade-in delay-1">
     <div style="min-width:0;">
-        <h3 class="fw-bold mb-1">Selamat Datang, <?= htmlspecialchars($nama_admin) ?>! 👋</h3>
+        <h3 class="fw-bold mb-1">Selamat Datang di Panel Admin! 👋</h3>
         <p class="text-muted small mb-0">Kelola data master, verifikasi pembayaran, dan pantau operasional studio.</p>
     </div>
     <div class="d-flex align-items-center gap-3">
-        <span class="badge px-3 py-2 text-dark border-0 shadow-sm d-none d-sm-inline-block" style="background:var(--light-pink);font-weight:700;border-radius:10px;">
-            <i class="bi bi-clock-history me-1 text-danger"></i> <span id="live-clock">Memuat waktu...</span>
-        </span>
+        <div class="admin-id-chip d-none d-sm-block">
+            <span class="admin-name-badge"><i class="bi bi-shield-fill-check"></i><?= htmlspecialchars($nama_admin) ?></span><br>
+            <span class="admin-username-tag">Administrator</span>
+        </div>
         <div class="profile-header-btn shadow-sm d-none d-lg-block" onclick="bukaModalBiodata()" title="Klik untuk melihat Biodata Anda">
             <img src="<?= $foto_admin_src ?>" alt="Admin Profil">
         </div>
     </div>
+</div>
+
+<!-- TOOLBAR: JAM REALTIME + FILTER LAPORAN TAHUNAN (di luar semua card, jadi cakupannya menyeluruh) -->
+<div class="dashboard-toolbar d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4 animate-fade-in delay-1">
+    <span class="live-clock-chip">
+        <i class="bi bi-clock-history"></i> <span id="live-clock">Memuat waktu...</span>
+    </span>
+    <form method="GET" class="year-filter-form d-flex align-items-center gap-2 flex-wrap">
+        <label for="filterTahun" class="year-filter-label"><i class="bi bi-funnel-fill"></i> Filter Laporan Tahun</label>
+        <select name="tahun" id="filterTahun" class="year-filter-select" onchange="this.form.submit()">
+            <?php foreach ($tahun_options as $th): ?>
+            <option value="<?= $th ?>" <?= $th == $tahun_filter ? 'selected' : '' ?>><?= $th ?></option>
+            <?php endforeach; ?>
+        </select>
+    </form>
 </div>
 
 <!-- STAT CARDS -->
@@ -1195,7 +1328,7 @@ body{
         <div class="stat-card-item">
             <div class="card-3d">
                 <div class="stat-card">
-                    <div class="stat-icon stat-icon-green"><i class="bi bi-shop-fill"></i></div>
+                    <div class="stat-icon stat-icon-green"><i class="bi bi-cash-stack"></i></div>
                     <div class="stat-content">
                         <div class="stat-title">Total Penjualan</div>
                         <div class="stat-val">Rp<?= number_format($total_penjualan_rp,0,',','.') ?></div>
@@ -1255,7 +1388,6 @@ body{
         <div class="chart-card">
             <div class="chart-header">
                 <h5 class="chart-title"><i class="bi bi-graph-up-arrow text-danger me-2"></i>Tren Booking Bulanan</h5>
-                <span class="chart-badge">Tahun <?= date('Y')?></span>
             </div>
             <div style="height:300px;width:100%;">
                 <canvas id="chartBooking"></canvas>
@@ -1294,7 +1426,7 @@ body{
         <div class="chart-card">
             <div class="chart-header">
                 <h5 class="chart-title"><i class="bi bi-activity text-danger me-2"></i>Pembayaran Menunggu Verifikasi</h5>
-                <a href="../../Transaksi/Pembayaran/list.php" class="btn btn-sm" style="background:var(--s-pink);color:var(--p-pink);font-weight:700;border-radius:8px;font-size:0.72rem;text-decoration:none;white-space:nowrap;">Verifikasi Semua</a>
+                <a href="../../Transaksi/Pembayaran/list.php" class="btn btn-sm btn-verifikasi-all" style="background:var(--s-pink);color:var(--p-pink);font-weight:700;border-radius:8px;font-size:0.72rem;text-decoration:none;white-space:nowrap;">Verifikasi Semua</a>
             </div>
             <div class="table-responsive-custom">
                 <table class="table-custom">
@@ -1324,7 +1456,7 @@ body{
                             <td class="d-none d-md-table-cell"><?= $row['Tanggal_Upload']->format('d M Y H:i')?></td>
                             <td><span class="badge-status badge-menunggu">Menunggu</span></td>
                             <td>
-                                <a href="../../Transaksi/Pembayaran/verifikasi.php?id=<?= $row['ID_Pembayaran']?>&aksi=terima" class="btn btn-sm" style="background:linear-gradient(135deg,var(--p-pink),var(--d-pink));color:#fff;border-radius:8px;font-weight:700;font-size:0.72rem;text-decoration:none;padding:6px 12px;white-space:nowrap;">
+                                <a href="../../Transaksi/Pembayaran/verifikasi.php?id=<?= $row['ID_Pembayaran']?>&aksi=terima" class="btn btn-sm btn-verifikasi-row" style="background:linear-gradient(135deg,var(--p-pink),var(--d-pink));color:#fff;border-radius:8px;font-weight:700;font-size:0.72rem;text-decoration:none;padding:6px 12px;white-space:nowrap;">
                                     <i class="bi bi-check-lg me-1"></i>Verifikasi
                                 </a>
                             </td>
@@ -1355,7 +1487,7 @@ body{
             <div class="row g-3">
                 <div class="col-lg-3 col-md-6 quick-access-col">
                     <a href="../../Master/Pelanggan/add.php" class="text-decoration-none">
-                        <div class="card-3d text-center p-3">
+                        <div class="card-3d card-3d-clickable text-center p-3">
                             <div class="stat-icon stat-icon-pink mx-auto mb-2" style="width:48px;height:48px;">
                                 <i class="bi bi-person-fill-add"></i>
                             </div>
@@ -1365,7 +1497,7 @@ body{
                 </div>
                 <div class="col-lg-3 col-md-6 quick-access-col">
                     <a href="../../Master/Paket Foto/add.php" class="text-decoration-none">
-                        <div class="card-3d text-center p-3">
+                        <div class="card-3d card-3d-clickable text-center p-3">
                             <div class="stat-icon stat-icon-pink mx-auto mb-2" style="width:48px;height:48px;">
                                 <i class="bi bi-camera-fill"></i>
                             </div>
@@ -1375,7 +1507,7 @@ body{
                 </div>
                 <div class="col-lg-3 col-md-6 quick-access-col">
                     <a href="../../Master/Jadwal Studio/add.php" class="text-decoration-none">
-                        <div class="card-3d text-center p-3">
+                        <div class="card-3d card-3d-clickable text-center p-3">
                             <div class="stat-icon stat-icon-purple mx-auto mb-2" style="width:48px;height:48px;">
                                 <i class="bi bi-calendar-plus-fill"></i>
                             </div>
@@ -1385,7 +1517,7 @@ body{
                 </div>
                 <div class="col-lg-3 col-md-6 quick-access-col">
                     <a href="../../Master/Barang Cetak/list.php" class="text-decoration-none">
-                        <div class="card-3d text-center p-3">
+                        <div class="card-3d card-3d-clickable text-center p-3">
                             <div class="stat-icon stat-icon-green mx-auto mb-2" style="width:48px;height:48px;">
                                 <i class="bi bi-box-seam-fill"></i>
                             </div>

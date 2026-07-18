@@ -23,16 +23,14 @@ if ($id <= 0) {
 // HELPER FUNCTIONS - UNTUK MENJAGA INTEGRITAS RELASI
 // =====================================================
 
-// Cek apakah paket masih memiliki transaksi order di sistem
 function hasOrder($conn, $id_paket) {
     $sql = "SELECT COUNT(*) as total FROM [Order] WHERE ID_Paket = ? AND Status = 1";
     $stmt = sqlsrv_query($conn, $sql, [$id_paket]);
-    if ($stmt === false) return true; // Anggap ada order jika query gagal demi keamanan
+    if ($stmt === false) return true;
     $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
     return ($row['total'] ?? 0) > 0;
 }
 
-// Cek apakah paket terikat dengan ruangan aktif (Mencegah Database FK Constraint Violation)
 function hasRuangan($conn, $id_paket) {
     $sql = "SELECT COUNT(*) as total FROM Ruangan WHERE ID_Paket = ? AND Is_Deleted = 0";
     $stmt = sqlsrv_query($conn, $sql, [$id_paket]);
@@ -41,7 +39,6 @@ function hasRuangan($conn, $id_paket) {
     return ($row['total'] ?? 0) > 0;
 }
 
-// Cek apakah paket terikat dengan jadwal studio aktif melalui Ruangan
 function hasJadwal($conn, $id_paket) {
     $sql = "SELECT COUNT(*) as total 
             FROM Jadwal_Studio js
@@ -53,7 +50,6 @@ function hasJadwal($conn, $id_paket) {
     return ($row['total'] ?? 0) > 0;
 }
 
-// Mengambil nama file gambar paket sebelum dihapus dari server
 function getFotoPaket($conn, $id) {
     $sql = "SELECT Foto_Paket FROM Paket_Foto WHERE ID_Paket = ?";
     $stmt = sqlsrv_query($conn, $sql, [$id]);
@@ -67,9 +63,6 @@ function getFotoPaket($conn, $id) {
 // =====================================================
 switch ($aksi) {
 
-    // -------------------------------------------------
-    // TOGGLE STATUS: Mengubah Status Aktif / Nonaktif
-    // -------------------------------------------------
     case 'toggle_status':
         $status = isset($_GET['status']) ? (int)$_GET['status'] : 1;
         if ($status !== 0 && $status !== 1) {
@@ -92,11 +85,7 @@ switch ($aksi) {
         exit();
         break;
 
-    // -------------------------------------------------
-    // SOFT DELETE: Mengarsipkan Paket (Stored Procedure)
-    // -------------------------------------------------
     case 'soft_delete':
-        // Cek data apakah sudah diarsipkan sebelumnya
         $cek_sql = "SELECT Is_Deleted FROM Paket_Foto WHERE ID_Paket = ?";
         $cek_stmt = sqlsrv_query($conn, $cek_sql, [$id]);
         $data = sqlsrv_fetch_array($cek_stmt, SQLSRV_FETCH_ASSOC);
@@ -106,7 +95,6 @@ switch ($aksi) {
             exit();
         }
 
-        // Jalankan Stored Procedure sp_DeletePaketFoto
         $sql = "{CALL sp_DeletePaketFoto(?, ?)}";
         $stmt = sqlsrv_query($conn, $sql, [$id, $nama_admin]);
 
@@ -118,9 +106,6 @@ switch ($aksi) {
         exit();
         break;
 
-    // -------------------------------------------------
-    // RESTORE: Memulihkan Paket dari Arsip
-    // -------------------------------------------------
     case 'restore':
         $cek_sql = "SELECT Is_Deleted FROM Paket_Foto WHERE ID_Paket = ?";
         $cek_stmt = sqlsrv_query($conn, $cek_sql, [$id]);
@@ -131,7 +116,6 @@ switch ($aksi) {
             exit();
         }
 
-        // Mengembalikan Is_Deleted = 0
         $sql = "UPDATE Paket_Foto SET 
                 Is_Deleted = 0, 
                 Deleted_By = NULL, 
@@ -150,11 +134,7 @@ switch ($aksi) {
         exit();
         break;
 
-    // -------------------------------------------------
-    // HARD DELETE: Menghapus Fisik Data Permanen
-    // -------------------------------------------------
     case 'hard_delete':
-        // Cek dependensi relasi agar database tidak crash
         if (hasOrder($conn, $id)) {
             header("Location: list.php?status_sukses=error&message=Gagal+Hapus!+Paket+ini+memiliki+riwayat+transaksi+booking+pelanggan.");
             exit();
@@ -170,7 +150,6 @@ switch ($aksi) {
             exit();
         }
 
-        // Ambil nama file foto lama untuk dihapus dari server
         $foto_name = getFotoPaket($conn, $id);
         if ($foto_name != 'default_paket.jpg') {
             $foto_path = "../../assets/img/paket/" . $foto_name;
@@ -179,7 +158,6 @@ switch ($aksi) {
             }
         }
 
-        // Eksekusi Hard Delete secara permanen
         $sql_delete = "DELETE FROM Paket_Foto WHERE ID_Paket = ?";
         $stmt_delete = sqlsrv_query($conn, $sql_delete, [$id]);
 
@@ -192,8 +170,66 @@ switch ($aksi) {
         break;
 
     default:
-        header("Location: list.php?status_sukses=error&message=Aksi+tidak+valid");
-        exit();
+        if (!headers_sent()) {
+            header("Location: list.php?status_sukses=error&message=Aksi+tidak+valid");
+            exit();
+        }
         break;
 }
 ?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redirecting - SpotLight Studio</title>
+    <meta http-equiv="refresh" content="0;url=list.php?status_sukses=error&message=Aksi+tidak+valid">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f8fafc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .box {
+            background: #ffffff;
+            padding: 40px 30px;
+            border-radius: 24px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+            text-align: center;
+            max-width: 90%;
+            width: 400px;
+            border: 1px solid #FFE4E9;
+        }
+        .box h1 { color: #D53D66; font-size: 1.5rem; margin-bottom: 12px; }
+        .box p { color: #718096; margin-bottom: 20px; line-height: 1.5; font-size: 0.95rem; }
+        .box a {
+            display: inline-block;
+            background: linear-gradient(135deg, #D53D66, #CA3366);
+            color: #fff;
+            text-decoration: none;
+            font-weight: 700;
+            padding: 12px 28px;
+            border-radius: 14px;
+            transition: all 0.3s ease;
+        }
+        .box a:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(213,61,102,0.3); }
+        @media (max-width: 576px) {
+            .box { padding: 30px 20px; border-radius: 20px; }
+            .box h1 { font-size: 1.25rem; }
+            .box p { font-size: 0.9rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>SpotLight Studio</h1>
+        <p>Memproses aksi, silakan tunggu...</p>
+        <a href="list.php?status_sukses=error&message=Aksi+tidak+valid">Klik di sini jika tidak dialihkan</a>
+    </div>
+</body>
+</html>
