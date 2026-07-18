@@ -54,8 +54,22 @@ if (isset($_POST['login'])) {
             $user = ($stmt !== false) ? sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC) : null;
 
             if ($user) {
-                $valid = password_verify($password_login, $user['Password_Pelanggan']) || ($password_login === $user['Password_Pelanggan']);
+                $is_hashed = password_verify($password_login, $user['Password_Pelanggan']);
+                $is_plain_match = !$is_hashed && ($password_login === $user['Password_Pelanggan']);
+                $valid = $is_hashed || $is_plain_match;
+
                 if ($valid) {
+                    // =====================================================
+                    // AUTO-MIGRATE: kalau login lolos lewat fallback plaintext
+                    // (password lama belum di-hash), langsung hash & update
+                    // sekarang juga. Password asli gak akan pernah lagi
+                    // tersimpan mentah di database setelah baris ini jalan.
+                    // =====================================================
+                    if ($is_plain_match) {
+                        $new_hash = password_hash($password_login, PASSWORD_BCRYPT);
+                        sqlsrv_query($conn, "UPDATE Pelanggan SET Password_Pelanggan = ?, Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Pelanggan = ?", [$new_hash, 'auto_migrate_security', $user['ID_Pelanggan']]);
+                    }
+
                     $_SESSION = array_merge($_SESSION, [
                         'status' => 'login', 'id_user' => $user['ID_Pelanggan'],
                         'email' => $user['Email_Pelanggan'], 'role' => 'Customer',
@@ -83,8 +97,18 @@ if (isset($_POST['login'])) {
                 $user = ($stmt !== false) ? sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC) : null;
 
                 if ($user) {
-                    $valid = password_verify($password_login, $user['Password_Karyawan']) || ($password_login === $user['Password_Karyawan']);
+                    $is_hashed_k = password_verify($password_login, $user['Password_Karyawan']);
+                    $is_plain_match_k = !$is_hashed_k && ($password_login === $user['Password_Karyawan']);
+                    $valid = $is_hashed_k || $is_plain_match_k;
+
                     if ($valid) {
+                        // Auto-migrate password Karyawan lama ke hash, sama
+                        // kayak Pelanggan di atas.
+                        if ($is_plain_match_k) {
+                            $new_hash_k = password_hash($password_login, PASSWORD_BCRYPT);
+                            sqlsrv_query($conn, "UPDATE Karyawan SET Password_Karyawan = ?, Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Karyawan = ?", [$new_hash_k, 'auto_migrate_security', $user['ID_Karyawan']]);
+                        }
+
                         $role = $user['Role_Karyawan'];
                         $redirect = ['Admin'=>'Role/Admin/index.php', 'Owner'=>'Role/Owner/index.php', 'Fotografer'=>'Role/Fotografer/index.php'];
                         if (isset($redirect[$role])) {
@@ -244,9 +268,16 @@ if (isset($_POST['register'])) {
                     $redirect_reg = $_GET['redirect'] ?? '';
                     $id_paket_reg = $_GET['id_paket'] ?? '';
 
+                    // =====================================================
+                    // TARGET REDIRECT SETELAH REGISTER BERHASIL
+                    // User SUDAH auto-login (session di atas), jadi TIDAK
+                    // perlu disuruh login manual lagi -- popup sukses lalu
+                    // langsung diarahkan ke dashboard/booking sungguhan.
+                    // =====================================================
                     if ($redirect_reg == 'booking' && !empty($id_paket_reg) && is_numeric($id_paket_reg)) {
-                        header("Location: Transaksi/booking.php?id_paket=" . (int)$id_paket_reg);
-                        exit();
+                        $target_redirect_sukses = "Transaksi/booking.php?id_paket=" . (int)$id_paket_reg;
+                    } else {
+                        $target_redirect_sukses = "Role/Customer/index.php";
                     }
                 }
             } else {
@@ -623,6 +654,10 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
         .radio-fix input:checked + .radio-box .radio-icon {
             color: var(--p-pink);
         }
+        .has-radio-error .radio-box {
+            border-color: #ef4444 !important;
+            background: #fff1f2 !important;
+        }
 
         /* File Upload */
         .upload-area {
@@ -900,7 +935,7 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
                         <div class="col-md-6">
                             <div class="input-group-custom">
                                 <label class="input-label">No. Telepon <span class="required">*</span></label>
-                                <div class="d-flex align-items-stretch" style="border: 2px solid #eef2f6; border-radius: 16px; overflow: hidden; background: #f8fafc; transition: all 0.3s ease;">
+                                <div class="d-flex align-items-stretch" style="border: 2px solid <?= $error_hp ? '#ef4444' : '#eef2f6' ?>; border-radius: 16px; overflow: hidden; background: <?= $error_hp ? '#fff1f2' : '#f8fafc' ?>; transition: all 0.3s ease;">
                                     <span style="display: flex; align-items: center; padding: 14px 16px; font-weight: 700; color: #d83f67; font-size: 0.9rem; border-right: 2px solid #eef2f6; background: #f8fafc; white-space: nowrap;">+62</span>
                                     <input type="text" name="no_hp" id="inputHP" class="flex-grow-1" style="border: none; background: transparent; padding: 14px 18px; font-size: 0.95rem; font-weight: 500; color: #1e1e24; outline: none; min-width: 0;" placeholder="81234567890" value="<?= htmlspecialchars(@$_POST['no_hp'] ?? '') ?>" required>
                                 </div>
@@ -914,7 +949,7 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
                         <div class="col-md-6">
                             <div class="input-group-custom">
                                 <label class="input-label">Jenis Kelamin <span class="required">*</span></label>
-                                <div class="radio-group-fix">
+                                <div class="radio-group-fix <?= $error_jk ? 'has-radio-error' : '' ?>">
                                     <label class="radio-fix" for="jk_laki">
                                         <input type="radio" name="jenis_kelamin" id="jk_laki" value="Laki-laki" <?= (@$_POST['jenis_kelamin'] == 'Laki-laki') ? 'checked' : '' ?> required>
                                         <span class="radio-box">
@@ -1136,28 +1171,19 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
             }, 3000);
         }
 
-        <?php if($success_register && !isset($_SESSION['status'])): ?>
+        <?php if($success_register): ?>
         Swal.fire({
             icon: 'success',
             title: 'Yeay, Akun Berhasil Dibuat! 🎉✨',
-            html: 'Selamat datang di keluarga SpotLight!<br>Akan otomatis ke halaman masuk dalam <b>3</b> detik... 📸💖',
+            html: 'Selamat datang di keluarga SpotLight!<br>Kamu sudah otomatis masuk, akan diarahkan dalam <b>2</b> detik... 📸💖',
             confirmButtonColor: '#d83f67',
-            confirmButtonText: 'Masuk Sekarang 🚀',
+            confirmButtonText: 'Lanjutkan Sekarang 🚀',
             backdrop: 'rgba(216, 63, 103, 0.2)',
-            timer: 3000,
+            timer: 2000,
             timerProgressBar: true,
-            allowOutsideClick: false,
-            willClose: () => {
-                if (!isRegister) {
-                    switchPanel();
-                }
-            }
-        }).then((result) => {
-            const emailField = document.querySelector('input[name="email_login"]');
-            const passField = document.querySelector('input[name="password_login"]');
-            if (emailField) emailField.value = '<?= htmlspecialchars($registered_email ?? '') ?>';
-            if (passField) passField.value = '<?= htmlspecialchars($registered_password ?? '') ?>';
-            switchPanel(true);
+            allowOutsideClick: false
+        }).then(() => {
+            window.location.href = '<?= $target_redirect_sukses ?? "Role/Customer/index.php" ?>';
         });
         <?php endif; ?>
 

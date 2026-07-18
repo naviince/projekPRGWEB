@@ -1,13 +1,16 @@
 <?php
 session_start();
 
+// Set timezone Indonesia (WIB)
+date_default_timezone_set('Asia/Jakarta');
+
 // =====================================================
 // KONSTANTA STATUS
 // =====================================================
 define('STATUS_ORDER_MENUNGGU_DP', 0);
 define('STATUS_ORDER_DP_TERVERIFIKASI', 1);
-define('STATUS_ORDER_LUNAS', 2);
-define('STATUS_ORDER_SELESAI', 3);
+define('STATUS_ORDER_SELESAI_SESI', 2);
+define('STATUS_ORDER_LUNAS', 3);
 define('STATUS_ORDER_DIBATALKAN', 4);
 
 define('STATUS_PEMBAYARAN_MENUNGGU', 0);
@@ -30,45 +33,55 @@ if (!isset($conn) || $conn === false) {
     die('Error: Koneksi database gagal!');
 }
 
+$id_owner = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
+
+// --- AMBIL NAMA OWNER ---
+$nama_owner = 'Owner';
+$q_owner = sqlsrv_query($conn, "SELECT Nama_Karyawan FROM Karyawan WHERE ID_Karyawan = ?", array($id_owner));
+if ($q_owner && $d = sqlsrv_fetch_array($q_owner, SQLSRV_FETCH_ASSOC)) {
+    $nama_owner = $d['Nama_Karyawan'] ?? 'Owner';
+}
+
 // --- FILTER TANGGAL ---
-$tgl_mulai = isset($_GET['tgl_mulai']) ? $_GET['tgl_mulai'] : date('Y-m-01');
-$tgl_selesai = isset($_GET['tgl_selesai']) ? $_GET['tgl_selesai'] : date('Y-m-d');
+$tgl_mulai = isset($_GET['tgl_mulai']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tgl_mulai']) ? $_GET['tgl_mulai'] : date('Y-m-01');
+$tgl_selesai = isset($_GET['tgl_selesai']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tgl_selesai']) ? $_GET['tgl_selesai'] : date('Y-m-d');
+
+if (strtotime($tgl_mulai) > strtotime($tgl_selesai)) {
+    [$tgl_mulai, $tgl_selesai] = [$tgl_selesai, $tgl_mulai];
+}
+
+$periode_str = date('d M Y', strtotime($tgl_mulai)) . ' - ' . date('d M Y', strtotime($tgl_selesai));
 
 // =====================================================
-// QUERY DATA PENDAPATAN
+// AMBIL DATA VIA STORED PROCEDURE
 // =====================================================
-$sql_detail = "SELECT p.ID_Pembayaran, p.ID_Order, p.Jumlah_Bayar, p.Metode_Pembayaran, p.Tanggal_Upload, pl.Nama_Pelanggan, pl.No_Hp, pk.Nama_Paket, r.Nama_Ruangan, t.Nama_Tema, o.Total_Paket, o.Total_Barang_Cetak, o.Tanggal_Booking, o.Status_Order, k.Nama_Karyawan as Nama_Verifikator FROM Pembayaran p INNER JOIN [Order] o ON p.ID_Order = o.ID_Order INNER JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan INNER JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket INNER JOIN Ruangan r ON o.ID_Ruangan = r.ID_Ruangan INNER JOIN Tema_Foto t ON o.ID_Tema = t.ID_Tema LEFT JOIN Karyawan k ON p.ID_Karyawan_Verifikator = k.ID_Karyawan WHERE p.Tipe_Pembayaran = 'Pelunasan' AND p.Status_Pembayaran = ? AND p.Status = 1 AND o.Status = 1 AND o.Status_Order IN (?, ?) AND CAST(p.Tanggal_Upload AS DATE) BETWEEN ? AND ? ORDER BY p.Tanggal_Upload DESC";
+$q_summary = sqlsrv_query($conn, "{CALL sp_LaporanPendapatanSummary (?, ?)}", array($tgl_mulai, $tgl_selesai));
+$summary = $q_summary ? sqlsrv_fetch_array($q_summary, SQLSRV_FETCH_ASSOC) : null;
+$total_pendapatan = $summary['Total_Pendapatan'] ?? 0;
+$jumlah_order = $summary['Jumlah_Order'] ?? 0;
+$jumlah_pelanggan = $summary['Jumlah_Pelanggan'] ?? 0;
 
-$params = [STATUS_PEMBAYARAN_VALID, STATUS_ORDER_LUNAS, STATUS_ORDER_SELESAI, $tgl_mulai, $tgl_selesai];
-$query = sqlsrv_query($conn, $sql_detail, $params);
-
-if ($query === false) {
-    $errors = sqlsrv_errors(SQLSRV_ERR_ERRORS);
-    $errorMsg = "Query Error:
-";
-    foreach ($errors as $error) {
-        $errorMsg .= "SQLSTATE: " . $error['SQLSTATE'] . " | Code: " . $error['code'] . " | Message: " . $error['message'] . "
-";
+$q_detail = sqlsrv_query($conn, "{CALL sp_LaporanPendapatanDetail (?, ?, 0, 1000000)}", array($tgl_mulai, $tgl_selesai));
+$rows = [];
+if ($q_detail) {
+    while ($r = sqlsrv_fetch_array($q_detail, SQLSRV_FETCH_ASSOC)) {
+        $rows[] = $r;
     }
-    die(nl2br($errorMsg));
 }
 
-// Hitung total
-$q_total = sqlsrv_query($conn, "SELECT SUM(p.Jumlah_Bayar) AS total, COUNT(*) AS jumlah FROM Pembayaran p INNER JOIN [Order] o ON p.ID_Order = o.ID_Order WHERE p.Tipe_Pembayaran = 'Pelunasan' AND p.Status_Pembayaran = ? AND p.Status = 1 AND o.Status = 1 AND o.Status_Order IN (?, ?) AND CAST(p.Tanggal_Upload AS DATE) BETWEEN ? AND ?", $params);
-if ($q_total === false) {
-    die('Error menghitung total pendapatan.');
-}
-$d_total = sqlsrv_fetch_array($q_total, SQLSRV_FETCH_ASSOC);
-$total_pendapatan = $d_total['total'] ?? 0;
-$jumlah_order = $d_total['jumlah'] ?? 0;
+$logo_path = '../../assets/img/logo.png';
+$logo_exists = file_exists($logo_path);
 
 // =====================================================
-// GENERATE PDF DENGAN TCPDF
+// TCPDF CHECK (path lebih lengkap)
 // =====================================================
 $tcpdf_paths = [
     '../../assets/vendor/tcpdf/tcpdf.php',
     '../../assets/tcpdf/tcpdf.php',
     '../../tcpdf/tcpdf.php',
+    '../../vendor/tecnickcom/tcpdf/tcpdf.php',
+    '../../vendor/autoload.php',
+    '../../../vendor/autoload.php',
 ];
 
 $tcpdf_found = false;
@@ -80,7 +93,9 @@ foreach ($tcpdf_paths as $path) {
     }
 }
 
-// Jika TCPDF tidak ditemukan, generate HTML sederhana yang bisa di-print ke PDF
+// =====================================================
+// FALLBACK HTML + html2pdf.js (auto-download PDF)
+// =====================================================
 if (!$tcpdf_found) {
     header("Content-Type: text/html; charset=UTF-8");
     ?>
@@ -89,104 +104,139 @@ if (!$tcpdf_found) {
     <head>
         <meta charset="UTF-8">
         <title>Laporan Pendapatan - SpotLight Studio</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
         <style>
-            @page { size: A4 landscape; margin: 15mm; }
-            body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #1e1e24; }
-            .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #d83f67; padding-bottom: 15px; }
-            .header h1 { color: #d83f67; font-size: 22px; margin: 0 0 5px 0; }
-            .header p { color: #718096; margin: 0; font-size: 10px; }
-            .info { margin-bottom: 15px; font-size: 10px; }
-            .info strong { color: #d83f67; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10px; }
-            th { background: linear-gradient(135deg, #d83f67, #c73165); color: white; padding: 10px 8px; text-align: left; font-weight: 700; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; }
-            td { padding: 8px; border-bottom: 1px solid #e2e8f0; }
+            @page { size: A4; margin: 12mm; }
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10px; color: #1e1e24; background: #fff; padding: 16px; }
+            #laporan { width: 100%; max-width: 210mm; margin: 0 auto; }
+            .kop-surat { display: flex; align-items: center; justify-content: center; gap: 14px; padding-bottom: 14px; margin-bottom: 14px; border-bottom: 3px solid #d83f67; }
+            .kop-surat img { height: 50px; width: auto; flex-shrink: 0; }
+            .kop-text h1 { margin: 0; font-size: 20px; font-weight: 800; color: #1e1e24; letter-spacing: -0.5px; }
+            .kop-text p { margin: 3px 0 0; font-size: 11px; color: #718096; font-weight: 600; }
+            .summary-row { display: flex; gap: 10px; margin-bottom: 16px; }
+            .summary-box { flex: 1; background: #f8fafc; border-radius: 10px; padding: 12px; text-align: center; }
+            .summary-box .label { font-size: 9px; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+            .summary-box .value { font-size: 15px; font-weight: 800; color: #d83f67; }
+            .summary-box .value-dark { font-size: 15px; font-weight: 800; color: #1e1e24; }
+            table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 9px; margin-top: 8px; }
+            th { background: #fff; padding: 10px 8px; font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; text-align: left; border-bottom: 2px solid #f1f5f9; }
+            td { padding: 8px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
             tr:nth-child(even) { background-color: #fff8f0; }
-            tr:hover { background-color: #ffedd5; }
-            .text-right { text-align: right; }
-            .text-center { text-align: center; }
-            .total-row { background: #1e1e24 !important; color: white; font-weight: 700; }
-            .total-row td { border: none; padding: 12px 8px; }
-            .footer { margin-top: 30px; display: flex; justify-content: space-between; font-size: 10px; }
-            .signature { text-align: center; width: 200px; }
-            .signature-line { border-top: 1px solid #1e1e24; margin-top: 50px; padding-top: 5px; font-weight: 700; }
-            .print-btn { position: fixed; top: 20px; right: 20px; background: #d83f67; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 700; }
-            @media print { .print-btn { display: none; } body { margin: 0; } }
+            .td-pink { font-weight: 800; color: #d83f67; }
+            .td-dark { font-weight: 700; color: #1e1e24; }
+            .td-muted { font-size: 8px; color: #94a3b8; font-weight: 600; }
+            .badge-lunas { background: #ecfdf5; color: #059669; font-size: 8px; font-weight: 700; padding: 3px 8px; border-radius: 50px; display: inline-flex; align-items: center; gap: 3px; }
+            .badge-dot { width: 4px; height: 4px; border-radius: 50%; background: #059669; display: inline-block; }
+            .total-row { background: #1e1e24 !important; color: #fff; font-weight: 700; }
+            .total-row td { border: none; padding: 10px 8px; }
+            .signature-wrap { display: flex; justify-content: flex-end; margin-top: 24px; }
+            .signature-box { text-align: center; min-width: 160px; }
+            .signature-box .date { font-size: 10px; color: #4a5568; font-weight: 600; margin-bottom: 3px; }
+            .signature-box .approval { font-size: 10px; color: #4a5568; font-weight: 600; margin-bottom: 32px; }
+            .signature-box .role { font-size: 10px; color: #4a5568; font-weight: 700; text-decoration: underline; margin-bottom: 3px; }
+            .signature-box .name { font-size: 10px; color: #4a5568; font-weight: 700; }
+            .note { font-size: 9px; color: #94a3b8; margin-top: 12px; text-align: center; }
+            .page-footer { text-align: right; font-size: 9px; color: #718096; margin-top: 10px; }
+            .loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; }
+            .loading-spinner { width: 40px; height: 40px; border: 4px solid #ffe4e9; border-top: 4px solid #d83f67; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px; }
+            .loading p { color: #d83f67; font-weight: 700; font-size: 14px; }
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         </style>
     </head>
     <body>
-        <button class="print-btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
-
-        <div class="header">
-            <h1>SpotLight Studio Foto</h1>
-            <p>Cikarang Pusat, Bekasi, Jawa Barat | Telepon: +62 878-7143-8459</p>
-            <p style="margin-top:10px; font-size:14px; color:#1e1e24; font-weight:700;">LAPORAN PENDAPATAN PELUNASAN</p>
-            <p>Periode: <strong><?= date('d M Y', strtotime($tgl_mulai)) ?> s/d <?= date('d M Y', strtotime($tgl_selesai)) ?></strong></p>
+        <div class="loading" id="loadingOverlay">
+            <div class="loading-spinner"></div>
+            <p>Menyiapkan PDF...</p>
         </div>
 
-        <div class="info">
-            <p><strong>Total Pendapatan:</strong> Rp <?= number_format($total_pendapatan, 0, ',', '.') ?> | 
-            <strong>Jumlah Order:</strong> <?= $jumlah_order ?> | 
-            <strong>Dicetak:</strong> <?= date('d M Y H:i') ?></p>
-        </div>
-
-        <table>
-            <thead>
-                <tr>
-                    <th width="4%">No</th>
-                    <th width="8%">No. Bayar</th>
-                    <th width="8%">No. Order</th>
-                    <th width="15%">Pelanggan</th>
-                    <th width="12%">Paket</th>
-                    <th width="12%">Ruangan</th>
-                    <th width="10%">Tema</th>
-                    <th width="10%">Metode</th>
-                    <th width="12%" class="text-right">Jumlah</th>
-                    <th width="12%">Tanggal</th>
-                    <th width="10%">Verifikator</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php 
-                $no = 1;
-                if ($query && sqlsrv_has_rows($query)):
-                    while ($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
-                        $tgl = is_object($row['Tanggal_Upload']) && method_exists($row['Tanggal_Upload'], 'format') 
-                            ? $row['Tanggal_Upload']->format('d-m-Y H:i') 
-                            : date('d-m-Y H:i', strtotime($row['Tanggal_Upload']));
-                ?>
-                <tr>
-                    <td class="text-center"><?= $no++ ?></td>
-                    <td>#<?= str_pad((int)$row['ID_Pembayaran'], 5, '0', STR_PAD_LEFT) ?></td>
-                    <td>#<?= str_pad((int)$row['ID_Order'], 5, '0', STR_PAD_LEFT) ?></td>
-                    <td><?= htmlspecialchars($row['Nama_Pelanggan']) ?><br><small style="color:#718096;"><?= htmlspecialchars($row['No_Hp']) ?></small></td>
-                    <td><?= htmlspecialchars($row['Nama_Paket']) ?></td>
-                    <td><?= htmlspecialchars($row['Nama_Ruangan']) ?></td>
-                    <td><?= htmlspecialchars($row['Nama_Tema']) ?></td>
-                    <td><?= htmlspecialchars($row['Metode_Pembayaran']) ?></td>
-                    <td class="text-right">Rp <?= number_format((float)$row['Jumlah_Bayar'], 0, ',', '.') ?></td>
-                    <td><?= $tgl ?></td>
-                    <td><?= htmlspecialchars($row['Nama_Verifikator'] ?? 'System') ?></td>
-                </tr>
-                <?php endwhile; else: ?>
-                <tr><td colspan="11" class="text-center" style="padding:30px; color:#718096;">Tidak ada data pada periode ini.</td></tr>
-                <?php endif; ?>
-                <tr class="total-row">
-                    <td colspan="8" class="text-right">TOTAL PENDAPATAN:</td>
-                    <td class="text-right">Rp <?= number_format($total_pendapatan, 0, ',', '.') ?></td>
-                    <td colspan="2"></td>
-                </tr>
-            </tbody>
-        </table>
-
-        <div class="footer">
-            <div>
-                <p style="color:#718096; font-size:9px;">Dicetak oleh sistem SpotLight Studio</p>
+        <div id="laporan">
+            <div class="kop-surat">
+                <?php if ($logo_exists): ?><img src="../../assets/img/logo.png" alt="SpotLight Studio"><?php endif; ?>
+                <div class="kop-text">
+                    <h1>SpotLight Studio</h1>
+                    <p>Laporan Pendapatan &bull; Periode <?= $periode_str ?></p>
+                </div>
             </div>
-            <div class="signature">
-                <p>Bekasi, <?= date('d F Y') ?></p>
-                <div class="signature-line">Owner SpotLight Studio</div>
+            <div class="summary-row">
+                <div class="summary-box">
+                    <div class="label">Total Pendapatan</div>
+                    <div class="value">Rp <?= number_format($total_pendapatan, 0, ',', '.') ?></div>
+                </div>
+                <div class="summary-box">
+                    <div class="label">Order Lunas</div>
+                    <div class="value-dark"><?= $jumlah_order ?></div>
+                </div>
+                <div class="summary-box">
+                    <div class="label">Pelanggan</div>
+                    <div class="value-dark"><?= $jumlah_pelanggan ?></div>
+                </div>
             </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>No</th><th>No. Bayar</th><th>No. Order</th><th>Customer</th>
+                        <th>Metode</th><th>Jumlah</th><th>Tanggal</th><th>Status</th><th>Verifikator</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php $no = 1; if (count($rows) > 0): foreach ($rows as $row):
+                        $tgl = is_object($row['Tanggal_Upload']) && method_exists($row['Tanggal_Upload'], 'format')
+                            ? $row['Tanggal_Upload']->format('d M Y H:i') : date('d M Y H:i', strtotime($row['Tanggal_Upload']));
+                    ?>
+                    <tr>
+                        <td><?= $no++ ?></td>
+                        <td class="td-pink">#<?= str_pad((int)$row['ID_Pembayaran'], 5, '0', STR_PAD_LEFT) ?></td>
+                        <td class="td-muted">#ORD-<?= str_pad((int)$row['ID_Order'], 5, '0', STR_PAD_LEFT) ?></td>
+                        <td><div class="td-dark"><?= htmlspecialchars($row['Nama_Pelanggan']) ?></div><div class="td-muted"><?= htmlspecialchars($row['No_Hp']) ?></div></td>
+                        <td class="td-muted"><?= htmlspecialchars($row['Metode_Pembayaran']) ?></td>
+                        <td class="td-pink">Rp <?= number_format((float)$row['Jumlah_Bayar'], 0, ',', '.') ?></td>
+                        <td class="td-muted"><?= $tgl ?></td>
+                        <td><span class="badge-lunas"><span class="badge-dot"></span>Lunas</span></td>
+                        <td class="td-muted"><?= htmlspecialchars($row['Nama_Verifikator'] ?? 'System') ?></td>
+                    </tr>
+                    <?php endforeach; else: ?>
+                    <tr><td colspan="9" style="text-align:center;padding:24px;color:#718096;">Tidak ada data.</td></tr>
+                    <?php endif; ?>
+                    <?php if (count($rows) > 0): ?>
+                    <tr class="total-row">
+                        <td colspan="5" style="text-align:right;">TOTAL PENDAPATAN:</td>
+                        <td>Rp <?= number_format($total_pendapatan, 0, ',', '.') ?></td>
+                        <td colspan="3"></td>
+                    </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+            <div class="signature-wrap">
+                <div class="signature-box">
+                    <div class="date">tanggal <?= date('d M Y') ?></div>
+                    <div class="approval">Approval</div>
+                    <div class="role">Owner</div>
+                    <div class="name"><?= htmlspecialchars($nama_owner) ?></div>
+                </div>
+            </div>
+            <p class="note">Total <?= count($rows) ?> transaksi pelunasan.</p>
+            <div class="page-footer">Halaman 1</div>
         </div>
+
+        <script>
+            window.onload = function() {
+                const element = document.getElementById('laporan');
+                const opt = {
+                    margin: [12, 12, 12, 12],
+                    filename: 'LaporanPendapatan_<?= date('dmY') ?>.pdf',
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2, useCORS: true, logging: false },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+                html2pdf().set(opt).from(element).save().then(() => {
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                }).catch(() => {
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                    alert('Gagal generate PDF. Silakan Print halaman ini dan pilih Save as PDF.');
+                });
+            };
+        </script>
     </body>
     </html>
     <?php
@@ -194,118 +244,182 @@ if (!$tcpdf_found) {
 }
 
 // =====================================================
-// TCPPDF TERDETEKSI - GENERATE PDF LANGSUNG
+// CUSTOM TCPDF CLASS -- Header & Footer setiap halaman
 // =====================================================
-$pdf = new TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
+class SpotLightPDF extends TCPDF {
+    public $logo_path;
+    public $logo_exists;
+    public $periode_str;
+    public $nama_owner;
+
+    public function Header() {
+        $this->SetY(10);
+        if ($this->logo_exists && file_exists($this->logo_path)) {
+            $this->Image($this->logo_path, 15, 10, 16, 0, 'PNG', '', 'T', false, 300, '', false, false, 0, false, false, false);
+            $textX = 36;
+        } else {
+            $textX = 15;
+        }
+        $this->SetXY($textX, 12);
+        $this->SetFont('helvetica', 'B', 15);
+        $this->SetTextColor(30, 30, 36);
+        $this->Cell(0, 8, 'SpotLight Studio', 0, 1, 'L');
+        $this->SetX($textX);
+        $this->SetFont('helvetica', '', 9);
+        $this->SetTextColor(113, 128, 150);
+        $this->Cell(0, 5, 'Laporan Pendapatan  •  Periode ' . $this->periode_str, 0, 1, 'L');
+        $this->SetDrawColor(216, 63, 103);
+        $this->Line(15, 28, 195, 28);
+        $this->Ln(6);
+    }
+
+    public function Footer() {
+        $this->SetY(-15);
+        $this->SetFont('helvetica', '', 8);
+        $this->SetTextColor(148, 163, 184);
+        $this->Cell(0, 10, 'Halaman ' . $this->getAliasNumPage() . ' dari ' . $this->getAliasNbPages(), 0, 0, 'R');
+    }
+}
+
+// =====================================================
+// GENERATE PDF -- PORTRAIT
+// =====================================================
+$pdf = new SpotLightPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+$pdf->logo_path = $logo_path;
+$pdf->logo_exists = $logo_exists;
+$pdf->periode_str = $periode_str;
+$pdf->nama_owner = $nama_owner;
+
 $pdf->SetCreator('SpotLight Studio');
 $pdf->SetAuthor('SpotLight Studio');
 $pdf->SetTitle('Laporan Pendapatan - SpotLight Studio');
 $pdf->SetSubject('Laporan Pendapatan Pelunasan');
-$pdf->setPrintHeader(false);
-$pdf->setPrintFooter(false);
-$pdf->SetMargins(15, 15, 15);
-$pdf->SetAutoPageBreak(true, 15);
+$pdf->setPrintHeader(true);
+$pdf->setPrintFooter(true);
+$pdf->SetMargins(15, 32, 15);
+$pdf->SetHeaderMargin(8);
+$pdf->SetFooterMargin(12);
+$pdf->SetAutoPageBreak(true, 18);
 $pdf->AddPage();
 
-// Header
-$pdf->SetFont('helvetica', 'B', 18);
+// --- SUMMARY CARDS ---
+$cardW = 55;
+$cardH = 20;
+$startX = 15;
+$startY = $pdf->GetY();
+
+$pdf->SetFillColor(248, 250, 252);
+$pdf->SetDrawColor(241, 245, 249);
+
+$pdf->RoundedRect($startX, $startY, $cardW, $cardH, 3, '1111', 'DF');
+$pdf->SetXY($startX, $startY + 3);
+$pdf->SetFont('helvetica', '', 7);
+$pdf->SetTextColor(148, 163, 184);
+$pdf->Cell($cardW, 4, 'TOTAL PENDAPATAN', 0, 2, 'C');
+$pdf->SetFont('helvetica', 'B', 12);
 $pdf->SetTextColor(216, 63, 103);
-$pdf->Cell(0, 10, 'SpotLight Studio Foto', 0, 1, 'C');
-$pdf->SetFont('helvetica', '', 9);
-$pdf->SetTextColor(113, 128, 150);
-$pdf->Cell(0, 5, 'Cikarang Pusat, Bekasi, Jawa Barat | Telepon: +62 878-7143-8459', 0, 1, 'C');
-$pdf->SetDrawColor(216, 63, 103);
-$pdf->Line(15, 32, 282, 32);
-$pdf->Ln(3);
+$pdf->Cell($cardW, 7, 'Rp ' . number_format($total_pendapatan, 0, ',', '.'), 0, 0, 'C');
 
-$pdf->SetFont('helvetica', 'B', 13);
+$pdf->RoundedRect($startX + $cardW + 2, $startY, $cardW, $cardH, 3, '1111', 'DF');
+$pdf->SetXY($startX + $cardW + 2, $startY + 3);
+$pdf->SetFont('helvetica', '', 7);
+$pdf->SetTextColor(148, 163, 184);
+$pdf->Cell($cardW, 4, 'ORDER LUNAS', 0, 2, 'C');
+$pdf->SetFont('helvetica', 'B', 12);
 $pdf->SetTextColor(30, 30, 36);
-$pdf->Cell(0, 8, 'LAPORAN PENDAPATAN PELUNASAN', 0, 1, 'C');
-$pdf->SetFont('helvetica', '', 10);
-$pdf->Cell(0, 6, 'Periode: ' . date('d M Y', strtotime($tgl_mulai)) . ' s/d ' . date('d M Y', strtotime($tgl_selesai)), 0, 1, 'C');
-$pdf->Ln(5);
+$pdf->Cell($cardW, 7, $jumlah_order, 0, 0, 'C');
 
-// Info Box
-$pdf->SetFillColor(255, 245, 246);
-$pdf->SetDrawColor(255, 228, 233);
-$pdf->RoundedRect(15, 50, 267, 18, 3, '1111', 'DF');
-$pdf->SetFont('helvetica', 'B', 10);
-$pdf->SetTextColor(216, 63, 103);
-$pdf->SetXY(20, 54);
-$pdf->Cell(80, 6, 'Total Pendapatan: Rp ' . number_format($total_pendapatan, 0, ',', '.'), 0, 0, 'L');
+$pdf->RoundedRect($startX + ($cardW + 2) * 2, $startY, $cardW, $cardH, 3, '1111', 'DF');
+$pdf->SetXY($startX + ($cardW + 2) * 2, $startY + 3);
+$pdf->SetFont('helvetica', '', 7);
+$pdf->SetTextColor(148, 163, 184);
+$pdf->Cell($cardW, 4, 'PELANGGAN', 0, 2, 'C');
+$pdf->SetFont('helvetica', 'B', 12);
 $pdf->SetTextColor(30, 30, 36);
-$pdf->Cell(80, 6, 'Jumlah Order: ' . $jumlah_order, 0, 0, 'L');
-$pdf->Cell(80, 6, 'Dicetak: ' . date('d M Y H:i'), 0, 1, 'R');
-$pdf->Ln(12);
+$pdf->Cell($cardW, 7, $jumlah_pelanggan, 0, 0, 'C');
 
-// Tabel Header
-$pdf->SetFillColor(216, 63, 103);
-$pdf->SetTextColor(255, 255, 255);
-$pdf->SetFont('helvetica', 'B', 8);
-$pdf->SetDrawColor(216, 63, 103);
+$pdf->Ln($cardH + 6);
 
-$headers = ['No', 'No. Bayar', 'No. Order', 'Pelanggan', 'Paket', 'Ruangan', 'Tema', 'Metode', 'Jumlah', 'Tanggal', 'Verifikator'];
-$widths = [8, 18, 18, 35, 30, 30, 25, 25, 30, 30, 25];
+// --- TABEL HEADER ---
+$pdf->SetFillColor(255, 255, 255);
+$pdf->SetTextColor(148, 163, 184);
+$pdf->SetFont('helvetica', 'B', 7);
+$pdf->SetDrawColor(241, 245, 249);
+
+$headers = ['No', 'No. Bayar', 'No. Order', 'Customer', 'Metode', 'Jumlah', 'Tanggal', 'Status', 'Verifikator'];
+$widths = [6, 20, 18, 32, 24, 24, 24, 16, 16];
 
 foreach ($headers as $i => $header) {
-    $pdf->Cell($widths[$i], 10, $header, 1, 0, 'C', true);
+    $pdf->Cell($widths[$i], 9, $header, 'B', 0, 'L', true);
 }
 $pdf->Ln();
 
-// Tabel Data
+// --- TABEL DATA ---
 $pdf->SetFont('helvetica', '', 8);
 $pdf->SetTextColor(30, 30, 36);
 $fill = false;
 
-if ($query && sqlsrv_has_rows($query)):
+if (count($rows) > 0):
     $no = 1;
-    while ($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
-        $tgl = is_object($row['Tanggal_Upload']) && method_exists($row['Tanggal_Upload'], 'format') 
-            ? $row['Tanggal_Upload']->format('d-m-Y') 
-            : date('d-m-Y', strtotime($row['Tanggal_Upload']));
+    foreach ($rows as $row):
+        $tgl = is_object($row['Tanggal_Upload']) && method_exists($row['Tanggal_Upload'], 'format')
+            ? $row['Tanggal_Upload']->format('d M Y H:i')
+            : date('d M Y H:i', strtotime($row['Tanggal_Upload']));
 
-        if ($fill) {
-            $pdf->SetFillColor(255, 248, 240);
-        } else {
-            $pdf->SetFillColor(255, 255, 255);
-        }
+        $bg = $fill ? [255, 248, 240] : [255, 255, 255];
+        $pdf->SetFillColor($bg[0], $bg[1], $bg[2]);
 
-        $pdf->Cell($widths[0], 8, $no++, 1, 0, 'C', true);
-        $pdf->Cell($widths[1], 8, '#' . str_pad((int)$row['ID_Pembayaran'], 5, '0', STR_PAD_LEFT), 1, 0, 'C', true);
-        $pdf->Cell($widths[2], 8, '#' . str_pad((int)$row['ID_Order'], 5, '0', STR_PAD_LEFT), 1, 0, 'C', true);
-        $pdf->Cell($widths[3], 8, htmlspecialchars($row['Nama_Pelanggan']), 1, 0, 'L', true);
-        $pdf->Cell($widths[4], 8, htmlspecialchars($row['Nama_Paket']), 1, 0, 'L', true);
-        $pdf->Cell($widths[5], 8, htmlspecialchars($row['Nama_Ruangan']), 1, 0, 'L', true);
-        $pdf->Cell($widths[6], 8, htmlspecialchars($row['Nama_Tema']), 1, 0, 'L', true);
-        $pdf->Cell($widths[7], 8, htmlspecialchars($row['Metode_Pembayaran']), 1, 0, 'L', true);
-        $pdf->Cell($widths[8], 8, 'Rp ' . number_format((float)$row['Jumlah_Bayar'], 0, ',', '.'), 1, 0, 'R', true);
-        $pdf->Cell($widths[9], 8, $tgl, 1, 0, 'C', true);
-        $pdf->Cell($widths[10], 8, htmlspecialchars($row['Nama_Verifikator'] ?? 'System'), 1, 1, 'C', true);
+        $pdf->Cell($widths[0], 7, $no++, 0, 0, 'C', true);
+        $pdf->SetTextColor(216, 63, 103);
+        $pdf->SetFont('helvetica', 'B', 8);
+        $pdf->Cell($widths[1], 7, '#' . str_pad((int)$row['ID_Pembayaran'], 5, '0', STR_PAD_LEFT), 0, 0, 'L', true);
+        $pdf->SetTextColor(30, 30, 36);
+        $pdf->SetFont('helvetica', '', 8);
+        $pdf->Cell($widths[2], 7, '#ORD-' . str_pad((int)$row['ID_Order'], 5, '0', STR_PAD_LEFT), 0, 0, 'L', true);
+        $pdf->Cell($widths[3], 7, htmlspecialchars($row['Nama_Pelanggan']), 0, 0, 'L', true);
+        $pdf->Cell($widths[4], 7, htmlspecialchars($row['Metode_Pembayaran']), 0, 0, 'L', true);
+        $pdf->SetTextColor(216, 63, 103);
+        $pdf->SetFont('helvetica', 'B', 8);
+        $pdf->Cell($widths[5], 7, 'Rp ' . number_format((float)$row['Jumlah_Bayar'], 0, ',', '.'), 0, 0, 'R', true);
+        $pdf->SetTextColor(30, 30, 36);
+        $pdf->SetFont('helvetica', '', 8);
+        $pdf->Cell($widths[6], 7, $tgl, 0, 0, 'L', true);
+        $pdf->SetTextColor(5, 150, 105);
+        $pdf->SetFont('helvetica', 'B', 7);
+        $pdf->Cell($widths[7], 7, 'Lunas', 0, 0, 'L', true);
+        $pdf->SetTextColor(30, 30, 36);
+        $pdf->SetFont('helvetica', '', 8);
+        $pdf->Cell($widths[8], 7, htmlspecialchars($row['Nama_Verifikator'] ?? 'System'), 0, 1, 'L', true);
 
         $fill = !$fill;
-    endwhile;
+    endforeach;
 else:
-    $pdf->Cell(array_sum($widths), 20, 'Tidak ada data pada periode ini.', 1, 1, 'C', false);
+    $pdf->Cell(array_sum($widths), 18, 'Tidak ada data pendapatan pelunasan pada periode ini.', 0, 1, 'C', false);
 endif;
 
-// Total Row
-$pdf->SetFillColor(30, 30, 36);
-$pdf->SetTextColor(255, 255, 255);
-$pdf->SetFont('helvetica', 'B', 9);
-$pdf->Cell(array_sum(array_slice($widths, 0, 8)), 10, 'TOTAL PENDAPATAN:', 1, 0, 'R', true);
-$pdf->Cell($widths[8], 10, 'Rp ' . number_format($total_pendapatan, 0, ',', '.'), 1, 0, 'R', true);
-$pdf->Cell($widths[9] + $widths[10], 10, '', 1, 1, 'C', true);
+// --- TOTAL ROW ---
+if (count($rows) > 0) {
+    $pdf->SetFillColor(30, 30, 36);
+    $pdf->SetTextColor(255, 255, 255);
+    $pdf->SetFont('helvetica', 'B', 9);
+    $pdf->Cell(array_sum(array_slice($widths, 0, 5)), 9, 'TOTAL PENDAPATAN:', 'T', 0, 'R', true);
+    $pdf->Cell($widths[5], 9, 'Rp ' . number_format($total_pendapatan, 0, ',', '.'), 'T', 0, 'R', true);
+    $pdf->Cell(array_sum(array_slice($widths, 6)), 9, '', 'T', 1, 'C', true);
+}
 
-// Footer
-$pdf->Ln(15);
+// --- TANDA TANGAN ---
+$pdf->Ln(10);
+$pdf->SetTextColor(74, 85, 104);
+$pdf->SetFont('helvetica', '', 10);
+$pdf->Cell(0, 6, 'tanggal ' . date('d M Y'), 0, 1, 'R');
+$pdf->Cell(0, 6, 'Approval', 0, 1, 'R');
+$pdf->Ln(10);
+$pdf->SetFont('helvetica', 'B', 10);
 $pdf->SetTextColor(30, 30, 36);
-$pdf->SetFont('helvetica', '', 9);
-$pdf->Cell(0, 5, 'Bekasi, ' . date('d F Y'), 0, 1, 'R');
-$pdf->Cell(0, 5, 'Owner SpotLight Studio', 0, 1, 'R');
-$pdf->Ln(15);
-$pdf->SetFont('helvetica', 'B', 9);
-$pdf->Cell(0, 5, '_________________________', 0, 1, 'R');
+$pdf->Cell(0, 6, 'Owner', 0, 1, 'R');
+$pdf->Cell(0, 6, $nama_owner, 0, 1, 'R');
 
-$filename = 'Laporan_Pendapatan_' . $tgl_mulai . '_to_' . $tgl_selesai . '.pdf';
+// --- OUTPUT: langsung download ---
+$filename = 'LaporanPendapatan_' . date('dmY') . '.pdf';
 $pdf->Output($filename, 'D');
 exit();
