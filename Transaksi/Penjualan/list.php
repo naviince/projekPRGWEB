@@ -40,13 +40,19 @@ $sort = isset($_GET['sort']) ? trim($_GET['sort']) : "terbaru";
 
 // =====================================================
 // QUERY STATISTIK
+// Catatan: penjualan tanpa item barang sama sekali (keranjang kosong --
+// bisa terjadi kalau header Penjualan sempat dibuat tapi item barangnya
+// belum/gagal diinput, atau semua itemnya sudah dihapus) DIKECUALIKAN dari
+// statistik maupun daftar. Transaksi seperti ini bukan penjualan yang sah
+// untuk ditinjau admin.
 // =====================================================
+$filter_ada_barang = "EXISTS (SELECT 1 FROM Detail_Penjualan_Barang_Cetak dx WHERE dx.ID_Penjualan = Penjualan.ID_Penjualan)";
 $q_stats = "SELECT 
     COUNT(*) as total,
     SUM(CASE WHEN Status_Penjualan = 0 AND Status = 1 THEN 1 ELSE 0 END) as proses,
     SUM(CASE WHEN Status_Penjualan = 1 AND Status = 1 THEN 1 ELSE 0 END) as selesai,
     SUM(CASE WHEN Status = 0 THEN 1 ELSE 0 END) as terhapus
-FROM Penjualan WHERE 1=1";
+FROM Penjualan WHERE $filter_ada_barang";
 $stmt_stats = sqlsrv_query($conn, $q_stats);
 $stats = ['total' => 0, 'proses' => 0, 'selesai' => 0, 'terhapus' => 0];
 if ($stmt_stats !== false) {
@@ -69,7 +75,7 @@ if ($q_stok_alert !== false) {
 // =====================================================
 // QUERY LIST DATA DENGAN FILTER
 // =====================================================
-$conditions = array("p.Status = 1");
+$conditions = array("p.Status = 1", "EXISTS (SELECT 1 FROM Detail_Penjualan_Barang_Cetak dx WHERE dx.ID_Penjualan = p.ID_Penjualan)");
 $params = array();
 
 if (!empty($cari)) {
@@ -83,7 +89,7 @@ if ($status_filter !== "" && $status_filter !== "terhapus") {
     $params[] = (int)$status_filter;
 }
 if ($status_filter === "terhapus") {
-    $conditions = array("p.Status = 0");
+    $conditions = array("p.Status = 0", "EXISTS (SELECT 1 FROM Detail_Penjualan_Barang_Cetak dx WHERE dx.ID_Penjualan = p.ID_Penjualan)");
     $params = array();
 }
 if (!empty($tanggal_dari)) {
@@ -100,8 +106,13 @@ if ($sort == "terlama") { $order_clause = "p.Tanggal_Penjualan ASC"; }
 elseif ($sort == "total_tertinggi") { $order_clause = "p.Total_Penjualan DESC"; }
 elseif ($sort == "total_terendah") { $order_clause = "p.Total_Penjualan ASC"; }
 
-// Hitung total untuk pagination
-$sql_count = "SELECT COUNT(*) AS total FROM Penjualan p 
+// Hitung total untuk pagination -- pakai COUNT(DISTINCT p.ID_Penjualan), BUKAN
+// COUNT(*), karena LEFT JOIN ke Detail_Penjualan_Barang_Cetak/Barang_Cetak bisa
+// menggandakan baris kalau 1 penjualan punya lebih dari 1 jenis barang.
+// COUNT(*) polos sebelumnya menghitung baris yang sudah tergandakan itu,
+// sehingga total_records membengkak dan paginasi jadi salah (halaman kosong
+// muncul di akhir).
+$sql_count = "SELECT COUNT(DISTINCT p.ID_Penjualan) AS total FROM Penjualan p 
               LEFT JOIN [Order] o ON p.ID_Order = o.ID_Order 
               LEFT JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan 
               LEFT JOIN Detail_Penjualan_Barang_Cetak d ON p.ID_Penjualan = d.ID_Penjualan 
@@ -130,6 +141,7 @@ $sql_list = "SELECT p.ID_Penjualan, p.ID_Order, p.Tanggal_Penjualan, p.Total_Pen
              GROUP BY p.ID_Penjualan, p.ID_Order, p.Tanggal_Penjualan, p.Total_Penjualan, 
                       p.Status_Penjualan, p.Status, p.ID_Karyawan_Admin,
                       pl.Nama_Pelanggan, pl.ID_Pelanggan
+             HAVING COUNT(d.ID_Detail) > 0
              ORDER BY " . $order_clause . " 
              OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
 $params_list = $params;
@@ -375,6 +387,18 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         .td-tanggal { font-size: 0.8rem; color: #718096; font-weight: 600; }
         .td-total { font-weight: 800; color: var(--p-pink); font-size: 1rem; }
         .td-barang { font-size: 0.8rem; color: #718096; }
+
+        .no-badge {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 32px; height: 32px; border-radius: 10px;
+            background: var(--s-pink); color: var(--p-pink);
+            font-weight: 800; font-size: 0.85rem;
+        }
+        .order-tag {
+            display: inline-block; margin-left: 8px; padding: 2px 9px;
+            border-radius: 50px; background: #f1f5f9; color: #64748b;
+            font-size: 0.68rem; font-weight: 700; letter-spacing: 0.3px;
+        }
 
         .badge-status-penjualan {
             font-size: 0.72rem; font-weight: 700; padding: 6px 14px;
@@ -640,7 +664,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>No. Order</th>
+                            <th>No.</th>
                             <th>Pelanggan</th>
                             <th>Tanggal Penjualan</th>
                             <th>Barang</th>
@@ -672,10 +696,13 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                                 }
                         ?>
                             <tr class="fade-in-up">
-                                <td class="td-order-id">#<?= $row['ID_Order'] ?? '-' ?></td>
+                                <td class="td-order-id"><span class="no-badge"><?= $no++ ?></span></td>
                                 <td>
-                                    <div class="td-customer"><?= htmlspecialchars($row['Nama_Pelanggan'] ?? 'Unknown') ?></div>
-                                    <div class="td-tanggal">ID: <?= $row['ID_Penjualan'] ?></div>
+                                    <div class="td-customer">
+                                        <?= htmlspecialchars($row['Nama_Pelanggan'] ?? 'Unknown') ?>
+                                        <span class="order-tag">Order #<?= $row['ID_Order'] ?? '-' ?></span>
+                                    </div>
+                                    <div class="td-tanggal">ID Penjualan: <?= $row['ID_Penjualan'] ?></div>
                                 </td>
                                 <td class="td-tanggal"><?= $tanggal ?></td>
                                 <td class="td-barang">
@@ -986,21 +1013,22 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         let msg = "";
         let t_icon = "success";
         let t_title = "Berhasil!";
+        const statusSukses = <?= json_encode($_GET['status_sukses']) ?>;
 
-        if ("<?= $_GET['status_sukses'] ?>" == 'update_status') { 
+        if (statusSukses == 'update_status') { 
             msg = "Status penjualan berhasil diperbarui menjadi SELESAI!"; 
             t_title = "Status Diperbarui"; 
         }
-        else if ("<?= $_GET['status_sukses'] ?>" == 'soft_delete') { 
+        else if (statusSukses == 'soft_delete') { 
             msg = "Data penjualan berhasil dihapus (soft delete)!"; 
             t_title = "Data Dihapus"; 
         }
-        else if ("<?= $_GET['status_sukses'] ?>" == 'restore') { 
+        else if (statusSukses == 'restore') { 
             msg = "Data penjualan berhasil dipulihkan!"; 
             t_title = "Data Dipulihkan"; 
         }
-        else if ("<?= $_GET['status_sukses'] ?>" == 'error') { 
-            msg = "<?= $_GET['message'] ?? 'Terjadi kesalahan!' ?>"; 
+        else if (statusSukses == 'error') { 
+            msg = <?= json_encode($_GET['message'] ?? 'Terjadi kesalahan!') ?>; 
             t_icon = "error"; t_title = "Gagal!"; 
         }
 

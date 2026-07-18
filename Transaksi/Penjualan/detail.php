@@ -30,7 +30,7 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
 $id_penjualan = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 if ($id_penjualan <= 0) {
-    header("Location: list.php?status_sukses=error&message=ID Penjualan tidak valid");
+    header("Location: list.php?status_sukses=error&message=" . urlencode("ID Penjualan tidak valid"));
     exit();
 }
 
@@ -49,7 +49,7 @@ $stmt = sqlsrv_query($conn, $sql_penjualan, [$id_penjualan]);
 $penjualan = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
 
 if (!$penjualan) {
-    header("Location: list.php?status_sukses=error&message=Data penjualan tidak ditemukan");
+    header("Location: list.php?status_sukses=error&message=" . urlencode("Data penjualan tidak ditemukan"));
     exit();
 }
 
@@ -101,6 +101,16 @@ while ($row = sqlsrv_fetch_array($stmt_barang, SQLSRV_FETCH_ASSOC)) {
 $total_qty = 0;
 foreach ($detail_barang as $b) {
     $total_qty += $b['Jumlah'];
+}
+
+// Guard tambahan: penjualan tanpa item barang sama sekali ("transaksi hantu",
+// bisa terjadi kalau header Penjualan sempat dibuat tapi item barangnya
+// belum/gagal diinput) sengaja disembunyikan dari list.php -- tolak juga
+// akses langsung ke halaman detail-nya (mis. lewat bookmark/URL lama) demi
+// konsistensi, daripada menampilkan halaman detail kosong yang membingungkan.
+if (empty($detail_barang)) {
+    header("Location: list.php?status_sukses=error&message=" . urlencode("Data penjualan ini tidak memiliki item barang dan tidak dapat ditampilkan."));
+    exit();
 }
 ?>
 
@@ -635,13 +645,14 @@ foreach ($detail_barang as $b) {
         let msg = "";
         let t_icon = "success";
         let t_title = "Berhasil!";
+        const statusSukses = <?= json_encode($_GET['status_sukses']) ?>;
 
-        if ("<?= $_GET['status_sukses'] ?>" == 'update_status') { 
+        if (statusSukses == 'update_status') { 
             msg = "Status penjualan berhasil diperbarui menjadi SELESAI!"; 
             t_title = "Status Diperbarui"; 
         }
-        else if ("<?= $_GET['status_sukses'] ?>" == 'error') { 
-            msg = "<?= $_GET['message'] ?? 'Terjadi kesalahan!' ?>"; 
+        else if (statusSukses == 'error') { 
+            msg = <?= json_encode($_GET['message'] ?? 'Terjadi kesalahan!') ?>; 
             t_icon = "error"; t_title = "Gagal!"; 
         }
 

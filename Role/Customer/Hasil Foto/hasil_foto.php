@@ -443,16 +443,31 @@ function formatWaktu($time) {
         @media (max-width: 992px) { .order-grid { grid-template-columns: 1fr; } }
 
         .paket-section { display: flex; gap: 16px; }
-        .paket-img {
+        
+        /* WADAH BARU UNTUK GAMBAR PAKET / FALLBACK IKON */
+        .paket-img-container {
             width: 100px;
             height: 100px;
             border-radius: var(--radius-md);
-            object-fit: cover;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+            overflow: hidden;
+            background: var(--s-pink);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
             border: 3px solid #ffffff;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
             transition: var(--transition-smooth);
         }
-        .paket-section:hover .paket-img { transform: scale(1.05) rotate(2deg); }
+        .paket-section:hover .paket-img-container {
+            transform: scale(1.05) rotate(2deg);
+        }
+        .paket-img-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
         .paket-info h3 { color: var(--text-dark); font-size: 1.1rem; font-weight: 800; margin-bottom: 8px; }
         .paket-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
         .paket-meta span {
@@ -852,9 +867,15 @@ function formatWaktu($time) {
                     $card_delay += 0.05;
             ?>
                 <div class="order-card lunas" style="animation-delay: <?= $card_delay; ?>s;">
+                    <!-- HEADER KARTU DIUBAH MENJADI LEBIH INTERAKTIF DAN AKURAT SESUAI REQUEST -->
                     <div class="order-header">
-                        <div class="order-id">
-                            <strong>#ORDER-<?= str_pad($row['ID_Order'], 4, '0', STR_PAD_LEFT) ?></strong>
+                        <div class="order-id d-flex align-items-center gap-2">
+                            <span class="badge bg-success text-white" style="font-size: 0.72rem; font-weight: 800; border-radius: 50px; padding: 4px 12px; border: none;">
+                                <i class="bi bi-check-circle-fill me-1"></i> Selesai
+                            </span>
+                            <span style="font-size: 0.9rem; font-weight: 800; color: #475569;">
+                                Lihat Sesi Selesai (#<?= str_pad($row['ID_Order'], 4, '0', STR_PAD_LEFT) ?>)
+                            </span>
                         </div>
                         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
                             <div class="order-date">
@@ -869,21 +890,31 @@ function formatWaktu($time) {
                         <div class="order-grid">
                             <!-- KIRI: Paket Info -->
                             <div class="paket-section">
-                                <?php 
-                                $foto_paket = $row['Foto_Paket'] ?? 'default_paket.jpg';
-                                $foto_src = file_exists("../../../assets/img/paket/" . $foto_paket) 
-                                    ? "../../../assets/img/paket/" . $foto_paket 
-                                    : "../../../assets/img/paket/default_paket.jpg";
-                                ?>
-                                <img src="<?= $foto_src ?>" alt="Paket" class="paket-img">
+                                <!-- DEFENSIVE DESIGN UNTUK GAMBAR PAKET AGAR TIDAK PECAH -->
+                                <div class="paket-img-container">
+                                    <?php 
+                                    $foto_paket = $row['Foto_Paket'] ?? '';
+                                    $foto_src = ($foto_paket != '' && file_exists("../../../assets/img/paket/" . $foto_paket)) 
+                                        ? "../../../assets/img/paket/" . $foto_paket 
+                                        : null;
+                                    if ($foto_src): 
+                                    ?>
+                                        <img src="<?= $foto_src ?>" alt="Paket">
+                                    <?php else: ?>
+                                        <i class="bi bi-camera-fill" style="font-size: 2.2rem; color: var(--p-pink);"></i>
+                                    <?php endif; ?>
+                                </div>
                                 <div class="paket-info">
-                                    <h3><?= htmlspecialchars($row['Nama_Paket'], ENT_QUOTES, 'UTF-8') ?></h3>
+                                    <h3><?= htmlspecialchars($row['Nama_Paket'] ?? 'Paket Sesi', ENT_QUOTES, 'UTF-8') ?></h3>
                                     <div class="paket-meta">
-                                        <span><i class="bi bi-clock"></i><?= $row['Durasi_Waktu'] ?> menit</span>
-                                        <span><i class="bi bi-people"></i>Max <?= (int)$row['Kapasitas_Orang'] ?> orang</span>
-                                        <span><i class="bi bi-door-open"></i><?= htmlspecialchars($row['Nama_Ruangan'], ENT_QUOTES, 'UTF-8') ?></span>
+                                        <span><i class="bi bi-clock"></i><?= isset($row['Durasi_Waktu']) ? (int)$row['Durasi_Waktu'] . ' menit' : 'Sesuai Paket' ?></span>
+                                        
+                                        <!-- VALIDASI UNTUK MENCEGAH UNDEFINED ARRAY KEY WARNING -->
+                                        <span><i class="bi bi-people"></i><?= isset($row['Kapasitas_Orang']) ? 'Max ' . (int)$row['Kapasitas_Orang'] . ' orang' : 'Kapasitas Standar' ?></span>
+                                        
+                                        <span><i class="bi bi-door-open"></i><?= htmlspecialchars($row['Nama_Ruangan'] ?? '-', ENT_QUOTES, 'UTF-8') ?></span>
                                     </div>
-                                    <div class="paket-price">Rp<?= number_format($row['Total_Harga'], 0, ',', '.') ?></div>
+                                    <div class="paket-price">Rp<?= number_format($row['Total_Harga'] ?? 0, 0, ',', '.') ?></div>
                                 </div>
                             </div>
 
@@ -893,21 +924,21 @@ function formatWaktu($time) {
                                     <i class="bi bi-calendar-check"></i>
                                     <div>
                                         <div class="detail-label">Tanggal Sesi</div>
-                                        <div class="detail-value"><?= formatTanggal($row['Tanggal_Jadwal']) ?></div>
+                                        <div class="detail-value"><?= formatTanggal($row['Tanggal_Jadwal'] ?? null) ?></div>
                                     </div>
                                 </div>
                                 <div class="detail-item">
                                     <i class="bi bi-clock-history"></i>
                                     <div>
                                         <div class="detail-label">Jam Sesi</div>
-                                        <div class="detail-value"><?= formatWaktu($row['Jam_Mulai']) ?> - <?= formatWaktu($row['Jam_Selesai']) ?> WIB</div>
+                                        <div class="detail-value"><?= formatWaktu($row['Jam_Mulai'] ?? null) ?> - <?= formatWaktu($row['Jam_Selesai'] ?? null) ?> WIB</div>
                                     </div>
                                 </div>
                                 <div class="detail-item" style="background: linear-gradient(135deg, var(--s-pink), #ffffff);">
                                     <i class="bi bi-images" style="background: var(--p-pink); color: #fff;"></i>
                                     <div>
                                         <div class="detail-label">Jumlah Berkas</div>
-                                        <div class="detail-value" style="color:var(--p-pink);font-weight:900;"><?= (int)$row['Total_Foto'] ?> foto (<?= formatUkuran($row['Total_Ukuran']) ?>)</div>
+                                        <div class="detail-value" style="color:var(--p-pink);font-weight:900;"><?= (int)($row['Total_Foto'] ?? 0) ?> foto (<?= formatUkuran($row['Total_Ukuran'] ?? 0) ?>)</div>
                                     </div>
                                 </div>
                             </div>

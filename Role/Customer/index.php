@@ -242,6 +242,7 @@ function fmtTgl($d) {
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
+        /* SINKRONISASI VARIABEL DESIGN SYSTEM DARI RIWAYAT.PHP & HASIL_FOTO.PHP */
         :root {
             --p-pink: #d83f67;
             --d-pink: #c73165;
@@ -251,58 +252,91 @@ function fmtTgl($d) {
             --text-dark: #1e1e24;
             --text-muted: #718096;
             --body-bg: #f8fafc;
-            --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --glass-border: rgba(255, 255, 255, 0.5);
+            --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.06);
+            --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.08);
+            --shadow-hover: 0 20px 48px rgba(216, 63, 103, 0.18);
+            --shadow-glow: 0 0 40px rgba(216, 63, 103, 0.15);
+            --radius-sm: 12px;
+            --radius-md: 16px;
+            --radius-lg: 24px;
+            --radius-xl: 32px;
+            --transition-smooth: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-bounce: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            --success: #059669;
+            --warning: #d97706;
+            --danger: #dc2626;
         }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html { scroll-behavior: smooth; }
+
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
-            background: var(--body-bg);
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #f8fafc 100%);
+            background-attachment: fixed;
             color: var(--text-dark);
+            min-height: 100vh;
         }
+
+        /* ===== NAVBAR ATAS SINKRON PREMIUM & GLASSMORPHISM ===== */
         .top-navbar {
-            background: #ffffff;
-            padding: 16px 40px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 14px 40px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             position: sticky;
             top: 0;
             z-index: 1000;
-            box-shadow: 0 2px 20px rgba(0,0,0,0.06);
+            box-shadow: var(--shadow-soft);
+            border-bottom: 1px solid var(--glass-border);
         }
         .nav-logo {
             font-weight: 900;
-            font-size: 1.8rem;
+            font-size: 1.7rem;
             color: var(--p-pink);
             text-decoration: none;
-            letter-spacing: -1px;
+            letter-spacing: -1.5px;
+            transition: var(--transition-smooth);
         }
-        .nav-logo span { color: var(--text-dark); font-weight: 700; font-size: 0.9rem; }
+        .nav-logo:hover { transform: scale(1.02); }
+        .nav-logo span { color: var(--text-dark); font-weight: 700; font-size: 0.85rem; }
+        
         .nav-menu-center {
             display: flex;
-            gap: 32px;
+            gap: 36px;
             align-items: center;
         }
         .nav-link-item {
-            color: #4a5568;
+            color: #64748b;
             text-decoration: none;
             font-weight: 700;
-            font-size: 0.9rem;
-            transition: all 0.3s;
-            padding: 8px 0;
+            font-size: 0.88rem;
+            transition: var(--transition-smooth);
+            padding: 8px 4px;
             position: relative;
         }
-        .nav-link-item:hover, .nav-link-item.active { color: var(--p-pink); }
-        .nav-link-item.active::after {
+        .nav-link-item::after {
             content: '';
             position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
+            bottom: -2px;
+            left: 50%;
+            width: 0;
             height: 3px;
-            background: var(--p-pink);
+            background: linear-gradient(90deg, var(--p-pink), var(--accent-pink));
             border-radius: 3px;
+            transition: var(--transition-smooth);
+            transform: translateX(-50%);
+        }
+        .nav-link-item:hover, .nav-link-item.active {
+            color: var(--p-pink);
+        }
+        .nav-link-item:hover::after, .nav-link-item.active::after {
+            width: 100%;
         }
         .nav-right {
             display: flex;
@@ -313,60 +347,69 @@ function fmtTgl($d) {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
             color: #fff;
             padding: 10px 24px;
-            border-radius: 12px;
+            border-radius: var(--radius-md);
             font-weight: 800;
             font-size: 0.85rem;
             text-decoration: none;
-            transition: all 0.3s;
-            box-shadow: 0 4px 15px rgba(216, 63, 102, 0.25);
+            transition: var(--transition-smooth);
+            box-shadow: 0 4px 16px rgba(216, 63, 103, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
         .nav-btn-booking:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(216, 63, 103, 0.35);
+            transform: translateY(-3px) scale(1.03);
+            box-shadow: 0 8px 28px rgba(216, 63, 103, 0.4);
             color: #fff;
         }
         .nav-avatar-wrapper { position: relative; }
         .nav-avatar {
-            width: 40px;
-            height: 40px;
+            width: 42px;
+            height: 42px;
             border-radius: 50%;
             object-fit: cover;
-            border: 2px solid var(--light-pink);
+            border: 2.5px solid var(--light-pink);
             cursor: pointer;
-            transition: all 0.3s;
+            transition: var(--transition-smooth);
+            box-shadow: 0 2px 8px rgba(216, 63, 103, 0.15);
         }
         .nav-avatar:hover {
-            transform: scale(1.1);
+            transform: scale(1.12) rotate(3deg);
             border-color: var(--p-pink);
+            box-shadow: 0 4px 16px rgba(216, 63, 103, 0.25);
         }
         .nav-dropdown {
             position: absolute;
-            top: 55px;
-            right: 0;
-            background: #ffffff;
-            border-radius: 16px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+            top: 58px;
+            right: -8px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-card), 0 0 0 1px rgba(0,0,0,0.04);
             padding: 12px;
-            min-width: 220px;
+            min-width: 240px;
             display: none;
             z-index: 1001;
-            border: 1px solid #f1f5f9;
+            border: 1px solid var(--glass-border);
+            animation: dropdownSlide 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        .nav-dropdown.show {
-            display: block;
-            animation: fadeIn 0.2s ease;
+        .nav-dropdown.show { display: block; }
+        @keyframes dropdownSlide {
+            from { opacity: 0; transform: translateY(-10px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
         }
         .dropdown-item {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             padding: 12px 16px;
-            border-radius: 12px;
+            border-radius: var(--radius-md);
             color: #4a5568;
             font-weight: 600;
             font-size: 0.9rem;
             text-decoration: none;
-            transition: all 0.3s;
+            transition: var(--transition-smooth);
             cursor: pointer;
             border: none;
             background: none;
@@ -375,31 +418,31 @@ function fmtTgl($d) {
         .dropdown-item:hover {
             background: var(--s-pink);
             color: var(--p-pink);
+            transform: translateX(4px);
         }
-        .dropdown-item i {
-            font-size: 1.1rem;
-            width: 20px;
-            text-align: center;
-        }
+        .dropdown-item i { font-size: 1.1rem; width: 22px; text-align: center; }
         .dropdown-divider {
             height: 1px;
-            background: #f1f5f9;
+            background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
             margin: 8px 0;
         }
         .dropdown-item.logout { color: #dc2626; }
         .dropdown-item.logout:hover { background: #fef2f2; }
         .dropdown-header {
-            padding: 8px 16px;
+            padding: 10px 16px;
             font-weight: 800;
             color: var(--text-dark);
             font-size: 0.95rem;
         }
+
+        /* ===== HERO BANNER ===== */
         .hero-banner {
             background: linear-gradient(135deg, var(--p-pink) 0%, var(--d-pink) 50%, #b82e52 100%);
             padding: 60px 40px;
             text-align: center;
             position: relative;
             overflow: hidden;
+            border-bottom: 1px solid var(--glass-border);
         }
         .hero-banner::before {
             content: '';
@@ -441,7 +484,7 @@ function fmtTgl($d) {
             font-weight: 800;
             font-size: 1rem;
             text-decoration: none;
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transition: var(--transition-smooth);
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
         }
         .hero-btn:hover {
@@ -449,10 +492,13 @@ function fmtTgl($d) {
             box-shadow: 0 20px 40px rgba(0,0,0,0.3);
             color: var(--d-pink);
         }
+
+        /* ===== BOOKING STEPS ===== */
         .booking-steps {
-            background: #ffffff;
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
             padding: 30px 40px;
-            border-bottom: 1px solid #eef2f6;
+            border-bottom: 1px solid var(--glass-border);
         }
         .steps-container {
             max-width: 1100px;
@@ -507,6 +553,8 @@ function fmtTgl($d) {
             color: var(--text-dark);
         }
         .step-text.inactive { color: #94a3b8; }
+
+        /* ===== MAIN CONTAINER ===== */
         .main-container {
             padding: 40px;
             max-width: 1400px;
@@ -955,10 +1003,10 @@ function fmtTgl($d) {
         }
         .pwd-requirement.valid { color: #059669; }
 
-        /* ===== CSS BARU: SINKRONISASI TOMBOL FILTER SESUAI REFERENSI ===== */
+        /* ===== SINKRONISASI TOMBOL FILTER SESUAI REFERENSI ===== */
         .btn-filter-trigger {
             background: #ffffff;
-            border: 1.5px solid #e2e8f0;
+            border: 1.5px solid #cbd5e1;
             color: #334155;
             padding: 10px 22px;
             border-radius: 12px;
@@ -1032,194 +1080,617 @@ function fmtTgl($d) {
             to { opacity: 1; transform: translateY(0); }
         }
 
+
         /* ========== RESPONSIVE BREAKPOINTS ========== */
+        /* Tablet & Mobile (max-width: 991.98px) */
         @media (max-width: 991.98px) {
-            .top-navbar { padding: 12px 16px; }
-            .nav-logo { font-size: 1.4rem; }
-            .nav-logo span { font-size: 0.75rem; }
-            .nav-menu-center { display: none; }
-            .nav-btn-booking { padding: 8px 16px; font-size: 0.8rem; }
-            .nav-avatar { width: 36px; height: 36px; }
-            .hero-banner { padding: 40px 20px; }
-            .hero-title { font-size: 1.8rem; }
-            .hero-subtitle { font-size: 0.9rem; }
-            .hero-btn { padding: 12px 28px; font-size: 0.9rem; }
-            .booking-steps { display: none; }
-            .main-container { padding: 20px 16px; }
-            .stats-bar { gap: 10px; }
-            .stat-chip { padding: 10px 14px; }
-            .stat-chip-icon { width: 32px; height: 32px; font-size: 0.9rem; }
-            .stat-chip-text { font-size: 0.8rem; }
-            .stat-chip-sub { font-size: 0.7rem; }
-            .section-title { font-size: 1.1rem; }
-            .paket-card { min-width: 260px; max-width: 260px; }
-            .paket-img-wrapper { height: 180px; }
-            .paket-nama { font-size: 1rem; }
-            .paket-harga { font-size: 1.1rem; }
-            .paket-btn { padding: 10px 20px; font-size: 0.8rem; }
-            .scroll-nav-btn { display: none !important; }
-            .info-section { grid-template-columns: 1fr; }
-            .info-card { padding: 20px; }
-            .modal-dialog.modal-lg { max-width: 95%; margin: 10px auto; }
-            .modal-body-custom { padding: 16px; }
-            .img-preview-container { width: 90px; height: 90px; }
-            .form-control-custom { padding: 8px 12px; font-size: 0.85rem; }
-            .nav-dropdown { right: -10px; min-width: 200px; }
+            .top-navbar {
+                padding: 12px 16px;
+            }
+            .nav-logo {
+                font-size: 1.4rem;
+            }
+            .nav-logo span {
+                font-size: 0.75rem;
+            }
+            .nav-menu-center {
+                display: none;
+            }
+            .nav-btn-booking {
+                padding: 8px 16px;
+                font-size: 0.8rem;
+            }
+            .nav-avatar {
+                width: 36px;
+                height: 36px;
+            }
+            .hero-banner {
+                padding: 40px 20px;
+            }
+            .hero-title {
+                font-size: 1.8rem;
+            }
+            .hero-subtitle {
+                font-size: 0.9rem;
+            }
+            .hero-btn {
+                padding: 12px 28px;
+                font-size: 0.9rem;
+            }
+            .booking-steps {
+                display: none;
+            }
+            .main-container {
+                padding: 20px 16px;
+            }
+            .stats-bar {
+                gap: 10px;
+            }
+            .stat-chip {
+                padding: 10px 14px;
+            }
+            .stat-chip-icon {
+                width: 32px;
+                height: 32px;
+                font-size: 0.9rem;
+            }
+            .stat-chip-text {
+                font-size: 0.8rem;
+            }
+            .stat-chip-sub {
+                font-size: 0.7rem;
+            }
+            .section-title {
+                font-size: 1.1rem;
+            }
+            .paket-card {
+                min-width: 260px;
+                max-width: 260px;
+            }
+            .paket-img-wrapper {
+                height: 180px;
+            }
+            .paket-nama {
+                font-size: 1rem;
+            }
+            .paket-harga {
+                font-size: 1.1rem;
+            }
+            .paket-btn {
+                padding: 10px 20px;
+                font-size: 0.8rem;
+            }
+            .scroll-nav-btn {
+                display: none !important;
+            }
+            .info-section {
+                grid-template-columns: 1fr;
+            }
+            .info-card {
+                padding: 20px;
+            }
+            .modal-dialog.modal-lg {
+                max-width: 95%;
+                margin: 10px auto;
+            }
+            .modal-body-custom {
+                padding: 16px;
+            }
+            .img-preview-container {
+                width: 90px;
+                height: 90px;
+            }
+            .form-control-custom {
+                padding: 8px 12px;
+                font-size: 0.85rem;
+            }
+            .nav-dropdown {
+                right: -10px;
+                min-width: 200px;
+            }
         }
 
+        /* Mobile Landscape & Small Tablets (max-width: 767.98px) */
         @media (max-width: 767.98px) {
-            .top-navbar { padding: 10px 12px; }
-            .nav-logo { font-size: 1.2rem; }
-            .nav-logo span { display: none; }
-            .nav-right { gap: 10px; }
-            .nav-btn-booking { padding: 8px 12px; font-size: 0.75rem; }
-            .nav-btn-booking i { display: none; }
-            .hero-banner { padding: 30px 16px; }
-            .hero-title { font-size: 1.5rem; letter-spacing: -0.5px; }
-            .hero-subtitle { font-size: 0.85rem; margin-bottom: 20px; }
-            .hero-btn { padding: 10px 24px; font-size: 0.85rem; }
-            .main-container { padding: 16px 12px; }
-            .stats-bar { gap: 8px; padding-bottom: 6px; }
-            .stat-chip { padding: 8px 12px; border-radius: 12px; }
-            .stat-chip-icon { width: 28px; height: 28px; font-size: 0.8rem; border-radius: 8px; }
-            .stat-chip-text { font-size: 0.75rem; }
-            .stat-chip-sub { font-size: 0.65rem; }
-            .section-header { flex-direction: column; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
-            .section-title { font-size: 1rem; }
-            .section-title i { font-size: 1.1rem; }
-            .d-flex.flex-wrap.justify-content-between.align-items-center.gap-3 { flex-direction: column !important; align-items: stretch !important; }
-            .d-flex.flex-wrap.justify-content-between.align-items-center.gap-3 .position-relative { max-width: 100% !important; min-width: 100% !important; }
-            .d-flex.flex-wrap.justify-content-between.align-items-center.gap-3 > div:last-child { min-width: 100% !important; }
-            #sortPaket { width: 100%; }
-            .paket-scroll-wrapper { margin-bottom: 30px; }
-            .paket-card { min-width: 240px; max-width: 240px; border-radius: 16px; }
-            .paket-img-wrapper { height: 160px; }
-            .paket-badge-durasi, .paket-badge-kapasitas { padding: 4px 10px; font-size: 0.7rem; }
-            .paket-body { padding: 14px; }
-            .paket-nama { font-size: 0.95rem; }
-            .paket-desc { font-size: 0.8rem; margin-bottom: 12px; }
-            .paket-meta { gap: 8px; margin-bottom: 12px; }
-            .paket-meta-item { padding: 4px 8px; font-size: 0.75rem; }
-            .paket-footer { padding-top: 12px; }
-            .paket-harga { font-size: 1rem; }
-            .paket-harga-satuan { font-size: 0.7rem; }
-            .paket-btn { padding: 8px 16px; font-size: 0.8rem; border-radius: 10px; }
-            .info-section { gap: 16px; margin-top: 24px; }
-            .info-card { padding: 16px; border-radius: 16px; }
-            .info-card-title { font-size: 1rem; margin-bottom: 12px; }
-            .info-item { padding: 10px 0; }
-            .info-icon { width: 36px; height: 36px; font-size: 0.9rem; }
-            .info-text { font-size: 0.85rem; }
-            .info-sub { font-size: 0.75rem; }
-            .info-btn { padding: 5px 12px; font-size: 0.7rem; }
-            .barang-cetak-scroll-container { max-height: 200px; }
-            .modal-content-custom { border-radius: 20px; }
-            .modal-header-custom { padding: 16px; }
-            .modal-header-custom h5 { font-size: 1rem; }
-            .modal-body-custom { padding: 16px; }
-            .profile-nav-tabs .nav-link { padding: 8px 14px; font-size: 0.85rem; }
-            .img-preview-container { width: 80px; height: 80px; }
-            .btn-upload-trigger { width: 28px; height: 28px; }
-            .form-label-custom { font-size: 0.8rem; }
-            .form-control-custom { padding: 8px 12px; font-size: 0.85rem; border-radius: 10px; }
-            .pwd-requirement { font-size: 0.7rem; }
-            .modal-footer-custom { padding: 12px 16px; flex-direction: column-reverse; gap: 8px; }
-            .modal-footer-custom .btn { width: 100%; padding: 10px; }
-            .nav-dropdown { right: -5px; min-width: 180px; border-radius: 12px; padding: 8px; }
-            .dropdown-header { font-size: 0.9rem; padding: 6px 12px; }
-            .dropdown-item { padding: 10px 12px; font-size: 0.85rem; }
+            .top-navbar {
+                padding: 10px 12px;
+            }
+            .nav-logo {
+                font-size: 1.2rem;
+            }
+            .nav-logo span {
+                display: none;
+            }
+            .nav-right {
+                gap: 10px;
+            }
+            .nav-btn-booking {
+                padding: 8px 12px;
+                font-size: 0.75rem;
+            }
+            .nav-btn-booking i {
+                display: none;
+            }
+            .hero-banner {
+                padding: 30px 16px;
+            }
+            .hero-title {
+                font-size: 1.5rem;
+                letter-spacing: -0.5px;
+            }
+            .hero-subtitle {
+                font-size: 0.85rem;
+                margin-bottom: 20px;
+            }
+            .hero-btn {
+                padding: 10px 24px;
+                font-size: 0.85rem;
+            }
+            .main-container {
+                padding: 16px 12px;
+            }
+            .stats-bar {
+                gap: 8px;
+                padding-bottom: 6px;
+            }
+            .stat-chip {
+                padding: 8px 12px;
+                border-radius: 12px;
+            }
+            .stat-chip-icon {
+                width: 28px;
+                height: 28px;
+                font-size: 0.8rem;
+                border-radius: 8px;
+            }
+            .stat-chip-text {
+                font-size: 0.75rem;
+            }
+            .stat-chip-sub {
+                font-size: 0.65rem;
+            }
+            .section-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+                margin-bottom: 16px;
+            }
+            .section-title {
+                font-size: 1rem;
+            }
+            .section-title i {
+                font-size: 1.1rem;
+            }
+            .d-flex.flex-wrap.justify-content-between.align-items-center.gap-3 {
+                flex-direction: column !important;
+                align-items: stretch !important;
+            }
+            .d-flex.flex-wrap.justify-content-between.align-items-center.gap-3 .position-relative {
+                max-width: 100% !important;
+                min-width: 100% !important;
+            }
+            .d-flex.flex-wrap.justify-content-between.align-items-center.gap-3 > div:last-child {
+                min-width: 100% !important;
+            }
+            #sortPaket {
+                width: 100%;
+            }
+            .paket-scroll-wrapper {
+                margin-bottom: 30px;
+            }
+            .paket-card {
+                min-width: 240px;
+                max-width: 240px;
+                border-radius: 16px;
+            }
+            .paket-img-wrapper {
+                height: 160px;
+            }
+            .paket-badge-durasi,
+            .paket-badge-kapasitas {
+                padding: 4px 10px;
+                font-size: 0.7rem;
+            }
+            .paket-body {
+                padding: 14px;
+            }
+            .paket-nama {
+                font-size: 0.95rem;
+            }
+            .paket-desc {
+                font-size: 0.8rem;
+                margin-bottom: 12px;
+            }
+            .paket-meta {
+                gap: 8px;
+                margin-bottom: 12px;
+            }
+            .paket-meta-item {
+                padding: 4px 8px;
+                font-size: 0.75rem;
+            }
+            .paket-footer {
+                padding-top: 12px;
+            }
+            .paket-harga {
+                font-size: 1rem;
+            }
+            .paket-harga-satuan {
+                font-size: 0.7rem;
+            }
+            .paket-btn {
+                padding: 8px 16px;
+                font-size: 0.8rem;
+                border-radius: 10px;
+            }
+            .info-section {
+                gap: 16px;
+                margin-top: 24px;
+            }
+            .info-card {
+                padding: 16px;
+                border-radius: 16px;
+            }
+            .info-card-title {
+                font-size: 1rem;
+                margin-bottom: 12px;
+            }
+            .info-item {
+                padding: 10px 0;
+            }
+            .info-icon {
+                width: 36px;
+                height: 36px;
+                font-size: 0.9rem;
+            }
+            .info-text {
+                font-size: 0.85rem;
+            }
+            .info-sub {
+                font-size: 0.75rem;
+            }
+            .info-btn {
+                padding: 5px 12px;
+                font-size: 0.7rem;
+            }
+            .barang-cetak-scroll-container {
+                max-height: 200px;
+            }
+            .modal-content-custom {
+                border-radius: 20px;
+            }
+            .modal-header-custom {
+                padding: 16px;
+            }
+            .modal-header-custom h5 {
+                font-size: 1rem;
+            }
+            .modal-body-custom {
+                padding: 16px;
+            }
+            .profile-nav-tabs .nav-link {
+                padding: 8px 14px;
+                font-size: 0.85rem;
+            }
+            .img-preview-container {
+                width: 80px;
+                height: 80px;
+            }
+            .btn-upload-trigger {
+                width: 28px;
+                height: 28px;
+            }
+            .form-label-custom {
+                font-size: 0.8rem;
+            }
+            .form-control-custom {
+                padding: 8px 12px;
+                font-size: 0.85rem;
+                border-radius: 10px;
+            }
+            .pwd-requirement {
+                font-size: 0.7rem;
+            }
+            .modal-footer-custom {
+                padding: 12px 16px;
+                flex-direction: column-reverse;
+                gap: 8px;
+            }
+            .modal-footer-custom .btn {
+                width: 100%;
+                padding: 10px;
+            }
+            .nav-dropdown {
+                right: -5px;
+                min-width: 180px;
+                border-radius: 12px;
+                padding: 8px;
+            }
+            .dropdown-header {
+                font-size: 0.9rem;
+                padding: 6px 12px;
+            }
+            .dropdown-item {
+                padding: 10px 12px;
+                font-size: 0.85rem;
+            }
         }
 
+        /* Small Mobile (max-width: 575.98px) */
         @media (max-width: 575.98px) {
-            .top-navbar { padding: 8px 10px; }
-            .nav-logo { font-size: 1.1rem; }
-            .nav-btn-booking { padding: 6px 10px; font-size: 0.7rem; border-radius: 8px; }
-            .nav-avatar { width: 32px; height: 32px; }
-            .hero-banner { padding: 24px 12px; }
-            .hero-title { font-size: 1.3rem; }
-            .hero-subtitle { font-size: 0.8rem; }
-            .hero-btn { padding: 10px 20px; font-size: 0.8rem; }
-            .main-container { padding: 12px 10px; }
-            .stats-bar { gap: 6px; }
-            .stat-chip { padding: 6px 10px; border-radius: 10px; }
-            .stat-chip-icon { width: 24px; height: 24px; font-size: 0.7rem; }
-            .stat-chip-text { font-size: 0.7rem; }
-            .stat-chip-sub { font-size: 0.6rem; }
-            .paket-card { min-width: 220px; max-width: 220px; }
-            .paket-img-wrapper { height: 140px; }
-            .paket-badge-durasi, .paket-badge-kapasitas { padding: 3px 8px; font-size: 0.65rem; }
-            .paket-body { padding: 12px; }
-            .paket-nama { font-size: 0.9rem; }
-            .paket-desc { font-size: 0.75rem; -webkit-line-clamp: 2; }
-            .paket-meta { gap: 6px; margin-bottom: 10px; }
-            .paket-meta-item { padding: 3px 6px; font-size: 0.7rem; border-radius: 6px; }
-            .paket-footer { padding-top: 10px; }
-            .paket-harga { font-size: 0.9rem; }
-            .paket-btn { padding: 6px 12px; font-size: 0.75rem; }
-            .info-card { padding: 14px; border-radius: 14px; }
-            .info-card-title { font-size: 0.95rem; }
-            .info-item { padding: 8px 0; }
-            .info-icon { width: 32px; height: 32px; font-size: 0.8rem; }
-            .info-text { font-size: 0.8rem; }
-            .info-sub { font-size: 0.7rem; }
-            .info-btn { padding: 4px 10px; font-size: 0.65rem; }
-            .section-count { font-size: 0.75rem; }
-            .modal-dialog { margin: 5px; }
-            .modal-content-custom { border-radius: 16px; }
-            .modal-header-custom { padding: 14px; }
-            .modal-body-custom { padding: 14px; }
-            .profile-nav-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-            .profile-nav-tabs::-webkit-scrollbar { display: none; }
-            .profile-nav-tabs .nav-link { padding: 8px 12px; font-size: 0.8rem; white-space: nowrap; }
-            .row.g-3 > [class*="col-"] { padding-left: 8px; padding-right: 8px; }
-            .form-control-custom { padding: 8px 10px; font-size: 0.8rem; }
-            .img-preview-container { width: 70px; height: 70px; }
-            .nav-dropdown { right: 0; min-width: 170px; border-radius: 10px; }
-            .dropdown-item { padding: 8px 10px; font-size: 0.8rem; }
+            .top-navbar {
+                padding: 8px 10px;
+            }
+            .nav-logo {
+                font-size: 1.1rem;
+            }
+            .nav-btn-booking {
+                padding: 6px 10px;
+                font-size: 0.7rem;
+                border-radius: 8px;
+            }
+            .nav-avatar {
+                width: 32px;
+                height: 32px;
+            }
+            .hero-banner {
+                padding: 24px 12px;
+            }
+            .hero-title {
+                font-size: 1.3rem;
+            }
+            .hero-subtitle {
+                font-size: 0.8rem;
+            }
+            .hero-btn {
+                padding: 10px 20px;
+                font-size: 0.8rem;
+            }
+            .main-container {
+                padding: 12px 10px;
+            }
+            .stats-bar {
+                gap: 6px;
+            }
+            .stat-chip {
+                padding: 6px 10px;
+                border-radius: 10px;
+            }
+            .stat-chip-icon {
+                width: 24px;
+                height: 24px;
+                font-size: 0.7rem;
+            }
+            .stat-chip-text {
+                font-size: 0.7rem;
+            }
+            .stat-chip-sub {
+                font-size: 0.6rem;
+            }
+            .paket-card {
+                min-width: 220px;
+                max-width: 220px;
+            }
+            .paket-img-wrapper {
+                height: 140px;
+            }
+            .paket-badge-durasi,
+            .paket-badge-kapasitas {
+                padding: 3px 8px;
+                font-size: 0.65rem;
+            }
+            .paket-body {
+                padding: 12px;
+            }
+            .paket-nama {
+                font-size: 0.9rem;
+            }
+            .paket-desc {
+                font-size: 0.75rem;
+                -webkit-line-clamp: 2;
+            }
+            .paket-meta {
+                gap: 6px;
+                margin-bottom: 10px;
+            }
+            .paket-meta-item {
+                padding: 3px 6px;
+                font-size: 0.7rem;
+                border-radius: 6px;
+            }
+            .paket-footer {
+                padding-top: 10px;
+            }
+            .paket-harga {
+                font-size: 0.9rem;
+            }
+            .paket-btn {
+                padding: 6px 12px;
+                font-size: 0.75rem;
+            }
+            .info-card {
+                padding: 14px;
+                border-radius: 14px;
+            }
+            .info-card-title {
+                font-size: 0.95rem;
+            }
+            .info-item {
+                padding: 8px 0;
+            }
+            .info-icon {
+                width: 32px;
+                height: 32px;
+                font-size: 0.8rem;
+            }
+            .info-text {
+                font-size: 0.8rem;
+            }
+            .info-sub {
+                font-size: 0.7rem;
+            }
+            .info-btn {
+                padding: 4px 10px;
+                font-size: 0.65rem;
+            }
+            .section-count {
+                font-size: 0.75rem;
+            }
+            .modal-dialog {
+                margin: 5px;
+            }
+            .modal-content-custom {
+                border-radius: 16px;
+            }
+            .modal-header-custom {
+                padding: 14px;
+            }
+            .modal-body-custom {
+                padding: 14px;
+            }
+            .profile-nav-tabs {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                scrollbar-width: none;
+            }
+            .profile-nav-tabs::-webkit-scrollbar {
+                display: none;
+            }
+            .profile-nav-tabs .nav-link {
+                padding: 8px 12px;
+                font-size: 0.8rem;
+                white-space: nowrap;
+            }
+            .row.g-3 > [class*="col-"] {
+                padding-left: 8px;
+                padding-right: 8px;
+            }
+            .form-control-custom {
+                padding: 8px 10px;
+                font-size: 0.8rem;
+            }
+            .img-preview-container {
+                width: 70px;
+                height: 70px;
+            }
+            .nav-dropdown {
+                right: 0;
+                min-width: 170px;
+                border-radius: 10px;
+            }
+            .dropdown-item {
+                padding: 8px 10px;
+                font-size: 0.8rem;
+            }
         }
 
+        /* Extra Small Mobile (max-width: 359.98px) */
         @media (max-width: 359.98px) {
-            .nav-logo { font-size: 1rem; }
-            .nav-btn-booking { padding: 5px 8px; font-size: 0.65rem; }
-            .hero-title { font-size: 1.1rem; }
-            .hero-subtitle { font-size: 0.75rem; }
-            .hero-btn { padding: 8px 16px; font-size: 0.75rem; }
-            .paket-card { min-width: 200px; max-width: 200px; }
-            .paket-img-wrapper { height: 120px; }
-            .paket-nama { font-size: 0.85rem; }
-            .paket-desc { font-size: 0.7rem; }
-            .paket-meta-item { font-size: 0.65rem; }
-            .paket-harga { font-size: 0.85rem; }
-            .paket-btn { padding: 5px 10px; font-size: 0.7rem; }
-            .stat-chip-text { font-size: 0.65rem; }
-            .info-text { font-size: 0.75rem; }
+            .nav-logo {
+                font-size: 1rem;
+            }
+            .nav-btn-booking {
+                padding: 5px 8px;
+                font-size: 0.65rem;
+            }
+            .hero-title {
+                font-size: 1.1rem;
+            }
+            .hero-subtitle {
+                font-size: 0.75rem;
+            }
+            .hero-btn {
+                padding: 8px 16px;
+                font-size: 0.75rem;
+            }
+            .paket-card {
+                min-width: 200px;
+                max-width: 200px;
+            }
+            .paket-img-wrapper {
+                height: 120px;
+            }
+            .paket-nama {
+                font-size: 0.85rem;
+            }
+            .paket-desc {
+                font-size: 0.7rem;
+            }
+            .paket-meta-item {
+                font-size: 0.65rem;
+            }
+            .paket-harga {
+                font-size: 0.85rem;
+            }
+            .paket-btn {
+                padding: 5px 10px;
+                font-size: 0.7rem;
+            }
+            .stat-chip-text {
+                font-size: 0.65rem;
+            }
+            .info-text {
+                font-size: 0.75rem;
+            }
         }
 
+        /* Large Screens (min-width: 1200px) */
         @media (min-width: 1200px) {
-            .main-container { max-width: 1320px; }
-            .paket-card { min-width: 320px; max-width: 320px; }
-            .paket-img-wrapper { height: 240px; }
+            .main-container {
+                max-width: 1320px;
+            }
+            .paket-card {
+                min-width: 320px;
+                max-width: 320px;
+            }
+            .paket-img-wrapper {
+                height: 240px;
+            }
         }
 
+        /* Touch Device Optimizations */
         @media (hover: none) and (pointer: coarse) {
-            .paket-card:hover { transform: none; }
-            .paket-card:active { transform: scale(0.98); }
-            .stat-chip:hover { transform: none; }
-            .info-btn:hover { background: var(--s-pink); color: var(--p-pink); }
-            .nav-avatar:hover { transform: none; }
-            .hero-btn:hover { transform: none; }
-            .nav-btn-booking:hover { transform: none; }
+            .paket-card:hover {
+                transform: none;
+            }
+            .paket-card:active {
+                transform: scale(0.98);
+            }
+            .stat-chip:hover {
+                transform: none;
+            }
+            .info-btn:hover {
+                background: var(--s-pink);
+                color: var(--p-pink);
+            }
+            .nav-avatar:hover {
+                transform: none;
+            }
+            .hero-btn:hover {
+                transform: none;
+            }
+            .nav-btn-booking:hover {
+                transform: none;
+            }
         }
 
+        /* Reduced Motion Preference */
         @media (prefers-reduced-motion: reduce) {
-            * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
-            html { scroll-behavior: auto; }
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+            html {
+                scroll-behavior: auto;
+            }
         }
+
     </style>
 </head>
 <body>
 
-    <!-- NAVBAR ATAS -->
+    <!-- NAVBAR ATAS SINKRON PREMIUM & GLASSMORPHISM -->
     <nav class="top-navbar">
         <a href="index.php" class="nav-logo">
             SpotLight.<span>StudioFoto</span>
@@ -1753,6 +2224,7 @@ function fmtTgl($d) {
             <?php endif; ?>
         });
 
+        // FUNGSI SCROLL PAKET KIRI/KANAN
         function scrollPaket(direction) {
             const container = document.getElementById('paketContainer');
             const scrollAmount = 320;
@@ -1763,6 +2235,8 @@ function fmtTgl($d) {
             }
         }
 
+
+        // ===== INTERSECTION OBSERVER UNTUK NAVBAR ACTIVE =====
         document.addEventListener("DOMContentLoaded", function() {
             const dashboardLink = document.querySelector('a[href="index.php"]');
             const bookingLink = document.getElementById('navBookingBaru');
@@ -1772,25 +2246,24 @@ function fmtTgl($d) {
                 const observer = new IntersectionObserver((entries) => {
                     entries.forEach(entry => {
                         if (entry.isIntersecting) {
+                            // Section paket terlihat → Booking Baru aktif
                             dashboardLink.classList.remove('active');
                             bookingLink.classList.add('active');
                         } else {
+                            // Section paket tidak terlihat → Dashboard aktif
                             bookingLink.classList.remove('active');
                             dashboardLink.classList.add('active');
                         }
                     });
                 }, {
-                    threshold: 0.3,
-                    rootMargin: '-80px 0px -50% 0px'
+                    threshold: 0.3,  // Aktif ketika 30% section terlihat
+                    rootMargin: '-80px 0px -50% 0px'  // Offset untuk navbar sticky
                 });
 
                 observer.observe(paketSection);
             }
         });
-
-        // =====================================================
-        // JAVASCRIPT: LOGIKA PENYARINGAN FILTER & SEARCH (SINKRON REALTIME)
-        // =====================================================
+        // FUNGSI FILTER PAKET - PENCARIAN & PENGURUTAN REALTIME
         function filterPaketGrid() {
             applyFilter();
         }
