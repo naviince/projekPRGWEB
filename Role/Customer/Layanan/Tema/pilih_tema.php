@@ -438,7 +438,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             box-shadow: 0 8px 24px rgba(216, 63, 103, 0.2);
             transition: var(--transition-smooth);
         }
-        .img-preview-container:hover .img-preview { transform: scale(1.05); }
+        .img-preview-container:hover .img-preview { transform: scale(1.02); }
         .btn-upload-trigger { 
             position: absolute; bottom: 0; right: 0; width: 40px; height: 40px; 
             border-radius: 50%; background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); 
@@ -604,7 +604,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             transition: var(--transition-smooth);
         }
         .tema-main:hover {
-            box-shadow: var(--shadow-card);
+            border-color: var(--light-pink);
         }
         .tema-section-title {
             font-size: 1.3rem;
@@ -743,8 +743,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             margin-bottom: 20px;
         }
         .summary-card:hover {
-            box-shadow: 0 16px 48px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
+            border-color: var(--light-pink);
         }
         .summary-title {
             font-size: 1.05rem;
@@ -766,7 +765,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             border-bottom: 1px solid #f8fafc;
             transition: var(--transition-smooth);
         }
-        .summary-item:hover { transform: translateX(4px); }
+        .summary-item:hover { background: rgba(255,255,255,0.5); }
         .summary-item:last-child { border-bottom: none; }
         .summary-icon {
             width: 40px;
@@ -787,7 +786,7 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             color: #059669; 
             box-shadow: 0 2px 8px rgba(5, 150, 105, 0.15);
         }
-        .summary-icon:hover { transform: scale(1.15) rotate(5deg); }
+        .summary-icon:hover { opacity: 0.9; }
         .summary-text {
             font-size: 0.92rem;
             font-weight: 800;
@@ -880,33 +879,342 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* ===== RESPONSIVE ===== */
-        @media (max-width: 1200px) {
-            .tema-section { grid-template-columns: 1fr 360px; }
-        }
-        @media (max-width: 992px) {
-            .tema-section { grid-template-columns: 1fr; }
-            .booking-summary { position: static; margin-top: 24px; }
+
+        /* ========== MOBILE SIDEBAR RESPONSIVE ========== */
+        @media (max-width: 991.98px) {
+            .mobile-menu-toggle { display: flex; }
+            .top-navbar { padding: 12px 16px; }
+            .nav-logo { font-size: 1.4rem; }
+            .nav-logo span { font-size: 0.75rem; }
             .nav-menu-center { display: none; }
+            .nav-btn-booking { padding: 8px 16px; font-size: 0.8rem; }
+            .nav-avatar { width: 36px; height: 36px; }
+            .nav-dropdown { right: -10px; min-width: 200px; border-radius: 12px; padding: 8px; }
+            .dropdown-header { font-size: 0.9rem; padding: 6px 12px; }
+            .dropdown-item { padding: 10px 12px; font-size: 0.85rem; }
+            .breadcrumb-bar { padding: 12px 16px; }
             .main-container { padding: 20px; }
-            .top-navbar { padding: 14px 20px; }
-            .breadcrumb-bar { padding: 14px 20px; }
+            .progress-container { padding: 20px 16px; gap: 4px; }
+            .progress-line { width: 24px; margin: 0 2px; margin-bottom: 22px; }
+            .progress-step-circle { width: 40px; height: 40px; font-size: 0.8rem; }
+            .tema-section { grid-template-columns: 1fr; gap: 24px; }
+            .booking-summary { position: static; margin-top: 0; }
             .tema-grid { grid-template-columns: repeat(2, 1fr); }
-            .progress-container { padding: 20px 16px; }
-            .progress-line { width: 30px; margin: 0 4px; }
-        }
-        @media (max-width: 768px) {
-            .tema-grid { grid-template-columns: 1fr; }
-            .progress-step-label { display: none; }
-            .progress-line { width: 16px; }
-        }
-        @media (max-width: 480px) {
-            .tema-main { padding: 20px; }
+            .tema-main { padding: 24px; }
             .summary-card { padding: 20px; }
+        }
+        @media (max-width: 767.98px) {
+            .top-navbar { padding: 10px 12px; }
+            .nav-logo { font-size: 1.2rem; }
+            .nav-logo span { display: none; }
+            .nav-right { gap: 10px; }
+            .nav-btn-booking { padding: 8px 12px; font-size: 0.75rem; }
+            .nav-btn-booking i { display: none; }
+            .breadcrumb-bar { padding: 10px 12px; }
+            .breadcrumb-inner { font-size: 0.8rem; }
+            .main-container { padding: 16px 12px; }
+            .progress-step-label { display: none; }
+            .progress-line { width: 12px; margin-bottom: 18px; }
+            .progress-step-circle { width: 36px; height: 36px; font-size: 0.75rem; }
+            .progress-container { padding: 16px 8px; }
+            .tema-grid { grid-template-columns: 1fr; }
+            .tema-main { padding: 20px; }
+            .tema-section-title { font-size: 1.1rem; }
+            .tema-img-wrapper { height: 200px; }
+            .tema-nama { font-size: 1.05rem; }
+            .summary-card { padding: 18px; }
+            .summary-title { font-size: 1rem; }
+            .summary-harga { font-size: 1.2rem; }
+            .modal-content-custom { max-width: 95%; margin: 10px auto; }
+            .modal-body-custom { padding: 20px; }
+            .img-preview-container { width: 100px; height: 100px; }
+            .form-control-custom { padding: 10px 14px; font-size: 0.85rem; }
+        }
+        @media (max-width: 575.98px) {
+            .top-navbar { padding: 8px 10px; }
+            .nav-logo { font-size: 1.1rem; }
+            .nav-btn-booking { padding: 6px 10px; font-size: 0.7rem; border-radius: 8px; }
+            .nav-avatar { width: 32px; height: 32px; }
+            .breadcrumb-bar { padding: 8px 10px; }
+            .main-container { padding: 12px 10px; }
+            .progress-container { border-radius: var(--radius-md); padding: 12px 4px; }
+            .progress-step-circle { width: 32px; height: 32px; font-size: 0.7rem; border-width: 2px; }
+            .progress-line { width: 8px; height: 3px; margin-bottom: 14px; }
+            .tema-main { padding: 16px; border-radius: var(--radius-md); }
+            .tema-section-title { font-size: 1rem; margin-bottom: 16px; }
+            .tema-section-title i { font-size: 1.2rem; }
+            .tema-grid { gap: 12px; }
+            .tema-card { border-radius: var(--radius-md); }
+            .tema-img-wrapper { height: 160px; }
+            .tema-body { padding: 14px; }
+            .tema-nama { font-size: 1rem; }
+            .tema-desc { font-size: 0.8rem; }
+            .tema-footer { padding-top: 12px; }
+            .tema-btn { padding: 6px 12px; font-size: 0.75rem; }
+            .summary-card { padding: 14px; border-radius: var(--radius-md); }
+            .summary-item { padding: 8px 0; }
+            .summary-icon { width: 34px; height: 34px; font-size: 1rem; }
+            .summary-text { font-size: 0.85rem; }
+            .summary-sub { font-size: 0.75rem; }
+            .summary-harga { font-size: 1.1rem; margin-top: 14px; padding-top: 14px; }
+            .empty-state { padding: 40px 16px; }
+            .empty-state i { font-size: 3.5rem; }
+            .empty-state h3 { font-size: 1.1rem; }
+            .modal-content-custom { border-radius: var(--radius-md); }
+            .modal-header-custom { padding: 16px 20px; }
+            .modal-body-custom { padding: 16px; }
+            .img-preview-container { width: 90px; height: 90px; }
+            .btn-upload-trigger { width: 32px; height: 32px; }
+            .form-control-custom { padding: 8px 12px; font-size: 0.8rem; }
+            .profile-nav-tabs .nav-link { padding: 8px 14px; font-size: 0.8rem; }
+        }
+        @media (max-width: 359.98px) {
+            .nav-logo { font-size: 1rem; }
+            .nav-btn-booking { padding: 5px 8px; font-size: 0.65rem; }
+            .mobile-sidebar { width: 260px; }
+            .progress-step-circle { width: 28px; height: 28px; font-size: 0.65rem; }
+            .progress-line { width: 6px; }
+            .tema-img-wrapper { height: 140px; }
+            .tema-nama { font-size: 0.9rem; }
+        }
+
+        /* ========== TOUCH DEVICE: DISABLE HOVER ========== */
+        @media (hover: none) and (pointer: coarse) {
+            .tema-main:hover { box-shadow: var(--shadow-soft); border-color: var(--glass-border); }
+            .summary-card:hover { box-shadow: var(--shadow-card); border-color: var(--glass-border); transform: none; }
+            .summary-item:hover { background: transparent; }
+            .summary-icon:hover { transform: none; opacity: 1; }
+            .tema-card:hover { transform: none; box-shadow: 0 2px 12px rgba(0,0,0,0.04); border-color: transparent; }
+            .tema-card:hover .tema-img { transform: none; }
+            .tema-card:hover .tema-btn { transform: none; }
+            .nav-avatar:hover { transform: none; border-color: var(--light-pink); box-shadow: 0 2px 8px rgba(216, 63, 103, 0.15); }
+            .nav-btn-booking:hover { transform: none; box-shadow: 0 4px 16px rgba(216, 63, 103, 0.3); }
+            .nav-logo:hover { transform: none; }
+            .nav-link-item:hover::after { width: 0; }
+            .nav-link-item.active::after { width: 100%; }
+            .img-preview-container:hover .img-preview { transform: none; }
+            .btn-upload-trigger:hover { transform: none; }
+        }
+
+        /* ========== REDUCED MOTION ========== */
+        @media (prefers-reduced-motion: reduce) {
+            * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+            html { scroll-behavior: auto; }
+            .mobile-sidebar { transition: none; }
+            .progress-line::after { animation: none; }
+        }
+
+
+        /* ===== MOBILE SIDEBAR ===== */
+        .mobile-sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            background: #ffffff;
+            z-index: 1050;
+            transform: translateX(-100%);
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 4px 0 24px rgba(0,0,0,0.08);
+            border-right: 1px solid rgba(255, 228, 233, 0.8);
+        }
+        .mobile-sidebar.open { transform: translateX(0); }
+        .mobile-sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1045;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .mobile-sidebar-overlay.show { display: block; opacity: 1; }
+        .mobile-sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .mobile-sidebar-brand {
+            font-weight: 800;
+            font-size: 1.3rem;
+            color: var(--p-pink);
+            text-decoration: none;
+            letter-spacing: -1px;
+        }
+        .mobile-sidebar-brand span {
+            color: var(--text-dark);
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: block;
+            margin-top: 2px;
+        }
+        .mobile-sidebar-close {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            border: none;
+            background: var(--s-pink);
+            color: var(--p-pink);
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+        }
+        .mobile-sidebar-close:hover {
+            background: var(--p-pink);
+            color: #fff;
+        }
+        .mobile-sidebar-menu {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            scrollbar-width: none;
+        }
+        .mobile-sidebar-menu::-webkit-scrollbar { display: none; }
+        .mobile-sidebar-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            color: #475569;
+            font-weight: 700;
+            font-size: 0.9rem;
+            text-decoration: none;
+            transition: var(--transition-smooth);
+            margin-bottom: 6px;
+            border: none;
+            background: none;
+            width: 100%;
+            cursor: pointer;
+            text-align: left;
+        }
+        .mobile-sidebar-link:hover,
+        .mobile-sidebar-link.active {
+            background: var(--s-pink);
+            color: var(--p-pink);
+        }
+        .mobile-sidebar-link i {
+            font-size: 1.1rem;
+            width: 22px;
+            text-align: center;
+        }
+        .mobile-sidebar-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+            margin: 12px 0;
+        }
+        .mobile-sidebar-footer {
+            padding: 16px;
+            border-top: 1px solid #f1f5f9;
+        }
+        .mobile-sidebar-user {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--s-pink);
+            border-radius: 14px;
+        }
+        .mobile-sidebar-user img {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--light-pink);
+        }
+        .mobile-sidebar-user-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .mobile-sidebar-user-name {
+            font-weight: 800;
+            font-size: 0.9rem;
+            color: var(--text-dark);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .mobile-sidebar-user-role {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+        .mobile-menu-toggle {
+            display: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            border: none;
+            background: var(--s-pink);
+            color: var(--p-pink);
+            font-size: 1.3rem;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+        .mobile-menu-toggle:hover {
+            background: var(--p-pink);
+            color: #fff;
         }
     </style>
 </head>
 <body>
+
+    <!-- MOBILE SIDEBAR OVERLAY -->
+    <div class="mobile-sidebar-overlay" id="mobileSidebarOverlay" onclick="toggleMobileSidebar()"></div>
+
+    <!-- MOBILE SIDEBAR -->
+    <div class="mobile-sidebar" id="mobileSidebar">
+        <div class="mobile-sidebar-header">
+            <a href="../../index.php" class="mobile-sidebar-brand">SpotLight.<span>StudioFoto</span></a>
+            <button class="mobile-sidebar-close" onclick="toggleMobileSidebar()" aria-label="Tutup menu">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+        <div class="mobile-sidebar-menu">
+            <a href="../../index.php" class="mobile-sidebar-link" onclick="toggleMobileSidebar()">
+                <i class="bi bi-grid-1x2-fill"></i> Dashboard
+            </a>
+            <a href="../Paket/pilih_paket.php" class="mobile-sidebar-link active" onclick="toggleMobileSidebar()">
+                <i class="bi bi-calendar-plus-fill"></i> Booking Baru
+            </a>
+            <a href="../../Riwayat/riwayat.php" class="mobile-sidebar-link" onclick="toggleMobileSidebar()">
+                <i class="bi bi-clock-history"></i> Riwayat
+            </a>
+            <a href="../../Hasil Foto/hasil_foto.php" class="mobile-sidebar-link" onclick="toggleMobileSidebar()">
+                <i class="bi bi-images"></i> Hasil Foto
+            </a>
+            <div class="mobile-sidebar-divider"></div>
+            <a href="../../../../index.php" class="mobile-sidebar-link" onclick="return confirmLandingPage(event)">
+                <i class="bi bi-house-door"></i> Beranda
+            </a>
+            <button class="mobile-sidebar-link text-danger" onclick="confirmLogout(); toggleMobileSidebar();">
+                <i class="bi bi-box-arrow-right"></i> Keluar
+            </button>
+        </div>
+        <div class="mobile-sidebar-footer">
+            <div class="mobile-sidebar-user">
+                <img src="<?= $foto_customer_src ?>" alt="Profil">
+                <div class="mobile-sidebar-user-info">
+                    <div class="mobile-sidebar-user-name"><?= htmlspecialchars($nama_customer) ?></div>
+                    <div class="mobile-sidebar-user-role">Pelanggan</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- LOADING OVERLAY -->
     <div class="loading-overlay" id="loadingOverlay">
         <div class="loading-spinner"></div>
@@ -915,9 +1223,14 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
 
     <!-- NAVBAR ATAS SINKRON -->
     <nav class="top-navbar">
-        <a href="../../index.php" class="nav-logo">
+        <div class="d-flex align-items-center">
+            <button class="mobile-menu-toggle d-lg-none" onclick="toggleMobileSidebar()" aria-label="Menu">
+                <i class="bi bi-list"></i>
+            </button>
+            <a href="../../index.php" class="nav-logo">
             SpotLight.<span>StudioFoto</span>
         </a>
+        </div>
         <div class="nav-menu-center">
             <a href="../../index.php" class="nav-link-item">Dashboard</a>
             <a href="../Paket/pilih_paket.php?id_paket=<?= $id_paket ?>" class="nav-link-item active">Booking Baru</a>
@@ -1268,6 +1581,17 @@ $harga_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
     
     <script src="../../../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
+
+// FUNGSI TOGGLE MOBILE SIDEBAR
+function toggleMobileSidebar() {
+    const sidebar = document.getElementById('mobileSidebar');
+    const overlay = document.getElementById('mobileSidebarOverlay');
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('show');
+    document.body.style.overflow = sidebar.classList.contains('open') ? 'hidden' : '';
+}
+
+
         function toggleDropdown() {
             document.getElementById('navDropdown').classList.toggle('show');
         }

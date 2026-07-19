@@ -95,7 +95,7 @@ if (isset($_POST['update_profil'])) {
                         $new_file_name = "owner_" . $id_owner . "_" . time() . "." . $file_ext;
                         $upload_dir = "../../assets/img/karyawan/";
                         if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
-                        
+
                         if ($foto_owner != 'default.jpg' && file_exists($upload_dir . $foto_owner)) {
                             @unlink($upload_dir . $foto_owner);
                         }
@@ -309,7 +309,7 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Edit Karyawan – SpotLight Studio</title>
     <link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
@@ -332,6 +332,7 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
             --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
+        * { -webkit-tap-highlight-color: transparent; }
         body { 
             font-family: 'Plus Jakarta Sans', sans-serif; 
             background-color: var(--body-bg);
@@ -352,7 +353,8 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
             flex-direction: column;
             justify-content: space-between;
             padding: 30px 20px;
-            z-index: 100;
+            z-index: 1040;
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .sidebar-brand {
             font-weight: 800;
@@ -444,6 +446,56 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
             box-shadow: 0 6px 15px rgba(216, 63, 103, 0.2);
         }
 
+        /* SIDEBAR OVERLAY */
+        .sidebar-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            backdrop-filter: blur(2px);
+            z-index: 1035;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        .sidebar-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* MOBILE HEADER */
+        .mobile-header {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 60px;
+            background: #fff;
+            border-bottom: 1px solid rgba(255,228,233,.8);
+            z-index: 1020;
+            padding: 0 20px;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .mobile-brand {
+            font-weight: 800;
+            font-size: 1.25rem;
+            color: var(--p-pink);
+            text-decoration: none;
+            letter-spacing: -0.5px;
+        }
+        .hamburger-btn {
+            width: 40px; height: 40px;
+            border-radius: 10px; border: none;
+            background: var(--s-pink);
+            color: var(--p-pink);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            cursor: pointer;
+            transition: var(--transition-3d);
+        }
+        .hamburger-btn:active { transform: scale(0.92); }
+
         /* MAIN CONTENT AREA */
         .main-content {
             margin-left: 260px;
@@ -455,6 +507,8 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
             justify-content: space-between;
             align-items: center;
             margin-bottom: 35px;
+            flex-wrap: wrap;
+            gap: 15px;
         }
 
         /* TOMBOL AVATAR PROFIL ATAS KANAN */
@@ -467,6 +521,7 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
             cursor: pointer;
             transition: var(--transition-3d);
             background: #ffffff;
+            flex-shrink: 0;
         }
         .profile-header-btn:hover {
             transform: scale(1.08) translateY(-2px);
@@ -559,10 +614,6 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
             box-shadow: 0 8px 24px rgba(216, 63, 103, 0.03);
             transition: var(--transition-3d);
         }
-        .preview-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 16px 35px rgba(216, 63, 103, 0.08);
-        }
         .preview-avatar { 
             width: 120px; 
             height: 120px; 
@@ -596,7 +647,7 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
         .preview-info-item:last-child { border-bottom: none; }
         .preview-info-label { color: var(--text-muted); font-weight: 700; }
         .preview-info-value { color: var(--text-dark); font-weight: 800; }
-        
+
         .foto-upload-btn { 
             display: inline-flex; 
             align-items: center; 
@@ -647,7 +698,7 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
             display: block; 
         }
         .required-star { color: #ef4444; font-weight: bold; margin-left: 2px; }
-        
+
         .form-control, .form-select { 
             border-radius: 14px; 
             padding: 12px 18px; 
@@ -670,7 +721,7 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
             background-color: #fffbfa !important; 
         }
 
-        /* PASSWORD WRAPPER DENGAN TOMBOL VISIBILITAS SINKRON */
+        /* PASSWORD WRAPPER */
         .password-wrapper { position: relative; }
         .password-wrapper .form-control { padding-right: 45px; }
         .password-toggle {
@@ -768,7 +819,7 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
         .field-error { font-size: 0.75rem; color: #ef4444; margin-top: 6px; display: none; font-weight: 700; }
         .form-control.has-error ~ .field-error { display: block; }
 
-        /* MODAL GANTI PROFIL (UNIFIED SINKRON) */
+        /* MODAL GANTI PROFIL */
         .profile-preview-box {
             width: 90px; height: 90px; border-radius: 50%; overflow: hidden;
             border: 2.5px solid #eef2f6; background: #f8fafc; display: flex;
@@ -804,713 +855,864 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
         .toggle-password { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #94a3b8; font-size: 18px; z-index: 10; transition: 0.3s; }
         .toggle-password:hover { color: var(--p-pink); }
 
-        @media (max-width: 1200px) { .landscape-wrapper { flex-direction: column; } .landscape-left { width: 100%; } .preview-card { position: static; } }
-        @media (max-width: 992px) { .main-content { margin-left: 0; padding: 20px; } .sidebar { transform: translateX(-100%); } }
+        /* BUTTON GROUP ACTION */
+        .btn-group-action {
+            display: flex; gap: 12px; justify-content: flex-end;
+            margin-top: 30px; padding-top: 20px;
+            border-top: 2px solid var(--s-pink);
+        }
+
+        /* ============================================
+           RESPONSIVE BREAKPOINTS
+           ============================================ */
+
+        /* Tablet & below */
+        @media (max-width: 991.98px) {
+            .sidebar {
+                transform: translateX(-100%);
+                box-shadow: 4px 0 24px rgba(0,0,0,0.08);
+            }
+            .sidebar.show-mobile {
+                transform: translateX(0);
+            }
+            .mobile-header {
+                display: flex;
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 80px 20px 30px;
+            }
+            .dashboard-header {
+                margin-bottom: 25px;
+            }
+            .dashboard-header h3 {
+                font-size: 1.25rem;
+            }
+            .landscape-wrapper { flex-direction: column; }
+            .landscape-left { width: 100%; }
+            .preview-card { position: static; margin-bottom: 20px; }
+            .form-card { padding: 24px; }
+        }
+
+        /* Small phones */
+        @media (max-width: 575.98px) {
+            .main-content {
+                padding: 70px 14px 20px;
+            }
+            .dashboard-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .dashboard-header > div:last-child {
+                width: 100%;
+                justify-content: space-between;
+            }
+            .form-card {
+                padding: 20px 16px;
+                border-radius: 16px;
+            }
+            .form-section-title {
+                font-size: 0.7rem;
+                margin-bottom: 18px;
+            }
+            .form-control, .form-select {
+                padding: 12px 14px;
+                font-size: 0.88rem;
+                border-radius: 12px;
+            }
+            .form-label {
+                font-size: 10px;
+            }
+            .preview-card {
+                padding: 20px;
+                border-radius: 16px;
+            }
+            .preview-avatar {
+                width: 90px;
+                height: 90px;
+                font-size: 2.2rem;
+            }
+            .preview-name { font-size: 1rem; }
+            .radio-option {
+                padding: 10px 12px;
+            }
+            .radio-option .radio-text {
+                font-size: 0.75rem;
+            }
+            .input-group-text {
+                padding: 12px 10px;
+                font-size: 0.8rem;
+            }
+            .password-toggle {
+                right: 12px;
+            }
+            .btn-group-action {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .btn-reg-header, .btn-outline-pink {
+                width: 100%;
+                justify-content: center;
+                padding: 14px;
+                font-size: 0.9rem;
+            }
+            .foto-upload-btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        /* Extra small */
+        @media (max-width: 359.98px) {
+            .mobile-header {
+                padding: 0 14px;
+            }
+            .mobile-brand {
+                font-size: 1.1rem;
+            }
+            .form-card {
+                padding: 16px 12px;
+            }
+        }
+
+        /* Large screens */
+        @media (min-width: 1400px) {
+            .form-card {
+                padding: 40px;
+            }
+        }
     </style>
 </head>
 <body>
 
-<!-- SIDEBAR -->
-<div class="sidebar">
-    <div class="sidebar-menu-wrapper">
-        <a href="../../index.php" class="sidebar-brand">SpotLight.<br><span>Beranda Pemilik</span></a>
-        <ul class="nav-menu">
-            <li class="nav-item"><a href="../../Role/Owner/index.php" class="nav-link-custom"><span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span></a></li>
-            <li class="nav-item">
-                <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuMaster">
-<li class="nav-item">
-    <a href="../../Master/Karyawan/index.php" class="nav-link-custom">
-        <span>
-            <i class="bi bi-person-badge-fill me-2"></i>
-            Kelola Karyawan
-        </span>
-    </a>
-</li>
-            <li class="nav-item">
-                <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuLaporan">
-                    <span><i class="bi bi-file-earmark-bar-graph-fill me-2"></i> Laporan Bisnis</span>
-                    <i class="bi bi-chevron-down small icon-chevron"></i>
-                </a>
-                <div class="submenu" id="submenuLaporan">
-                    <ul class="list-unstyled">
-                        <li><a href="../../Laporan/Pendapatan/index.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Laporan Pendapatan</a></li>
-                        <li><a href="../../Laporan/Stok Barang/index.php" class="submenu-link"><i class="bi bi-box-seam-fill me-2"></i>Laporan Stok Barang</a></li>
-                        <li><a href="../../Laporan/Pembatalan/index.php" class="submenu-link"><i class="bi bi-calendar-x-fill me-2"></i>Laporan Pembatalan</a></li>
-                        <li><a href="../../Laporan/Paket Terfavorit/index.php" class="submenu-link"><i class="bi bi-star-fill text-warning me-2"></i>Laporan Paket Terfavorit</a></li>
-                    </ul>
-                </div>
-            </li>
-            <li class="nav-item"><a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)"><span><i class="bi bi-house-door-fill me-2"></i>Beranda</span></a></li>
-        </ul>
-    </div>
-    <div><button onclick="confirmLogout(event)" class="btn btn-logout"><i class="bi bi-box-arrow-right me-2"></i> Keluar Sistem</button></div>
-</div>
-
-<!-- MAIN CONTENT -->
-<div class="main-content">
-
-    <!-- BREADCRUMB -->
-    <div class="breadcrumb-custom">
-        <a href="index.php">Kelola Karyawan</a>
-        <i class="bi bi-chevron-right" style="font-size: 0.65rem;"></i>
-        <span class="current">Edit Karyawan</span>
+    <!-- MOBILE HEADER -->
+    <div class="mobile-header">
+        <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu">
+            <i class="bi bi-list"></i>
+        </button>
+        <a href="../../index.php" class="mobile-brand">SpotLight.</a>
+        <div style="width:40px;"></div>
     </div>
 
-    <!-- HEADER SINKRON DENGAN ELEMEN PORTAL OWNER -->
-    <div class="dashboard-header">
-        <div>
-            <h3 class="fw-bold mb-1">Edit Data Karyawan ✦</h3>
-            <p class="text-muted small mb-0">Perbarui data kredensial serta profil milik staf <?= htmlspecialchars($current_nama) ?>.</p>
+    <!-- SIDEBAR OVERLAY -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-menu-wrapper">
+            <a href="../../index.php" class="sidebar-brand">SpotLight.<br><span>Beranda Pemilik</span></a>
+            <ul class="nav-menu">
+                <li class="nav-item"><a href="../../Role/Owner/index.php" class="nav-link-custom"><span><i class="bi bi-grid-1x2-fill me-2"></i> Dashboard</span></a></li>
+                <li class="nav-item">
+                    <a href="../../Master/Karyawan/index.php" class="nav-link-custom active">
+                        <span>
+                            <i class="bi bi-person-badge-fill me-2"></i>
+                            Kelola Karyawan
+                        </span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link-custom btn-toggle-submenu" data-target="#submenuLaporan">
+                        <span><i class="bi bi-file-earmark-bar-graph-fill me-2"></i> Laporan Bisnis</span>
+                        <i class="bi bi-chevron-down small icon-chevron"></i>
+                    </a>
+                    <div class="submenu" id="submenuLaporan">
+                        <ul class="list-unstyled">
+                            <li><a href="../../Laporan/Pendapatan/index.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Laporan Pendapatan</a></li>
+                            <li><a href="../../Laporan/Stok Barang/index.php" class="submenu-link"><i class="bi bi-box-seam-fill me-2"></i>Laporan Stok Barang</a></li>
+                            <li><a href="../../Laporan/Pembatalan/index.php" class="submenu-link"><i class="bi bi-calendar-x-fill me-2"></i>Laporan Pembatalan</a></li>
+                            <li><a href="../../Laporan/Paket Terfavorit/index.php" class="submenu-link"><i class="bi bi-star-fill text-warning me-2"></i>Laporan Paket Terfavorit</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item"><a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)"><span><i class="bi bi-house-door-fill me-2"></i>Beranda</span></a></li>
+            </ul>
         </div>
-        <div class="d-flex align-items-center gap-3">
-            <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
-                <i class="bi bi-clock-history me-1 text-danger"></i> <span id="live-clock">Memuat waktu...</span>
-            </span>
-            <div class="profile-header-btn shadow-sm" onclick="bukaModalBiodata()" title="Klik untuk melihat Biodata Anda">
-                <img src="<?= $foto_owner_src ?>" alt="Owner Profil">
+        <div><button onclick="confirmLogout(event)" class="btn btn-logout"><i class="bi bi-box-arrow-right me-2"></i> Keluar Sistem</button></div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-content">
+
+        <!-- BREADCRUMB -->
+        <div class="breadcrumb-custom">
+            <a href="index.php">Kelola Karyawan</a>
+            <i class="bi bi-chevron-right" style="font-size: 0.65rem;"></i>
+            <span class="current">Edit Karyawan</span>
+        </div>
+
+        <!-- HEADER SINKRON DENGAN ELEMEN PORTAL OWNER -->
+        <div class="dashboard-header">
+            <div>
+                <h3 class="fw-bold mb-1">Edit Data Karyawan ✦</h3>
+                <p class="text-muted small mb-0">Perbarui data kredensial serta profil milik staf <?= htmlspecialchars($current_nama) ?>.</p>
             </div>
-            <a href="index.php" class="btn-outline-pink"><i class="bi bi-arrow-left"></i> Kembali</a>
-        </div>
-    </div>
-
-    <!-- LANDSCAPE LAYOUT -->
-    <div class="landscape-wrapper">
-
-        <!-- LEFT PANEL - PREVIEW CARD -->
-        <div class="landscape-left">
-            <div class="preview-card">
-                <div class="preview-avatar" id="previewAvatar">
-                    <img src="<?= $foto_src ?>" alt="Foto Profil">
+            <div class="d-flex align-items-center gap-3">
+                <span class="badge px-3 py-2 text-dark border-0" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
+                    <i class="bi bi-clock-history me-1 text-danger"></i> <span id="live-clock">Memuat waktu...</span>
+                </span>
+                <div class="profile-header-btn shadow-sm" onclick="bukaModalBiodata()" title="Klik untuk melihat Biodata Anda">
+                    <img src="<?= $foto_owner_src ?>" alt="Owner Profil">
                 </div>
-                <div class="preview-name" id="previewNama"><?= htmlspecialchars($current_nama) ?></div>
-                <span class="preview-role" id="previewRole" style="background: var(--s-pink); color: var(--p-pink);"><?= htmlspecialchars($current_role) ?></span>
-
-                <div class="preview-info">
-                    <div class="preview-info-item"><span class="preview-info-label">NIK</span><span class="preview-info-value" id="previewNIK"><?= htmlspecialchars($current_nik) ?></span></div>
-                    <div class="preview-info-item"><span class="preview-info-label">Umur</span><span class="preview-info-value" id="previewUmur"><?= hitungUmur($current_dob) ?> tahun</span></div>
-                    <div class="preview-info-item"><span class="preview-info-label">Jenis Kelamin</span><span class="preview-info-value" id="previewJK"><?= htmlspecialchars($current_jk) ?></span></div>
-                    <div class="preview-info-item"><span class="preview-info-label">Telepon</span><span class="preview-info-value" id="previewHP"><?= htmlspecialchars($data_karyawan['No_Hp'] ?? '-') ?></span></div>
-                    <div class="preview-info-item"><span class="preview-info-label">Email</span><span class="preview-info-value" id="previewEmail"><?= htmlspecialchars($current_email) ?></span></div>
-                    <div class="preview-info-item"><span class="preview-info-label">Status</span><span class="preview-info-value" id="previewStatus"><?= $current_status == 1 ? 'Aktif' : 'Nonaktif' ?></span></div>
-                </div>
-
-                <label class="foto-upload-btn" onclick="document.getElementById('inputFoto').click()">
-                    <i class="bi bi-camera-fill"></i> Ganti Foto Staf
-                </label>
+                <a href="index.php" class="btn-outline-pink d-none d-md-inline-flex"><i class="bi bi-arrow-left"></i> Kembali</a>
             </div>
         </div>
 
-        <!-- RIGHT PANEL - FORM CARD -->
-        <div class="landscape-right">
-            <form method="POST" enctype="multipart/form-data" id="formEdit" novalidate>
-                <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
-                <input type="file" name="foto_profil" id="inputFoto" accept="image/jpeg,image/png,image/jpg" style="display: none;" onchange="previewFoto(this)">
+        <!-- LANDSCAPE LAYOUT -->
+        <div class="landscape-wrapper">
 
-                <div class="form-card">
-                    <!-- DATA PRIBADI -->
-                    <div class="form-section-title"><i class="bi bi-person-fill me-2"></i>Data Pribadi Karyawan</div>
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-4">
-                            <label class="form-label">Nomor Induk Kependudukan (NIK)<span class="required-star">*</span></label>
-                            <input type="text" name="nik" id="inputNIK" class="form-control <?= hasError('nik', $error_fields) ? 'has-error' : '' ?>" placeholder="3175091234567890" value="<?= $current_nik ?>" maxlength="16" required>
-                            <div class="hint-text">16 digit angka kependudukan</div>
-                            <div class="field-error">NIK tidak valid (harus 16 digit angka)</div>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Nama Lengkap<span class="required-star">*</span></label>
-                            <input type="text" name="nama" id="inputNama" class="form-control <?= hasError('nama', $error_fields) ? 'has-error' : '' ?>" placeholder="Nama lengkap" value="<?= $current_nama ?>" required>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Tanggal Lahir<span class="required-star">*</span></label>
-                            <input type="date" name="tanggal_lahir" id="inputDOB" class="form-control <?= hasError('tanggal_lahir', $error_fields) ? 'has-error' : '' ?>" value="<?= $current_dob ?>" required>
-                            <div class="hint-text">Batas umur mendaftar: 17 - 60 tahun</div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Jenis Kelamin<span class="required-star">*</span></label>
-                            <div class="radio-group">
-                                <label class="radio-option <?= $current_jk == 'Laki-laki' ? 'active' : '' ?> <?= hasError('jenis_kelamin', $error_fields) ? 'has-error' : '' ?>" onclick="selectRadio(this, 'inputJK', 'Laki-laki')">
-                                    <span class="radio-icon"></span>
-                                    <span class="radio-text">Laki-laki</span>
-                                    <input type="radio" name="jenis_kelamin" value="Laki-laki" <?= $current_jk == 'Laki-laki' ? 'checked' : '' ?> required>
-                                </label>
-                                <label class="radio-option <?= $current_jk == 'Perempuan' ? 'active' : '' ?> <?= hasError('jenis_kelamin', $error_fields) ? 'has-error' : '' ?>" onclick="selectRadio(this, 'inputJK', 'Perempuan')">
-                                    <span class="radio-icon"></span>
-                                    <span class="radio-text">Perempuan</span>
-                                    <input type="radio" name="jenis_kelamin" value="Perempuan" <?= $current_jk == 'Perempuan' ? 'checked' : '' ?> required>
-                                </label>
-                            </div>
-                            <input type="hidden" id="inputJK" value="<?= htmlspecialchars($current_jk) ?>">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Alamat Domisili<span class="required-star">*</span></label>
-                            <input type="text" name="alamat" id="inputAlamat" class="form-control <?= hasError('alamat', $error_fields) ? 'has-error' : '' ?>" placeholder="Alamat domisili lengkap" value="<?= $current_alamat ?>" required>
-                        </div>
+            <!-- LEFT PANEL - PREVIEW CARD -->
+            <div class="landscape-left">
+                <div class="preview-card">
+                    <div class="preview-avatar" id="previewAvatar">
+                        <img src="<?= $foto_src ?>" alt="Foto Profil">
+                    </div>
+                    <div class="preview-name" id="previewNama"><?= htmlspecialchars($current_nama) ?></div>
+                    <span class="preview-role" id="previewRole" style="background: var(--s-pink); color: var(--p-pink);"><?= htmlspecialchars($current_role) ?></span>
+
+                    <div class="preview-info">
+                        <div class="preview-info-item"><span class="preview-info-label">NIK</span><span class="preview-info-value" id="previewNIK"><?= htmlspecialchars($current_nik) ?></span></div>
+                        <div class="preview-info-item"><span class="preview-info-label">Umur</span><span class="preview-info-value" id="previewUmur"><?= hitungUmur($current_dob) ?> tahun</span></div>
+                        <div class="preview-info-item"><span class="preview-info-label">Jenis Kelamin</span><span class="preview-info-value" id="previewJK"><?= htmlspecialchars($current_jk) ?></span></div>
+                        <div class="preview-info-item"><span class="preview-info-label">Telepon</span><span class="preview-info-value" id="previewHP"><?= htmlspecialchars($data_karyawan['No_Hp'] ?? '-') ?></span></div>
+                        <div class="preview-info-item"><span class="preview-info-label">Email</span><span class="preview-info-value" id="previewEmail"><?= htmlspecialchars($current_email) ?></span></div>
+                        <div class="preview-info-item"><span class="preview-info-label">Status</span><span class="preview-info-value" id="previewStatus"><?= $current_status == 1 ? 'Aktif' : 'Nonaktif' ?></span></div>
                     </div>
 
-                    <!-- AKUN SISTEM -->
-                    <div class="form-section-title"><i class="bi bi-shield-lock-fill me-2"></i>Aparatur Akun & Kredensial</div>
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-4">
-                            <label class="form-label">Nama Pengguna (Username)<span class="required-star">*</span></label>
-                            <input type="text" name="username" id="inputUsername" class="form-control <?= hasError('username', $error_fields) ? 'has-error' : '' ?>" placeholder="username" value="<?= $current_username ?>" required>
-                            <div class="hint-text">Hanya huruf, angka, dan underscore</div>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Alamat Email<span class="required-star">*</span></label>
-                            <input type="email" name="email" id="inputEmail" class="form-control <?= hasError('email', $error_fields) ? 'has-error' : '' ?>" placeholder="nama@email.com" value="<?= $current_email ?>" required>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Peran Kerja (Role)<span class="required-star">*</span></label>
-                            <select name="role_karyawan" id="inputRole" class="form-select <?= hasError('role_karyawan', $error_fields) ? 'has-error' : '' ?>" required>
-                                <option value="Admin" <?= $current_role == 'Admin' ? 'selected' : '' ?>>Admin</option>
-                                <option value="Fotografer" <?= $current_role == 'Fotografer' ? 'selected' : '' ?>>Fotografer</option>
-                                <option value="Owner" <?= $current_role == 'Owner' ? 'selected' : '' ?>>Owner</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Kata Sandi Baru <span style="color: var(--text-muted); font-weight: 600; text-transform: none; letter-spacing: 0;">(Kosongkan jika tidak diganti)</span></label>
-                            <div class="password-wrapper">
-                                <input type="password" name="password" id="inputPassword" class="form-control <?= hasError('password', $error_fields) ? 'has-error' : '' ?>" placeholder="Masukkan sandi baru (Min. 8 karakter)">
-                                <button type="button" class="password-toggle" onclick="togglePassword('inputPassword', this)" title="Lihat password">
-                                    <i class="bi bi-eye"></i>
-                                </button>
-                            </div>
-                            <div class="password-strength" id="passwordStrength"></div>
-                            <div class="hint-text">Harus memuat kombinasi huruf, angka, dan simbol khusus</div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Konfirmasi Kata Sandi Baru</label>
-                            <div class="password-wrapper">
-                                <input type="password" name="password_confirm" id="inputPasswordConfirm" class="form-control <?= hasError('password_confirm', $error_fields) ? 'has-error' : '' ?>" placeholder="Ulangi masukan kata sandi baru">
-                                <button type="button" class="password-toggle" onclick="togglePassword('inputPasswordConfirm', this)" title="Lihat password">
-                                    <i class="bi bi-eye"></i>
-                                </button>
-                            </div>
-                            <div class="field-error" id="passwordMatchError">Konfirmasi sandi tidak cocok dengan sandi utama!</div>
-                        </div>
-                    </div>
-
-                    <!-- KONTAK & STATUS -->
-                    <div class="form-section-title"><i class="bi bi-telephone-fill me-2"></i>Informasi Kontak & Status Operasional</div>
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-6">
-                            <label class="form-label">Nomor Telepon Seluler<span class="required-star">*</span></label>
-                            <div class="input-group">
-                                <span class="input-group-text">+62</span>
-                                <input type="text" name="no_hp" id="inputHP" class="form-control <?= hasError('no_hp', $error_fields) ? 'has-error' : '' ?>" placeholder="87871438459" value="<?= $current_hp ?>" required>
-                            </div>
-                            <div class="hint-text">Hanya angka numerik murni tanpa awalan +62 atau 0 (9 - 13 digit)</div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Status Akun Sistem<span class="required-star">*</span></label>
-                            <select name="status_karyawan" id="inputStatus" class="form-select <?= hasError('status_karyawan', $error_fields) ? 'has-error' : '' ?>" required>
-                                <option value="1" <?= $current_status == 1 ? 'selected' : '' ?>>Aktif</option>
-                                <option value="0" <?= $current_status == 0 ? 'selected' : '' ?>>Nonaktif</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- BUTTONS -->
-                    <div class="d-flex gap-3 justify-content-end pt-4" style="border-top: 1px solid var(--border-color);">
-                        <a href="index.php" class="btn-outline-pink">Batal</a>
-                        <button type="submit" name="edit_karyawan" class="btn-reg-header"><i class="bi bi-check-lg"></i> Simpan Perubahan</button>
-                    </div>
+                    <label class="foto-upload-btn" onclick="document.getElementById('inputFoto').click()">
+                        <i class="bi bi-camera-fill"></i> Ganti Foto Staf
+                    </label>
                 </div>
+            </div>
+
+            <!-- RIGHT PANEL - FORM CARD -->
+            <div class="landscape-right">
+                <form method="POST" enctype="multipart/form-data" id="formEdit" novalidate>
+                    <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
+                    <input type="file" name="foto_profil" id="inputFoto" accept="image/jpeg,image/png,image/jpg" style="display: none;" onchange="previewFoto(this)">
+
+                    <div class="form-card">
+                        <!-- DATA PRIBADI -->
+                        <div class="form-section-title"><i class="bi bi-person-fill me-2"></i>Data Pribadi Karyawan</div>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-4">
+                                <label class="form-label">Nomor Induk Kependudukan (NIK)<span class="required-star">*</span></label>
+                                <input type="text" name="nik" id="inputNIK" class="form-control <?= hasError('nik', $error_fields) ? 'has-error' : '' ?>" placeholder="3175091234567890" value="<?= $current_nik ?>" maxlength="16" required>
+                                <div class="hint-text">16 digit angka kependudukan</div>
+                                <div class="field-error">NIK tidak valid (harus 16 digit angka)</div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Nama Lengkap<span class="required-star">*</span></label>
+                                <input type="text" name="nama" id="inputNama" class="form-control <?= hasError('nama', $error_fields) ? 'has-error' : '' ?>" placeholder="Nama lengkap" value="<?= $current_nama ?>" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Tanggal Lahir<span class="required-star">*</span></label>
+                                <input type="date" name="tanggal_lahir" id="inputDOB" class="form-control <?= hasError('tanggal_lahir', $error_fields) ? 'has-error' : '' ?>" value="<?= $current_dob ?>" required>
+                                <div class="hint-text">Batas umur mendaftar: 17 - 60 tahun</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Jenis Kelamin<span class="required-star">*</span></label>
+                                <div class="radio-group">
+                                    <label class="radio-option <?= $current_jk == 'Laki-laki' ? 'active' : '' ?> <?= hasError('jenis_kelamin', $error_fields) ? 'has-error' : '' ?>" onclick="selectRadio(this, 'inputJK', 'Laki-laki')">
+                                        <span class="radio-icon"></span>
+                                        <span class="radio-text">Laki-laki</span>
+                                        <input type="radio" name="jenis_kelamin" value="Laki-laki" <?= $current_jk == 'Laki-laki' ? 'checked' : '' ?> required>
+                                    </label>
+                                    <label class="radio-option <?= $current_jk == 'Perempuan' ? 'active' : '' ?> <?= hasError('jenis_kelamin', $error_fields) ? 'has-error' : '' ?>" onclick="selectRadio(this, 'inputJK', 'Perempuan')">
+                                        <span class="radio-icon"></span>
+                                        <span class="radio-text">Perempuan</span>
+                                        <input type="radio" name="jenis_kelamin" value="Perempuan" <?= $current_jk == 'Perempuan' ? 'checked' : '' ?> required>
+                                    </label>
+                                </div>
+                                <input type="hidden" id="inputJK" value="<?= htmlspecialchars($current_jk) ?>">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Alamat Domisili<span class="required-star">*</span></label>
+                                <input type="text" name="alamat" id="inputAlamat" class="form-control <?= hasError('alamat', $error_fields) ? 'has-error' : '' ?>" placeholder="Alamat domisili lengkap" value="<?= $current_alamat ?>" required>
+                            </div>
+                        </div>
+
+                        <!-- AKUN SISTEM -->
+                        <div class="form-section-title"><i class="bi bi-shield-lock-fill me-2"></i>Aparatur Akun & Kredensial</div>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-4">
+                                <label class="form-label">Nama Pengguna (Username)<span class="required-star">*</span></label>
+                                <input type="text" name="username" id="inputUsername" class="form-control <?= hasError('username', $error_fields) ? 'has-error' : '' ?>" placeholder="username" value="<?= $current_username ?>" required>
+                                <div class="hint-text">Hanya huruf, angka, dan underscore</div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Alamat Email<span class="required-star">*</span></label>
+                                <input type="email" name="email" id="inputEmail" class="form-control <?= hasError('email', $error_fields) ? 'has-error' : '' ?>" placeholder="nama@email.com" value="<?= $current_email ?>" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Peran Kerja (Role)<span class="required-star">*</span></label>
+                                <select name="role_karyawan" id="inputRole" class="form-select <?= hasError('role_karyawan', $error_fields) ? 'has-error' : '' ?>" required>
+                                    <option value="Admin" <?= $current_role == 'Admin' ? 'selected' : '' ?>>Admin</option>
+                                    <option value="Fotografer" <?= $current_role == 'Fotografer' ? 'selected' : '' ?>>Fotografer</option>
+                                    <option value="Owner" <?= $current_role == 'Owner' ? 'selected' : '' ?>>Owner</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Kata Sandi Baru <span style="color: var(--text-muted); font-weight: 600; text-transform: none; letter-spacing: 0;">(Kosongkan jika tidak diganti)</span></label>
+                                <div class="password-wrapper">
+                                    <input type="password" name="password" id="inputPassword" class="form-control <?= hasError('password', $error_fields) ? 'has-error' : '' ?>" placeholder="Masukkan sandi baru (Min. 8 karakter)">
+                                    <button type="button" class="password-toggle" onclick="togglePassword('inputPassword', this)" title="Lihat password">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                </div>
+                                <div class="password-strength" id="passwordStrength"></div>
+                                <div class="hint-text">Harus memuat kombinasi huruf, angka, dan simbol khusus</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Konfirmasi Kata Sandi Baru</label>
+                                <div class="password-wrapper">
+                                    <input type="password" name="password_confirm" id="inputPasswordConfirm" class="form-control <?= hasError('password_confirm', $error_fields) ? 'has-error' : '' ?>" placeholder="Ulangi masukan kata sandi baru">
+                                    <button type="button" class="password-toggle" onclick="togglePassword('inputPasswordConfirm', this)" title="Lihat password">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                </div>
+                                <div class="field-error" id="passwordMatchError">Konfirmasi sandi tidak cocok dengan sandi utama!</div>
+                            </div>
+                        </div>
+
+                        <!-- KONTAK & STATUS -->
+                        <div class="form-section-title"><i class="bi bi-telephone-fill me-2"></i>Informasi Kontak & Status Operasional</div>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label">Nomor Telepon Seluler<span class="required-star">*</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text">+62</span>
+                                    <input type="text" name="no_hp" id="inputHP" class="form-control <?= hasError('no_hp', $error_fields) ? 'has-error' : '' ?>" placeholder="87871438459" value="<?= $current_hp ?>" required>
+                                </div>
+                                <div class="hint-text">Hanya angka numerik murni tanpa awalan +62 atau 0 (9 - 13 digit)</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Status Akun Sistem<span class="required-star">*</span></label>
+                                <select name="status_karyawan" id="inputStatus" class="form-select <?= hasError('status_karyawan', $error_fields) ? 'has-error' : '' ?>" required>
+                                    <option value="1" <?= $current_status == 1 ? 'selected' : '' ?>>Aktif</option>
+                                    <option value="0" <?= $current_status == 0 ? 'selected' : '' ?>>Nonaktif</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- BUTTONS -->
+                        <div class="btn-group-action">
+                            <a href="index.php" class="btn-outline-pink"><i class="bi bi-arrow-left"></i> Batal</a>
+                            <button type="submit" name="edit_karyawan" class="btn-reg-header"><i class="bi bi-check-lg"></i> Simpan Perubahan</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL LIHAT BIODATA OWNER (SINKRON DASHBOARD) -->
+    <div class="modal fade" id="modalLihatBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); background: #ffffff;">
+          <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
+            <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-vcard-fill text-danger me-2"></i>Biodata Pemilik</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body px-4 pb-4 pt-3">
+            <div class="text-center mb-4">
+              <div class="profile-preview-box mx-auto" style="width: 100px; height: 100px; border: 3px solid var(--s-pink);">
+                <img src="<?= $foto_owner_src ?>" alt="Foto Profil">
+              </div>
+              <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_owner) ?></h5>
+              <span class="badge bg-danger px-3 py-1 text-white text-uppercase" style="font-size: 0.72rem; border-radius: 50px; font-weight: 700;">Owner (Pemilik)</span>
+            </div>
+            <div class="card-3d p-3 border-0 mb-4" style="border-radius: 20px; background-color: #f8fafc; box-shadow: none;">
+              <div class="row g-3">
+                <div class="col-6">
+                  <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">NIK</small>
+                  <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['nik']) ?></span>
+                </div>
+                <div class="col-6">
+                  <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Nama Pengguna</small>
+                  <span class="fw-bold text-dark" style="font-size: 0.85rem;">@<?= htmlspecialchars($username_owner) ?></span>
+                </div>
+                <div class="col-12 border-top pt-2">
+                  <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Alamat Email</small>
+                  <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($email_owner) ?></span>
+                </div>
+                <div class="col-6 border-top pt-2">
+                  <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Jenis Kelamin</small>
+                  <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['jenis_kelamin']) ?></span>
+                </div>
+                <div class="col-6 border-top pt-2">
+                  <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Tanggal Lahir</small>
+                  <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= $d_profile['tanggal_lahir'] ? $d_profile['tanggal_lahir']->format('d M Y') : '-' ?></span>
+                </div>
+                <div class="col-12 border-top pt-2">
+                  <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Nomor Telepon</small>
+                  <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['no_hp']) ?></span>
+                </div>
+                <div class="col-12 border-top pt-2">
+                  <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Alamat Lengkap</small>
+                  <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['alamat']) ?></span>
+                </div>
+              </div>
+            </div>
+            <button class="btn btn-reg shadow-sm py-3 mt-0" onclick="bukaModalEditDariBiodata()" style="border-radius: 14px;">Edit Profil Anda ⚙</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL GANTI PROFIL OWNER (SINKRON DASHBOARD) -->
+    <div class="modal fade" id="modalGantiProfil" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 20px 50px rgba(216, 63, 103, 0.25); background: rgba(255, 255, 255, 0.95);">
+          <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
+            <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-gear-fill text-danger me-2"></i>Pengaturan Profil Owner</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body px-4 pb-4 pt-3">
+            <p class="text-muted small mb-4" style="line-height: 1.6;">Perbarui informasi profil pribadi Anda di bawah ini secara akurat. Data yang diubah akan langsung disinkronkan ke seluruh sistem harian SpotLight.</p>
+            <form method="POST" enctype="multipart/form-data">
+              <div class="text-center mb-4">
+                <div class="d-inline-block position-relative">
+                  <div class="profile-preview-box mx-auto">
+                    <img id="profile-preview-modal" src="<?= $foto_owner_src ?>" alt="Foto Profil">
+                  </div>
+                  <input type="file" name="foto_profil" id="inputFotoModal" class="form-control d-none" accept=".jpg,.jpeg,.png">
+                  <button type="button" class="btn btn-pilih-foto btn-sm position-absolute" style="bottom: -10px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 0.75rem; padding: 5px 12px;" onclick="document.getElementById('inputFotoModal').click();">Ganti Foto</button>
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Nama Lengkap Anda<span class="required-star">*</span></label>
+                <input type="text" name="nama" id="inputNamaModal" class="form-control" placeholder="Masukkan nama lengkap Anda" value="<?= htmlspecialchars($nama_owner) ?>" required>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Nama Pengguna (Username)<span class="required-star">*</span></label>
+                <input type="text" name="username" id="inputUsernameModal" class="form-control" placeholder="Masukkan nama pengguna kustom" value="<?= htmlspecialchars($username_owner) ?>" required>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Alamat Email<span class="required-star">*</span></label>
+                <input type="email" name="email" class="form-control" placeholder="nama@email.com" value="<?= htmlspecialchars($email_owner) ?>" required>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Nomor Telepon<span class="required-star">*</span></label>
+                <input type="text" name="no_hp" id="inputHPModal" class="form-control" placeholder="Contoh: 08xxxxxxxxxx" value="<?= htmlspecialchars($d_profile['no_hp']) ?>" required>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Alamat Lengkap<span class="required-star">*</span></label>
+                <textarea name="alamat" class="form-control" rows="2" placeholder="Masukkan alamat domisili lengkap" required style="resize: none;"><?= htmlspecialchars($d_profile['alamat']) ?></textarea>
+              </div>
+
+              <div class="row">
+                  <div class="col-md-6 mb-3">
+                      <label class="form-label">Sandi Baru (Opsional)</label>
+                      <div class="password-group">
+                          <input type="password" name="password" id="pass_baru_modal" class="form-control" placeholder="Minimal 8 karakter">
+                          <i class="bi bi-eye-slash toggle-password" id="btnToggleBaru"></i>
+                      </div>
+                  </div>
+                  <div class="col-md-6 mb-3">
+                      <label class="form-label">Konfirmasi Sandi</label>
+                      <div class="password-group">
+                          <input type="password" name="confirm_password" id="pass_konf_modal" class="form-control" placeholder="Ulangi sandi baru">
+                          <i class="bi bi-eye-slash toggle-password" id="btnToggleKonf"></i>
+                      </div>
+                  </div>
+              </div>
+
+              <button type="submit" name="update_profil" class="btn btn-reg shadow-sm py-3 mt-2">Simpan Perubahan ✨</button>
             </form>
-        </div>
-    </div>
-</div>
-
-<!-- MODAL LIHAT BIODATA OWNER (SINKRON DASHBOARD) -->
-<div class="modal fade" id="modalLihatBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); background: #ffffff;">
-      <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
-        <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-vcard-fill text-danger me-2"></i>Biodata Pemilik</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body px-4 pb-4 pt-3">
-        <div class="text-center mb-4">
-          <div class="profile-preview-box mx-auto" style="width: 100px; height: 100px; border: 3px solid var(--s-pink);">
-            <img src="<?= $foto_owner_src ?>" alt="Foto Profil">
-          </div>
-          <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_owner) ?></h5>
-          <span class="badge bg-danger px-3 py-1 text-white text-uppercase" style="font-size: 0.72rem; border-radius: 50px; font-weight: 700;">Owner (Pemilik)</span>
-        </div>
-        <div class="card-3d p-3 border-0 mb-4" style="border-radius: 20px; background-color: #f8fafc; box-shadow: none;">
-          <div class="row g-3">
-            <div class="col-6">
-              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">NIK</small>
-              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['nik']) ?></span>
-            </div>
-            <div class="col-6">
-              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Nama Pengguna</small>
-              <span class="fw-bold text-dark" style="font-size: 0.85rem;">@<?= htmlspecialchars($username_owner) ?></span>
-            </div>
-            <div class="col-12 border-top pt-2">
-              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Alamat Email</small>
-              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($email_owner) ?></span>
-            </div>
-            <div class="col-6 border-top pt-2">
-              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Jenis Kelamin</small>
-              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['jenis_kelamin']) ?></span>
-            </div>
-            <div class="col-6 border-top pt-2">
-              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Tanggal Lahir</small>
-              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= $d_profile['tanggal_lahir'] ? $d_profile['tanggal_lahir']->format('d M Y') : '-' ?></span>
-            </div>
-            <div class="col-12 border-top pt-2">
-              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Nomor Telepon</small>
-              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['no_hp']) ?></span>
-            </div>
-            <div class="col-12 border-top pt-2">
-              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Alamat Lengkap</small>
-              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['alamat']) ?></span>
-            </div>
           </div>
         </div>
-        <button class="btn btn-reg shadow-sm py-3 mt-0" onclick="bukaModalEditDariBiodata()" style="border-radius: 14px;">Edit Profil Anda ⚙</button>
       </div>
     </div>
-  </div>
-</div>
 
-<!-- MODAL GANTI PROFIL OWNER (SINKRON DASHBOARD) -->
-<div class="modal fade" id="modalGantiProfil" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 20px 50px rgba(216, 63, 103, 0.25); background: rgba(255, 255, 255, 0.95);">
-      <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
-        <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-gear-fill text-danger me-2"></i>Pengaturan Profil Owner</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body px-4 pb-4 pt-3">
-        <p class="text-muted small mb-4" style="line-height: 1.6;">Perbarui informasi profil pribadi Anda di bawah ini secara akurat. Data yang diubah akan langsung disinkronkan ke seluruh sistem harian SpotLight.</p>
-        <form method="POST" enctype="multipart/form-data">
-          <div class="text-center mb-4">
-            <div class="d-inline-block position-relative">
-              <div class="profile-preview-box mx-auto">
-                <img id="profile-preview-modal" src="<?= $foto_owner_src ?>" alt="Foto Profil">
-              </div>
-              <input type="file" name="foto_profil" id="inputFotoModal" class="form-control d-none" accept=".jpg,.jpeg,.png">
-              <button type="button" class="btn btn-pilih-foto btn-sm position-absolute" style="bottom: -10px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 0.75rem; padding: 5px 12px;" onclick="document.getElementById('inputFotoModal').click();">Ganti Foto</button>
-            </div>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">Nama Lengkap Anda<span class="required-star">*</span></label>
-            <input type="text" name="nama" id="inputNamaModal" class="form-control" placeholder="Masukkan nama lengkap Anda" value="<?= htmlspecialchars($nama_owner) ?>" required>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">Nama Pengguna (Username)<span class="required-star">*</span></label>
-            <input type="text" name="username" id="inputUsernameModal" class="form-control" placeholder="Masukkan nama pengguna kustom" value="<?= htmlspecialchars($username_owner) ?>" required>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">Alamat Email<span class="required-star">*</span></label>
-            <input type="email" name="email" class="form-control" placeholder="nama@email.com" value="<?= htmlspecialchars($email_owner) ?>" required>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">Nomor Telepon<span class="required-star">*</span></label>
-            <input type="text" name="no_hp" id="inputHPModal" class="form-control" placeholder="Contoh: 08xxxxxxxxxx" value="<?= htmlspecialchars($d_profile['no_hp']) ?>" required>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">Alamat Lengkap<span class="required-star">*</span></label>
-            <textarea name="alamat" class="form-control" rows="2" placeholder="Masukkan alamat domisili lengkap" required style="resize: none;"><?= htmlspecialchars($d_profile['alamat']) ?></textarea>
-          </div>
-
-          <div class="row">
-              <div class="col-md-6 mb-3">
-                  <label class="form-label">Sandi Baru (Opsional)</label>
-                  <div class="password-group">
-                      <input type="password" name="password" id="pass_baru_modal" class="form-control" placeholder="Minimal 8 karakter">
-                      <i class="bi bi-eye-slash toggle-password" id="btnToggleBaru"></i>
-                  </div>
-              </div>
-              <div class="col-md-6 mb-3">
-                  <label class="form-label">Konfirmasi Sandi</label>
-                  <div class="password-group">
-                      <input type="password" name="confirm_password" id="pass_konf_modal" class="form-control" placeholder="Ulangi sandi baru">
-                      <i class="bi bi-eye-slash toggle-password" id="btnToggleKonf"></i>
-                  </div>
-              </div>
-          </div>
-
-          <button type="submit" name="update_profil" class="btn btn-reg shadow-sm py-3 mt-2">Simpan Perubahan ✨</button>
-        </form>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
-<script>
-    // JAM REAL-TIME SINKRON
-    function updateLiveClock() {
-        const now = new Date();
-        const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
-        const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-        
-        const dayName = days[now.getDay()];
-        const day = now.getDate();
-        const monthName = months[now.getMonth()];
-        const year = now.getFullYear();
-        
-        let hours = now.getHours();
-        let minutes = now.getMinutes();
-        let seconds = now.getSeconds();
-        
-        hours = hours < 10 ? '0' + hours : hours;
-        minutes = minutes < 10 ? '0' + minutes : minutes;
-        seconds = seconds < 10 ? '0' + seconds : seconds;
-        
-        const timeString = `${dayName}, ${day} ${monthName} ${year} - ${hours}:${minutes}:${seconds} WIB`;
-        const clockEl = document.getElementById('live-clock');
-        if (clockEl) clockEl.innerText = timeString;
-    }
-    setInterval(updateLiveClock, 1000);
-    updateLiveClock();
-
-    // SUBMENU SINKRON SIDEBAR
-    document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            const targetId = this.getAttribute('data-target');
-            const targetEl = document.querySelector(targetId);
-            const chevron = this.querySelector('.icon-chevron');
-            
-            if (targetEl) {
-                const isShown = targetEl.classList.contains('show');
-                document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
-                document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
-                
-                if (!isShown) {
-                    targetEl.classList.add('show');
-                    if (chevron) chevron.style.transform = 'rotate(180deg)';
-                }
+    <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Toggle Sidebar Mobile
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.toggle('show-mobile');
+            overlay.classList.toggle('active');
+            document.body.style.overflow = sidebar.classList.contains('show-mobile') ? 'hidden' : '';
+        }
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 991) {
+                document.getElementById('sidebar').classList.remove('show-mobile');
+                document.getElementById('sidebarOverlay').classList.remove('active');
+                document.body.style.overflow = '';
             }
         });
-    });
 
-    // PROFIL OWNER MODAL TRIGGERS
-    function bukaModalProfil() {
-        var modalProfil = new bootstrap.Modal(document.getElementById('modalGantiProfil'));
-        modalProfil.show();
-    }
+        // JAM REAL-TIME SINKRON
+        function updateLiveClock() {
+            const now = new Date();
+            const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+            const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
-    function bukaModalBiodata() {
-        var modalBiodata = new bootstrap.Modal(document.getElementById('modalLihatBiodata'));
-        modalBiodata.show();
-    }
+            const dayName = days[now.getDay()];
+            const day = now.getDate();
+            const monthName = months[now.getMonth()];
+            const year = now.getFullYear();
 
-    function bukaModalEditDariBiodata() {
-        var modalBiodata = bootstrap.Modal.getInstance(document.getElementById('modalLihatBiodata'));
-        if (modalBiodata) modalBiodata.hide();
-        setTimeout(bukaModalProfil, 400);
-    }
+            let hours = now.getHours();
+            let minutes = now.getMinutes();
+            let seconds = now.getSeconds();
 
-    // VISIBILITAS PASSWORD TOGGLE
-    function togglePassword(inputId, btn) {
-        const input = document.getElementById(inputId);
-        const icon = btn.querySelector('i');
-        if (input.type === 'password') {
-            input.type = 'text'; icon.classList.remove('bi-eye'); icon.classList.add('bi-eye-slash'); btn.title = 'Sembunyikan password';
-        } else {
-            input.type = 'password'; icon.classList.remove('bi-eye-slash'); icon.classList.add('bi-eye'); btn.title = 'Lihat password';
+            hours = hours < 10 ? '0' + hours : hours;
+            minutes = minutes < 10 ? '0' + minutes : minutes;
+            seconds = seconds < 10 ? '0' + seconds : seconds;
+
+            const timeString = `${dayName}, ${day} ${monthName} ${year} - ${hours}:${minutes}:${seconds} WIB`;
+            const clockEl = document.getElementById('live-clock');
+            if (clockEl) clockEl.innerText = timeString;
         }
-    }
+        setInterval(updateLiveClock, 1000);
+        updateLiveClock();
 
-    // SELECT RADIO BUTTON GENDER
-    function selectRadio(label, hiddenId, value) {
-        document.querySelectorAll('.radio-option').forEach(el => el.classList.remove('active'));
-        label.classList.add('active');
-        label.querySelector('input[type="radio"]').checked = true;
-        document.getElementById(hiddenId).value = value;
-        updatePreview();
-    }
+        // SUBMENU SINKRON SIDEBAR
+        document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('data-target');
+                const targetEl = document.querySelector(targetId);
+                const chevron = this.querySelector('.icon-chevron');
 
-    // PREVIEW FOTO KARYAWAN
-    function previewFoto(input) {
-        const avatar = document.getElementById('previewAvatar');
-        if (input.files && input.files[0]) {
-            const reader = new FileReader();
-            reader.onload = function(e) { avatar.innerHTML = '<img src="' + e.target.result + '">'; };
-            reader.readAsDataURL(input.files[0]);
+                if (targetEl) {
+                    const isShown = targetEl.classList.contains('show');
+                    document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
+                    document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
+
+                    if (!isShown) {
+                        targetEl.classList.add('show');
+                        if (chevron) chevron.style.transform = 'rotate(180deg)';
+                    }
+                }
+            });
+        });
+
+        // PROFIL OWNER MODAL TRIGGERS
+        function bukaModalProfil() {
+            var modalProfil = new bootstrap.Modal(document.getElementById('modalGantiProfil'));
+            modalProfil.show();
         }
-    }
 
-    // UPDATE PREVIEW CARD SECARA LIVE
-    function updatePreview() {
-        document.getElementById('previewNama').textContent = document.getElementById('inputNama').value || 'Nama Karyawan';
-        const role = document.getElementById('inputRole').value;
-        const roleEl = document.getElementById('previewRole');
-        roleEl.textContent = role || 'Pilih Peran';
-        
-        const roleColors = { 
-            'Admin': ['#eff6ff', '#2563eb'], 
-            'Fotografer': ['var(--s-pink)', 'var(--p-pink)'], 
-            'Owner': ['#f5f3ff', '#8b5cf6'] 
-        };
-        if (roleColors[role]) { 
-            roleEl.style.background = roleColors[role][0]; 
-            roleEl.style.color = roleColors[role][1]; 
+        function bukaModalBiodata() {
+            var modalBiodata = new bootstrap.Modal(document.getElementById('modalLihatBiodata'));
+            modalBiodata.show();
         }
-        document.getElementById('previewNIK').textContent = document.getElementById('inputNIK').value || '-';
-        const jk = document.querySelector('input[name="jenis_kelamin"]:checked');
-        document.getElementById('previewJK').textContent = jk ? jk.value : '-';
-        const hp = document.getElementById('inputHP').value;
-        document.getElementById('previewHP').textContent = hp ? '+62' + hp : '-';
-        document.getElementById('previewEmail').textContent = document.getElementById('inputEmail').value || '-';
-        const status = document.getElementById('inputStatus').value;
-        document.getElementById('previewStatus').textContent = status == '1' ? 'Aktif' : 'Nonaktif';
-    }
 
-    // KALKULASI & PREVIEW UMUR REAL-TIME
-    function updateUmur() {
-        const dob = document.getElementById('inputDOB').value;
-        const preview = document.getElementById('previewUmur');
-        if (!dob) { preview.textContent = '-'; return; }
-        const birth = new Date(dob); const today = new Date();
-        let age = today.getFullYear() - birth.getFullYear();
-        const m = today.getMonth() - birth.getMonth();
-        if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-        preview.textContent = age + ' tahun';
-        preview.style.color = (age >= 17 && age <= 60) ? '#059669' : '#dc2626';
-        document.getElementById('inputDOB').classList.toggle('is-valid', age >= 17 && age <= 60);
-        document.getElementById('inputDOB').classList.toggle('is-invalid', age < 17 || age > 60);
-    }
-
-    // PASANG EVENT LISTENERS UNTUK REAL-TIME INPUTS
-    ['inputNama', 'inputNIK', 'inputRole', 'inputHP', 'inputEmail', 'inputStatus'].forEach(id => {
-        document.getElementById(id).addEventListener('input', updatePreview);
-        document.getElementById(id).addEventListener('change', updatePreview);
-    });
-    document.querySelectorAll('input[name="jenis_kelamin"]').forEach(radio => {
-        radio.addEventListener('change', updatePreview);
-    });
-    document.getElementById('inputDOB').addEventListener('change', updateUmur);
-
-    // MASKING & VALIDASI INPUTS
-    document.getElementById('inputNIK').addEventListener('input', function() {
-        this.value = this.value.replace(/[^0-9]/g, '').slice(0, 16);
-        this.classList.toggle('is-valid', /^[0-9]{16}$/.test(this.value));
-        this.classList.toggle('is-invalid', this.value.length > 0 && !/^[0-9]{16}$/.test(this.value));
-    });
-    document.getElementById('inputNama').addEventListener('input', function() {
-        this.value = this.value.replace(/[^a-zA-Z ]/g, '');
-        this.classList.toggle('is-valid', this.value.length >= 3);
-    });
-    document.getElementById('inputUsername').addEventListener('input', function() {
-        this.value = this.value.replace(/[^a-zA-Z0-9_]/g, '');
-        this.classList.toggle('is-valid', /^[a-zA-Z0-9_]{3,50}$/.test(this.value));
-    });
-    document.getElementById('inputEmail').addEventListener('input', function() {
-        const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.value);
-        this.classList.toggle('is-valid', valid);
-        this.classList.toggle('is-invalid', this.value.length > 0 && !valid);
-    });
-    
-    // KEKUATAN KATA SANDI BAR
-    document.getElementById('inputPassword').addEventListener('input', function() {
-        const val = this.value; let strength = 0;
-        if (val.length >= 8) strength++; 
-        if (/[A-Za-z]/.test(val) && /[0-9]/.test(val)) strength++; 
-        if (/[^A-Za-z0-9]/.test(val)) strength++;
-        
-        const bar = document.getElementById('passwordStrength');
-        bar.className = 'password-strength';
-        if (strength === 1) bar.classList.add('strength-weak');
-        else if (strength === 2) bar.classList.add('strength-medium');
-        else if (strength === 3) bar.classList.add('strength-strong');
-        this.classList.toggle('is-valid', strength === 3 || val.length === 0);
-    });
-    
-    document.getElementById('inputPasswordConfirm').addEventListener('input', function() {
-        const pass = document.getElementById('inputPassword').value;
-        const match = this.value === pass && (this.value !== '' || pass === '');
-        this.classList.toggle('is-valid', match && pass !== '');
-        this.classList.toggle('is-invalid', this.value.length > 0 && !match);
-        document.getElementById('passwordMatchError').style.display = (this.value.length > 0 && !match) ? 'block' : 'none';
-    });
-    
-    document.getElementById('inputHP').addEventListener('input', function() {
-        this.value = this.value.replace(/[^0-9]/g, '').slice(0, 13);
-        this.classList.toggle('is-valid', this.value.length >= 9);
-    });
-
-    // VALIDASI SUBMIT FORMULIR
-    document.getElementById('formEdit').addEventListener('submit', function(e) {
-        const pass = document.getElementById('inputPassword').value;
-        const confirm = document.getElementById('inputPasswordConfirm').value;
-        const dob = document.getElementById('inputDOB').value;
-        
-        if (pass !== '' && pass !== confirm) { 
-            e.preventDefault(); 
-            Swal.fire({ 
-                icon: 'error', 
-                title: 'Password Tidak Cocok!', 
-                text: 'Kata sandi konfirmasi baru tidak sesuai dengan kata sandi baru utama.', 
-                confirmButtonColor: '#d83f67' 
-            }); 
-            return false; 
+        function bukaModalEditDariBiodata() {
+            var modalBiodata = bootstrap.Modal.getInstance(document.getElementById('modalLihatBiodata'));
+            if (modalBiodata) modalBiodata.hide();
+            setTimeout(bukaModalProfil, 400);
         }
-        
-        if (dob) { 
-            const birth = new Date(dob); 
-            const today = new Date(); 
-            let age = today.getFullYear() - birth.getFullYear(); 
-            const m = today.getMonth() - birth.getMonth(); 
-            if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--; 
-            
-            if (age < 17 || age > 60) { 
+
+        // VISIBILITAS PASSWORD TOGGLE
+        function togglePassword(inputId, btn) {
+            const input = document.getElementById(inputId);
+            const icon = btn.querySelector('i');
+            if (input.type === 'password') {
+                input.type = 'text'; icon.classList.remove('bi-eye'); icon.classList.add('bi-eye-slash'); btn.title = 'Sembunyikan password';
+            } else {
+                input.type = 'password'; icon.classList.remove('bi-eye-slash'); icon.classList.add('bi-eye'); btn.title = 'Lihat password';
+            }
+        }
+
+        // SELECT RADIO BUTTON GENDER
+        function selectRadio(label, hiddenId, value) {
+            document.querySelectorAll('.radio-option').forEach(el => el.classList.remove('active'));
+            label.classList.add('active');
+            label.querySelector('input[type="radio"]').checked = true;
+            document.getElementById(hiddenId).value = value;
+            updatePreview();
+        }
+
+        // PREVIEW FOTO KARYAWAN
+        function previewFoto(input) {
+            const avatar = document.getElementById('previewAvatar');
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) { avatar.innerHTML = '<img src="' + e.target.result + '">'; };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        // UPDATE PREVIEW CARD SECARA LIVE
+        function updatePreview() {
+            document.getElementById('previewNama').textContent = document.getElementById('inputNama').value || 'Nama Karyawan';
+            const role = document.getElementById('inputRole').value;
+            const roleEl = document.getElementById('previewRole');
+            roleEl.textContent = role || 'Pilih Peran';
+
+            const roleColors = { 
+                'Admin': ['#eff6ff', '#2563eb'], 
+                'Fotografer': ['var(--s-pink)', 'var(--p-pink)'], 
+                'Owner': ['#f5f3ff', '#8b5cf6'] 
+            };
+            if (roleColors[role]) { 
+                roleEl.style.background = roleColors[role][0]; 
+                roleEl.style.color = roleColors[role][1]; 
+            }
+            document.getElementById('previewNIK').textContent = document.getElementById('inputNIK').value || '-';
+            const jk = document.querySelector('input[name="jenis_kelamin"]:checked');
+            document.getElementById('previewJK').textContent = jk ? jk.value : '-';
+            const hp = document.getElementById('inputHP').value;
+            document.getElementById('previewHP').textContent = hp ? '+62' + hp : '-';
+            document.getElementById('previewEmail').textContent = document.getElementById('inputEmail').value || '-';
+            const status = document.getElementById('inputStatus').value;
+            document.getElementById('previewStatus').textContent = status == '1' ? 'Aktif' : 'Nonaktif';
+        }
+
+        // KALKULASI & PREVIEW UMUR REAL-TIME
+        function updateUmur() {
+            const dob = document.getElementById('inputDOB').value;
+            const preview = document.getElementById('previewUmur');
+            if (!dob) { preview.textContent = '-'; return; }
+            const birth = new Date(dob); const today = new Date();
+            let age = today.getFullYear() - birth.getFullYear();
+            const m = today.getMonth() - birth.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+            preview.textContent = age + ' tahun';
+            preview.style.color = (age >= 17 && age <= 60) ? '#059669' : '#dc2626';
+            document.getElementById('inputDOB').classList.toggle('is-valid', age >= 17 && age <= 60);
+            document.getElementById('inputDOB').classList.toggle('is-invalid', age < 17 || age > 60);
+        }
+
+        // PASANG EVENT LISTENERS UNTUK REAL-TIME INPUTS
+        ['inputNama', 'inputNIK', 'inputRole', 'inputHP', 'inputEmail', 'inputStatus'].forEach(id => {
+            document.getElementById(id).addEventListener('input', updatePreview);
+            document.getElementById(id).addEventListener('change', updatePreview);
+        });
+        document.querySelectorAll('input[name="jenis_kelamin"]').forEach(radio => {
+            radio.addEventListener('change', updatePreview);
+        });
+        document.getElementById('inputDOB').addEventListener('change', updateUmur);
+
+        // MASKING & VALIDASI INPUTS
+        document.getElementById('inputNIK').addEventListener('input', function() {
+            this.value = this.value.replace(/[^0-9]/g, '').slice(0, 16);
+            this.classList.toggle('is-valid', /^[0-9]{16}$/.test(this.value));
+            this.classList.toggle('is-invalid', this.value.length > 0 && !/^[0-9]{16}$/.test(this.value));
+        });
+        document.getElementById('inputNama').addEventListener('input', function() {
+            this.value = this.value.replace(/[^a-zA-Z ]/g, '');
+            this.classList.toggle('is-valid', this.value.length >= 3);
+        });
+        document.getElementById('inputUsername').addEventListener('input', function() {
+            this.value = this.value.replace(/[^a-zA-Z0-9_]/g, '');
+            this.classList.toggle('is-valid', /^[a-zA-Z0-9_]{3,50}$/.test(this.value));
+        });
+        document.getElementById('inputEmail').addEventListener('input', function() {
+            const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.value);
+            this.classList.toggle('is-valid', valid);
+            this.classList.toggle('is-invalid', this.value.length > 0 && !valid);
+        });
+
+        // KEKUATAN KATA SANDI BAR
+        document.getElementById('inputPassword').addEventListener('input', function() {
+            const val = this.value; let strength = 0;
+            if (val.length >= 8) strength++; 
+            if (/[A-Za-z]/.test(val) && /[0-9]/.test(val)) strength++; 
+            if (/[^A-Za-z0-9]/.test(val)) strength++;
+
+            const bar = document.getElementById('passwordStrength');
+            bar.className = 'password-strength';
+            if (strength === 1) bar.classList.add('strength-weak');
+            else if (strength === 2) bar.classList.add('strength-medium');
+            else if (strength === 3) bar.classList.add('strength-strong');
+            this.classList.toggle('is-valid', strength === 3 || val.length === 0);
+        });
+
+        document.getElementById('inputPasswordConfirm').addEventListener('input', function() {
+            const pass = document.getElementById('inputPassword').value;
+            const match = this.value === pass && (this.value !== '' || pass === '');
+            this.classList.toggle('is-valid', match && pass !== '');
+            this.classList.toggle('is-invalid', this.value.length > 0 && !match);
+            document.getElementById('passwordMatchError').style.display = (this.value.length > 0 && !match) ? 'block' : 'none';
+        });
+
+        document.getElementById('inputHP').addEventListener('input', function() {
+            this.value = this.value.replace(/[^0-9]/g, '').slice(0, 13);
+            this.classList.toggle('is-valid', this.value.length >= 9);
+        });
+
+        // VALIDASI SUBMIT FORMULIR
+        document.getElementById('formEdit').addEventListener('submit', function(e) {
+            const pass = document.getElementById('inputPassword').value;
+            const confirm = document.getElementById('inputPasswordConfirm').value;
+            const dob = document.getElementById('inputDOB').value;
+
+            if (pass !== '' && pass !== confirm) { 
                 e.preventDefault(); 
                 Swal.fire({ 
                     icon: 'error', 
-                    title: 'Umur Tidak Valid!', 
-                    text: 'Umur pendaftar staf baru harus berumur antara 17-60 tahun. Saat ini: ' + age + ' tahun.', 
+                    title: 'Password Tidak Cocok!', 
+                    text: 'Kata sandi konfirmasi baru tidak sesuai dengan kata sandi baru utama.', 
                     confirmButtonColor: '#d83f67' 
                 }); 
                 return false; 
             }
-        }
-        return true;
-    });
 
-    function confirmLogout(e) { 
-        e.preventDefault(); 
-        Swal.fire({ 
-            title: 'Keluar Sistem? ❌', 
-            text: 'Yakin ingin keluar dari sistem SpotLight Studio?', 
-            icon: 'warning', 
-            showCancelButton: true, 
-            confirmButtonColor: '#d83f67', 
-            cancelButtonColor: '#718096', 
-            confirmButtonText: 'Ya', 
-            cancelButtonText: 'Batal' 
-        }).then(r => { 
-            if (r.isConfirmed) window.location = '../../logout.php'; 
-        }); 
-    }
-    
-    function confirmLandingPage(e) { 
-        e.preventDefault(); 
-        Swal.fire({ 
-            title: 'Kembali ke Beranda? ✦', 
-            text: 'Kembali ke halaman utama publik?', 
-            icon: 'info', 
-            showCancelButton: true, 
-            confirmButtonColor: '#d83f67', 
-            cancelButtonColor: '#718096', 
-            confirmButtonText: 'Ya', 
-            cancelButtonText: 'Batal' 
-        }).then(r => { 
-            if (r.isConfirmed) window.location = '../../index.php'; 
-        }); 
-    }
+            if (dob) { 
+                const birth = new Date(dob); 
+                const today = new Date(); 
+                let age = today.getFullYear() - birth.getFullYear(); 
+                const m = today.getMonth() - birth.getMonth(); 
+                if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--; 
 
-    // LIVE PREVIEW FOTO PROFIL OWNER MODAL
-    const inputFotoModal = document.getElementById('inputFotoModal');
-    if (inputFotoModal) {
-        inputFotoModal.addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    document.getElementById('profile-preview-modal').src = event.target.result;
-                };
-                reader.readAsDataURL(file);
+                if (age < 17 || age > 60) { 
+                    e.preventDefault(); 
+                    Swal.fire({ 
+                        icon: 'error', 
+                        title: 'Umur Tidak Valid!', 
+                        text: 'Umur pendaftar staf baru harus berumur antara 17-60 tahun. Saat ini: ' + age + ' tahun.', 
+                        confirmButtonColor: '#d83f67' 
+                    }); 
+                    return false; 
+                }
             }
+            return true;
         });
-    }
 
-    // VALIDASI INPUT TEXT MODAL
-    const inputNamaModal = document.getElementById('inputNamaModal');
-    if (inputNamaModal) {
-        inputNamaModal.addEventListener('input', function() {
-            this.value = this.value.replace(/a-zA-Z ]/g, '');
-        });
-    }
+        function confirmLogout(e) { 
+            e.preventDefault(); 
+            Swal.fire({ 
+                title: 'Keluar Sistem? ❌', 
+                text: 'Yakin ingin keluar dari sistem SpotLight Studio?', 
+                icon: 'warning', 
+                showCancelButton: true, 
+                confirmButtonColor: '#d83f67', 
+                cancelButtonColor: '#718096', 
+                confirmButtonText: 'Ya', 
+                cancelButtonText: 'Batal' 
+            }).then(r => { 
+                if (r.isConfirmed) window.location = '../../logout.php'; 
+            }); 
+        }
 
-    const inputUsernameModal = document.getElementById('inputUsernameModal');
-    if (inputUsernameModal) {
-        inputUsernameModal.addEventListener('input', function() {
-            this.value = this.value.replace(/[^a-zA-Z0-9_]/g, '');
-        });
-    }
+        function confirmLandingPage(e) { 
+            e.preventDefault(); 
+            Swal.fire({ 
+                title: 'Kembali ke Beranda? ✦', 
+                text: 'Kembali ke halaman utama publik?', 
+                icon: 'info', 
+                showCancelButton: true, 
+                confirmButtonColor: '#d83f67', 
+                cancelButtonColor: '#718096', 
+                confirmButtonText: 'Ya', 
+                cancelButtonText: 'Batal' 
+            }).then(r => { 
+                if (r.isConfirmed) window.location = '../../index.php'; 
+            }); 
+        }
 
-    // MASKING TELEPHONE MODAL
-    const inputHPModal = document.getElementById('inputHPModal'), prefix = '+62 ';
-    function moveCursorToEndModal() { if (inputHPModal.selectionStart < prefix.length) { if (inputHPModal.setSelectionRange) inputHPModal.setSelectionRange(prefix.length, prefix.length); } }
-    if (inputHPModal) {
-        inputHPModal.addEventListener('mousedown', () => setTimeout(moveCursorToEndModal, 1));
-        inputHPModal.addEventListener('focus', moveCursorToEndModal);
-        inputHPModal.addEventListener('keyup', moveCursorToEndModal);
-        inputHPModal.addEventListener('keydown', function(e) { if (this.selectionStart <= prefix.length && (e.keyCode === 8 || e.keyCode === 46)) { e.preventDefault(); } });
-        inputHPModal.addEventListener('input', function() {
-            if (!this.value.startsWith(prefix)) { this.value = prefix + this.value.replace(/[^0-9]/g, '').substring(2); }
-            let digits = this.value.split(prefix)[1].replace(/[^0-9]/g, '');
-            if (digits.length > 13) digits = digits.slice(0, 13);
-            this.value = prefix + digits;
-        });
-    }
-
-    // TOGGLE PASSWORD EYE VISIBILITY MODAL
-    function setupPasswordToggleModal(buttonId, inputId) {
-        const btn = document.getElementById(buttonId);
-        const input = document.getElementById(inputId);
-        if (btn && input) {
-            btn.addEventListener('click', function () {
-                const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
-                input.setAttribute('type', type);
-                this.classList.toggle('bi-eye'); this.classList.toggle('bi-eye-slash');
+        // LIVE PREVIEW FOTO PROFIL OWNER MODAL
+        const inputFotoModal = document.getElementById('inputFotoModal');
+        if (inputFotoModal) {
+            inputFotoModal.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        document.getElementById('profile-preview-modal').src = event.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
             });
         }
-    }
-    setupPasswordToggleModal('btnToggleBaru', 'pass_baru_modal');
-    setupPasswordToggleModal('btnToggleKonf', 'pass_konf_modal');
-</script>
 
-<!-- SWEETALERT NOTIFIKASI ERROR CRUD -->
-<?php if ($error_crud != ""): ?>
-<script>
-    Swal.fire({ 
-        icon: 'error', 
-        title: 'Gagal Menyimpan! ❌', 
-        html: '<?= str_replace("\n", "<br>", addslashes($error_crud)) ?>', 
-        confirmButtonColor: '#d83f67' 
-    });
-</script>
-<?php endif; ?>
+        // VALIDASI INPUT TEXT MODAL
+        const inputNamaModal = document.getElementById('inputNamaModal');
+        if (inputNamaModal) {
+            inputNamaModal.addEventListener('input', function() {
+                this.value = this.value.replace(/[^a-zA-Z ]/g, '');
+            });
+        }
 
-<!-- SWEETALERT NOTIFIKASI PROFIL OWNER -->
-<?php if(isset($success_profile) && $success_profile === true): ?>
-<script>
-    Swal.fire({
-        icon: 'success',
-        title: 'Profil Diperbarui! 🎉',
-        text: 'Informasi profil Anda berhasil disinkronkan ke seluruh sistem SpotLight.',
-        confirmButtonColor: '#d83f67',
-        confirmButtonText: 'Selesai'
-    });
-</script>
-<?php endif; ?>
+        const inputUsernameModal = document.getElementById('inputUsernameModal');
+        if (inputUsernameModal) {
+            inputUsernameModal.addEventListener('input', function() {
+                this.value = this.value.replace(/[^a-zA-Z0-9_]/g, '');
+            });
+        }
 
-<?php if(isset($error_profile) && $error_profile !== ""): ?>
-<script>
-    Swal.fire({
-        icon: 'error',
-        title: 'Pembaruan Gagal! ❌',
-        text: '<?= $error_profile ?>',
-        confirmButtonColor: '#d83f67',
-        confirmButtonText: 'Periksa Kembali'
-    }).then(() => {
-        var modalGanti = new bootstrap.Modal(document.getElementById('modalGantiProfil'));
-        modalGanti.show();
-    });
-</script>
-<?php endif; ?>
+        // MASKING TELEPHONE MODAL
+        const inputHPModal = document.getElementById('inputHPModal'), prefix = '+62 ';
+        function moveCursorToEndModal() { if (inputHPModal.selectionStart < prefix.length) { if (inputHPModal.setSelectionRange) inputHPModal.setSelectionRange(prefix.length, prefix.length); } }
+        if (inputHPModal) {
+            inputHPModal.addEventListener('mousedown', () => setTimeout(moveCursorToEndModal, 1));
+            inputHPModal.addEventListener('focus', moveCursorToEndModal);
+            inputHPModal.addEventListener('keyup', moveCursorToEndModal);
+            inputHPModal.addEventListener('keydown', function(e) { if (this.selectionStart <= prefix.length && (e.keyCode === 8 || e.keyCode === 46)) { e.preventDefault(); } });
+            inputHPModal.addEventListener('input', function() {
+                if (!this.value.startsWith(prefix)) { this.value = prefix + this.value.replace(/[^0-9]/g, '').substring(2); }
+                let digits = this.value.split(prefix)[1].replace(/[^0-9]/g, '');
+                if (digits.length > 13) digits = digits.slice(0, 13);
+                this.value = prefix + digits;
+            });
+        }
+
+        // TOGGLE PASSWORD EYE VISIBILITY MODAL
+        function setupPasswordToggleModal(buttonId, inputId) {
+            const btn = document.getElementById(buttonId);
+            const input = document.getElementById(inputId);
+            if (btn && input) {
+                btn.addEventListener('click', function () {
+                    const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
+                    input.setAttribute('type', type);
+                    this.classList.toggle('bi-eye'); this.classList.toggle('bi-eye-slash');
+                });
+            }
+        }
+        setupPasswordToggleModal('btnToggleBaru', 'pass_baru_modal');
+        setupPasswordToggleModal('btnToggleKonf', 'pass_konf_modal');
+    </script>
+
+    <!-- SWEETALERT NOTIFIKASI ERROR CRUD -->
+    <?php if ($error_crud != ""): ?>
+    <script>
+        Swal.fire({ 
+            icon: 'error', 
+            title: 'Gagal Menyimpan! ❌', 
+            html: '<?= str_replace("\n", "<br>", addslashes($error_crud)) ?>', 
+            confirmButtonColor: '#d83f67' 
+        });
+    </script>
+    <?php endif; ?>
+
+    <!-- SWEETALERT NOTIFIKASI PROFIL OWNER -->
+    <?php if(isset($success_profile) && $success_profile === true): ?>
+    <script>
+        Swal.fire({
+            icon: 'success',
+            title: 'Profil Diperbarui! 🎉',
+            text: 'Informasi profil Anda berhasil disinkronkan ke seluruh sistem SpotLight.',
+            confirmButtonColor: '#d83f67',
+            confirmButtonText: 'Selesai'
+        });
+    </script>
+    <?php endif; ?>
+
+    <?php if(isset($error_profile) && $error_profile !== ""): ?>
+    <script>
+        Swal.fire({
+            icon: 'error',
+            title: 'Pembaruan Gagal! ❌',
+            text: '<?= $error_profile ?>',
+            confirmButtonColor: '#d83f67',
+            confirmButtonText: 'Periksa Kembali'
+        }).then(() => {
+            var modalGanti = new bootstrap.Modal(document.getElementById('modalGantiProfil'));
+            modalGanti.show();
+        });
+    </script>
+    <?php endif; ?>
 
 </body>
 </html>

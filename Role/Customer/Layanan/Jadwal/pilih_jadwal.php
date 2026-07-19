@@ -1060,9 +1060,7 @@ $selected_jadwal_ids = array_map(function($item) {
             box-shadow: var(--shadow-soft);
             transition: var(--transition-smooth);
         }
-        .jadwal-main:hover {
-            box-shadow: var(--shadow-card);
-        }
+        /* .jadwal-main:hover removed - non-clickable element */
         .jadwal-header {
             display: flex;
             justify-content: space-between;
@@ -1306,7 +1304,7 @@ $selected_jadwal_ids = array_map(function($item) {
             background: #f8fafc;
             transition: var(--transition-smooth);
         }
-        .legend-item:hover { transform: translateY(-2px); }
+        /* .legend-item:hover removed - non-clickable */
         .legend-box {
             width: 22px;
             height: 22px;
@@ -1344,10 +1342,7 @@ $selected_jadwal_ids = array_map(function($item) {
             transition: var(--transition-smooth);
             margin-bottom: 20px;
         }
-        .summary-card:hover {
-            box-shadow: 0 16px 48px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
-        }
+        /* .summary-card:hover removed - non-clickable element */
         .summary-title {
             font-size: 1.05rem;
             font-weight: 900;
@@ -1368,7 +1363,7 @@ $selected_jadwal_ids = array_map(function($item) {
             border-bottom: 1px solid #f8fafc;
             transition: var(--transition-smooth);
         }
-        .summary-item:hover { transform: translateX(4px); }
+        .summary-item:hover { transform: translateX(2px); }
         .summary-item:last-child { border-bottom: none; }
         .summary-icon {
             width: 40px;
@@ -1434,7 +1429,6 @@ $selected_jadwal_ids = array_map(function($item) {
         }
         .extra-goods-item:hover {
             background: var(--s-pink);
-            transform: translateX(4px);
         }
         .extra-goods-item span:last-child {
             color: var(--text-dark);
@@ -1687,7 +1681,6 @@ $selected_jadwal_ids = array_map(function($item) {
             transition: var(--transition-smooth);
         }
         .selected-slot-item:hover {
-            transform: translateX(4px);
             border-color: var(--p-pink);
         }
         .selected-slot-item .slot-info {
@@ -1777,6 +1770,111 @@ $selected_jadwal_ids = array_map(function($item) {
             box-shadow: 0 2px 6px rgba(216, 63, 103, 0.3);
         }
 
+
+        /* ===== USER BADGE ===== */
+        .user-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, var(--s-pink), #ffffff);
+            border: 1.5px solid var(--light-pink);
+            padding: 6px 14px 6px 6px;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 0.82rem;
+            color: var(--p-pink);
+            transition: var(--transition-smooth);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(216, 63, 103, 0.08);
+        }
+        .user-badge:hover {
+            border-color: var(--p-pink);
+            box-shadow: 0 4px 12px rgba(216, 63, 103, 0.15);
+            transform: translateY(-1px);
+        }
+        .user-badge img {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #ffffff;
+        }
+        .user-badge .badge-name {
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ===== GLASSMORPHISM ENHANCEMENTS ===== */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: blur(20px) saturate(1.2);
+            -webkit-backdrop-filter: blur(20px) saturate(1.2);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+        }
+
+        /* ===== SMOOTH SCROLLBAR ===== */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--light-pink), var(--p-pink)); border-radius: 10px; }
+
+        /* ===== FLOATING ANIMATION ===== */
+        @keyframes gentleFloat {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-6px); }
+        }
+        .float-gentle { animation: gentleFloat 4s ease-in-out infinite; }
+
+        /* ===== ENHANCED RESPONSIVE ===== */
+        @media (max-width: 1200px) {
+            .jadwal-section { grid-template-columns: 1fr 360px; }
+        }
+        @media (max-width: 992px) {
+            .jadwal-section { grid-template-columns: 1fr; }
+            .booking-summary { position: static; margin-top: 24px; }
+            .nav-menu-center { display: none; }
+            .main-container { padding: 24px; }
+            .top-navbar { padding: 12px 24px; }
+            .breadcrumb-bar { padding: 12px 24px; }
+            .slot-grid { grid-template-columns: repeat(3, 1fr); }
+            .date-nav-container { padding: 20px; }
+            .date-tab { min-width: 70px; padding: 12px 14px; }
+            .progress-container { padding: 20px 16px; }
+            .progress-line { width: 28px; margin: 0 4px; }
+            .user-badge .badge-name { display: none; }
+        }
+        @media (max-width: 768px) {
+            .slot-grid { grid-template-columns: repeat(2, 1fr); }
+            .jadwal-header { flex-direction: column; align-items: flex-start; }
+            .date-tabs-wrapper { gap: 6px; }
+            .date-tab { min-width: 60px; padding: 10px 12px; }
+            .date-tab .tab-tgl { font-size: 1.1rem; }
+            .progress-step-label { display: none; }
+            .progress-line { width: 14px; margin-bottom: 0; }
+            .progress-step-circle { width: 40px; height: 40px; font-size: 0.8rem; }
+            .jadwal-main { padding: 24px; }
+            .summary-card { padding: 24px; }
+            .jadwal-title { font-size: 1.2rem; }
+            .nav-logo { font-size: 1.4rem; }
+            .nav-btn-booking { padding: 8px 16px; font-size: 0.8rem; }
+        }
+        @media (max-width: 480px) {
+            .main-container { padding: 16px; }
+            .top-navbar { padding: 10px 16px; }
+            .breadcrumb-bar { padding: 10px 16px; }
+            .slot-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+            .slot-jam { padding: 14px 10px; }
+            .slot-jam .slot-waktu { font-size: 0.9rem; }
+            .summary-card { padding: 20px; }
+            .date-nav-container { padding: 16px; }
+            .jadwal-main { padding: 20px; }
+            .progress-container { padding: 16px 10px; border-radius: 20px; }
+            .progress-step-circle { width: 36px; height: 36px; font-size: 0.75rem; border-width: 2px; }
+            .progress-line { width: 10px; height: 3px; }
+            .jadwal-badge { font-size: 0.75rem; padding: 8px 14px; }
+            .multi-select-info { font-size: 0.8rem; padding: 12px 16px; }
+        }
     </style>
 </head>
 <body>
@@ -1802,7 +1900,11 @@ $selected_jadwal_ids = array_map(function($item) {
                 <i class="bi bi-plus-lg"></i> Booking
             </a>
             <div class="nav-avatar-wrapper">
-                <img src="<?= $foto_customer_src ?>" class="nav-avatar" alt="Profil" onclick="toggleDropdown()">
+                <div class="user-badge" onclick="toggleDropdown()">
+                    <img src="<?= $foto_customer_src ?>" alt="Profil">
+                    <span class="badge-name"><?= htmlspecialchars($nama_customer) ?></span>
+                    <i class="bi bi-chevron-down" style="font-size:0.7rem;"></i>
+                </div>
                 <div class="nav-dropdown" id="navDropdown">
                     <div class="dropdown-header">Halo, <?= htmlspecialchars($nama_customer) ?></div>
                     <div class="dropdown-divider"></div>

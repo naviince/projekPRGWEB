@@ -840,9 +840,7 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             box-shadow: 0 4px 16px rgba(0,0,0,0.1);
             transition: var(--transition-smooth);
         }
-        .detail-item:hover .detail-img {
-            transform: scale(1.08) rotate(2deg);
-        }
+        /* .detail-item:hover .detail-img removed - non-clickable */
         .detail-info { flex: 1; }
         .detail-label {
             font-size: 0.72rem;
@@ -888,10 +886,7 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             border-radius: 50%;
             pointer-events: none;
         }
-        .jadwal-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 16px 40px rgba(216, 63, 103, 0.35);
-        }
+        /* .jadwal-card:hover removed - non-clickable element */
         .jadwal-card-title {
             font-size: 0.78rem;
             font-weight: 800;
@@ -929,9 +924,7 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             margin-bottom: 20px;
             transition: var(--transition-smooth);
         }
-        .properti-card:hover {
-            box-shadow: var(--shadow-card);
-        }
+        /* .properti-card:hover removed - non-clickable element */
         .properti-tags {
             display: flex;
             flex-wrap: wrap;
@@ -952,8 +945,6 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             gap: 6px;
         }
         .properti-tag:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(216, 63, 103, 0.12);
             border-color: var(--p-pink);
         }
 
@@ -972,10 +963,7 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             box-shadow: var(--shadow-card);
             transition: var(--transition-smooth);
         }
-        .summary-card:hover {
-            box-shadow: 0 16px 48px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
-        }
+        /* .summary-card:hover removed - non-clickable element */
         .summary-title {
             font-size: 1.05rem;
             font-weight: 900;
@@ -997,7 +985,10 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             transition: var(--transition-smooth);
         }
         .summary-row:hover {
-            transform: translateX(4px);
+            background: rgba(216, 63, 103, 0.02);
+            border-radius: 8px;
+            padding-left: 8px;
+            padding-right: 8px;
         }
         .summary-row:last-child { border-bottom: none; }
         .summary-label {
@@ -1053,7 +1044,6 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
         }
         .extra-goods-item:hover {
             background: var(--s-pink);
-            transform: translateX(4px);
         }
         .extra-goods-item span:last-child {
             color: var(--text-dark);
@@ -1346,6 +1336,108 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
             .diskon-alert { flex-direction: column; text-align: center; padding: 20px; }
             .diskon-alert .diskon-icon { font-size: 2rem; }
         }
+
+        /* ===== USER BADGE ===== */
+        .user-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, var(--s-pink), #ffffff);
+            border: 1.5px solid var(--light-pink);
+            padding: 6px 14px 6px 6px;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 0.82rem;
+            color: var(--p-pink);
+            transition: var(--transition-smooth);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(216, 63, 103, 0.08);
+        }
+        .user-badge:hover {
+            border-color: var(--p-pink);
+            box-shadow: 0 4px 12px rgba(216, 63, 103, 0.15);
+            transform: translateY(-1px);
+        }
+        .user-badge img {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #ffffff;
+        }
+        .user-badge .badge-name {
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ===== GLASSMORPHISM ENHANCEMENTS ===== */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: blur(20px) saturate(1.2);
+            -webkit-backdrop-filter: blur(20px) saturate(1.2);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+        }
+
+        /* ===== SMOOTH SCROLLBAR ===== */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--light-pink), var(--p-pink)); border-radius: 10px; }
+
+        /* ===== FLOATING ANIMATION ===== */
+        @keyframes gentleFloat {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-6px); }
+        }
+        .float-gentle { animation: gentleFloat 4s ease-in-out infinite; }
+
+        /* ===== ENHANCED RESPONSIVE ===== */
+        @media (max-width: 1200px) {
+            .konfirmasi-section { grid-template-columns: 1fr 380px; }
+        }
+        @media (max-width: 992px) {
+            .konfirmasi-section { grid-template-columns: 1fr; }
+            .booking-summary { position: static; margin-top: 24px; }
+            .nav-menu-center { display: none; }
+            .main-container { padding: 24px; }
+            .top-navbar { padding: 12px 24px; }
+            .breadcrumb-bar { padding: 12px 24px; }
+            .progress-container { padding: 20px 16px; }
+            .progress-line { width: 28px; margin: 0 4px; }
+            .user-badge .badge-name { display: none; }
+        }
+        @media (max-width: 768px) {
+            .progress-step-label { display: none; }
+            .progress-line { width: 14px; margin-bottom: 0; }
+            .progress-step-circle { width: 40px; height: 40px; font-size: 0.8rem; }
+            .detail-card { padding: 24px; }
+            .jadwal-card { padding: 20px; }
+            .summary-card { padding: 24px; }
+            .nav-logo { font-size: 1.4rem; }
+            .nav-btn-booking { padding: 8px 16px; font-size: 0.8rem; }
+            .konfirmasi-section { gap: 24px; }
+        }
+        @media (max-width: 480px) {
+            .main-container { padding: 16px; }
+            .top-navbar { padding: 10px 16px; }
+            .breadcrumb-bar { padding: 10px 16px; }
+            .detail-card { padding: 20px; }
+            .properti-card { padding: 20px; }
+            .summary-card { padding: 20px; }
+            .btn-konfirmasi, .btn-kembali { padding: 14px 20px; font-size: 0.9rem; }
+            .diskon-alert { flex-direction: column; text-align: center; padding: 20px; }
+            .diskon-alert .diskon-icon { font-size: 2rem; }
+            .progress-container { padding: 16px 10px; border-radius: 20px; }
+            .progress-step-circle { width: 36px; height: 36px; font-size: 0.75rem; border-width: 2px; }
+            .progress-line { width: 10px; height: 3px; }
+            .detail-item { padding: 12px; gap: 12px; }
+            .detail-img { width: 52px; height: 52px; }
+            .detail-value { font-size: 0.95rem; }
+            .jadwal-card-main { font-size: 1.15rem; }
+            .payment-option-card { padding: 12px 14px; }
+            .summary-dp-amount { font-size: 1.5rem; }
+        }
     </style>
 </head>
 <body>
@@ -1371,7 +1463,11 @@ $jadwal_info_ringkas = $jumlah_slot . ' Sesi Terjadwal';
                 <i class="bi bi-plus-lg"></i> Booking
             </a>
             <div class="nav-avatar-wrapper">
-                <img src="<?= $foto_customer_src ?>" class="nav-avatar" alt="Profil" onclick="toggleDropdown()">
+                <div class="user-badge" onclick="toggleDropdown()">
+                    <img src="<?= $foto_customer_src ?>" alt="Profil">
+                    <span class="badge-name"><?= htmlspecialchars($nama_customer) ?></span>
+                    <i class="bi bi-chevron-down" style="font-size:0.7rem;"></i>
+                </div>
                 <div class="nav-dropdown" id="navDropdown">
                     <div class="dropdown-header">Halo, <?= htmlspecialchars($nama_customer) ?></div>
                     <div class="dropdown-divider"></div>

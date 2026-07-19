@@ -579,9 +579,7 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             box-shadow: var(--shadow-soft);
             transition: var(--transition-smooth);
         }
-        .cetak-main:hover {
-            box-shadow: var(--shadow-card);
-        }
+        /* .cetak-main:hover removed - non-clickable element */
         .cetak-section-title {
             font-size: 1.3rem;
             font-weight: 800;
@@ -738,10 +736,7 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             box-shadow: var(--shadow-card);
             transition: var(--transition-smooth);
         }
-        .summary-card:hover {
-            box-shadow: 0 16px 48px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
-        }
+        /* .summary-card:hover removed - non-clickable element */
         .summary-title {
             font-size: 1.05rem;
             font-weight: 900;
@@ -762,7 +757,7 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             border-bottom: 1px solid #f8fafc;
             transition: var(--transition-smooth);
         }
-        .summary-item:hover { transform: translateX(4px); }
+        .summary-item:hover { transform: translateX(2px); }
         .summary-item:last-child { border-bottom: none; }
         .summary-icon {
             width: 40px;
@@ -828,7 +823,6 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
         }
         .extra-goods-item:hover {
             background: var(--s-pink);
-            transform: translateX(4px);
         }
         .extra-goods-item span:last-child {
             color: var(--text-dark);
@@ -946,6 +940,102 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             .cetak-main { padding: 20px; }
             .summary-card { padding: 20px; }
         }
+
+        /* ===== USER BADGE ===== */
+        .user-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, var(--s-pink), #ffffff);
+            border: 1.5px solid var(--light-pink);
+            padding: 6px 14px 6px 6px;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 0.82rem;
+            color: var(--p-pink);
+            transition: var(--transition-smooth);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(216, 63, 103, 0.08);
+        }
+        .user-badge:hover {
+            border-color: var(--p-pink);
+            box-shadow: 0 4px 12px rgba(216, 63, 103, 0.15);
+            transform: translateY(-1px);
+        }
+        .user-badge img {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #ffffff;
+        }
+        .user-badge .badge-name {
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ===== GLASSMORPHISM ENHANCEMENTS ===== */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: blur(20px) saturate(1.2);
+            -webkit-backdrop-filter: blur(20px) saturate(1.2);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+        }
+
+        /* ===== SMOOTH SCROLLBAR ===== */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--light-pink), var(--p-pink)); border-radius: 10px; }
+
+        /* ===== FLOATING ANIMATION ===== */
+        @keyframes gentleFloat {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-6px); }
+        }
+        .float-gentle { animation: gentleFloat 4s ease-in-out infinite; }
+
+        /* ===== ENHANCED RESPONSIVE ===== */
+        @media (max-width: 1200px) {
+            .cetak-section { grid-template-columns: 1fr 340px; gap: 28px; }
+        }
+        @media (max-width: 992px) {
+            .cetak-section { grid-template-columns: 1fr; }
+            .booking-summary { position: static; margin-top: 24px; }
+            .nav-menu-center { display: none; }
+            .main-container { padding: 24px; }
+            .top-navbar { padding: 12px 24px; }
+            .breadcrumb-bar { padding: 12px 24px; }
+            .cetak-grid { grid-template-columns: repeat(2, 1fr); gap: 20px; }
+            .progress-container { padding: 20px 16px; }
+            .progress-line { width: 28px; margin: 0 4px; }
+            .user-badge .badge-name { display: none; }
+        }
+        @media (max-width: 768px) {
+            .cetak-grid { grid-template-columns: 1fr; }
+            .progress-step-label { display: none; }
+            .progress-line { width: 14px; margin-bottom: 0; }
+            .progress-step-circle { width: 40px; height: 40px; font-size: 0.8rem; }
+            .cetak-main { padding: 24px; }
+            .summary-card { padding: 24px; }
+            .cetak-section-title { font-size: 1.15rem; }
+            .nav-logo { font-size: 1.4rem; }
+            .nav-btn-booking { padding: 8px 16px; font-size: 0.8rem; }
+        }
+        @media (max-width: 480px) {
+            .main-container { padding: 16px; }
+            .top-navbar { padding: 10px 16px; }
+            .breadcrumb-bar { padding: 10px 16px; }
+            .cetak-grid { gap: 14px; }
+            .cetak-main { padding: 20px; }
+            .summary-card { padding: 20px; }
+            .cetak-card { border-radius: 16px; }
+            .cetak-img-wrapper { height: 160px; }
+            .progress-container { padding: 16px 10px; border-radius: 20px; }
+            .progress-step-circle { width: 36px; height: 36px; font-size: 0.75rem; border-width: 2px; }
+            .progress-line { width: 10px; height: 3px; }
+        }
     </style>
 </head>
 <body>
@@ -966,7 +1056,11 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                 <i class="bi bi-plus-lg"></i> Booking
             </a>
             <div class="nav-avatar-wrapper">
-                <img src="<?= $foto_customer_src ?>" class="nav-avatar" alt="Profil" onclick="toggleDropdown()">
+                <div class="user-badge" onclick="toggleDropdown()">
+                    <img src="<?= $foto_customer_src ?>" alt="Profil">
+                    <span class="badge-name"><?= htmlspecialchars($nama_customer) ?></span>
+                    <i class="bi bi-chevron-down" style="font-size:0.7rem;"></i>
+                </div>
                 <div class="nav-dropdown" id="navDropdown">
                     <div class="dropdown-header">Halo, <?= htmlspecialchars($nama_customer) ?></div>
                     <div class="dropdown-divider"></div>

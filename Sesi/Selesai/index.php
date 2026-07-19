@@ -9,13 +9,6 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 
 $id_fotografer = $_SESSION['id_user'];
 
-// =====================================================
-// QUERY: SESI SELESAI (Status_Sesi = 1) MILIK FOTOGRAFER
-// Menggunakan stored procedure sp_ReadSesiSelesaiFotografer yang sudah
-// mengikuti skema Order_Jadwal (multi-jadwal booking) -- sebelumnya query
-// di sini pakai O.ID_Jadwal langsung yang TIDAK ADA di tabel [Order] dan
-// pasti gagal dieksekusi.
-// =====================================================
 $q_selesai = sqlsrv_query($conn, "{CALL sp_ReadSesiSelesaiFotografer(?)}", array($id_fotografer));
 
 $sesi_selesai = [];
@@ -68,11 +61,11 @@ function formatWaktu($time) {
         .btn-logout { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; width: 100%; padding: 12px; border-radius: 12px; font-weight: 800; font-size: 0.85rem; transition: var(--transition-3d); }
         .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
         .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
-        .card-3d { background: #ffffff; border-radius: 22px; border: 1px solid rgba(255, 228, 233, 0.8); box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03); transition: var(--transition-3d); padding: 25px; position: relative; overflow: hidden; }
-        .card-3d::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: linear-gradient(90deg, var(--p-pink), var(--accent-pink)); opacity: 0; transition: opacity 0.3s ease; }
-        .card-3d:hover { transform: translateY(-4px); box-shadow: 0 22px 45px rgba(213, 61, 102, 0.1); border-color: var(--p-pink); }
-        .card-3d:hover::before { opacity: 1; }
-        .content-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        
+        /* card-3d: elemen non-clickable, hover effect dihapus */
+        .card-3d { background: #ffffff; border-radius: 22px; border: 1px solid rgba(255, 228, 233, 0.8); box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03); padding: 25px; position: relative; overflow: hidden; }
+        
+        .content-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .content-title { font-weight: 700; font-size: 1.1rem; color: var(--text-dark); }
         .sesi-item { display: flex; align-items: center; gap: 14px; padding: 20px; background: linear-gradient(135deg, #ffffff, #ecfdf5); border-radius: 16px; margin-bottom: 12px; transition: var(--transition-3d); border: 2px solid transparent; }
         .sesi-item:hover { transform: translateX(6px); border-color: #059669; box-shadow: 0 8px 20px rgba(5, 150, 105, 0.1); }
@@ -92,11 +85,59 @@ function formatWaktu($time) {
         .file-info { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: #f0fdf4; border-radius: 8px; font-size: 0.75rem; color: #166534; font-weight: 600; }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fadeInUp 0.6s ease-out forwards; }
-        @media (max-width: 992px) { .main-content { margin-left: 0; padding: 20px; } .sidebar { transform: translateX(-100%); } }
+
+        /* Mobile menu & overlay */
+        .mobile-menu-btn {
+            display: none; width: 44px; height: 44px; border-radius: 12px;
+            background: #fff; border: 2px solid var(--light-pink); color: var(--p-pink);
+            align-items: center; justify-content: center; font-size: 1.4rem; cursor: pointer;
+            transition: var(--transition-3d); flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .mobile-menu-btn:hover { background: var(--s-pink); transform: scale(1.05); }
+        .sidebar-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(30,30,36,0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            z-index: 99; opacity: 0; transition: opacity 0.35s ease;
+        }
+        .sidebar-overlay.show { display: block; opacity: 1; }
+
+        @media (max-width: 992px) {
+            .mobile-menu-btn { display: inline-flex; }
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                box-shadow: none;
+            }
+            .sidebar.mobile-open { transform: translateX(0); box-shadow: 10px 0 50px rgba(0,0,0,0.15); }
+            .main-content { margin-left: 0; padding: 24px; }
+        }
+        @media (max-width: 768px) {
+            .main-content { padding: 18px; }
+            .content-header { flex-direction: column; align-items: flex-start; }
+            .sesi-item { flex-direction: column; align-items: flex-start; gap: 12px; }
+            .sesi-icon { width: 44px; height: 44px; font-size: 1.2rem; }
+            .d-flex.justify-content-between.align-items-start { flex-direction: column; gap: 12px; width: 100%; }
+            .text-end { text-align: left !important; width: 100%; }
+            .mt-3.d-flex.gap-2 { flex-direction: column; }
+            .btn-action, .btn-action-success, .btn-action-secondary { width: 100%; justify-content: center; }
+        }
+        @media (max-width: 576px) {
+            .main-content { padding: 14px; }
+            .sidebar-brand { font-size: 1.3rem; margin-bottom: 30px; }
+            .nav-link-custom { padding: 10px 14px; font-size: 0.85rem; }
+            .sesi-item { padding: 14px; }
+            .sesi-title { font-size: 0.9rem; }
+            .sesi-time { font-size: 0.8rem; }
+            .sesi-info { font-size: 0.78rem; }
+            h3.fw-bold { font-size: 1.25rem; }
+        }
     </style>
 </head>
 <body>
-    <div class="sidebar">
+    <!-- Sidebar Overlay (Mobile) -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+    <div class="sidebar" id="sidebar">
         <div class="sidebar-menu-wrapper">
             <a href="../../index.php" class="sidebar-brand">SpotLight.<br><span>Panel Fotografer</span></a>
             <ul class="nav-menu">
@@ -128,15 +169,20 @@ function formatWaktu($time) {
 
     <div class="main-content">
         <div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
-            <div>
-                <nav aria-label="breadcrumb">
-                    <ol class="breadcrumb mb-1" style="font-size: 0.8rem;">
-                        <li class="breadcrumb-item"><a href="../../Role/Fotografer/index.php" style="color: var(--p-pink); text-decoration: none; font-weight: 600;">Dashboard</a></li>
-                        <li class="breadcrumb-item active" style="color: var(--text-muted); font-weight: 600;">Sesi Selesai</li>
-                    </ol>
-                </nav>
-                <h3 class="fw-bold mb-0">Sesi Selesai</h3>
-                <p class="text-muted small mb-0">Riwayat sesi foto yang sudah selesai diproses.</p>
+            <div class="d-flex align-items-center gap-3">
+                <button class="mobile-menu-btn" onclick="toggleSidebar()" title="Menu" aria-label="Toggle Menu">
+                    <i class="bi bi-list"></i>
+                </button>
+                <div>
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb mb-1" style="font-size: 0.8rem;">
+                            <li class="breadcrumb-item"><a href="../../Role/Fotografer/index.php" style="color: var(--p-pink); text-decoration: none; font-weight: 600;">Dashboard</a></li>
+                            <li class="breadcrumb-item active" style="color: var(--text-muted); font-weight: 600;">Sesi Selesai</li>
+                        </ol>
+                    </nav>
+                    <h3 class="fw-bold mb-0">Sesi Selesai</h3>
+                    <p class="text-muted small mb-0">Riwayat sesi foto yang sudah selesai diproses.</p>
+                </div>
             </div>
         </div>
 
@@ -237,6 +283,32 @@ function formatWaktu($time) {
 
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
+        // ===== SIDEBAR TOGGLE (MOBILE) =====
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.toggle('mobile-open');
+            overlay.classList.toggle('show');
+            document.body.style.overflow = sidebar.classList.contains('mobile-open') ? 'hidden' : '';
+        }
+        document.querySelectorAll('.sidebar .nav-link-custom, .sidebar .submenu-link, .sidebar .btn-logout').forEach(el => {
+            el.addEventListener('click', function() {
+                if (window.innerWidth <= 992) {
+                    const sidebar = document.getElementById('sidebar');
+                    if (sidebar.classList.contains('mobile-open')) toggleSidebar();
+                }
+            });
+        });
+        window.addEventListener('resize', function() {
+            if (window.innerWidth > 992) {
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('sidebarOverlay');
+                sidebar.classList.remove('mobile-open');
+                overlay.classList.remove('show');
+                document.body.style.overflow = '';
+            }
+        });
+
         document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
             button.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -260,9 +332,6 @@ function formatWaktu($time) {
             Swal.fire({ title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama.', icon: 'info', showCancelButton: true, confirmButtonColor: '#D53D66', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal' }).then((result) => { if (result.isConfirmed) window.location.href = '../../index.php'; });
         }
 
-        // =====================================================
-        // DETAIL SESI (modal, tidak perlu halaman terpisah)
-        // =====================================================
         function openDetailModal(btn, e) {
             if (e) e.preventDefault();
             const item = btn.closest('.sesi-item');

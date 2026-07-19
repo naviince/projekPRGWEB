@@ -247,21 +247,46 @@ function formatUkuran($bytes) {
             display: none;
             background: #ffffff;
             border-bottom: 1px solid rgba(255, 228, 233, 0.8);
-            padding: 15px 20px;
+            padding: 0 16px;
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
+            height: 70px;
             z-index: 1030;
             justify-content: space-between;
             align-items: center;
         }
-        .mobile-toggle {
-            background: none;
-            border: none;
+        .mobile-brand {
+            font-weight: 800;
+            font-size: 1.2rem;
             color: var(--p-pink);
-            font-size: 1.5rem;
+            text-decoration: none;
+        }
+        .mobile-brand span {
+            font-size: 0.7rem;
+            color: var(--text-dark);
+            display: block;
+            font-weight: 600;
+        }
+        .mobile-toggle {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            border: none;
+            background: var(--s-pink);
+            color: var(--p-pink);
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             cursor: pointer;
+            transition: var(--transition-smooth);
+            flex-shrink: 0;
+        }
+        .mobile-toggle:hover {
+            background: var(--p-pink);
+            color: #fff;
         }
         .sidebar-overlay {
             display: none;
@@ -420,7 +445,7 @@ function formatUkuran($bytes) {
             }
             .main-content { 
                 margin-left: 0; 
-                padding: 100px 20px 40px 20px; 
+                padding: 90px 20px 40px 20px; 
             } 
         }
     </style>
@@ -432,10 +457,11 @@ function formatUkuran($bytes) {
 
     <!-- Mobile Top Navigation Header -->
     <div class="mobile-header">
-        <a href="../../index.php" style="font-weight: 800; font-size: 1.25rem; color: var(--p-pink); text-decoration: none; letter-spacing: -0.5px;">SpotLight.<span style="color:var(--text-dark); font-size: 0.75rem;">Panel</span></a>
         <button class="mobile-toggle" id="mobileToggle" aria-label="Toggle Navigation">
             <i class="bi bi-list"></i>
         </button>
+        <a href="../../index.php" class="mobile-brand">SpotLight.<span>Panel Fotografer</span></a>
+        <div style="width: 42px;"></div>
     </div>
 
     <!-- Sidebar Menu Container -->

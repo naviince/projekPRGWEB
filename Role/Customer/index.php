@@ -243,7 +243,7 @@ function fmtTgl($d) {
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-        /* SINKRONISASI VARIABEL DESIGN SYSTEM DARI RIWAYAT.PHP & HASIL_FOTO.PHP */
+        /* SINKRONISASI VARIABEL DESIGN SYSTEM */
         :root {
             --p-pink: #d83f67;
             --d-pink: #c73165;
@@ -279,6 +279,205 @@ function fmtTgl($d) {
             background-attachment: fixed;
             color: var(--text-dark);
             min-height: 100vh;
+        }
+
+        /* ===== CUSTOMER NAME BADGE ===== */
+        .customer-name-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #f1f5f9;
+            color: #475569;
+            font-weight: 600;
+            font-size: 0.82rem;
+            padding: 6px 14px;
+            border-radius: 50px;
+            border: 1px solid #e2e8f0;
+            white-space: nowrap;
+            transition: var(--transition-smooth);
+            cursor: default;
+            user-select: none;
+        }
+        .customer-name-badge i {
+            color: var(--p-pink);
+            font-size: 0.9rem;
+        }
+        .customer-name-badge:hover {
+            background: #e2e8f0;
+            color: #334155;
+        }
+
+        /* ===== MOBILE SIDEBAR ===== */
+        .mobile-sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            background: #ffffff;
+            z-index: 1050;
+            transform: translateX(-100%);
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 4px 0 24px rgba(0,0,0,0.08);
+            border-right: 1px solid rgba(255, 228, 233, 0.8);
+        }
+        .mobile-sidebar.open {
+            transform: translateX(0);
+        }
+        .mobile-sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1045;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .mobile-sidebar-overlay.show {
+            display: block;
+            opacity: 1;
+        }
+        .mobile-sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .mobile-sidebar-brand {
+            font-weight: 800;
+            font-size: 1.3rem;
+            color: var(--p-pink);
+            text-decoration: none;
+            letter-spacing: -1px;
+        }
+        .mobile-sidebar-brand span {
+            color: var(--text-dark);
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: block;
+            margin-top: 2px;
+        }
+        .mobile-sidebar-close {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            border: none;
+            background: var(--s-pink);
+            color: var(--p-pink);
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+        }
+        .mobile-sidebar-close:hover {
+            background: var(--p-pink);
+            color: #fff;
+        }
+        .mobile-sidebar-menu {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            scrollbar-width: none;
+        }
+        .mobile-sidebar-menu::-webkit-scrollbar {
+            display: none;
+        }
+        .mobile-sidebar-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            color: #475569;
+            font-weight: 700;
+            font-size: 0.9rem;
+            text-decoration: none;
+            transition: var(--transition-smooth);
+            margin-bottom: 6px;
+            border: none;
+            background: none;
+            width: 100%;
+            cursor: pointer;
+            text-align: left;
+        }
+        .mobile-sidebar-link:hover,
+        .mobile-sidebar-link.active {
+            background: var(--s-pink);
+            color: var(--p-pink);
+        }
+        .mobile-sidebar-link i {
+            font-size: 1.1rem;
+            width: 22px;
+            text-align: center;
+        }
+        .mobile-sidebar-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+            margin: 12px 0;
+        }
+        .mobile-sidebar-footer {
+            padding: 16px;
+            border-top: 1px solid #f1f5f9;
+        }
+        .mobile-sidebar-user {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--s-pink);
+            border-radius: 14px;
+        }
+        .mobile-sidebar-user img {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--light-pink);
+        }
+        .mobile-sidebar-user-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .mobile-sidebar-user-name {
+            font-weight: 800;
+            font-size: 0.9rem;
+            color: var(--text-dark);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .mobile-sidebar-user-role {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        /* Mobile Menu Toggle Button */
+        .mobile-menu-toggle {
+            display: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            border: none;
+            background: var(--s-pink);
+            color: var(--p-pink);
+            font-size: 1.3rem;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+        .mobile-menu-toggle:hover {
+            background: var(--p-pink);
+            color: #fff;
         }
 
         /* ===== NAVBAR ATAS SINKRON PREMIUM & GLASSMORPHISM ===== */
@@ -342,7 +541,7 @@ function fmtTgl($d) {
         .nav-right {
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 14px;
         }
         .nav-btn-booking {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
@@ -1085,6 +1284,12 @@ function fmtTgl($d) {
         /* ========== RESPONSIVE BREAKPOINTS ========== */
         /* Tablet & Mobile (max-width: 991.98px) */
         @media (max-width: 991.98px) {
+            .mobile-menu-toggle {
+                display: flex;
+            }
+            .customer-name-badge {
+                display: none !important;
+            }
             .top-navbar {
                 padding: 12px 16px;
             }
@@ -1691,11 +1896,59 @@ function fmtTgl($d) {
 </head>
 <body>
 
+    <!-- MOBILE SIDEBAR OVERLAY -->
+    <div class="mobile-sidebar-overlay" id="mobileSidebarOverlay" onclick="toggleMobileSidebar()"></div>
+
+    <!-- MOBILE SIDEBAR -->
+    <div class="mobile-sidebar" id="mobileSidebar">
+        <div class="mobile-sidebar-header">
+            <a href="index.php" class="mobile-sidebar-brand">SpotLight.<span>StudioFoto</span></a>
+            <button class="mobile-sidebar-close" onclick="toggleMobileSidebar()" aria-label="Tutup menu">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+        <div class="mobile-sidebar-menu">
+            <a href="index.php" class="mobile-sidebar-link active" onclick="toggleMobileSidebar()">
+                <i class="bi bi-grid-1x2-fill"></i> Dashboard
+            </a>
+            <a href="#section-paket" class="mobile-sidebar-link" onclick="toggleMobileSidebar()">
+                <i class="bi bi-calendar-plus-fill"></i> Booking Baru
+            </a>
+            <a href="Riwayat/riwayat.php" class="mobile-sidebar-link" onclick="toggleMobileSidebar()">
+                <i class="bi bi-clock-history"></i> Riwayat
+            </a>
+            <a href="Hasil Foto/hasil_foto.php" class="mobile-sidebar-link" onclick="toggleMobileSidebar()">
+                <i class="bi bi-images"></i> Hasil Foto
+            </a>
+            <div class="mobile-sidebar-divider"></div>
+            <a href="../../index.php" class="mobile-sidebar-link" onclick="return confirmLandingPage(event)">
+                <i class="bi bi-house-door"></i> Beranda
+            </a>
+            <button class="mobile-sidebar-link text-danger" onclick="confirmLogout(); toggleMobileSidebar();">
+                <i class="bi bi-box-arrow-right"></i> Keluar
+            </button>
+        </div>
+        <div class="mobile-sidebar-footer">
+            <div class="mobile-sidebar-user">
+                <img src="<?= $foto_customer_src ?>" alt="Profil">
+                <div class="mobile-sidebar-user-info">
+                    <div class="mobile-sidebar-user-name"><?= htmlspecialchars($nama_customer) ?></div>
+                    <div class="mobile-sidebar-user-role">Pelanggan</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- NAVBAR ATAS SINKRON PREMIUM & GLASSMORPHISM -->
     <nav class="top-navbar">
-        <a href="index.php" class="nav-logo">
-            SpotLight.<span>StudioFoto</span>
-        </a>
+        <div class="d-flex align-items-center">
+            <button class="mobile-menu-toggle d-lg-none" onclick="toggleMobileSidebar()" aria-label="Menu">
+                <i class="bi bi-list"></i>
+            </button>
+            <a href="index.php" class="nav-logo">
+                SpotLight.<span>StudioFoto</span>
+            </a>
+        </div>
         <div class="nav-menu-center">
             <a href="index.php" class="nav-link-item active">Dashboard</a>
             <a href="#section-paket" class="nav-link-item" id="navBookingBaru">Booking Baru</a>
@@ -1706,6 +1959,9 @@ function fmtTgl($d) {
             <a href="#section-paket" class="nav-btn-booking">
                 <i class="bi bi-plus-lg"></i> Booking
             </a>
+            <span class="customer-name-badge d-none d-lg-inline-flex">
+                <i class="bi bi-person-fill"></i> <?= htmlspecialchars($nama_customer) ?>
+            </span>
             <div class="nav-avatar-wrapper">
                 <img src="<?= $foto_customer_src ?>" class="nav-avatar" alt="Profil" onclick="toggleDropdown()">
                 <div class="nav-dropdown" id="navDropdown">
@@ -2224,6 +2480,15 @@ function fmtTgl($d) {
                 <?php unset($_SESSION['profile_msg']); ?>
             <?php endif; ?>
         });
+
+        // FUNGSI TOGGLE MOBILE SIDEBAR
+        function toggleMobileSidebar() {
+            const sidebar = document.getElementById('mobileSidebar');
+            const overlay = document.getElementById('mobileSidebarOverlay');
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('show');
+            document.body.style.overflow = sidebar.classList.contains('open') ? 'hidden' : '';
+        }
 
         // FUNGSI SCROLL PAKET KIRI/KANAN
         function scrollPaket(direction) {

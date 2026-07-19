@@ -11,8 +11,6 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 $id_fotografer = $_SESSION['id_user'];
 
 // Auto-expire sesi Menunggu yang jadwalnya udah lewat -> Dibatalkan (2)
-// Wajib dipanggil di sini juga, jangan cuma di dashboard, karena
-// fotografer bisa langsung buka halaman ini tanpa lewat dashboard dulu.
 sqlsrv_query($conn, "{CALL sp_AutoExpireSesiFoto (?)}", ['system']);
 
 // =====================================================
@@ -42,10 +40,6 @@ $q_jadwal = sqlsrv_query($conn, "
     JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket
     JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan
     CROSS APPLY (
-        -- Slot jadwal paling awal untuk order ini -- dipakai sebagai
-        -- representasi tanggal/jam sesi. Cegah 1 sesi tampil berkali-kali
-        -- kalau order-nya multi-slot (pola sama kayak
-        -- sp_ReadSesiTerjadwalFotografer / sp_ReadSesiSelesaiFotografer).
         SELECT TOP 1 J.ID_Jadwal, J.Tanggal_Jadwal, J.Jam_Mulai, J.Jam_Selesai
         FROM Order_Jadwal OJ
         JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal
@@ -68,22 +62,12 @@ $jadwal_by_date = [];
 $total_terlewat = 0;
 if ($q_jadwal && sqlsrv_has_rows($q_jadwal)) {
     while ($row = sqlsrv_fetch_array($q_jadwal, SQLSRV_FETCH_ASSOC)) {
-        // Format tanggal jadi string aman (jaga-jaga kalau driver return string, bukan objek DateTime)
         $tgl_obj = $row['Tanggal_Jadwal'];
         $tgl = (is_object($tgl_obj) && method_exists($tgl_obj, 'format')) ? $tgl_obj->format('Y-m-d') : date('Y-m-d', strtotime($tgl_obj));
 
         $js_obj = $row['Jam_Selesai'];
         $jam_selesai_raw = (is_object($js_obj) && method_exists($js_obj, 'format')) ? $js_obj->format('H:i:s') : substr((string)$js_obj, 0, 8);
 
-        // =====================================================
-        // VALIDASI: TANDAI SESI YANG WAKTUNYA SUDAH LEWAT
-        // Sesi dengan Status_Sesi = 0 (Menunggu) yang jam
-        // selesainya sudah lewat waktu sekarang -> ditandai
-        // "Terlewat" supaya fotografer/admin sadar dan segera
-        // update status (mulai sesi / hubungi admin). Data TIDAK
-        // dihapus otomatis karena ini bukti kerja fotografer yang
-        // harus tetap tercatat untuk akuntabilitas.
-        // =====================================================
         $ts_selesai = strtotime($tgl . ' ' . $jam_selesai_raw);
         $row['is_terlewat'] = ((int)$row['Status_Sesi'] === 0 && $ts_selesai !== false && $ts_selesai < time());
         if ($row['is_terlewat']) { $total_terlewat++; }
@@ -176,11 +160,11 @@ function getStatusIcon($status) {
         .btn-logout { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; width: 100%; padding: 12px; border-radius: 12px; font-weight: 800; font-size: 0.85rem; transition: var(--transition-3d); }
         .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
         .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
-        .card-3d { background: #ffffff; border-radius: 22px; border: 1px solid rgba(255, 228, 233, 0.8); box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03); transition: var(--transition-3d); padding: 25px; position: relative; overflow: hidden; }
-        .card-3d::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: linear-gradient(90deg, var(--p-pink), var(--accent-pink)); opacity: 0; transition: opacity 0.3s ease; }
-        .card-3d:hover { transform: translateY(-4px); box-shadow: 0 22px 45px rgba(213, 61, 102, 0.1); border-color: var(--p-pink); }
-        .card-3d:hover::before { opacity: 1; }
-        .content-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        
+        /* card-3d: elemen non-clickable, hover effect dihapus */
+        .card-3d { background: #ffffff; border-radius: 22px; border: 1px solid rgba(255, 228, 233, 0.8); box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03); padding: 25px; position: relative; overflow: hidden; }
+        
+        .content-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .content-title { font-weight: 700; font-size: 1.1rem; color: var(--text-dark); }
         .sesi-item { display: flex; align-items: center; gap: 14px; padding: 16px; background: linear-gradient(135deg, #ffffff, #FFF0F3); border-radius: 16px; margin-bottom: 12px; transition: var(--transition-3d); border: 2px solid transparent; cursor: pointer; }
         .sesi-item:hover { transform: translateX(6px); border-color: var(--p-pink); box-shadow: 0 8px 20px rgba(213, 61, 102, 0.1); }
@@ -202,15 +186,64 @@ function getStatusIcon($status) {
         .date-header-text { font-weight: 800; font-size: 0.95rem; color: var(--p-pink); }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fadeInUp 0.6s ease-out forwards; }
-        @media (max-width: 992px) { .main-content { margin-left: 0; padding: 20px; } .sidebar { transform: translateX(-100%); } }
         
+        /* Mobile menu & overlay */
+        .mobile-menu-btn {
+            display: none; width: 44px; height: 44px; border-radius: 12px;
+            background: #fff; border: 2px solid var(--light-pink); color: var(--p-pink);
+            align-items: center; justify-content: center; font-size: 1.4rem; cursor: pointer;
+            transition: var(--transition-3d); flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .mobile-menu-btn:hover { background: var(--s-pink); transform: scale(1.05); }
+        .sidebar-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(30,30,36,0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            z-index: 99; opacity: 0; transition: opacity 0.35s ease;
+        }
+        .sidebar-overlay.show { display: block; opacity: 1; }
+
         /* Modal custom styles */
         .modal-content { border: none; }
         .modal-backdrop.show { opacity: 0.5; }
+
+        @media (max-width: 992px) {
+            .mobile-menu-btn { display: inline-flex; }
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                box-shadow: none;
+            }
+            .sidebar.mobile-open { transform: translateX(0); box-shadow: 10px 0 50px rgba(0,0,0,0.15); }
+            .main-content { margin-left: 0; padding: 24px; }
+        }
+        @media (max-width: 768px) {
+            .main-content { padding: 18px; }
+            .content-header { flex-direction: column; align-items: flex-start; }
+            .sesi-item { flex-direction: column; align-items: flex-start; gap: 12px; }
+            .sesi-icon { width: 44px; height: 44px; font-size: 1.1rem; }
+            .d-flex.justify-content-between.align-items-start { flex-direction: column; gap: 12px; width: 100%; }
+            .text-end { text-align: left !important; width: 100%; }
+        }
+        @media (max-width: 576px) {
+            .main-content { padding: 14px; }
+            .sidebar-brand { font-size: 1.3rem; margin-bottom: 30px; }
+            .nav-link-custom { padding: 10px 14px; font-size: 0.85rem; }
+            .sesi-item { padding: 14px; }
+            .sesi-title { font-size: 0.9rem; }
+            .sesi-time { font-size: 0.8rem; }
+            .sesi-info { font-size: 0.75rem; }
+            .date-header { padding: 10px 14px; }
+            .date-header-text { font-size: 0.85rem; }
+            h3.fw-bold { font-size: 1.25rem; }
+            .btn-action, .btn-action-success, .btn-action-secondary { width: 100%; justify-content: center; }
+        }
     </style>
 </head>
 <body>
-    <div class="sidebar">
+    <!-- Sidebar Overlay (Mobile) -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+    <div class="sidebar" id="sidebar">
         <div class="sidebar-menu-wrapper">
             <a href="../../index.php" class="sidebar-brand">SpotLight.<br><span>Panel Fotografer</span></a>
             <ul class="nav-menu">
@@ -242,15 +275,20 @@ function getStatusIcon($status) {
 
     <div class="main-content">
         <div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
-            <div>
-                <nav aria-label="breadcrumb">
-                    <ol class="breadcrumb mb-1" style="font-size: 0.8rem;">
-                        <li class="breadcrumb-item"><a href="../../Role/Fotografer/index.php" style="color: var(--p-pink); text-decoration: none; font-weight: 600;">Dashboard</a></li>
-                        <li class="breadcrumb-item active" style="color: var(--text-muted); font-weight: 600;">Jadwal Saya</li>
-                    </ol>
-                </nav>
-                <h3 class="fw-bold mb-0">Jadwal Sesi Foto</h3>
-                <p class="text-muted small mb-0">Semua jadwal sesi foto yang diassign ke Anda.</p>
+            <div class="d-flex align-items-center gap-3">
+                <button class="mobile-menu-btn" onclick="toggleSidebar()" title="Menu" aria-label="Toggle Menu">
+                    <i class="bi bi-list"></i>
+                </button>
+                <div>
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb mb-1" style="font-size: 0.8rem;">
+                            <li class="breadcrumb-item"><a href="../../Role/Fotografer/index.php" style="color: var(--p-pink); text-decoration: none; font-weight: 600;">Dashboard</a></li>
+                            <li class="breadcrumb-item active" style="color: var(--text-muted); font-weight: 600;">Jadwal Saya</li>
+                        </ol>
+                    </nav>
+                    <h3 class="fw-bold mb-0">Jadwal Sesi Foto</h3>
+                    <p class="text-muted small mb-0">Semua jadwal sesi foto yang diassign ke Anda.</p>
+                </div>
             </div>
         </div>
 
@@ -412,6 +450,32 @@ function getStatusIcon($status) {
 
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
+        // ===== SIDEBAR TOGGLE (MOBILE) =====
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.toggle('mobile-open');
+            overlay.classList.toggle('show');
+            document.body.style.overflow = sidebar.classList.contains('mobile-open') ? 'hidden' : '';
+        }
+        document.querySelectorAll('.sidebar .nav-link-custom, .sidebar .submenu-link, .sidebar .btn-logout').forEach(el => {
+            el.addEventListener('click', function() {
+                if (window.innerWidth <= 992) {
+                    const sidebar = document.getElementById('sidebar');
+                    if (sidebar.classList.contains('mobile-open')) toggleSidebar();
+                }
+            });
+        });
+        window.addEventListener('resize', function() {
+            if (window.innerWidth > 992) {
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('sidebarOverlay');
+                sidebar.classList.remove('mobile-open');
+                overlay.classList.remove('show');
+                document.body.style.overflow = '';
+            }
+        });
+
         document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
             button.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -435,7 +499,6 @@ function getStatusIcon($status) {
             Swal.fire({ title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama.', icon: 'info', showCancelButton: true, confirmButtonColor: '#D53D66', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal' }).then((result) => { if (result.isConfirmed) window.location.href = '../../index.php'; });
         }
         
-        // Detail Modal Function
         function openDetailModal(btn) {
             const item = btn.closest('.sesi-item');
             const data = item.dataset;
@@ -446,7 +509,6 @@ function getStatusIcon($status) {
             document.getElementById('modalPaket').textContent = data.paket;
             document.getElementById('modalRuangan').textContent = data.ruangan;
             
-            // Status badge
             const statusBadge = document.getElementById('modalStatusBadge');
             const statusIcon = document.getElementById('modalStatusIcon');
             
@@ -476,7 +538,6 @@ function getStatusIcon($status) {
                 statusIcon.innerHTML = '<i class="bi bi-x-circle-fill"></i>';
             }
             
-            // Keterangan
             const keteranganWrap = document.getElementById('modalKeteranganWrap');
             if (data.keterangan && data.keterangan.trim() !== '') {
                 document.getElementById('modalKeterangan').textContent = data.keterangan;
@@ -485,7 +546,6 @@ function getStatusIcon($status) {
                 keteranganWrap.style.display = 'none';
             }
             
-            // Proses / Upload link
             const prosesLink = document.getElementById('modalProsesLink');
             if (data.status === '0') {
                 prosesLink.href = '../Proses/index.php?id=' + data.id;

@@ -10,6 +10,11 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 
 $id_owner = $_SESSION['id_user'];
 
+// Filter tahun global untuk kebutuhan laporan (menggerakkan chart Tren Pendapatan Bulanan)
+$tahun_sekarang = (int) date('Y');
+$tahun_filter = (isset($_GET['tahun']) && ctype_digit($_GET['tahun'])) ? (int) $_GET['tahun'] : $tahun_sekarang;
+$tahun_options = range($tahun_sekarang, $tahun_sekarang - 4);
+
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23d83f67'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
 $q_profile = sqlsrv_query($conn, "SELECT * FROM Karyawan WHERE ID_Karyawan = ?", array($id_owner));
@@ -196,7 +201,7 @@ $q_role_owner = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHER
 $d_role_owner = sqlsrv_fetch_array($q_role_owner, SQLSRV_FETCH_ASSOC);
 $count_owner = $d_role_owner['total'] ?? 0;
 
-$q_pendapatan_bulan = sqlsrv_query($conn, "SELECT MONTH(Tanggal_Upload) AS bulan, SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1 AND YEAR(Tanggal_Upload) = YEAR(GETDATE()) GROUP BY MONTH(Tanggal_Upload) ORDER BY MONTH(Tanggal_Upload)");
+$q_pendapatan_bulan = sqlsrv_query($conn, "SELECT MONTH(Tanggal_Upload) AS bulan, SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1 AND YEAR(Tanggal_Upload) = ? GROUP BY MONTH(Tanggal_Upload) ORDER BY MONTH(Tanggal_Upload)", array($tahun_filter));
 $pendapatan_bulan_data = array_fill(0, 12, 0);
 while ($row = sqlsrv_fetch_array($q_pendapatan_bulan, SQLSRV_FETCH_ASSOC)) {
     $pendapatan_bulan_data[$row['bulan'] - 1] = $row['total'];
@@ -460,6 +465,85 @@ body {
     object-fit: cover;
 }
 
+.admin-name-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    background:linear-gradient(135deg,var(--p-pink),var(--d-pink));
+    color:#ffffff;
+    font-weight:700;
+    font-size:0.78rem;
+    padding:6px 14px;
+    border-radius:50px;
+    box-shadow:0 4px 12px rgba(216,63,103,0.2);
+    white-space:nowrap;
+}
+.admin-username-tag{
+    font-size:0.72rem;
+    font-weight:700;
+    color:var(--text-muted);
+    white-space:nowrap;
+}
+.admin-id-chip{
+    text-align:right;
+    line-height:1.4;
+}
+
+/* ========== TOOLBAR: LIVE CLOCK + FILTER LAPORAN (di luar semua card, cakupannya menyeluruh) ========== */
+.dashboard-toolbar{
+    background:#ffffff;
+    border:1px solid rgba(255,236,239,0.8);
+    border-radius:16px;
+    padding:12px 18px;
+    box-shadow:0 4px 14px rgba(216,63,103,0.04);
+}
+.live-clock-chip{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    background:var(--light-pink);
+    color:var(--text-dark);
+    font-weight:700;
+    font-size:0.8rem;
+    padding:8px 14px;
+    border-radius:10px;
+}
+.live-clock-chip i{color:var(--p-pink);}
+.year-filter-form{margin:0;}
+.year-filter-label{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-size:0.78rem;
+    font-weight:800;
+    color:var(--text-muted);
+    text-transform:uppercase;
+    letter-spacing:0.5px;
+    margin:0;
+}
+.year-filter-label i{color:var(--p-pink);}
+.year-filter-select{
+    appearance:none;
+    -webkit-appearance:none;
+    -moz-appearance:none;
+    background:#ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23d83f67'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 12px center;
+    background-size:14px;
+    border:1.5px solid rgba(216,63,103,0.25);
+    color:var(--p-pink);
+    font-weight:800;
+    font-size:0.85rem;
+    padding:8px 34px 8px 16px;
+    border-radius:10px;
+    cursor:pointer;
+    transition:var(--transition-3d);
+}
+.year-filter-select:hover,
+.year-filter-select:focus{
+    border-color:var(--p-pink);
+    box-shadow:0 6px 15px rgba(216,63,103,0.15);
+    outline:none;
+}
+
 /* ========== STATS CARDS SCROLL ========== */
 .stats-scroll-wrapper {
     width: 100%;
@@ -492,13 +576,18 @@ body {
     border-radius: 20px;
     border: 1px solid rgba(255, 236, 239, 0.8);
     box-shadow: 0 6px 20px rgba(216, 63, 103, 0.03);
-    transition: var(--transition-3d);
     padding: 18px;
     height: 100%;
     position: relative;
     overflow: hidden;
 }
-.card-3d::before {
+/* Hover-lift is opt-in: only elements that are actually clickable (wrapped in a real
+   link/button) get the .card-3d-clickable modifier. Non-interactive cards (stat
+   summaries, biodata info box) stay flat so they don't imply an action that isn't there. */
+.card-3d-clickable {
+    transition: var(--transition-3d);
+}
+.card-3d-clickable::before {
     content: '';
     position: absolute;
     top: 0;
@@ -509,12 +598,12 @@ body {
     opacity: 0;
     transition: opacity 0.3s ease;
 }
-.card-3d:hover {
+.card-3d-clickable:hover {
     transform: translateY(-6px) scale(1.01);
     box-shadow: 0 18px 40px rgba(216, 63, 103, 0.12);
     border-color: var(--p-pink);
 }
-.card-3d:hover::before { opacity: 1; }
+.card-3d-clickable:hover::before { opacity: 1; }
 
 .stat-card {
     display: flex;
@@ -532,7 +621,7 @@ body {
     transition: var(--transition-3d);
     flex-shrink: 0;
 }
-.card-3d:hover .stat-icon { transform: scale(1.1) rotate(5deg); }
+.card-3d-clickable:hover .stat-icon { transform: scale(1.1) rotate(5deg); }
 
 .stat-icon-pink { background: linear-gradient(135deg, #fff5f6, #ffe4e9); color: var(--p-pink); }
 .stat-icon-blue { background: linear-gradient(135deg, #eff6ff, #dbeafe); color: #2563eb; }
@@ -580,13 +669,8 @@ body {
     border-radius: 20px;
     border: 1px solid rgba(255, 236, 239, 0.8);
     box-shadow: 0 6px 20px rgba(216, 63, 103, 0.03);
-    transition: var(--transition-3d);
     padding: 22px;
     height: 100%;
-}
-.chart-card:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 16px 35px rgba(216, 63, 103, 0.1);
 }
 .chart-header {
     display: flex;
@@ -653,12 +737,7 @@ body {
 .table-custom tbody tr {
     background: #ffffff;
     box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-    transition: var(--transition-3d);
     border-radius: 12px;
-}
-.table-custom tbody tr:hover {
-    transform: translateX(4px);
-    box-shadow: 0 8px 20px rgba(216, 63, 103, 0.08);
 }
 .table-custom td {
     padding: 12px 14px;
@@ -841,6 +920,10 @@ body {
     .chart-header { margin-bottom: 14px; }
     .chart-title { font-size: 0.85rem; }
     .chart-badge { padding: 4px 10px; font-size: 0.68rem; }
+    .dashboard-toolbar { padding: 10px 14px; border-radius: 14px; }
+    .live-clock-chip { font-size: 0.72rem; padding: 7px 12px; }
+    .year-filter-label { font-size: 0.7rem; }
+    .year-filter-select { font-size: 0.78rem; padding: 7px 30px 7px 12px; }
     .table-responsive-custom {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
@@ -857,11 +940,13 @@ body {
     .form-control, .form-select { padding: 10px 14px; font-size: 16px; border-radius: 12px; }
     .btn-reg { padding: 14px; font-size: 14px; }
     .form-label { font-size: 10px; }
+    .quick-access-col { flex: 0 0 50%; max-width: 50%; }
 }
 
 /* Very small mobile */
 @media (max-width: 359.98px) {
     .stat-card-item { min-width: 140px; }
+    .quick-access-col { flex: 0 0 100%; max-width: 100%; }
 }
 
 /* Landscape mobile */
@@ -959,13 +1044,29 @@ body {
         <p class="text-muted small mb-0">Pantau operasional dan pendapatan studio Anda harian secara dinamis.</p>
     </div>
     <div class="d-flex align-items-center gap-3">
-        <span class="badge px-3 py-2 text-dark border-0 shadow-sm d-none d-sm-inline-block" style="background:var(--light-pink);font-weight:700;border-radius:10px;">
-            <i class="bi bi-clock-history me-1 text-danger"></i> <span id="live-clock">Memuat waktu...</span>
-        </span>
+        <div class="admin-id-chip d-none d-sm-block">
+            <span class="admin-name-badge"><i class="bi bi-shield-fill-check"></i><?= htmlspecialchars($nama_owner) ?></span><br>
+            <span class="admin-username-tag">Owner (Pemilik)</span>
+        </div>
         <div class="profile-header-btn shadow-sm d-none d-lg-block" onclick="bukaModalBiodata()" title="Klik untuk melihat Biodata Anda">
             <img src="<?= $foto_owner_src ?>" alt="Owner Profil">
         </div>
     </div>
+</div>
+
+<!-- TOOLBAR: JAM REALTIME + FILTER LAPORAN TAHUNAN (di luar semua card, berlaku untuk seluruh dashboard) -->
+<div class="dashboard-toolbar d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4 animate-fade-in delay-1">
+    <span class="live-clock-chip">
+        <i class="bi bi-clock-history"></i> <span id="live-clock">Memuat waktu...</span>
+    </span>
+    <form method="GET" class="year-filter-form d-flex align-items-center gap-2 flex-wrap">
+        <label for="filterTahun" class="year-filter-label"><i class="bi bi-funnel-fill"></i> Filter Laporan Tahun</label>
+        <select name="tahun" id="filterTahun" class="year-filter-select" onchange="this.form.submit()">
+            <?php foreach ($tahun_options as $th): ?>
+            <option value="<?= $th ?>" <?= $th == $tahun_filter ? 'selected' : '' ?>><?= $th ?></option>
+            <?php endforeach; ?>
+        </select>
+    </form>
 </div>
 
 <!-- BARIS 1: STAT CARDS -->
@@ -1116,7 +1217,7 @@ body {
         <div class="chart-card">
             <div class="chart-header">
                 <h5 class="chart-title"><i class="bi bi-graph-up-arrow text-danger me-2"></i>Tren Pendapatan Bulanan</h5>
-                <span class="chart-badge">Tahun <?= date('Y') ?></span>
+                <span class="chart-badge">Tahun <?= $tahun_filter ?></span>
             </div>
             <div style="height:300px;width:100%;">
                 <canvas id="chartPendapatan"></canvas>
@@ -1320,6 +1421,59 @@ body {
                         <?php endif; ?>
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- BARIS 7: AKSES CEPAT -->
+<div class="row g-3">
+    <div class="col-12 animate-fade-in delay-1">
+        <div class="chart-card">
+            <div class="chart-header">
+                <h5 class="chart-title"><i class="bi bi-lightning-charge-fill text-warning me-2"></i>Akses Cepat</h5>
+            </div>
+            <div class="row g-3">
+                <div class="col-lg-3 col-md-6 quick-access-col">
+                    <a href="../../Master/Karyawan/index.php" class="text-decoration-none">
+                        <div class="card-3d card-3d-clickable text-center p-3">
+                            <div class="stat-icon stat-icon-blue mx-auto mb-2" style="width:48px;height:48px;">
+                                <i class="bi bi-person-badge-fill"></i>
+                            </div>
+                            <div class="fw-bold" style="font-size:0.85rem;color:var(--text-dark);">Kelola Karyawan</div>
+                        </div>
+                    </a>
+                </div>
+                <div class="col-lg-3 col-md-6 quick-access-col">
+                    <a href="../../Laporan/Pendapatan/index.php" class="text-decoration-none">
+                        <div class="card-3d card-3d-clickable text-center p-3">
+                            <div class="stat-icon stat-icon-pink mx-auto mb-2" style="width:48px;height:48px;">
+                                <i class="bi bi-cash-stack"></i>
+                            </div>
+                            <div class="fw-bold" style="font-size:0.85rem;color:var(--text-dark);">Laporan Pendapatan</div>
+                        </div>
+                    </a>
+                </div>
+                <div class="col-lg-3 col-md-6 quick-access-col">
+                    <a href="../../Laporan/Stok Barang/index.php" class="text-decoration-none">
+                        <div class="card-3d card-3d-clickable text-center p-3">
+                            <div class="stat-icon stat-icon-red mx-auto mb-2" style="width:48px;height:48px;">
+                                <i class="bi bi-box-seam-fill"></i>
+                            </div>
+                            <div class="fw-bold" style="font-size:0.85rem;color:var(--text-dark);">Laporan Stok Barang</div>
+                        </div>
+                    </a>
+                </div>
+                <div class="col-lg-3 col-md-6 quick-access-col">
+                    <a href="../../Laporan/Paket Terfavorit/index.php" class="text-decoration-none">
+                        <div class="card-3d card-3d-clickable text-center p-3">
+                            <div class="stat-icon stat-icon-purple mx-auto mb-2" style="width:48px;height:48px;">
+                                <i class="bi bi-star-fill"></i>
+                            </div>
+                            <div class="fw-bold" style="font-size:0.85rem;color:var(--text-dark);">Paket Terfavorit</div>
+                        </div>
+                    </a>
+                </div>
             </div>
         </div>
     </div>
