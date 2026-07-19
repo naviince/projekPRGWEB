@@ -76,17 +76,150 @@ if ($stmt_detail) {
 }
 
 // =====================================================
-// HEADER DOWNLOAD
+// CEK TCPDF - Jika ada, generate PDF server-side
 // =====================================================
-$filename = "LaporanPaketTerfavorit_" . date('dmY') . ".pdf";
-header("Content-type: application/pdf");
-header("Content-Disposition: inline; filename=" . $filename);
+$tcpdf_path = '../../tcpdf/tcpdf.php';
+$use_tcpdf = file_exists($tcpdf_path);
+
+if ($use_tcpdf) {
+    require_once($tcpdf_path);
+
+    $pdf = new TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+    $pdf->SetCreator('SpotLight Studio');
+    $pdf->SetAuthor('Owner');
+    $pdf->SetTitle('Laporan Paket Terfavorit');
+    $pdf->setPrintHeader(false);
+    $pdf->setPrintFooter(true);
+    $pdf->SetFooterMargin(10);
+    $pdf->SetMargins(15, 15, 15);
+    $pdf->SetAutoPageBreak(true, 15);
+    $pdf->AddPage();
+
+    // Logo & Header
+    $pdf->SetFont('helvetica', 'B', 16);
+    $pdf->SetTextColor(216, 63, 103);
+    $pdf->Cell(0, 8, 'SpotLight.', 0, 1, 'L');
+    $pdf->SetFont('helvetica', '', 10);
+    $pdf->SetTextColor(30, 30, 36);
+    $pdf->Cell(0, 5, 'Photo Studio Laporan', 0, 1, 'L');
+
+    $pdf->SetFont('helvetica', 'B', 13);
+    $pdf->SetTextColor(113, 128, 150);
+    $pdf->Cell(0, 10, 'LAPORAN PAKET TERFAVORIT', 0, 1, 'R');
+    $pdf->Cell(0, 6, 'BEST SELLER', 0, 1, 'R');
+
+    $pdf->Ln(3);
+
+    // Meta box
+    $pdf->SetFillColor(248, 250, 252);
+    $pdf->SetDrawColor(226, 232, 240);
+    $pdf->SetFont('helvetica', '', 9);
+    $pdf->SetTextColor(51, 51, 51);
+    $pdf->Cell(95, 6, 'Periode Laporan: ' . $label_periode, 1, 0, 'L', true);
+    $pdf->Cell(0, 6, 'Tanggal Cetak: ' . date('d M Y H:i') . ' WIB', 1, 1, 'R', true);
+    $pdf->Cell(95, 6, 'Dicetak Oleh: Owner System', 1, 0, 'L', true);
+    $pdf->Cell(0, 6, 'Total Paket Aktif: ' . ($summary['Total_Paket_Aktif'] ?? 0) . ' Paket', 1, 1, 'R', true);
+
+    $pdf->Ln(4);
+
+    // Summary cards (4 kolom)
+    $pdf->SetFillColor(248, 250, 252);
+    $pdf->SetDrawColor(226, 232, 240);
+    $w = 45;
+    $h = 18;
+
+    $sums = [
+        ['Paket Aktif', $summary['Total_Paket_Aktif'] ?? 0],
+        ['Total Booking', $summary['Total_Booking'] ?? 0],
+        ['Best Seller', $summary['Best_Seller'] ?? '-'],
+        ['Rating Tertinggi', isset($summary['Rating_Nilai']) && $summary['Rating_Nilai'] > 0 ? number_format((float)$summary['Rating_Nilai'], 1) : '-']
+    ];
+
+    foreach ($sums as $i => $s) {
+        $x = 15 + ($i * $w);
+        $pdf->SetXY($x, $pdf->GetY());
+        $pdf->SetFont('helvetica', 'B', 11);
+        $pdf->SetTextColor(216, 63, 103);
+        $pdf->Cell($w, 7, (string)$s[1], 'LRT', 2, 'C', true);
+        $pdf->SetFont('helvetica', 'B', 7);
+        $pdf->SetTextColor(113, 128, 150);
+        $pdf->Cell($w, 5, strtoupper($s[0]), 'LRB', 0, 'C', true);
+    }
+    $pdf->Ln(22);
+
+    // Table Header
+    $pdf->SetFillColor(216, 63, 103);
+    $pdf->SetTextColor(255, 255, 255);
+    $pdf->SetFont('helvetica', 'B', 8);
+    $pdf->Cell(18, 8, 'Rank', 1, 0, 'C', true);
+    $pdf->Cell(35, 8, 'Nama Paket', 1, 0, 'C', true);
+    $pdf->Cell(20, 8, 'Durasi', 1, 0, 'C', true);
+    $pdf->Cell(22, 8, 'Kapasitas', 1, 0, 'C', true);
+    $pdf->Cell(25, 8, 'Harga', 1, 0, 'C', true);
+    $pdf->Cell(20, 8, 'Booking', 1, 0, 'C', true);
+    $pdf->Cell(20, 8, 'Kontribusi', 1, 0, 'C', true);
+    $pdf->Cell(20, 8, 'Rating', 1, 0, 'C', true);
+    $pdf->Cell(20, 8, 'Batal', 1, 1, 'C', true);
+
+    // Table Body
+    $pdf->SetFont('helvetica', '', 8);
+    $pdf->SetTextColor(51, 51, 51);
+
+    if (count($data_paket) > 0) {
+        $rank = 1;
+        foreach ($data_paket as $row) {
+            $kontribusi = $total_seluruh_booking > 0 ? ($row['Jumlah_Booking'] / $total_seluruh_booking) * 100 : 0;
+            $rating_val = isset($row['Rata_Rata_Rating']) && $row['Rata_Rata_Rating'] > 0 ? number_format((float)$row['Rata_Rata_Rating'], 1) : '-';
+            $rank_text = ($rank <= 3) ? (($rank == 1) ? '#1' : (($rank == 2) ? '#2' : '#3')) : '#' . $rank;
+
+            $fill = ($rank % 2 == 0);
+            $pdf->SetFillColor(253, 250, 251);
+
+            $pdf->Cell(18, 7, $rank_text, 1, 0, 'C', $fill);
+            $pdf->Cell(35, 7, htmlspecialchars($row['Nama_Paket']), 1, 0, 'L', $fill);
+            $pdf->Cell(20, 7, $row['Durasi_Waktu'] . ' Menit', 1, 0, 'C', $fill);
+            $pdf->Cell(22, 7, 'Max ' . $row['Kapasitas_Orang'] . ' Org', 1, 0, 'C', $fill);
+            $pdf->Cell(25, 7, 'Rp ' . number_format((float)$row['Harga_Paket'], 0, ',', '.'), 1, 0, 'R', $fill);
+            $pdf->Cell(20, 7, $row['Jumlah_Booking'] . ' Sesi', 1, 0, 'C', $fill);
+            $pdf->Cell(20, 7, number_format($kontribusi, 1) . '%', 1, 0, 'C', $fill);
+            $pdf->Cell(20, 7, ($rating_val != '-' ? '★ ' . $rating_val : '-'), 1, 0, 'C', $fill);
+            $pdf->Cell(20, 7, $row['Jumlah_Batal'] . ' Sesi', 1, 1, 'C', $fill);
+
+            $rank++;
+        }
+    } else {
+        $pdf->Cell(0, 10, 'Tidak ada data untuk periode ini.', 1, 1, 'C');
+    }
+
+    // Tanda tangan
+    $pdf->Ln(10);
+    $pdf->SetFont('helvetica', '', 9);
+    $pdf->SetTextColor(113, 128, 150);
+    $pdf->Cell(0, 5, 'Bekasi, ' . date('d F Y'), 0, 1, 'R');
+    $pdf->Ln(15);
+    $pdf->SetFont('helvetica', 'B', 10);
+    $pdf->SetTextColor(30, 30, 36);
+    $pdf->Cell(0, 5, htmlspecialchars($nama_owner), 0, 1, 'R');
+    $pdf->SetDrawColor(30, 30, 36);
+    $pdf->Line(150, $pdf->GetY() - 1, 195, $pdf->GetY() - 1);
+    $pdf->SetFont('helvetica', '', 9);
+    $pdf->Cell(0, 5, 'Owner SpotLight Studio', 0, 1, 'R');
+
+    $filename = "LaporanPaketTerfavorit_" . date('dmY') . ".pdf";
+    $pdf->Output($filename, 'D');
+    exit;
+}
+
+// =====================================================
+// FALLBACK: HTML + html2pdf.js (jika TCPDF tidak tersedia)
+// =====================================================
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
 <title>Cetak Laporan Paket Terfavorit</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <style>
     @page { size: A4 portrait; margin: 15mm; }
     body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 10px; color: #333; line-height: 1.4; margin: 0; padding: 20px; }
@@ -139,9 +272,11 @@ header("Content-Disposition: inline; filename=" . $filename);
     <div style="display: flex; gap: 10px;">
         <button onclick="window.close();" class="btn-action btn-back">Tutup Halaman</button>
         <button onclick="window.print();" class="btn-action btn-download">Cetak / Simpan PDF</button>
+        <button onclick="downloadPDF()" class="btn-action btn-download" style="background:#1e1e24;">Download PDF (html2pdf)</button>
     </div>
 </div>
 
+<div id="pdf-content">
 <table class="header-table">
     <tr>
         <td class="header-logo">
@@ -206,12 +341,12 @@ header("Content-Disposition: inline; filename=" . $filename);
         $rank = 1;
         foreach ($data_paket as $row):
             $kontribusi = $total_seluruh_booking > 0 ? ($row['Jumlah_Booking'] / $total_seluruh_booking) * 100 : 0;
-            $rating_val = isset($row['Rata_Rata_Rating']) && $row['Rata_Rata_Rating'] !== null ? number_format((float)$row['Rata_Rata_Rating'], 1) : '-';
+            $rating_val = isset($row['Rata_Rata_Rating']) && $row['Rata_Rata_Rating'] > 0 ? number_format((float)$row['Rata_Rata_Rating'], 1) : '-';
             $rank_class = 'rank-default';
             $rank_text = '#' . $rank;
-            if ($rank == 1) { $rank_class = 'rank-gold'; $rank_text = '🥇 #1'; }
-            elseif ($rank == 2) { $rank_class = 'rank-silver'; $rank_text = '🥈 #2'; }
-            elseif ($rank == 3) { $rank_class = 'rank-bronze'; $rank_text = '🥉 #3'; }
+            if ($rank == 1) { $rank_class = 'rank-gold'; $rank_text = '#1'; }
+            elseif ($rank == 2) { $rank_class = 'rank-silver'; $rank_text = '#2'; }
+            elseif ($rank == 3) { $rank_class = 'rank-bronze'; $rank_text = '#3'; }
         ?>
         <tr>
             <td class="text-center text-bold <?= $rank_class ?>"><?= $rank_text ?></td>
@@ -242,6 +377,21 @@ header("Content-Disposition: inline; filename=" . $filename);
         <div class="nama"><?= htmlspecialchars($nama_owner) ?></div>
     </div>
 </div>
+</div>
+
+<script>
+function downloadPDF() {
+    const element = document.getElementById('pdf-content');
+    const opt = {
+        margin: [15, 15, 15, 15],
+        filename: 'LaporanPaketTerfavorit_<?= date('dmY') ?>.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    html2pdf().set(opt).from(element).save();
+}
+</script>
 
 </body>
 </html>
