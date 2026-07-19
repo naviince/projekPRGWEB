@@ -30,12 +30,29 @@ if ($foto_owner != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . 
 $error_profile = "";
 $success_profile = false;
 
+// =====================================================
+// HELPER HASH PASSWORD (migrasi aman dari plain-text -> bcrypt)
+// Password lama di database kemungkinan masih tersimpan sebagai plain-text
+// (belum pernah di-hash). Fungsi ini menerima KEDUANYA: kalau nilai yang
+// tersimpan sudah berupa hash bcrypt, verifikasi pakai password_verify();
+// kalau belum (masih plain-text lama), fallback ke perbandingan string
+// biasa. Supaya akun lama tidak langsung terkunci begitu fitur hashing ini
+// diaktifkan, sebelum sempat ganti password.
+// =====================================================
+function verifikasiPasswordLegacy($input, $stored) {
+    if (password_get_info($stored)['algo'] !== null) {
+        return password_verify($input, $stored);
+    }
+    return hash_equals((string)$stored, (string)$input); // fallback plain-text lama
+}
+
 if (isset($_POST['update_profil'])) {
     $nama_input = trim($_POST['nama']);
     $username_input = trim($_POST['username']);
     $email_input = trim($_POST['email']);
     $no_hp_input = str_replace(' ', '', trim($_POST['no_hp']));
     $alamat_input = trim($_POST['alamat']);
+    $pass_lama = $_POST['password_lama'] ?? '';
     $pass_baru = $_POST['password'];
     $confirm_pass = $_POST['confirm_password'];
     $hp_bersih_input = str_replace(['+', ' '], '', $no_hp_input);
@@ -53,12 +70,18 @@ if (isset($_POST['update_profil'])) {
     } else {
         $sandi_final = $d_profile['password_karyawan'];
         if (!empty($pass_baru)) {
-            if (strlen($pass_baru) < 8 || !preg_match("/[A-Za-z]/", $pass_baru) || !preg_match("/[0-9]/", $pass_baru) || !preg_match("/[^A-Za-z0-9]/", $pass_baru)) {
+            if (empty($pass_lama)) {
+                $error_profile = "Masukkan password saat ini untuk mengonfirmasi perubahan password!";
+            } elseif (!verifikasiPasswordLegacy($pass_lama, $d_profile['password_karyawan'])) {
+                $error_profile = "Password saat ini salah!";
+            } elseif (strlen($pass_baru) < 8 || !preg_match("/[A-Za-z]/", $pass_baru) || !preg_match("/[0-9]/", $pass_baru) || !preg_match("/[^A-Za-z0-9]/", $pass_baru)) {
                 $error_profile = "Sandi baru minimal 8 karakter (kombinasi huruf, angka, simbol)!";
+            } elseif ($pass_baru === $pass_lama) {
+                $error_profile = "Password baru tidak boleh sama dengan password lama!";
             } elseif ($pass_baru !== $confirm_pass) {
                 $error_profile = "Konfirmasi kata sandi tidak cocok!";
             } else {
-                $sandi_final = $pass_baru;
+                $sandi_final = password_hash($pass_baru, PASSWORD_BCRYPT);
             }
         }
         if ($error_profile == "") {
@@ -1542,11 +1565,18 @@ body {
                         <label class="form-label">Alamat Lengkap<span class="required-star">*</span></label>
                         <textarea name="alamat" class="form-control" rows="2" placeholder="Masukkan alamat domisili lengkap" required style="resize:none;"><?= htmlspecialchars($d_profile['alamat'] ?? '') ?></textarea>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password Saat Ini <span class="text-muted" style="font-weight:500;font-size:0.78rem;">(isi hanya jika ingin ganti password)</span></label>
+                        <div class="password-group">
+                            <input type="password" name="password_lama" id="pass_lama_modal" class="form-control" placeholder="Password Anda sekarang" autocomplete="current-password">
+                            <i class="bi bi-eye-slash toggle-password" id="btnToggleLama"></i>
+                        </div>
+                    </div>
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Sandi Baru (Opsional)</label>
                             <div class="password-group">
-                                <input type="password" name="password" id="pass_baru_modal" class="form-control" placeholder="Minimal 8 karakter">
+                                <input type="password" name="password" id="pass_baru_modal" class="form-control" placeholder="Minimal 8 karakter" autocomplete="new-password">
                                 <i class="bi bi-eye-slash toggle-password" id="btnToggleBaru"></i>
                             </div>
                         </div>
@@ -1694,6 +1724,7 @@ function setupPasswordToggle(buttonId, inputId) {
         });
     }
 }
+setupPasswordToggle('btnToggleLama', 'pass_lama_modal');
 setupPasswordToggle('btnToggleBaru', 'pass_baru_modal');
 setupPasswordToggle('btnToggleKonf', 'pass_konf_modal');
 
