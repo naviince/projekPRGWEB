@@ -288,7 +288,7 @@ function hasError($field, $error_fields) { return isset($error_fields[$field]) &
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tambah Karyawan – SpotLight Studio</title>
-    <link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
+    
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -781,178 +781,11 @@ function hasError($field, $error_fields) { return isset($error_fields[$field]) &
         .toggle-password { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #94a3b8; font-size: 18px; z-index: 10; transition: 0.3s; }
         .toggle-password:hover { color: var(--p-pink); }
 
-        /* Mobile Menu Button */
-        .mobile-menu-btn {
-            display: none;
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            background: #ffffff;
-            border: 2px solid var(--light-pink);
-            color: var(--p-pink);
-            align-items: center;
-            justify-content: center;
-            font-size: 1.4rem;
-            cursor: pointer;
-            transition: var(--transition-3d);
-            flex-shrink: 0;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        }
-        .mobile-menu-btn:hover {
-            background: var(--s-pink);
-            transform: scale(1.05);
-        }
-
-        /* Sidebar Overlay */
-        .sidebar-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(30, 30, 36, 0.45);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            z-index: 99;
-            opacity: 0;
-            transition: opacity 0.35s ease;
-        }
-        .sidebar-overlay.show {
-            display: block;
-            opacity: 1;
-        }
-
-        /* =====================================================
-           RESPONSIVE ENHANCEMENTS
-           ===================================================== */
-        @media (max-width: 1199px) {
-            .landscape-wrapper { flex-direction: column; }
-            .landscape-left { width: 100%; }
-            .preview-card { position: static; }
-            .form-card { padding: 30px; }
-        }
-
-        @media (max-width: 992px) {
-            .mobile-menu-btn { display: inline-flex; }
-            .sidebar {
-                transform: translateX(-100%);
-                transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-                box-shadow: none;
-            }
-            .sidebar.mobile-open {
-                transform: translateX(0);
-                box-shadow: 10px 0 50px rgba(0,0,0,0.15);
-            }
-            .main-content { margin-left: 0; padding: 24px; }
-            .dashboard-header {
-                flex-wrap: wrap;
-                gap: 12px;
-                margin-bottom: 28px;
-            }
-            .dashboard-header h3 { font-size: 1.35rem; }
-            .form-card { padding: 28px; border-radius: 20px; }
-            .preview-card { padding: 24px; border-radius: 20px; }
-            .preview-avatar { width: 100px; height: 100px; font-size: 2.5rem; }
-            .btn-group-bottom {
-                flex-direction: column;
-                gap: 10px;
-            }
-            .btn-reg-header, .btn-outline-pink {
-                width: 100%;
-                justify-content: center;
-            }
-            .d-flex.gap-3.justify-content-end {
-                flex-direction: column;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .main-content { padding: 18px; }
-            .dashboard-header { margin-bottom: 22px; }
-            .dashboard-header h3 { font-size: 1.15rem; }
-            .dashboard-header p { font-size: 0.8rem; }
-            .form-card { padding: 22px 18px; border-radius: 18px; }
-            .form-section-title { font-size: 0.7rem; margin-bottom: 16px; }
-            .form-label { font-size: 10px; }
-            .form-control, .form-select {
-                padding: 10px 14px;
-                font-size: 13px;
-                border-radius: 12px;
-            }
-            .preview-card { padding: 20px 18px; }
-            .preview-avatar { width: 90px; height: 90px; font-size: 2.2rem; }
-            .preview-name { font-size: 1rem; }
-            .preview-info-item { padding: 8px 0; font-size: 0.78rem; }
-            .radio-group { flex-direction: column; }
-            .radio-option { padding: 12px 16px; }
-            .input-group-text {
-                padding: 10px 14px;
-                font-size: 0.8rem;
-            }
-            .foto-upload-btn {
-                padding: 8px 16px;
-                font-size: 0.8rem;
-            }
-            .breadcrumb-custom { font-size: 0.75rem; flex-wrap: wrap; gap: 6px; }
-            .btn-reg-header, .btn-outline-pink {
-                padding: 12px 20px;
-                font-size: 0.85rem;
-                border-radius: 12px;
-            }
-            .profile-header-btn {
-                width: 40px;
-                height: 40px;
-            }
-            .hint-text { font-size: 0.68rem; }
-            .field-error { font-size: 0.7rem; }
-        }
-
-        @media (max-width: 576px) {
-            .main-content { padding: 14px; }
-            .dashboard-header h3 { font-size: 1.05rem; }
-            .form-card { padding: 18px 14px; border-radius: 16px; }
-            .form-control, .form-select {
-                padding: 10px 12px;
-                font-size: 13px;
-                border-radius: 10px;
-            }
-            .preview-card { padding: 18px 14px; border-radius: 16px; }
-            .preview-avatar { width: 80px; height: 80px; font-size: 2rem; }
-            .preview-name { font-size: 0.95rem; }
-            .preview-role { font-size: 0.65rem; padding: 4px 12px; }
-            .preview-info-item { font-size: 0.75rem; }
-            .preview-info { margin-top: 14px; }
-            .btn-reg-header, .btn-outline-pink {
-                padding: 12px 16px;
-                font-size: 0.8rem;
-                border-radius: 10px;
-            }
-            .password-toggle { font-size: 1rem; right: 12px; }
-            .modal-content { border-radius: 20px !important; }
-            .profile-preview-box { width: 80px !important; height: 80px !important; }
-        }
-
-        @media (max-width: 375px) {
-            .dashboard-header h3 { font-size: 0.95rem; }
-            .form-card { padding: 16px 12px; }
-            .form-control, .form-select {
-                padding: 8px 10px;
-                font-size: 12px;
-            }
-            .preview-avatar { width: 70px; height: 70px; font-size: 1.8rem; }
-            .btn-reg-header, .btn-outline-pink {
-                padding: 10px 14px;
-                font-size: 0.78rem;
-            }
-            .foto-upload-btn { font-size: 0.75rem; padding: 8px 14px; }
-        }
+        @media (max-width: 1200px) { .landscape-wrapper { flex-direction: column; } .landscape-left { width: 100%; } .preview-card { position: static; } }
+        @media (max-width: 992px) { .main-content { margin-left: 0; padding: 20px; } .sidebar { transform: translateX(-100%); } }
     </style>
 </head>
 <body>
-
-<!-- Sidebar Overlay (Mobile) -->
-<div class="sidebar-overlay" onclick="toggleSidebar()"></div>
 
 <!-- SIDEBAR -->
 <div class="sidebar">
@@ -1001,14 +834,9 @@ function hasError($field, $error_fields) { return isset($error_fields[$field]) &
 
     <!-- HEADER SINKRON DENGAN ELEMEN PORTAL OWNER -->
     <div class="dashboard-header">
-        <div class="d-flex align-items-center gap-3">
-            <button class="mobile-menu-btn" onclick="toggleSidebar()" title="Menu" aria-label="Toggle Menu">
-                <i class="bi bi-list"></i>
-            </button>
-            <div>
-                <h3 class="fw-bold mb-1">Tambah Karyawan Baru ✦</h3>
-                <p class="text-muted small mb-0">Daftarkan staf baru ke sistem operasional SpotLight Studio.</p>
-            </div>
+        <div>
+            <h3 class="fw-bold mb-1">Tambah Karyawan Baru ✦</h3>
+            <p class="text-muted small mb-0">Daftarkan staf baru ke sistem operasional SpotLight Studio.</p>
         </div>
         <div class="d-flex align-items-center gap-3">
             <span class="badge px-3 py-2 text-dark border-0 shadow-sm" style="background: var(--light-pink); font-weight: 700; border-radius: 10px;">
@@ -1313,40 +1141,6 @@ function hasError($field, $error_fields) { return isset($error_fields[$field]) &
     }
     setInterval(updateLiveClock, 1000);
     updateLiveClock();
-
-    // =====================================================
-    // MOBILE SIDEBAR TOGGLE
-    // =====================================================
-    function toggleSidebar() {
-        const sidebar = document.querySelector('.sidebar');
-        const overlay = document.querySelector('.sidebar-overlay');
-        const isOpen = sidebar.classList.toggle('mobile-open');
-        overlay.classList.toggle('show', isOpen);
-        document.body.style.overflow = isOpen ? 'hidden' : '';
-    }
-
-    // Auto-close sidebar when clicking nav links on mobile
-    document.querySelectorAll('.sidebar .nav-link-custom, .sidebar .submenu-link, .sidebar .btn-logout').forEach(el => {
-        el.addEventListener('click', function() {
-            if (window.innerWidth <= 992) {
-                const sidebar = document.querySelector('.sidebar');
-                if (sidebar.classList.contains('mobile-open')) {
-                    toggleSidebar();
-                }
-            }
-        });
-    });
-
-    // Handle resize: if going back to desktop, reset mobile sidebar state
-    window.addEventListener('resize', function() {
-        if (window.innerWidth > 992) {
-            const sidebar = document.querySelector('.sidebar');
-            const overlay = document.querySelector('.sidebar-overlay');
-            sidebar.classList.remove('mobile-open');
-            overlay.classList.remove('show');
-            document.body.style.overflow = '';
-        }
-    });
 
     // SUBMENU SINKRON SIDEBAR
     document.querySelectorAll('.btn-toggle-submenu').forEach(button => {

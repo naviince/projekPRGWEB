@@ -116,7 +116,59 @@ if (isset($_POST['update_profil'])) {
     }
 }
 
-$q_pendapatan = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1");
+// =====================================================
+// FILTER TAHUN (untuk laporan/statistik dashboard)
+// Owner bisa memilih tahun mana yang ingin dilihat (tahun ini, tahun lalu,
+// dst) atau "Semua Tahun" untuk agregat sepanjang waktu (perilaku default
+// sebelum filter ini ada). Daftar tahun yang muncul di dropdown HANYA
+// tahun yang benar-benar punya data transaksi (dari Order/Pembayaran/
+// Penjualan), supaya tidak ada pilihan tahun kosong -- tahun berjalan tetap
+// selalu tersedia meski belum ada transaksi.
+// =====================================================
+$q_tahun_tersedia = sqlsrv_query($conn, "
+    SELECT DISTINCT thn FROM (
+        SELECT YEAR(Created_Date) AS thn FROM [Order]
+        UNION
+        SELECT YEAR(Tanggal_Upload) AS thn FROM Pembayaran
+        UNION
+        SELECT YEAR(Tanggal_Penjualan) AS thn FROM Penjualan
+    ) x
+    WHERE thn IS NOT NULL
+    ORDER BY thn DESC
+");
+$daftar_tahun = [];
+if ($q_tahun_tersedia) {
+    while ($r = sqlsrv_fetch_array($q_tahun_tersedia, SQLSRV_FETCH_ASSOC)) {
+        $daftar_tahun[] = (int)$r['thn'];
+    }
+}
+$tahun_sekarang = (int)date('Y');
+if (!in_array($tahun_sekarang, $daftar_tahun, true)) {
+    $daftar_tahun[] = $tahun_sekarang;
+}
+rsort($daftar_tahun);
+
+// Tahun terpilih lewat dropdown (?tahun=2025, atau ?tahun=semua). Divalidasi
+// ketat terhadap whitelist $daftar_tahun di atas -- tidak langsung dipakai
+// mentah dari $_GET -- supaya tidak bisa disuntik nilai sembarang lewat URL.
+$tahun_filter_raw = isset($_GET['tahun']) ? trim($_GET['tahun']) : (string)$tahun_sekarang;
+$filter_semua_tahun = ($tahun_filter_raw === 'semua');
+$tahun_filter = $filter_semua_tahun ? null : (int)$tahun_filter_raw;
+if (!$filter_semua_tahun && !in_array($tahun_filter, $daftar_tahun, true)) {
+    $tahun_filter = $tahun_sekarang; // fallback aman kalau nilai tidak valid/di luar whitelist
+}
+$label_periode = $filter_semua_tahun ? 'Semua Tahun' : "Tahun $tahun_filter";
+
+// Helper: bikin fragmen kondisi "YEAR(kolom) = tahun_filter", atau string
+// kosong kalau mode "Semua Tahun" (tanpa filter). $tahun_filter sendiri
+// sudah dipastikan integer murni oleh validasi whitelist di atas, aman
+// untuk disisipkan langsung ke SQL.
+function condTahun($kolom) {
+    global $filter_semua_tahun, $tahun_filter;
+    return $filter_semua_tahun ? "" : " AND YEAR($kolom) = $tahun_filter";
+}
+
+$q_pendapatan = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1" . condTahun('Tanggal_Upload'));
 $d_pendapatan = sqlsrv_fetch_array($q_pendapatan, SQLSRV_FETCH_ASSOC);
 $total_pendapatan = $d_pendapatan['total'] ?? 0;
 
@@ -128,7 +180,7 @@ $q_pelanggan = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Pelanggan WHER
 $d_pelanggan = sqlsrv_fetch_array($q_pelanggan, SQLSRV_FETCH_ASSOC);
 $total_pelanggan = $d_pelanggan['total'] ?? 0;
 
-$q_sesi = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Sesi_Foto WHERE Status_Sesi = 1");
+$q_sesi = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Sesi_Foto WHERE Status_Sesi = 1" . condTahun('Waktu_Selesai'));
 $d_sesi = sqlsrv_fetch_array($q_sesi, SQLSRV_FETCH_ASSOC);
 $total_sesi = $d_sesi['total'] ?? 0;
 
@@ -140,7 +192,7 @@ $q_wait_dp = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Pembayaran WHERE
 $d_wait_dp = sqlsrv_fetch_array($q_wait_dp, SQLSRV_FETCH_ASSOC);
 $wait_dp = $d_wait_dp['total'] ?? 0;
 
-$q_batal_month = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM [Order] WHERE Status_Order = 4 AND MONTH(Created_Date) = MONTH(GETDATE()) AND YEAR(Created_Date) = YEAR(GETDATE())");
+$q_batal_month = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM [Order] WHERE Status_Order = 4" . condTahun('Created_Date'));
 $d_batal_month = sqlsrv_fetch_array($q_batal_month, SQLSRV_FETCH_ASSOC);
 $batal_month = $d_batal_month['total'] ?? 0;
 
@@ -148,10 +200,10 @@ $q_stok_menipis = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Barang_Ceta
 $d_stok_menipis = sqlsrv_fetch_array($q_stok_menipis, SQLSRV_FETCH_ASSOC);
 $stok_menipis = $d_stok_menipis['total'] ?? 0;
 
-$q_status_booking = sqlsrv_query($conn, "SELECT SUM(CASE WHEN Status_Order = 0 THEN 1 ELSE 0 END) AS menunggu_dp, SUM(CASE WHEN Status_Order = 1 THEN 1 ELSE 0 END) AS dp_verified, SUM(CASE WHEN Status_Order = 2 THEN 1 ELSE 0 END) AS tunggu_pelunasan, SUM(CASE WHEN Status_Order = 3 THEN 1 ELSE 0 END) AS lunas, SUM(CASE WHEN Status_Order = 4 THEN 1 ELSE 0 END) AS dibatalkan FROM [Order] WHERE Status = 1");
+$q_status_booking = sqlsrv_query($conn, "SELECT SUM(CASE WHEN Status_Order = 0 THEN 1 ELSE 0 END) AS menunggu_dp, SUM(CASE WHEN Status_Order = 1 THEN 1 ELSE 0 END) AS dp_verified, SUM(CASE WHEN Status_Order = 2 THEN 1 ELSE 0 END) AS tunggu_pelunasan, SUM(CASE WHEN Status_Order = 3 THEN 1 ELSE 0 END) AS lunas, SUM(CASE WHEN Status_Order = 4 THEN 1 ELSE 0 END) AS dibatalkan FROM [Order] WHERE Status = 1" . condTahun('Tanggal_Booking'));
 $d_status_booking = sqlsrv_fetch_array($q_status_booking, SQLSRV_FETCH_ASSOC);
 
-$q_top_paket = sqlsrv_query($conn, "SELECT TOP 5 p.Nama_Paket, COUNT(o.ID_Order) AS total_order FROM Paket_Foto p LEFT JOIN [Order] o ON p.ID_Paket = o.ID_Paket WHERE p.Status = 1 AND p.Is_Deleted = 0 GROUP BY p.ID_Paket, p.Nama_Paket ORDER BY total_order DESC");
+$q_top_paket = sqlsrv_query($conn, "SELECT TOP 5 p.Nama_Paket, COUNT(o.ID_Order) AS total_order FROM Paket_Foto p LEFT JOIN [Order] o ON p.ID_Paket = o.ID_Paket" . ($filter_semua_tahun ? "" : " AND YEAR(o.Tanggal_Booking) = $tahun_filter") . " WHERE p.Status = 1 AND p.Is_Deleted = 0 GROUP BY p.ID_Paket, p.Nama_Paket ORDER BY total_order DESC");
 $top_paket_labels = [];
 $top_paket_data = [];
 while ($row = sqlsrv_fetch_array($q_top_paket, SQLSRV_FETCH_ASSOC)) {
@@ -159,19 +211,22 @@ while ($row = sqlsrv_fetch_array($q_top_paket, SQLSRV_FETCH_ASSOC)) {
     $top_paket_data[] = $row['total_order'];
 }
 
-$q_pendapatan_dp = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1 AND Tipe_Pembayaran = 'DP'");
+$q_pendapatan_dp = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1 AND Tipe_Pembayaran = 'DP'" . condTahun('Tanggal_Upload'));
 $d_pendapatan_dp = sqlsrv_fetch_array($q_pendapatan_dp, SQLSRV_FETCH_ASSOC);
 $pendapatan_dp = $d_pendapatan_dp['total'] ?? 0;
 
-$q_pendapatan_lunas = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1 AND Tipe_Pembayaran = 'Pelunasan'");
+$q_pendapatan_lunas = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1 AND Tipe_Pembayaran = 'Pelunasan'" . condTahun('Tanggal_Upload'));
 $d_pendapatan_lunas = sqlsrv_fetch_array($q_pendapatan_lunas, SQLSRV_FETCH_ASSOC);
 $pendapatan_lunas = $d_pendapatan_lunas['total'] ?? 0;
 
-$q_pendapatan_barang = sqlsrv_query($conn, "SELECT SUM(Total_Penjualan) AS total FROM Penjualan WHERE Status_Penjualan = 1");
+$q_pendapatan_barang = sqlsrv_query($conn, "SELECT SUM(Total_Penjualan) AS total FROM Penjualan WHERE Status_Penjualan = 1" . condTahun('Tanggal_Penjualan'));
 $d_pendapatan_barang = sqlsrv_fetch_array($q_pendapatan_barang, SQLSRV_FETCH_ASSOC);
 $pendapatan_barang = $d_pendapatan_barang['total'] ?? 0;
 
-$q_tren_pelanggan = sqlsrv_query($conn, "SELECT MONTH(Created_Date) AS bulan, COUNT(*) AS total FROM Pelanggan WHERE Created_Date >= DATEADD(MONTH, -5, GETDATE()) GROUP BY MONTH(Created_Date) ORDER BY MONTH(Created_Date)");
+// Tren pendaftaran pelanggan per bulan -- untuk tahun spesifik ditampilkan
+// Jan-Des tahun itu; untuk "Semua Tahun" ditampilkan pola musiman gabungan
+// dari seluruh tahun (bukan lagi rolling 5 bulan terakhir dari hari ini).
+$q_tren_pelanggan = sqlsrv_query($conn, "SELECT MONTH(Created_Date) AS bulan, COUNT(*) AS total FROM Pelanggan WHERE 1=1" . condTahun('Created_Date') . " GROUP BY MONTH(Created_Date) ORDER BY MONTH(Created_Date)");
 $tren_pelanggan_labels = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 $tren_pelanggan_data = array_fill(0, 12, 0);
 while ($row = sqlsrv_fetch_array($q_tren_pelanggan, SQLSRV_FETCH_ASSOC)) {
@@ -182,7 +237,7 @@ $q_stok_alert = sqlsrv_query($conn, "SELECT TOP 3 Nama_Barang, Stok_Barang, Stok
 
 $q_pembayaran_alert = sqlsrv_query($conn, "SELECT TOP 3 p.ID_Pembayaran, pl.Nama_Pelanggan, p.Tanggal_Upload, p.Jumlah_Bayar FROM Pembayaran p JOIN [Order] o ON p.ID_Order = o.ID_Order JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan WHERE p.Status_Pembayaran = 0 AND DATEDIFF(HOUR, p.Tanggal_Upload, GETDATE()) > 24 ORDER BY p.Tanggal_Upload ASC");
 
-$q_aktivitas = sqlsrv_query($conn, "SELECT TOP 5 o.ID_Order, pl.Nama_Pelanggan, pk.Nama_Paket, o.Tanggal_Booking, o.Status_Order, o.Total_Harga FROM [Order] o JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket ORDER BY o.Created_Date DESC");
+$q_aktivitas = sqlsrv_query($conn, "SELECT TOP 5 o.ID_Order, pl.Nama_Pelanggan, pk.Nama_Paket, o.Tanggal_Booking, o.Status_Order, o.Total_Harga FROM [Order] o JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket WHERE 1=1" . condTahun('o.Created_Date') . " ORDER BY o.Created_Date DESC");
 
 $q_role_admin = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE Role_Karyawan = 'Admin' AND Status = 1 AND Is_Deleted = 0");
 $d_role_admin = sqlsrv_fetch_array($q_role_admin, SQLSRV_FETCH_ASSOC);
@@ -196,7 +251,7 @@ $q_role_owner = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHER
 $d_role_owner = sqlsrv_fetch_array($q_role_owner, SQLSRV_FETCH_ASSOC);
 $count_owner = $d_role_owner['total'] ?? 0;
 
-$q_pendapatan_bulan = sqlsrv_query($conn, "SELECT MONTH(Tanggal_Upload) AS bulan, SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1 AND YEAR(Tanggal_Upload) = YEAR(GETDATE()) GROUP BY MONTH(Tanggal_Upload) ORDER BY MONTH(Tanggal_Upload)");
+$q_pendapatan_bulan = sqlsrv_query($conn, "SELECT MONTH(Tanggal_Upload) AS bulan, SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1" . condTahun('Tanggal_Upload') . " GROUP BY MONTH(Tanggal_Upload) ORDER BY MONTH(Tanggal_Upload)");
 $pendapatan_bulan_data = array_fill(0, 12, 0);
 while ($row = sqlsrv_fetch_array($q_pendapatan_bulan, SQLSRV_FETCH_ASSOC)) {
     $pendapatan_bulan_data[$row['bulan'] - 1] = $row['total'];
@@ -208,7 +263,7 @@ while ($row = sqlsrv_fetch_array($q_pendapatan_bulan, SQLSRV_FETCH_ASSOC)) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Panel Owner – SpotLight Studio</title>
-<link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
+
 <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
 <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -436,6 +491,47 @@ body {
 }
 .dashboard-header p {
     font-size: 0.85rem;
+}
+
+/* ========== FILTER PERIODE LAPORAN ========== */
+.period-filter-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    background: #ffffff;
+    border: 1px solid rgba(216,63,103,0.12);
+    border-radius: 14px;
+    padding: 12px 18px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+}
+.period-select {
+    border: 1.5px solid var(--light-pink);
+    background: var(--s-pink);
+    color: var(--text-dark);
+    font-weight: 700;
+    font-size: 0.85rem;
+    border-radius: 10px;
+    padding: 7px 14px;
+    cursor: pointer;
+    outline: none;
+    transition: var(--transition-3d);
+}
+.period-select:hover, .period-select:focus {
+    border-color: var(--p-pink);
+    box-shadow: 0 0 0 3px rgba(216,63,103,0.1);
+}
+.period-filter-note {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    max-width: 480px;
+}
+@media (max-width: 768px) {
+    .period-filter-bar { flex-direction: column; align-items: flex-start; }
+    .period-filter-note { max-width: 100%; }
 }
 
 .profile-header-btn {
@@ -968,6 +1064,27 @@ body {
     </div>
 </div>
 
+<!-- FILTER PERIODE LAPORAN -->
+<div class="period-filter-bar animate-fade-in delay-1">
+    <div class="d-flex align-items-center gap-2" style="min-width:0;">
+        <i class="bi bi-funnel-fill text-danger"></i>
+        <span class="fw-bold" style="font-size:0.85rem;">Periode Laporan:</span>
+        <form method="GET" id="formFilterTahun" class="d-inline-flex">
+            <select name="tahun" class="period-select" onchange="document.getElementById('formFilterTahun').submit()">
+                <?php foreach ($daftar_tahun as $thn): ?>
+                    <option value="<?= $thn ?>" <?= (!$filter_semua_tahun && $tahun_filter == $thn) ? 'selected' : '' ?>>
+                        Tahun <?= $thn ?><?= $thn == $tahun_sekarang ? ' (Ini)' : ($thn == $tahun_sekarang - 1 ? ' (Lalu)' : '') ?>
+                    </option>
+                <?php endforeach; ?>
+                <option value="semua" <?= $filter_semua_tahun ? 'selected' : '' ?>>Semua Tahun</option>
+            </select>
+        </form>
+    </div>
+    <div class="period-filter-note">
+        <i class="bi bi-info-circle me-1"></i>Berlaku untuk pendapatan, grafik &amp; laporan. Kartu "Booking Hari Ini", "Menunggu Verifikasi" &amp; peringatan sistem selalu real-time.
+    </div>
+</div>
+
 <!-- BARIS 1: STAT CARDS -->
 <div class="stats-scroll-wrapper animate-fade-in delay-2">
     <div class="stats-row">
@@ -978,7 +1095,7 @@ body {
                     <div class="stat-content">
                         <div class="stat-title">Total Pendapatan</div>
                         <div class="stat-val">Rp<?= number_format($total_pendapatan, 0, ',', '.') ?></div>
-                        <div class="stat-subtitle">Dari semua transaksi valid</div>
+                        <div class="stat-subtitle"><?= htmlspecialchars($label_periode) ?> · transaksi valid</div>
                     </div>
                 </div>
             </div>
@@ -1014,7 +1131,7 @@ body {
                     <div class="stat-content">
                         <div class="stat-title">Sesi Foto Selesai</div>
                         <div class="stat-val"><?= $total_sesi ?> Sesi</div>
-                        <div class="stat-subtitle">Sudah diproses</div>
+                        <div class="stat-subtitle"><?= htmlspecialchars($label_periode) ?></div>
                     </div>
                 </div>
             </div>
@@ -1026,7 +1143,7 @@ body {
                     <div class="stat-content">
                         <div class="stat-title">Booking Hari Ini</div>
                         <div class="stat-val"><?= $booking_today ?> Order</div>
-                        <div class="stat-subtitle">Masuk hari ini</div>
+                        <div class="stat-subtitle"><i class="bi bi-broadcast-pin"></i> Real-time</div>
                     </div>
                 </div>
             </div>
@@ -1038,7 +1155,7 @@ body {
                     <div class="stat-content">
                         <div class="stat-title">Menunggu Verifikasi</div>
                         <div class="stat-val"><?= $wait_dp ?> Pembayaran</div>
-                        <div class="stat-subtitle">DP belum diverifikasi</div>
+                        <div class="stat-subtitle"><i class="bi bi-broadcast-pin"></i> Real-time</div>
                     </div>
                 </div>
             </div>
@@ -1048,9 +1165,9 @@ body {
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-dark"><i class="bi bi-x-octagon-fill"></i></div>
                     <div class="stat-content">
-                        <div class="stat-title">Pembatalan Bulan Ini</div>
+                        <div class="stat-title">Pembatalan Booking</div>
                         <div class="stat-val"><?= $batal_month ?> Booking</div>
-                        <div class="stat-subtitle">Status dibatalkan</div>
+                        <div class="stat-subtitle"><?= htmlspecialchars($label_periode) ?></div>
                     </div>
                 </div>
             </div>
@@ -1116,7 +1233,7 @@ body {
         <div class="chart-card">
             <div class="chart-header">
                 <h5 class="chart-title"><i class="bi bi-graph-up-arrow text-danger me-2"></i>Tren Pendapatan Bulanan</h5>
-                <span class="chart-badge">Tahun <?= date('Y') ?></span>
+                <span class="chart-badge"><?= htmlspecialchars($label_periode) ?></span>
             </div>
             <div style="height:300px;width:100%;">
                 <canvas id="chartPendapatan"></canvas>
@@ -1131,6 +1248,7 @@ body {
         <div class="chart-card">
             <div class="chart-header">
                 <h5 class="chart-title"><i class="bi bi-bar-chart-fill text-danger me-2"></i>Distribusi Status Booking</h5>
+                <span class="chart-badge"><?= htmlspecialchars($label_periode) ?></span>
             </div>
             <div style="height:280px;width:100%;">
                 <canvas id="chartStatusBooking"></canvas>
@@ -1141,6 +1259,7 @@ body {
         <div class="chart-card">
             <div class="chart-header">
                 <h5 class="chart-title"><i class="bi bi-star-fill text-warning me-2"></i>Top 5 Paket Favorit</h5>
+                <span class="chart-badge"><?= htmlspecialchars($label_periode) ?></span>
             </div>
             <div style="height:280px;width:100%;">
                 <canvas id="chartTopPaket"></canvas>
@@ -1155,6 +1274,7 @@ body {
         <div class="chart-card">
             <div class="chart-header">
                 <h5 class="chart-title"><i class="bi bi-pie-chart-fill text-danger me-2"></i>Pendapatan per Kategori</h5>
+                <span class="chart-badge"><?= htmlspecialchars($label_periode) ?></span>
             </div>
             <div style="height:280px;width:100%;display:flex;align-items:center;justify-content:center;">
                 <canvas id="chartPendapatanKategori"></canvas>
@@ -1165,6 +1285,7 @@ body {
         <div class="chart-card">
             <div class="chart-header">
                 <h5 class="chart-title"><i class="bi bi-people-fill text-primary me-2"></i>Tren Pelanggan Baru</h5>
+                <span class="chart-badge"><?= htmlspecialchars($label_periode) ?></span>
             </div>
             <div style="height:280px;width:100%;">
                 <canvas id="chartTrenPelanggan"></canvas>
@@ -1303,7 +1424,7 @@ body {
                     </thead>
                     <tbody>
                         <?php
-                        $sql_batal = "SELECT TOP 3 P.Nama_Pelanggan, O.Tanggal_Booking FROM [Order] O JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan WHERE O.Status_Order = 4 ORDER BY O.Tanggal_Booking DESC";
+                        $sql_batal = "SELECT TOP 3 P.Nama_Pelanggan, O.Tanggal_Booking FROM [Order] O JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan WHERE O.Status_Order = 4" . condTahun('O.Created_Date') . " ORDER BY O.Tanggal_Booking DESC";
                         $query_batal = sqlsrv_query($conn, $sql_batal);
                         if($query_batal && sqlsrv_has_rows($query_batal)):
                             while($row_batal = sqlsrv_fetch_array($query_batal, SQLSRV_FETCH_ASSOC)):
