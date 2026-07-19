@@ -56,7 +56,7 @@ if (!empty($data['Tanggal_Lahir'])) {
     }
 }
 
-// Format No HP untuk tampilan (hapus +62 di depan jika ada untuk penyesuaian form input)
+// Format No HP untuk tampilan
 $hp_display = $data['No_Hp'] ?? '';
 if (strpos($hp_display, '+62') === 0) {
     $hp_display = substr($hp_display, 3);
@@ -126,14 +126,14 @@ if (isset($_POST['update'])) {
         }
     }
 
-    // === VALIDASI PASSWORD (MIROR CHK_Pelanggan_Password) ===
+    // === VALIDASI PASSWORD ===
     if (!empty($password)) {
         if (strlen($password) < 8 || !preg_match("/[A-Za-z]/", $password) || !preg_match("/[0-9]/", $password) || !preg_match("/[^A-Za-z0-9]/", $password)) {
             $error_password = "Kata sandi minimal 8 karakter, serta harus mengandung kombinasi huruf, angka, dan simbol!";
         }
     }
 
-    // === VALIDASI & STANDARISASI NO HP (Sesuai CHK_Pelanggan_NoHp) ===
+    // === VALIDASI & STANDARISASI NO HP ===
     $hp_digits = preg_replace('/[^0-9]/', '', $hp_raw);
     if (strpos($hp_raw, '62') === 0 || strpos($hp_raw, '+62') === 0) {
         $hp_digits = preg_replace('/^62/', '', $hp_digits);
@@ -243,7 +243,6 @@ if (isset($_POST['update'])) {
             ];
             $params = [$username, $nama, $email, $hp_clean, $jk, $dob, $alamat, $status, $foto_name, $nama_admin];
 
-            // Hashing password baru sebelum diupdate (FIX KEAMANAN & BATASAN)
             if (!empty($password)) {
                 $pass_hash = password_hash($password, PASSWORD_BCRYPT);
                 $update_fields[] = "Password_Pelanggan = ?";
@@ -292,7 +291,7 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Edit Pelanggan – SpotLight Studio</title>
 
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
@@ -314,6 +313,7 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
             --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
+        * { -webkit-tap-highlight-color: transparent; }
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
             background-color: var(--body-bg);
@@ -333,7 +333,8 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
             flex-direction: column;
             justify-content: space-between;
             padding: 30px 20px;
-            z-index: 100;
+            z-index: 1040;
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .sidebar-brand {
             font-weight: 800; font-size: 1.5rem;
@@ -373,15 +374,68 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
         }
         .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
 
+        /* SIDEBAR OVERLAY */
+        .sidebar-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            backdrop-filter: blur(2px);
+            z-index: 1035;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        .sidebar-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* MOBILE HEADER */
+        .mobile-header {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 60px;
+            background: #fff;
+            border-bottom: 1px solid rgba(255,228,233,.8);
+            z-index: 1020;
+            padding: 0 20px;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .mobile-brand {
+            font-weight: 800;
+            font-size: 1.25rem;
+            color: var(--p-pink);
+            text-decoration: none;
+            letter-spacing: -0.5px;
+        }
+        .hamburger-btn {
+            width: 40px; height: 40px;
+            border-radius: 10px; border: none;
+            background: var(--s-pink);
+            color: var(--p-pink);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            cursor: pointer;
+            transition: var(--transition-3d);
+        }
+        .hamburger-btn:active { transform: scale(0.92); }
+
         /* MAIN CONTENT */
         .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
         .dashboard-header {
             display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 35px;
+            flex-wrap: wrap;
+            gap: 15px;
         }
         .profile-header-btn {
             width: 44px; height: 44px; border-radius: 50%; overflow: hidden;
             border: 2px solid #ffffff; cursor: pointer; transition: var(--transition-3d); background: #ffffff;
+            flex-shrink: 0;
         }
         .profile-header-btn:hover {
             transform: scale(1.08) translateY(-2px);
@@ -671,16 +725,166 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
         }
         .animate-fade-in { animation: fadeIn 0.6s ease-out; }
 
-        @media (max-width: 992px) {
-            .main-content { margin-left: 0; padding: 20px; }
-            .sidebar { transform: translateX(-100%); }
+        /* ============================================
+           RESPONSIVE BREAKPOINTS
+           ============================================ */
+
+        /* Tablet & below */
+        @media (max-width: 991.98px) {
+            .sidebar {
+                transform: translateX(-100%);
+                box-shadow: 4px 0 24px rgba(0,0,0,0.08);
+            }
+            .sidebar.show-mobile {
+                transform: translateX(0);
+            }
+            .mobile-header {
+                display: flex;
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 80px 20px 30px;
+            }
+            .dashboard-header {
+                margin-bottom: 25px;
+            }
+            .dashboard-header h3 {
+                font-size: 1.25rem;
+            }
+            .form-card {
+                padding: 24px;
+            }
+        }
+
+        /* Small phones */
+        @media (max-width: 575.98px) {
+            .main-content {
+                padding: 70px 14px 20px;
+            }
+            .dashboard-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .dashboard-header > div:last-child {
+                width: 100%;
+                justify-content: space-between;
+            }
+            .form-card {
+                padding: 20px 16px;
+                border-radius: 16px;
+            }
+            .form-section-title {
+                font-size: 1rem;
+                margin-bottom: 18px;
+            }
+            .form-input-custom, .form-select-custom {
+                padding: 12px 14px;
+                font-size: .88rem;
+                border-radius: 12px;
+            }
+            .form-label-custom {
+                font-size: .7rem;
+            }
+            .form-textarea-custom {
+                padding: 12px 14px;
+                min-height: 80px;
+                border-radius: 12px;
+            }
+            
+            /* Foto upload smaller */
+            .foto-upload-wrapper {
+                width: 100px;
+                height: 100px;
+            }
+
+            /* HP input */
+            .hp-prefix {
+                padding: 12px 10px 12px 14px;
+                font-size: .85rem;
+            }
+            .hp-input {
+                padding: 12px 14px;
+                font-size: .88rem;
+            }
+
+            /* Radio cards */
+            .radio-card {
+                min-height: 60px;
+                padding: 8px 6px;
+            }
+            .radio-card .radio-icon {
+                font-size: 1.1rem;
+            }
+            .radio-card .radio-text {
+                font-size: .7rem;
+            }
+
+            /* Date picker */
+            .date-picker-wrapper .form-input-custom {
+                padding-right: 40px;
+            }
+
+            /* Password toggle */
+            .toggle-password {
+                right: 12px;
+            }
+
+            /* Buttons stack */
+            .btn-group-action {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .btn-simpan, .btn-batal {
+                width: 100%;
+                justify-content: center;
+                padding: 14px;
+                font-size: .9rem;
+            }
+
+            /* Error text */
+            .error-text {
+                font-size: .75rem;
+            }
+        }
+
+        /* Extra small */
+        @media (max-width: 359.98px) {
+            .mobile-header {
+                padding: 0 14px;
+            }
+            .mobile-brand {
+                font-size: 1.1rem;
+            }
+            .form-card {
+                padding: 16px 12px;
+            }
+        }
+
+        /* Large screens */
+        @media (min-width: 1400px) {
+            .form-card {
+                max-width: 1000px;
+            }
         }
     </style>
 </head>
 <body>
 
+    <!-- MOBILE HEADER -->
+    <div class="mobile-header">
+        <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu">
+            <i class="bi bi-list"></i>
+        </button>
+        <a href="../../index.php" class="mobile-brand">SpotLight.</a>
+        <div style="width:40px;"></div>
+    </div>
+
+    <!-- SIDEBAR OVERLAY -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
     <!-- SIDEBAR -->
-    <div class="sidebar">
+    <div class="sidebar" id="sidebar">
         <div class="sidebar-menu-wrapper">
             <a href="../../index.php" class="sidebar-brand">
                 SpotLight.<br><span>Panel Administrator</span>
@@ -715,10 +919,10 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
                     </a>
                     <div class="submenu" id="submenuTransaksi">
                         <ul class="list-unstyled">
-<li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
-<li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
-<li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
-<li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
+                            <li><a href="../../Transaksi/Pembayaran/list.php" class="submenu-link"><i class="bi bi-credit-card-fill me-2"></i>Verifikasi Pembayaran DP</a></li>
+                            <li><a href="../../Transaksi/Order/list.php" class="submenu-link"><i class="bi bi-bag-check-fill me-2"></i>Booking Customer</a></li>
+                            <li><a href="../../Transaksi/Pelunasan/list.php" class="submenu-link"><i class="bi bi-cash-stack me-2"></i>Verifikasi Pelunasan</a></li>
+                            <li><a href="../../Transaksi/Penjualan/list.php" class="submenu-link"><i class="bi bi-bag-fill me-2"></i>Penjualan Barang Cetak</a></li>
                         </ul>
                     </div>
                 </li>
@@ -780,14 +984,14 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
                     Informasi Akun
                 </div>
                 <div class="row g-3 mb-4">
-                    <div class="col-md-6">
+                    <div class="col-12 col-md-6">
                         <label class="form-label-custom">Username <span class="text-danger">*</span></label>
                         <input type="text" name="username" class="form-input-custom <?= $error_username ? 'is-invalid' : '' ?>" 
                                placeholder="Masukkan username" 
                                value="<?= htmlspecialchars($data['Username_Pelanggan'] ?? '') ?>" required>
                         <?php if($error_username): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_username ?></div><?php endif; ?>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-12 col-md-6">
                         <label class="form-label-custom">Kata Sandi Baru <small class="text-muted">(Kosongkan jika tidak diubah)</small></label>
                         <div class="password-wrapper">
                             <input type="password" name="password" id="inputPassword" class="form-input-custom <?= $error_password ? 'is-invalid' : '' ?>" 
@@ -811,14 +1015,14 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
                                value="<?= htmlspecialchars($data['Nama_Pelanggan'] ?? '') ?>" required>
                         <?php if($error_nama): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_nama ?></div><?php endif; ?>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-12 col-md-6">
                         <label class="form-label-custom">Email Aktif <span class="text-danger">*</span></label>
                         <input type="email" name="email" class="form-input-custom <?= $error_email ? 'is-invalid' : '' ?>" 
                                placeholder="contoh: pelanggan@email.com" 
                                value="<?= htmlspecialchars($data['Email_Pelanggan'] ?? '') ?>" required>
                         <?php if($error_email): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_email ?></div><?php endif; ?>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-12 col-md-6">
                         <label class="form-label-custom">Nomor Telepon <span class="text-danger">*</span></label>
                         <div class="hp-input-wrapper">
                             <span class="hp-prefix">+62</span>
@@ -829,7 +1033,7 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
                         <?php if($error_hp): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_hp ?></div><?php endif; ?>
                         <small class="text-muted" style="font-size: 0.7rem;">Format: +62 81234567890</small>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-12 col-md-6">
                         <label class="form-label-custom">Jenis Kelamin <span class="text-danger">*</span></label>
                         <div class="radio-group">
                             <label class="radio-card <?= ($data['Jenis_Kelamin'] ?? '') == 'Laki-laki' ? 'active' : '' ?>">
@@ -847,7 +1051,7 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
                         </div>
                         <?php if($error_jk): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_jk ?></div><?php endif; ?>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-12 col-md-6">
                         <label class="form-label-custom">Tanggal Lahir <span class="text-danger">*</span></label>
                         <div class="date-picker-wrapper" onclick="document.getElementById('dateInput').showPicker()">
                             <input type="text" name="tanggal_lahir_display" id="dateDisplay" class="form-input-custom <?= $error_dob ? 'is-invalid' : '' ?>" 
@@ -877,7 +1081,7 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
                     Status Akun
                 </div>
                 <div class="row g-3 mb-4">
-                    <div class="col-md-6">
+                    <div class="col-12 col-md-6">
                         <label class="form-label-custom">Status Pelanggan</label>
                         <select name="status" class="form-select-custom">
                             <option value="1" <?= ($data['Status'] ?? 1) == 1 ? 'selected' : '' ?>>🟢 Aktif – Bisa login & booking</option>
@@ -932,6 +1136,22 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
     <script>
+        // Toggle Sidebar Mobile
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.toggle('show-mobile');
+            overlay.classList.toggle('active');
+            document.body.style.overflow = sidebar.classList.contains('show-mobile') ? 'hidden' : '';
+        }
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 991) {
+                document.getElementById('sidebar').classList.remove('show-mobile');
+                document.getElementById('sidebarOverlay').classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        });
+
         // Toggle Submenu
         document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
             button.addEventListener('click', function(e) {

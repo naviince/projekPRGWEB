@@ -78,8 +78,7 @@ if (!$properti) {
 }
 
 // =====================================================
-// AMBIL DAFTAR RUANGAN (UNTUK DROPDOWN)
-// *Penyesuaian: Menggunakan Deskripsi, Kapasitas_Ruangan dihapus sesuai skema DB baru
+// AMBIL DAFTAR RUANGAN
 // =====================================================
 $daftar_ruangan = safe_sqlsrv_fetch_all($conn,
     "SELECT ID_Ruangan, Nama_Ruangan, Deskripsi 
@@ -90,10 +89,9 @@ $daftar_ruangan = safe_sqlsrv_fetch_all($conn,
 );
 
 // =====================================================
-// KATEGORI PROPERTI (DAFTAR TETAP)
+// KATEGORI PROPERTI
 // =====================================================
 $daftar_kategori = ['Furniture', 'Backdrop', 'Lighting', 'Dekorasi', 'Kostum', 'Lainnya'];
-// Tambahkan kategori lama jika tidak ada di daftar (data lama/custom)
 if (!empty($properti['Kategori_Properti']) && !in_array($properti['Kategori_Properti'], $daftar_kategori)) {
     $daftar_kategori[] = $properti['Kategori_Properti'];
 }
@@ -109,11 +107,8 @@ if (isset($_POST['update'])) {
     $nama       = trim($_POST['nama_properti'] ?? '');
     $kategori   = trim($_POST['kategori'] ?? '');
     $deskripsi  = trim($_POST['deskripsi'] ?? '');
-    
-    // Keamanan status: Menjaga status lama jika input status tidak dikirim lewat form
     $status     = isset($_POST['status']) ? (int)$_POST['status'] : (int)$properti['Status'];
 
-    // --- VALIDASI SERVER-SIDE (KUAT) ---
     if ($id_ruangan <= 0) {
         $error = "Ruangan wajib dipilih!";
     } elseif (empty($nama)) {
@@ -127,7 +122,6 @@ if (isset($_POST['update'])) {
     } elseif (strlen($deskripsi) > 255) {
         $error = "Deskripsi maksimal 255 karakter!";
     } else {
-        // --- CEK RUANGAN VALID ---
         $cek_ruangan = safe_sqlsrv_fetch($conn,
             "SELECT COUNT(*) as total FROM Ruangan WHERE ID_Ruangan = ? AND Is_Deleted = 0",
             [$id_ruangan]
@@ -135,7 +129,6 @@ if (isset($_POST['update'])) {
         if (($cek_ruangan['total'] ?? 0) == 0) {
             $error = "Ruangan yang dipilih tidak valid!";
         } else {
-            // --- CEK DUPLIKAT NAMA DALAM RUANGAN YANG SAMA (kecuali milik sendiri) ---
             $cek_dup = safe_sqlsrv_fetch($conn, 
                 "SELECT COUNT(*) as total FROM Properti WHERE Nama_Properti = ? AND ID_Ruangan = ? AND ID_Properti <> ? AND Is_Deleted = 0", 
                 [$nama, $id_ruangan, $id]
@@ -143,7 +136,6 @@ if (isset($_POST['update'])) {
             if (($cek_dup['total'] ?? 0) > 0) {
                 $error = "Properti '{$nama}' sudah digunakan pada ruangan tersebut!";
             } else {
-                // --- PROSES FOTO ---
                 $foto_lama = $properti['Foto_Properti'] ?? '';
                 $foto_baru = $foto_lama;
                 $upload_path = '';
@@ -187,7 +179,6 @@ if (isset($_POST['update'])) {
                 }
 
                 if ($error == "") {
-                    // --- UPDATE PROPERTI MENGGUNAKAN STORED PROCEDURE (sp_UpdateProperti) ---
                     $sql_update = "EXEC sp_UpdateProperti ?, ?, ?, ?, ?, ?, ?, ?";
                     $params_update = [
                         $id,
@@ -206,16 +197,11 @@ if (isset($_POST['update'])) {
                         $error = "Gagal update properti: " . print_r(sqlsrv_errors(), true);
                     } else {
                         sqlsrv_free_stmt($stmt_update);
-
-                        // Hapus foto lama kalau berhasil ganti
                         if ($hapus_foto_lama && !empty($foto_lama) && $foto_lama != 'default_properti.jpg') {
                             $old_path = "../../assets/img/properti/" . $foto_lama;
                             if (file_exists($old_path)) unlink($old_path);
                         }
-
                         $success = true;
-
-                        // Refresh data
                         $properti = safe_sqlsrv_fetch($conn, "SELECT * FROM Properti WHERE ID_Properti = ?", [$id]);
                     }
                 }
@@ -229,9 +215,9 @@ if (isset($_POST['update'])) {
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Edit Properti – SpotLight Studio</title>
-
+    <link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -251,6 +237,7 @@ if (isset($_POST['update'])) {
             --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
+        * { -webkit-tap-highlight-color: transparent; }
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
             background-color: var(--body-bg);
@@ -258,6 +245,7 @@ if (isset($_POST['update'])) {
             overflow-x: hidden;
         }
 
+        /* SIDEBAR */
         .sidebar {
             width: 260px;
             height: 100vh;
@@ -269,7 +257,8 @@ if (isset($_POST['update'])) {
             flex-direction: column;
             justify-content: space-between;
             padding: 30px 20px;
-            z-index: 100;
+            z-index: 1040;
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .sidebar-brand {
             font-weight: 800; font-size: 1.5rem;
@@ -309,14 +298,67 @@ if (isset($_POST['update'])) {
         }
         .btn-logout:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.2); }
 
+        /* SIDEBAR OVERLAY */
+        .sidebar-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            backdrop-filter: blur(2px);
+            z-index: 1035;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        .sidebar-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* MOBILE HEADER */
+        .mobile-header {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 60px;
+            background: #fff;
+            border-bottom: 1px solid rgba(255,228,233,.8);
+            z-index: 1020;
+            padding: 0 20px;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .mobile-brand {
+            font-weight: 800;
+            font-size: 1.25rem;
+            color: var(--p-pink);
+            text-decoration: none;
+            letter-spacing: -0.5px;
+        }
+        .hamburger-btn {
+            width: 40px; height: 40px;
+            border-radius: 10px; border: none;
+            background: var(--s-pink);
+            color: var(--p-pink);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            cursor: pointer;
+            transition: var(--transition-3d);
+        }
+        .hamburger-btn:active { transform: scale(0.92); }
+
         .main-content { margin-left: 260px; padding: 40px; min-height: 100vh; }
         .dashboard-header {
             display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 35px;
+            flex-wrap: wrap;
+            gap: 15px;
         }
         .profile-header-btn {
             width: 44px; height: 44px; border-radius: 50%; overflow: hidden;
             border: 2px solid #ffffff; cursor: pointer; transition: var(--transition-3d); background: #ffffff;
+            flex-shrink: 0;
         }
         .profile-header-btn:hover {
             transform: scale(1.08) translateY(-2px);
@@ -328,6 +370,7 @@ if (isset($_POST['update'])) {
         .breadcrumb-custom {
             display: flex; align-items: center; gap: 8px;
             margin-bottom: 25px; font-size: 0.85rem; font-weight: 600;
+            flex-wrap: wrap;
         }
         .breadcrumb-custom a { color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
         .breadcrumb-custom a:hover { color: var(--p-pink); }
@@ -485,16 +528,198 @@ if (isset($_POST['update'])) {
         }
         .fade-in-up { animation: fadeIn 0.5s ease-out; }
 
-        @media (max-width: 992px) {
-            .main-content { margin-left: 0; padding: 20px; }
-            .sidebar { transform: translateX(-100%); }
+        /* ============================================
+           RESPONSIVE BREAKPOINTS
+           ============================================ */
+
+        /* Tablet & below */
+        @media (max-width: 991.98px) {
+            .sidebar {
+                transform: translateX(-100%);
+                box-shadow: 4px 0 24px rgba(0,0,0,0.08);
+            }
+            .sidebar.show-mobile {
+                transform: translateX(0);
+            }
+            .mobile-header {
+                display: flex;
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 80px 20px 30px;
+            }
+            .dashboard-header {
+                margin-bottom: 25px;
+            }
+            .dashboard-header h3 {
+                font-size: 1.25rem;
+            }
+            .form-card-header {
+                padding: 24px;
+            }
+            .form-card-body {
+                padding: 24px;
+            }
+            .form-card-header h4 {
+                font-size: 1.15rem;
+            }
+            .breadcrumb-custom {
+                margin-bottom: 18px;
+            }
+        }
+
+        /* Small phones */
+        @media (max-width: 575.98px) {
+            .main-content {
+                padding: 70px 14px 20px;
+            }
+            .dashboard-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .dashboard-header > div:last-child {
+                width: 100%;
+                justify-content: space-between;
+            }
+            .form-card {
+                border-radius: 16px;
+            }
+            .form-card-header {
+                padding: 20px;
+            }
+            .form-card-header h4 {
+                font-size: 1.1rem;
+            }
+            .form-card-header p {
+                font-size: .8rem;
+            }
+            .form-card-body {
+                padding: 20px 16px;
+            }
+            .form-control-custom, .form-select-custom {
+                padding: 12px 14px;
+                font-size: .88rem;
+                border-radius: 12px;
+            }
+            .form-label {
+                font-size: .7rem;
+            }
+            
+            /* Current foto */
+            .current-foto-box {
+                border-radius: 12px;
+            }
+            .current-foto-box img {
+                max-height: 160px;
+            }
+
+            /* Status toggle stack */
+            .status-toggle-group {
+                flex-direction: column;
+            }
+            .status-option {
+                display: flex;
+                align-items: center;
+                justify-content: flex-start;
+                gap: 12px;
+                text-align: left;
+                padding: 12px 14px;
+            }
+            .status-option .status-icon {
+                margin-bottom: 0;
+                font-size: 1.1rem;
+            }
+            .status-option .status-label {
+                font-size: .8rem;
+            }
+            .status-option .status-desc {
+                display: none;
+            }
+
+            /* Buttons full width stack */
+            .d-flex.gap-3.mt-4 {
+                flex-direction: column;
+                gap: 10px !important;
+            }
+            .btn-submit, .btn-batal {
+                width: 100%;
+                justify-content: center;
+                padding: 13px;
+                font-size: .9rem;
+            }
+
+            /* File upload */
+            .file-upload-zone {
+                padding: 20px 14px;
+            }
+            .file-upload-zone i {
+                font-size: 1.6rem;
+            }
+            .file-upload-zone p {
+                font-size: .8rem;
+            }
+
+            /* Ruangan info box */
+            .ruangan-info-box {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+                padding: 14px;
+            }
+
+            /* Alert */
+            .alert-custom {
+                font-size: .78rem;
+                padding: 12px 14px;
+            }
+
+            /* Breadcrumb */
+            .breadcrumb-custom {
+                gap: 4px;
+            }
+            .breadcrumb-custom a, .breadcrumb-custom .active {
+                font-size: .75rem;
+            }
+        }
+
+        /* Extra small */
+        @media (max-width: 359.98px) {
+            .mobile-header {
+                padding: 0 14px;
+            }
+            .mobile-brand {
+                font-size: 1.1rem;
+            }
+            .form-card-body {
+                padding: 16px 12px;
+            }
+        }
+
+        /* Large screens */
+        @media (min-width: 1400px) {
+            .main-content {
+                padding: 40px 60px;
+            }
         }
     </style>
 </head>
 <body>
 
+    <!-- MOBILE HEADER -->
+    <div class="mobile-header">
+        <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu">
+            <i class="bi bi-list"></i>
+        </button>
+        <a href="../../index.php" class="mobile-brand">SpotLight.</a>
+        <div style="width:40px;"></div>
+    </div>
+
+    <!-- SIDEBAR OVERLAY -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
     <!-- SIDEBAR -->
-    <div class="sidebar">
+    <div class="sidebar" id="sidebar">
         <div class="sidebar-menu-wrapper">
             <a href="../../index.php" class="sidebar-brand">
                 SpotLight.<br><span>Panel Administrator</span>
@@ -598,7 +823,7 @@ if (isset($_POST['update'])) {
                 <form method="POST" enctype="multipart/form-data" id="formProperti">
                     <div class="row">
                         <!-- Pilih Ruangan -->
-                        <div class="col-md-12 mb-4">
+                        <div class="col-12 col-md-12 mb-4">
                             <label class="form-label">Ruangan <span class="required">*</span></label>
                             <select name="id_ruangan" id="id_ruangan" class="form-select-custom" required onchange="updateRuanganInfo()">
                                 <option value="">-- Pilih Ruangan --</option>
@@ -625,7 +850,7 @@ if (isset($_POST['update'])) {
 
                     <div class="row">
                         <!-- Nama Properti -->
-                        <div class="col-md-8 mb-4">
+                        <div class="col-12 col-md-8 mb-4">
                             <label class="form-label">Nama Properti <span class="required">*</span></label>
                             <input type="text" name="nama_properti" class="form-control-custom" required 
                                    maxlength="100" placeholder="Contoh: Sofa Beludru Pink"
@@ -636,7 +861,7 @@ if (isset($_POST['update'])) {
                         </div>
 
                         <!-- Kategori -->
-                        <div class="col-md-4 mb-4">
+                        <div class="col-12 col-md-4 mb-4">
                             <label class="form-label">Kategori <span class="required">*</span></label>
                             <select name="kategori" class="form-select-custom" required>
                                 <option value="">-- Pilih Kategori --</option>
@@ -713,9 +938,52 @@ if (isset($_POST['update'])) {
 
     </div>
 
+    <!-- MODAL PROFILE BIODATA -->
+    <div class="modal fade" id="modalBiodataAdmin" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); background: #fff;">
+          <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center"><h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-badge-fill text-danger me-2"></i>Profil Anda</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+          <div class="modal-body px-4 pb-4 pt-3">
+            <div class="text-center mb-4">
+              <div class="profile-preview-box" style="width: 100px; height: 100px; border: 3px solid var(--s-pink); margin: 0 auto; border-radius: 50%; overflow: hidden;"><img src="<?= $foto_admin_src ?>" alt="Foto Profil" style="width: 100%; height: 100%; object-fit: cover;"></div>
+              <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_admin) ?></h5><span class="badge bg-danger px-3 py-1 text-white text-uppercase" style="font-size: 0.72rem; border-radius: 50px; font-weight: 700;">Admin</span>
+            </div>
+            <div class="card-3d p-3 border-0 mb-3" style="border-radius: 20px; background-color: #f8fafc;">
+              <div class="row g-3">
+                <div class="col-12"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Email Karyawan</small><span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($admin_data['Email_Karyawan'] ?? 'admin@spotlight.com') ?></span></div>
+                <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Hak Akses Sistem</small><span class="fw-bold text-dark" style="font-size: 0.85rem;">Administrator (Admin)</span></div>
+              </div>
+            </div>
+            <button class="btn btn-reg-header shadow-sm py-3 mt-0 w-100" data-bs-dismiss="modal" style="border-radius: 14px !important; background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #fff; border: none; font-weight: 700;">Tutup</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
     <script>
+        // Toggle Sidebar Mobile
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.toggle('show-mobile');
+            overlay.classList.toggle('active');
+            document.body.style.overflow = sidebar.classList.contains('show-mobile') ? 'hidden' : '';
+        }
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 991) {
+                document.getElementById('sidebar').classList.remove('show-mobile');
+                document.getElementById('sidebarOverlay').classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        });
+
+        function bukaModalBiodata() {
+            const modal = new bootstrap.Modal(document.getElementById('modalBiodataAdmin'));
+            modal.show();
+        }
+
         // Toggle Submenu
         document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
             button.addEventListener('click', function(e) {
@@ -743,7 +1011,6 @@ if (isset($_POST['update'])) {
         }
 
         // Update Info Ruangan Terpilih
-        // *Penyesuaian: Mengambil data-deskripsi menggantikan data-kapasitas yang sudah dihapus dari DB
         function updateRuanganInfo() {
             const select = document.getElementById('id_ruangan');
             const box = document.getElementById('ruanganInfoBox');

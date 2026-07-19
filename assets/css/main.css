@@ -21,11 +21,14 @@
   /* Palette Warna Foto Studio */
   --background-color: #ffffff;
   --default-color: #444444;
-  --heading-color: #2d0a18; /* Cokelat tua keunguan */
-  --accent-color: #D82B6B;  /* Pink Magenta */
+  --heading-color: #2d0a18;
+  /* Cokelat tua keunguan */
+  --accent-color: #D82B6B;
+  /* Pink Magenta */
   --surface-color: #ffffff;
   --contrast-color: #ffffff;
-  --light-pink: #FDF2F5;    /* Background pink muda */
+  --light-pink: #FDF2F5;
+  /* Background pink muda */
 }
 
 .light-background {
@@ -33,28 +36,36 @@
 }
 
 .dark-background {
-  --background-color: #2D1E24; /* Hitam elegan untuk banner CTA */
+  --background-color: #2D1E24;
+  /* Hitam elegan untuk banner CTA */
   --default-color: #ffffff;
   --heading-color: #ffffff;
 }
 
 /* Global Colors - The following color variables are used throughout the website. Updating them here will change the color scheme of the entire website */
 /* Modifikasi Global Colors untuk Tema Gelap */
-:root { 
-  --background-color: #ffffff; /* Putih bersih sesuai web Selfie Time */
-  --default-color: #444444;    /* Abu-abu gelap untuk teks agar mudah dibaca */
-  --heading-color: #e91e63;    /* Pink khas Selfie Time */
-  --accent-color: #e91e63;     /* Pink khas Selfie Time */
-  --surface-color: #ffffff;    /* Putih untuk kartu */
-  --contrast-color: #ffffff; 
+:root {
+  --background-color: #ffffff;
+  /* Putih bersih sesuai web Selfie Time */
+  --default-color: #444444;
+  /* Abu-abu gelap untuk teks agar mudah dibaca */
+  --heading-color: #e91e63;
+  /* Pink khas Selfie Time */
+  --accent-color: #e91e63;
+  /* Pink khas Selfie Time */
+  --surface-color: #ffffff;
+  /* Putih untuk kartu */
+  --contrast-color: #ffffff;
 }
 
 /* Nav Menu Colors - The following color variables are used specifically for the navigation menu. They are separate from the global colors to allow for more customization options */
 :root {
-  --nav-color: #444444;              /* Teks menu gelap */
-  --nav-hover-color: #e91e63;        /* Hover jadi pink */
-  --nav-mobile-background-color: #ffffff; 
-  --nav-dropdown-background-color: #ffffff; 
+  --nav-color: #444444;
+  /* Teks menu gelap */
+  --nav-hover-color: #e91e63;
+  /* Hover jadi pink */
+  --nav-mobile-background-color: #ffffff;
+  --nav-dropdown-background-color: #ffffff;
   --nav-dropdown-color: #444444;
   --nav-dropdown-hover-color: #e91e63;
 }
@@ -64,12 +75,14 @@
 
 /* Cari baris 44 dan ganti dengan ini */
 .light-background {
-  --background-color: #fff0f5; /* Pink sangat muda untuk selingan section */
+  --background-color: #fff0f5;
+  /* Pink sangat muda untuk selingan section */
   --surface-color: #ffffff;
 }
 
 .dark-background {
-  --background-color: #e91e63; /* Pink pekat untuk Top Bar */
+  --background-color: #e91e63;
+  /* Pink pekat untuk Top Bar */
   --default-color: #ffffff;
   --heading-color: #ffffff;
   --surface-color: #ffffff;
@@ -174,7 +187,8 @@ h6 {
 }
 
 .header .topbar {
-  background-color: #ff4d94 !important; /* Warna Pink Magenta */
+  background-color: #ff4d94 !important;
+  /* Warna Pink Magenta */
 }
 
 /* Pastikan teks dan icon tetap putih agar terlihat jelas */
@@ -184,6 +198,7 @@ h6 {
 .header .topbar .social-links a {
   color: #ffffff !important;
 }
+
 .header .topbar .contact-info i {
   font-style: normal;
   color: var(--contrast-color);
@@ -209,7 +224,8 @@ h6 {
 }
 
 .header .topbar .social-links a:hover {
-  color: #1a050f !important; /* Berubah jadi pink gelap saat disentuh */
+  color: #1a050f !important;
+  /* Berubah jadi pink gelap saat disentuh */
 }
 
 .header .topbar .social-links a {
@@ -911,7 +927,8 @@ section,
 }
 
 .hero .hero-content .content p {
-  color: #666666; /* Teks abu-abu untuk teks deskripsi */
+  color: #666666;
+  /* Teks abu-abu untuk teks deskripsi */
 }
 
 .hero .hero-content .content p {
@@ -985,11 +1002,15 @@ section,
 }
 
 .hero .hero-content .hero-image .floating-card {
-  background: rgba(10, 46, 41, 0.95); /* Hijau gelap yang lebih solid */
-  border: 1px solid rgba(255, 255, 255, 0.2); /* Border terang agar batas kotak terlihat jelas */
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6); /* Shadow lebih gelap agar kotak "mengapung" */
+  background: rgba(10, 46, 41, 0.95);
+  /* Hijau gelap yang lebih solid */
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  /* Border terang agar batas kotak terlihat jelas */
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
+  /* Shadow lebih gelap agar kotak "mengapung" */
   backdrop-filter: blur(15px);
-  bottom: 20px; /* Sesuaikan posisi jika perlu */
+  bottom: 20px;
+  /* Sesuaikan posisi jika perlu */
 }
 
 .hero .hero-content .hero-image .floating-card .card-content {
@@ -1124,7 +1145,8 @@ section,
 }
 
 .featured-services p {
-  color: rgba(255, 255, 255, 0.7); /* Putih abu-abu agar halus */
+  color: rgba(255, 255, 255, 0.7);
+  /* Putih abu-abu agar halus */
 }
 
 .featured-services .service-item::before {
@@ -1141,8 +1163,7 @@ section,
 }
 
 .featured-services .service-item:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 20px 40px color-mix(in srgb, var(--default-color), transparent 90%);
+  transform: translateY(-4px);
 }
 
 .featured-services .service-item:hover::before {
@@ -1948,8 +1969,7 @@ section,
 }
 
 .services .service-item:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+  transform: translateY(-4px);
 }
 
 .services .service-item:hover .service-icon i {
@@ -2572,8 +2592,7 @@ section,
 }
 
 .team .member-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 12px 35px color-mix(in srgb, var(--default-color), transparent 80%);
+  transform: translateY(-4px);
 }
 
 .team .member-card:hover .member-image-wrapper img {
@@ -2760,8 +2779,7 @@ section,
 }
 
 .pricing .price-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 14px 40px color-mix(in srgb, var(--default-color), transparent 88%);
+  transform: translateY(-2px);
   border-color: color-mix(in srgb, var(--accent-color), transparent 70%);
 }
 
@@ -4912,7 +4930,7 @@ section,
   position: relative;
   border-radius: 25px;
   overflow: hidden;
-  box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
 }
 
 .main-hero-img {
@@ -4925,7 +4943,8 @@ section,
   position: absolute;
   bottom: 20px;
   left: 20px;
-  background: rgba(233, 30, 99, 0.9); /* Efek kaca gelap */
+  background: rgba(233, 30, 99, 0.9);
+  /* Efek kaca gelap */
   backdrop-filter: blur(8px);
   padding: 12px 20px;
   border-radius: 12px;
@@ -4936,8 +4955,10 @@ section,
 .image-badge .studio-name,
 .image-badge .studio-tagline,
 .image-badge h4 {
-  color: #ffffff !important; /* !important memastikan warna ini yang menang */
-  opacity: 1; /* Pastikan tidak transparan */
+  color: #ffffff !important;
+  /* !important memastikan warna ini yang menang */
+  opacity: 1;
+  /* Pastikan tidak transparan */
 }
 
 .image-badge .studio-tagline {
@@ -4948,8 +4969,10 @@ section,
 
 /* Kotak Metric di Bawah Foto */
 .metric-card {
-  background: #ffffff; /* Sesuai variabel surface-color */
-  border: 2px solid #f8bbd0; /* Border tipis agar terlihat batasnya */
+  background: #ffffff;
+  /* Sesuai variabel surface-color */
+  border: 2px solid #f8bbd0;
+  /* Border tipis agar terlihat batasnya */
   padding: 15px;
   border-radius: 15px;
   transition: 0.3s;
@@ -4957,20 +4980,22 @@ section,
 }
 
 .metric-card:hover {
-  border-color: #ff4d94; /* Highlight pink saat hover */
+  border-color: #ff4d94;
+  /* Highlight pink saat hover */
   transform: translateY(-3px);
 }
 
 .metric-label {
   display: block;
   font-size: 12px;
-  color: #888888; /* Pink muda */
+  color: #888888;
+  /* Pink muda */
   text-transform: capitalize;
   margin-bottom: 4px;
 }
 
 .metric-value {
-  color: #e91e63; 
+  color: #e91e63;
   font-size: 16px;
   font-weight: 700;
   margin: 0;
@@ -4981,6 +5006,7 @@ section,
   .metric-value {
     font-size: 12px;
   }
+
   .image-badge .studio-tagline {
     font-size: 14px;
   }
@@ -4992,21 +5018,27 @@ section,
 }
 
 .btn-primary:hover {
-  background: #ffc107; /* Kuning cerah saat di-hover agar "Pop-out" */
+  background: #ffc107;
+  /* Kuning cerah saat di-hover agar "Pop-out" */
   color: #000;
   box-shadow: 0 8px 20px rgba(255, 193, 7, 0.4);
 }
+
 .logo .img-logo {
-  max-height: 40px; /* Atur tinggi logo */
-  margin-right: 8px; /* Jarak ke tulisan */
+  max-height: 40px;
+  /* Atur tinggi logo */
+  margin-right: 8px;
+  /* Jarak ke tulisan */
   width: auto;
 }
 
 /* Custom Features Section Styling */
 .features .feature-box {
-  background-color: #FFF5F7; /* Warna latar kartu soft pink */
+  background-color: #FFF5F7;
+  /* Warna latar kartu soft pink */
   padding: 40px 30px;
-  border-radius: 25px; /* Sudut sangat membulat */
+  border-radius: 25px;
+  /* Sudut sangat membulat */
   height: 100%;
   transition: transform 0.3s ease;
   text-align: left;
@@ -5095,20 +5127,22 @@ section,
 }
 
 .navmenu .btn-nav-register:hover {
-  background: #ff4d94; /* Pink sedikit lebih terang saat hover */
+  background: #ff4d94;
+  /* Pink sedikit lebih terang saat hover */
   transform: translateY(-2px);
   box-shadow: 0 6px 15px rgba(216, 43, 107, 0.3);
 }
 
 /* Penyesuaian untuk tampilan Mobile */
 @media (max-width: 1199px) {
-  .navmenu .nav-login a, 
+
+  .navmenu .nav-login a,
   .navmenu .btn-nav-register {
     margin: 10px 20px !important;
     display: inline-block;
     text-align: center;
   }
-  
+
   .navmenu .nav-login a {
     border: none;
     padding: 10px 20px !important;
@@ -5116,9 +5150,12 @@ section,
 }
 
 .social-btn {
-  width: 100%;             /* Memastikan lebar tombol sama dengan tombol Masuk */
-  max-width: 450px;        /* Membatasi lebar maksimal agar tidak terlalu melar */
-  margin: 10px auto 0 auto;/* Menempatkan tombol tepat di tengah secara horizontal */
+  width: 100%;
+  /* Memastikan lebar tombol sama dengan tombol Masuk */
+  max-width: 450px;
+  /* Membatasi lebar maksimal agar tidak terlalu melar */
+  margin: 10px auto 0 auto;
+  /* Menempatkan tombol tepat di tengah secara horizontal */
   padding: 12px;
   border: 1px solid #eee;
   background: white;
@@ -5165,18 +5202,36 @@ section,
   margin-bottom: 25px;
 }
 
-.features .icon-wrapper i { font-size: 24px; }
-.features .icon-pink { background: #FCE4EC; color: #C2185B; }
-.features .icon-blue { background: #E3F2FD; color: #1976D2; }
-.features .icon-green { background: #E8F5E9; color: #2E7D32; }
-.features .icon-purple { background: #F3E5F5; color: #8E24AA; }
+.features .icon-wrapper i {
+  font-size: 24px;
+}
+
+.features .icon-pink {
+  background: #FCE4EC;
+  color: #C2185B;
+}
+
+.features .icon-blue {
+  background: #E3F2FD;
+  color: #1976D2;
+}
+
+.features .icon-green {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.features .icon-purple {
+  background: #F3E5F5;
+  color: #8E24AA;
+}
 
 /* --- Paket Foto Terpopuler Styling --- */
 .pricing-card {
   background: #fff;
   border-radius: 25px;
   overflow: hidden;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.03);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -5212,10 +5267,24 @@ section,
   text-align: left;
 }
 
-.pricing-card h3 { font-size: 1.25rem; font-weight: 700; margin: 0; }
-.pricing-card .price { color: #D82B6B; font-weight: 700; font-size: 1.1rem; }
+.pricing-card h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+}
 
-.features-list { list-style: none; padding: 0; margin: 20px 0 30px 0; }
+.pricing-card .price {
+  color: #D82B6B;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.features-list {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0 30px 0;
+}
+
 .features-list li {
   font-size: 0.85rem;
   color: #666;
@@ -5225,7 +5294,8 @@ section,
 }
 
 .features-list li i {
-  color: #4CAF50; /* Warna hijau checklist */
+  color: #4CAF50;
+  /* Warna hijau checklist */
   font-size: 1.1rem;
   margin-right: 10px;
 }
@@ -5244,28 +5314,42 @@ section,
   transition: 0.3s;
 }
 
-.btn-detail-outline:hover { background: #FFF5F7; }
+.btn-detail-outline:hover {
+  background: #FFF5F7;
+}
 
 .btn-detail-outline {
-  display: block;               /* Menjadikan elemen sebagai kotak */
-  width: 100%;                  /* Lebar memenuhi kartu */
-  padding: 12px 0;              /* Jarak atas & bawah */
-  border: 1.5px solid #D82B6B;  /* Garis pinggir pink */
-  color: #D82B6B;               /* Warna tulisan pink */
-  background-color: transparent;/* Latar transparan */
-  border-radius: 12px;          /* Sudut membulat */
-  text-align: center;           /* Teks rata tengah */
-  text-decoration: none;        /* Hapus garis bawah link */
+  display: block;
+  /* Menjadikan elemen sebagai kotak */
+  width: 100%;
+  /* Lebar memenuhi kartu */
+  padding: 12px 0;
+  /* Jarak atas & bawah */
+  border: 1.5px solid #D82B6B;
+  /* Garis pinggir pink */
+  color: #D82B6B;
+  /* Warna tulisan pink */
+  background-color: transparent;
+  /* Latar transparan */
+  border-radius: 12px;
+  /* Sudut membulat */
+  text-align: center;
+  /* Teks rata tengah */
+  text-decoration: none;
+  /* Hapus garis bawah link */
   font-weight: 600;
   font-size: 0.9rem;
   transition: all 0.3s ease;
-  margin-top: auto;             /* Dorong ke paling bawah kartu */
+  margin-top: auto;
+  /* Dorong ke paling bawah kartu */
 }
 
 /* EFEK SAAT DISENTUH (HOVER) */
 .btn-detail-outline:hover {
-  background-color: #D82B6B !important; /* Latar jadi pink pekat */
-  color: #ffffff !important;           /* Tulisan jadi putih */
+  background-color: #D82B6B !important;
+  /* Latar jadi pink pekat */
+  color: #ffffff !important;
+  /* Tulisan jadi putih */
   border-color: #D82B6B;
   transform: translateY(-2px);
 }
@@ -5279,17 +5363,18 @@ section,
   /* Gradasi warna ungu plum ke biru gelap sesuai contoh */
   background: radial-gradient(circle at 20% 35%, #462a34 0%, #212121 60%, #1a1c24 100%);
   padding: 80px 40px;
-  border-radius: 45px; /* Sudut sangat membulat */
+  border-radius: 45px;
+  /* Sudut sangat membulat */
   position: relative;
   overflow: hidden;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
 }
 
 /* Efek cahaya halus di background */
 .cta-modern .cta-box::after {
   content: "";
   position: absolute;
-  top: 0; 
+  top: 0;
   right: 0;
   width: 100%;
   height: 100%;
@@ -5315,7 +5400,8 @@ section,
 
 .cta-modern .btn-cta-pill {
   display: inline-block;
-  background-color: #ff66a1; /* Pink cerah */
+  background-color: #ff66a1;
+  /* Pink cerah */
   color: #ffffff;
   padding: 16px 45px;
   border-radius: 50px;
@@ -5340,9 +5426,11 @@ section,
     border-radius: 30px;
     margin: 0 15px;
   }
+
   .cta-modern .cta-title {
     font-size: 2rem;
   }
+
   .cta-modern .cta-text {
     font-size: 0.95rem;
   }

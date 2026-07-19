@@ -89,6 +89,7 @@ if (!$tcpdf_found) {
     <head>
         <meta charset="UTF-8">
         <title>Laporan Pendapatan - SpotLight Studio</title>
+        <link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
         <style>
             @page { size: A4 landscape; margin: 15mm; }
             body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #1e1e24; }

@@ -59,6 +59,8 @@ $query_laporan = sqlsrv_query($conn, $sql_laporan, [$tgl_mulai, $tgl_selesai]);
 <head>
 <meta charset="UTF-8">
 <title>Cetak Laporan Paket Terfavorit</title>
+<link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
+
 <style>
     body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; color: #333; line-height: 1.4; margin: 30px; }
     
