@@ -162,7 +162,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       .feature-icon-box { width: 55px; height: 55px; font-size: 1.5rem; }
     }
 
-    /* ========== LAYANAN KAMI - LAYOUT BARU (BUKAN BUTTON) ========== */
+    /* ========== LAYANAN KAMI - DENGAN GAMBAR BACKGROUND ========== */
     .services-section { padding: 80px 0; background: linear-gradient(135deg, #ffffff 0%, var(--light-pink) 50%, #ffffff 100%); position: relative; overflow: hidden; }
     .services-section::before {
       content: '';
@@ -209,24 +209,39 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
     .service-item:nth-child(7) { grid-column: span 1; }
     .service-item:nth-child(8) { grid-column: span 1; }
 
+    /* GAMBAR BACKGROUND */
+    .service-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: var(--transition-3d);
+      z-index: 0;
+    }
+    .service-item:hover .service-img {
+      transform: scale(1.12);
+    }
+
+    /* OVERLAY GRADIENT DI ATAS GAMBAR */
     .service-bg {
       position: absolute;
       inset: 0;
-      background: linear-gradient(135deg, var(--primary-pink), #ff6694);
+      background: linear-gradient(180deg, rgba(216,63,103,0.25) 0%, rgba(30,30,36,0.75) 100%);
       transition: var(--transition-3d);
+      z-index: 1;
     }
     .service-item:hover .service-bg {
-      background: linear-gradient(135deg, #ff6694, var(--primary-pink));
+      background: linear-gradient(180deg, rgba(216,63,103,0.40) 0%, rgba(30,30,36,0.85) 100%);
     }
+
+    /* Variasi overlay untuk item tertentu */
     .service-bg-alt {
-      background: linear-gradient(135deg, #ff8fab, var(--primary-pink)) !important;
+      background: linear-gradient(180deg, rgba(255,102,148,0.30) 0%, rgba(30,30,36,0.75) 100%) !important;
     }
-    .service-bg-soft {
-      background: linear-gradient(135deg, #fff0f3, #ffe0e6) !important;
+    .service-item:hover .service-bg-alt {
+      background: linear-gradient(180deg, rgba(255,102,148,0.45) 0%, rgba(30,30,36,0.85) 100%) !important;
     }
-    .service-bg-soft .service-title,
-    .service-bg-soft .service-desc,
-    .service-bg-soft .service-icon { color: var(--primary-pink) !important; }
 
     .service-content {
       position: absolute;
@@ -243,6 +258,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       margin-bottom: 15px;
       opacity: 0.9;
       transition: var(--transition-3d);
+      text-shadow: 0 2px 10px rgba(0,0,0,0.2);
     }
     .service-item:hover .service-icon {
       transform: scale(1.2) rotate(-5deg);
@@ -254,12 +270,14 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       color: #ffffff;
       margin-bottom: 8px;
       line-height: 1.2;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.3);
     }
     .service-desc {
       font-size: 0.85rem;
-      color: rgba(255,255,255,0.85);
+      color: rgba(255,255,255,0.9);
       line-height: 1.5;
       margin: 0;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.3);
     }
 
     /* Decorative pattern overlay */
@@ -268,14 +286,14 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       top: 20px;
       right: 20px;
       font-size: 6rem;
-      color: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.1);
       transform: rotate(-15deg);
       transition: var(--transition-3d);
       z-index: 1;
     }
     .service-item:hover .service-pattern {
       transform: rotate(0deg) scale(1.1);
-      color: rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.2);
     }
 
     @media (max-width: 992px) {
@@ -616,12 +634,12 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
       <nav id="navmenu" class="navmenu">
         <ul>
-          <li><a href="#hero">Beranda</a></li>
-          <li><a href="#about">Tentang</a></li>
-          <li><a href="#services">Layanan</a></li>
-          <li><a href="#pricing">Paket</a></li>
-          <li><a href="#portfolio">Galeri</a></li>
-          <li><a href="#testimonials">Testimoni</a></li>
+          <li><a href="#hero" class="nav-link-scroll">Beranda</a></li>
+          <li><a href="#about" class="nav-link-scroll">Tentang</a></li>
+          <li><a href="#services" class="nav-link-scroll">Layanan</a></li>
+          <li><a href="#pricing" class="nav-link-scroll">Paket</a></li>
+          <li><a href="#portfolio" class="nav-link-scroll">Galeri</a></li>
+          <li><a href="#testimonials" class="nav-link-scroll">Testimoni</a></li>
 
           <li>
             <div class="flag-id" title="Bahasa Indonesia">
@@ -710,7 +728,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       </div>
     </section>
 
-    <!-- LAYANAN KAMI - LAYOUT BENTO GRID BARU -->
+    <!-- LAYANAN KAMI - LAYOUT BENTO GRID DENGAN GAMBAR -->
     <section id="services" class="services-section">
       <div class="container">
         <div class="text-center mb-5" data-aos="fade-up">
@@ -722,6 +740,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
         <div class="service-grid" data-aos="fade-up">
           <!-- Item 1: Foto Studio (Besar) -->
           <div class="service-item">
+            <img src="https://images.unsplash.com/photo-1493863641943-9b68992a8d07?w=800&q=80" class="service-img" alt="Foto Studio">
             <div class="service-bg"></div>
             <i class="bi bi-camera-fill service-pattern"></i>
             <div class="service-content">
@@ -733,6 +752,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
           <!-- Item 2: Prewedding -->
           <div class="service-item">
+            <img src="https://images.unsplash.com/photo-1591604466107-ec97de577aff?w=800&q=80" class="service-img" alt="Prewedding">
             <div class="service-bg service-bg-alt"></div>
             <i class="bi bi-suit-heart-fill service-pattern"></i>
             <div class="service-content">
@@ -744,7 +764,8 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
           <!-- Item 3: Family -->
           <div class="service-item">
-            <div class="service-bg service-bg-soft"></div>
+            <img src="https://images.unsplash.com/photo-1609220136736-443140cffec6?w=800&q=80" class="service-img" alt="Family Portrait">
+            <div class="service-bg"></div>
             <i class="bi bi-people-fill service-pattern"></i>
             <div class="service-content">
               <i class="bi bi-people-fill service-icon"></i>
@@ -755,6 +776,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
           <!-- Item 4: Baby -->
           <div class="service-item">
+            <img src="https://images.unsplash.com/photo-1519689680058-324335c77eba?w=800&q=80" class="service-img" alt="Baby & Kids">
             <div class="service-bg service-bg-alt"></div>
             <i class="bi bi-balloon-fill service-pattern"></i>
             <div class="service-content">
@@ -766,6 +788,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
           <!-- Item 5: Graduation -->
           <div class="service-item">
+            <img src="https://images.unsplash.com/photo-1525921429624-479b6a26d84d?w=800&q=80" class="service-img" alt="Graduation">
             <div class="service-bg"></div>
             <i class="bi bi-mortarboard-fill service-pattern"></i>
             <div class="service-content">
@@ -777,6 +800,7 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
           <!-- Item 6: Event (Lebar) -->
           <div class="service-item">
+            <img src="https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=800&q=80" class="service-img" alt="Event Documentation">
             <div class="service-bg service-bg-alt"></div>
             <i class="bi bi-calendar-event-fill service-pattern"></i>
             <div class="service-content">
@@ -788,7 +812,8 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
           <!-- Item 7: Personal Branding -->
           <div class="service-item">
-            <div class="service-bg service-bg-soft"></div>
+            <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=800&q=80" class="service-img" alt="Personal Branding">
+            <div class="service-bg"></div>
             <i class="bi bi-person-badge-fill service-pattern"></i>
             <div class="service-content">
               <i class="bi bi-person-badge-fill service-icon"></i>
@@ -799,7 +824,8 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
           <!-- Item 8: Dan Lainnya -->
           <div class="service-item">
-            <div class="service-bg"></div>
+            <img src="https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=800&q=80" class="service-img" alt="Dan Lainnya">
+            <div class="service-bg service-bg-alt"></div>
             <i class="bi bi-plus-circle-fill service-pattern"></i>
             <div class="service-content">
               <i class="bi bi-plus-circle-fill service-icon"></i>
@@ -1081,6 +1107,33 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       });
     });
 
+    // ========== NAVBAR ACTIVE STATE ON SCROLL ==========
+    const sections = document.querySelectorAll('section[id]');
+    const navLinks = document.querySelectorAll('.nav-link-scroll');
+
+    function updateActiveNav() {
+      let current = '';
+      const scrollPos = window.scrollY + 120; // offset untuk sticky navbar
+
+      sections.forEach(section => {
+        const sectionTop = section.offsetTop;
+        const sectionHeight = section.offsetHeight;
+        if (scrollPos >= sectionTop && scrollPos < sectionTop + sectionHeight) {
+          current = section.getAttribute('id');
+        }
+      });
+
+      navLinks.forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href') === '#' + current) {
+          link.classList.add('active');
+        }
+      });
+    }
+
+    window.addEventListener('scroll', updateActiveNav);
+    window.addEventListener('load', updateActiveNav);
+
     // ========== PACKAGE SLIDER ARROWS & VISIBILITY CONTROL ==========
     const slider = document.getElementById('packageSlider');
     const prevBtn = document.getElementById('sliderPrev');
@@ -1091,15 +1144,11 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       return item ? item.offsetWidth + 30 : 390;
     }
 
-    // Fungsi untuk memperbarui tampilan/keberadaan tombol panah navigasi slider secara mutlak
     function updateSliderArrows() {
       if (!slider || !prevBtn || !nextBtn) return;
-
       const scrollLeft = slider.scrollLeft;
       const maxScrollLeft = slider.scrollWidth - slider.clientWidth;
 
-      // Menggunakan toleransi 15px untuk sub-pixel rendering pada layar resolusi tinggi (HP/tablet)
-      // Menggunakan display 'none' dan 'flex' agar elemen benar-benar disembunyikan secara fisik
       if (scrollLeft <= 15) {
         prevBtn.style.display = 'none';
       } else {
@@ -1115,26 +1164,19 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
 
     prevBtn.addEventListener('click', () => {
       slider.scrollBy({ left: -getScrollAmount(), behavior: 'smooth' });
-      // Berikan sedikit jeda setelah animasi scroll selesai untuk memperbarui status tombol
       setTimeout(updateSliderArrows, 350);
     });
 
     nextBtn.addEventListener('click', () => {
       slider.scrollBy({ left: getScrollAmount(), behavior: 'smooth' });
-      // Berikan sedikit jeda setelah animasi scroll selesai untuk memperbarui status tombol
       setTimeout(updateSliderArrows, 350);
     });
 
-    // Daftarkan event listener untuk memonitor perubahan posisi scroll secara real-time
     slider.addEventListener('scroll', updateSliderArrows);
     window.addEventListener('resize', updateSliderArrows);
-    
-    // Jalankan fungsi di berbagai lifecycle untuk menjamin akurasi deteksi saat halaman pertama kali dibuka
     updateSliderArrows();
     document.addEventListener('DOMContentLoaded', updateSliderArrows);
     window.addEventListener('load', updateSliderArrows);
-
-    // Timer tambahan untuk mengantisipasi layout-shifting akibat gambar/font yang lambat dimuat
     setTimeout(updateSliderArrows, 50);
     setTimeout(updateSliderArrows, 300);
     setTimeout(updateSliderArrows, 800);
