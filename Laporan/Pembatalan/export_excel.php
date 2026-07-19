@@ -1,128 +1,117 @@
 <?php
 session_start();
 
+date_default_timezone_set('Asia/Jakarta');
+
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Owner') {
-    die("Akses ditolak.");
+    header("Location: ../../login.php"); exit();
 }
 
+if (!file_exists('../../koneksi.php')) { die('Error: File koneksi.php tidak ditemukan!'); }
 include '../../koneksi.php';
+if (!isset($conn) || $conn === false) { die('Error: Koneksi database gagal!'); }
 
-$tgl_mulai = isset($_GET['tgl_mulai']) ? $_GET['tgl_mulai'] : date('Y-m-01');
-$tgl_selesai = isset($_GET['tgl_selesai']) ? $_GET['tgl_selesai'] : date('Y-m-d');
-
-// =====================================================
-// AMBIL DATA PROFIL OWNER (MENCEGAH BUG WARNING)
-// =====================================================
 $id_owner = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
-$nama_owner = 'Pemilik';
+$nama_owner = 'Owner';
+$q_owner = sqlsrv_query($conn, "SELECT Nama_Karyawan FROM Karyawan WHERE ID_Karyawan = ?", array($id_owner));
+if ($q_owner && $d = sqlsrv_fetch_array($q_owner, SQLSRV_FETCH_ASSOC)) { $nama_owner = $d['Nama_Karyawan'] ?? 'Owner'; }
 
-if ($id_owner) {
-    $q_profile = sqlsrv_query($conn, "SELECT * FROM Karyawan WHERE ID_Karyawan = ?", array($id_owner));
-    if ($q_profile !== false) {
-        $d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
-        if ($d_profile) {
-            $d_profile = array_change_key_case($d_profile, CASE_LOWER);
-            $nama_owner = $d_profile['nama_karyawan'] ?? 'Pemilik';
-        }
-    }
-}
+$tgl_mulai = isset($_GET['tgl_mulai']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tgl_mulai']) ? $_GET['tgl_mulai'] : date('Y-m-01');
+$tgl_selesai = isset($_GET['tgl_selesai']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tgl_selesai']) ? $_GET['tgl_selesai'] : date('Y-m-d');
+if (strtotime($tgl_mulai) > strtotime($tgl_selesai)) { [$tgl_mulai, $tgl_selesai] = [$tgl_selesai, $tgl_mulai]; }
+$periode_str = date('d M Y', strtotime($tgl_mulai)) . ' - ' . date('d M Y', strtotime($tgl_selesai));
 
-// --- ATUR HEADER AGAR BISA DIDOWNLOAD SEBAGAI EXCEL ---
-header("Content-type: application/vnd-ms-excel");
-header("Content-Disposition: attachment; filename=Laporan_Pembatalan_Studio_" . $tgl_mulai . "_ke_" . $tgl_selesai . ".xls");
+$search = isset($_GET['search']) ? trim($_GET['search']) : '';
+$alasan_filter = isset($_GET['alasan']) && in_array($_GET['alasan'], ['belum_bayar_dp','dp_ditolak','dibatalkan_pelanggan','dibatalkan_sistem']) ? $_GET['alasan'] : '';
+$sort = isset($_GET['sort']) && in_array($_GET['sort'], ['terbaru','terlama','nama_asc','nama_desc','harga_tertinggi','harga_terendah','jadwal_terdekat','jadwal_terjauh']) ? $_GET['sort'] : 'terbaru';
 
-$sql_detail = "SELECT 
-                    o.ID_Order,
-                    o.Tanggal_Booking,
-                    o.Total_Harga,
-                    o.Status_Order,
-                    o.Keterangan AS Keterangan_Order,
-                    p.Nama_Pelanggan,
-                    p.No_Hp,
-                    pk.Nama_Paket,
-                    r.Nama_Ruangan,
-                    t.Nama_Tema,
-                    j.Tanggal_Jadwal,
-                    j.Jam_Mulai,
-                    j.Jam_Selesai,
-                    pb.ID_Pembayaran,
-                    pb.Jumlah_Bayar,
-                    pb.Metode_Pembayaran,
-                    pb.Status_Pembayaran,
-                    pb.Tanggal_Upload,
-                    k.Nama_Karyawan AS Nama_Verifikator
-                FROM [Order] o
-                INNER JOIN Pelanggan p ON o.ID_Pelanggan = p.ID_Pelanggan
-                INNER JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket
-                INNER JOIN Ruangan r ON o.ID_Ruangan = r.ID_Ruangan
-                INNER JOIN Tema_Foto t ON o.ID_Tema = t.ID_Tema
-                INNER JOIN Jadwal_Studio j ON o.ID_Jadwal = j.ID_Jadwal
-                LEFT JOIN Pembayaran pb ON o.ID_Order = pb.ID_Order AND pb.Tipe_Pembayaran = 'DP' AND pb.Status = 1
-                LEFT JOIN Karyawan k ON pb.ID_Karyawan_Verifikator = k.ID_Karyawan
-                WHERE o.Status = 1 AND (o.Status_Order = 4 OR pb.Status_Pembayaran = 2)
-                  AND CAST(o.Tanggal_Booking AS DATE) BETWEEN ? AND ?
-                ORDER BY o.Tanggal_Booking DESC";
+$q_summary = sqlsrv_query($conn, "{CALL sp_LaporanPembatalanSummary (?, ?)}", array($tgl_mulai, $tgl_selesai));
+$summary = []; if ($q_summary) { while ($r = sqlsrv_fetch_array($q_summary, SQLSRV_FETCH_ASSOC)) { $summary[] = $r; } }
+$total_batal = $summary[0]['Total_Batal'] ?? 0;
+$total_belum_bayar_dp = $summary[1]['Total_BelumBayarDP'] ?? 0;
+$total_dp_ditolak = $summary[2]['Total_DPDitolak'] ?? 0;
+$total_dibatalkan_plg = $summary[3]['Total_DibatalkanPelanggan'] ?? 0;
 
-$query_detail = sqlsrv_query($conn, $sql_detail, [$tgl_mulai, $tgl_selesai]);
+$q_detail = sqlsrv_query($conn, "{CALL sp_LaporanPembatalanDetail (?, ?, ?, ?, ?, 0, 1000000)}", array($tgl_mulai, $tgl_selesai, $search, $alasan_filter, $sort));
+$rows = []; if ($q_detail) { while ($r = sqlsrv_fetch_array($q_detail, SQLSRV_FETCH_ASSOC)) { $rows[] = $r; } }
+
+$logo_path = '../../assets/img/logo.png'; $logo_exists = file_exists($logo_path);
+
+$filename = 'LaporanPembatalan_' . date('dmY') . '.xls';
+header("Content-Type: application/vnd.ms-excel; charset=UTF-8");
+header("Content-Disposition: attachment; filename=" . $filename);
+header("Pragma: no-cache"); header("Expires: 0"); header("Cache-Control: must-revalidate, post-check=0, pre-check=0");
 ?>
-<div align="center">
-    <h2>LAPORAN PEMBATALAN ORDER & PENOLAKAN DP</h2>
-    <h3>SPOTLIGHT PHOTO STUDIO</h3>
-    <p>Periode Tanggal: <?php echo date('d M Y', strtotime($tgl_mulai)); ?> s.d <?php echo date('d M Y', strtotime($tgl_selesai)); ?></p>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+<head><meta charset="UTF-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Calibri','Segoe UI',Arial,sans-serif;font-size:11px;color:#1e1e24;padding:16px}
+.kop-surat{display:flex;align-items:center;justify-content:center;gap:14px;padding-bottom:14px;margin-bottom:14px;border-bottom:3px solid #d83f67}
+.kop-surat img{height:50px;width:auto;flex-shrink:0}
+.kop-text h1{margin:0;font-size:20px;font-weight:800;color:#1e1e24;letter-spacing:-0.5px}
+.kop-text p{margin:3px 0 0;font-size:11px;color:#718096;font-weight:600}
+.summary-row{display:flex;gap:10px;margin-bottom:16px}
+.summary-box{flex:1;background:#f8fafc;border-radius:10px;padding:12px;text-align:center}
+.summary-box .label{font-size:9px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px}
+.summary-box .value{font-size:15px;font-weight:800;color:#d83f67}
+table{border-collapse:collapse;width:100%;margin-top:8px}
+th{background-color:#fff;color:#94a3b8;font-weight:800;padding:10px 8px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #f1f5f9}
+td{padding:8px;border-bottom:1px solid #f1f5f9;font-size:10px;vertical-align:middle}
+tr:nth-child(even){background-color:#fff8f0}
+.td-pink{font-weight:800;color:#d83f67}
+.td-dark{font-weight:700;color:#1e1e24}
+.td-muted{font-size:9px;color:#94a3b8;font-weight:600}
+.signature-wrap{display:flex;justify-content:flex-end;margin-top:24px}
+.signature-box{text-align:center;min-width:160px}
+.signature-box .date{font-size:10px;color:#4a5568;font-weight:600;margin-bottom:3px}
+.signature-box .approval{font-size:10px;color:#4a5568;font-weight:600;margin-bottom:32px}
+.signature-box .role{font-size:10px;color:#4a5568;font-weight:700;text-decoration:underline;margin-bottom:3px}
+.signature-box .name{font-size:10px;color:#4a5568;font-weight:700}
+.note{font-size:9px;color:#94a3b8;margin-top:12px;text-align:center}
+.text-right{text-align:right}
+.text-center{text-align:center}
+</style>
+</head>
+<body>
+<div class="kop-surat">
+    <?php if ($logo_exists): ?><img src="../../assets/img/logo.png" alt="SpotLight Studio"><?php endif; ?>
+    <div class="kop-text"><h1>SpotLight Studio</h1><p>Laporan Pembatalan &bull; Periode <?= $periode_str ?></p></div>
 </div>
-
-<table border="1" cellpadding="5" cellspacing="0" style="font-family: Arial, sans-serif; border-collapse: collapse; width:100%;">
-    <thead>
-        <tr style="background-color: #d83f67; color: white; font-weight: bold;">
-            <th>No. Order</th>
-            <th>Tanggal Order</th>
-            <th>Nama Customer</th>
-            <th>No. HP</th>
-            <th>Paket Foto</th>
-            <th>Ruangan / Tema</th>
-            <th>Jadwal Sesi</th>
-            <th>Jumlah DP Diupload</th>
-            <th>Metode Bayar</th>
-            <th>Status Masalah</th>
-            <th>Verifikator Admin</th>
-            <th>Total Kerugian (Rp)</th>
-        </tr>
-    </thead>
-    <tbody>
-        <?php 
-        if ($query_detail):
-        while ($row = sqlsrv_fetch_array($query_detail, SQLSRV_FETCH_ASSOC)):
-            $jam_mulai = (is_object($row['Jam_Mulai']) && method_exists($row['Jam_Mulai'], 'format')) ? $row['Jam_Mulai']->format('H:i') : substr($row['Jam_Mulai'], 0, 5);
-            $jam_selesai = (is_object($row['Jam_Selesai']) && method_exists($row['Jam_Selesai'], 'format')) ? $row['Jam_Selesai']->format('H:i') : substr($row['Jam_Selesai'], 0, 5);
-            $status_text = ((int)$row['Status_Order'] === 4) ? "Order Dibatalkan" : "Bukti DP Ditolak";
-            $tgl_jadwal_format = (is_object($row['Tanggal_Jadwal']) && method_exists($row['Tanggal_Jadwal'], 'format')) ? $row['Tanggal_Jadwal']->format('d M Y') : $row['Tanggal_Jadwal'];
-            $tgl_booking_format = (is_object($row['Tanggal_Booking']) && method_exists($row['Tanggal_Booking'], 'format')) ? $row['Tanggal_Booking']->format('d M Y H:i') : date('d M Y H:i', strtotime($row['Tanggal_Booking']));
-        ?>
-        <tr>
-            <td align="center">#ORD-<?php echo str_pad($row['ID_Order'], 5, '0', STR_PAD_LEFT); ?></td>
-            <td align="center"><?php echo $tgl_booking_format; ?></td>
-            <td><?php echo htmlspecialchars($row['Nama_Pelanggan']); ?></td>
-            <td align="center"><?php echo htmlspecialchars($row['No_Hp']); ?></td>
-            <td><?php echo htmlspecialchars($row['Nama_Paket']); ?></td>
-            <td><?php echo htmlspecialchars($row['Nama_Ruangan'] . " - " . $row['Nama_Tema']); ?></td>
-            <td align="center"><?php echo $tgl_jadwal_format . " (" . $jam_mulai . " - " . $jam_selesai . ")"; ?></td>
-            <td align="right"><?php echo isset($row['ID_Pembayaran']) ? number_format($row['Jumlah_Bayar'], 0, ',', '.') : '0'; ?></td>
-            <td align="center"><?php echo isset($row['ID_Pembayaran']) ? htmlspecialchars($row['Metode_Pembayaran']) : '-'; ?></td>
-            <td align="center" style="font-weight: bold; color: #dc2626;"><?php echo $status_text; ?></td>
-            <td align="center"><?php echo htmlspecialchars($row['Nama_Verifikator'] ?? '-'); ?></td>
-            <td align="right" style="font-weight: bold; color: #dc2626;"><?php echo number_format($row['Total_Harga'], 0, ',', '.'); ?></td>
-        </tr>
-        <?php endwhile; endif; ?>
-    </tbody>
+<div class="summary-row">
+    <div class="summary-box"><div class="label">Total Batal</div><div class="value"><?= $total_batal ?> Booking</div></div>
+    <div class="summary-box"><div class="label">Belum Bayar DP</div><div class="value" style="color:#dc2626"><?= $total_belum_bayar_dp ?></div></div>
+    <div class="summary-box"><div class="label">DP Ditolak</div><div class="value" style="color:#d97706"><?= $total_dp_ditolak ?></div></div>
+    <div class="summary-box"><div class="label">Dibatalkan Pelanggan</div><div class="value" style="color:#2563eb"><?= $total_dibatalkan_plg ?></div></div>
+</div>
+<table>
+<thead><tr><th>No</th><th>No. Order</th><th>Customer</th><th>Paket</th><th>Ruangan</th><th>Tema</th><th>Alasan Batal</th><th>Keterangan</th><th>Verifikator</th></tr></thead>
+<tbody>
+<?php $no=1; if(count($rows)>0): foreach($rows as $row): ?>
+<tr>
+<td class="text-center"><?= $no++ ?></td>
+<td class="td-pink">#ORD-<?= str_pad((int)$row['ID_Order'],5,'0',STR_PAD_LEFT) ?></td>
+<td><div class="td-dark"><?= htmlspecialchars($row['Nama_Pelanggan']) ?></div><div class="td-muted"><?= htmlspecialchars($row['No_Hp']) ?></div></td>
+<td class="td-muted"><?= htmlspecialchars($row['Nama_Paket']) ?></td>
+<td class="td-muted"><?= htmlspecialchars($row['Nama_Ruangan']) ?></td>
+<td class="td-muted"><?= htmlspecialchars($row['Nama_Tema']) ?></td>
+<td style="font-weight:700;font-size:9px"><?= htmlspecialchars($row['Alasan_Batal']) ?></td>
+<td class="td-muted"><?= htmlspecialchars($row['Keterangan_Order']??'-') ?></td>
+<td class="td-muted"><?= htmlspecialchars($row['Nama_Verifikator']??'-') ?></td>
+</tr>
+<?php endforeach; else: ?>
+<tr><td colspan="9" class="text-center" style="padding:24px;color:#718096">Tidak ada data pembatalan pada periode ini.</td></tr>
+<?php endif; ?>
+</tbody>
 </table>
-
-<table style="width: 100%; border: none; margin-top: 30px;">
-    <tr>
-        <td style="width: 70%; border: none;"></td>
-        <td align="center" style="width: 30%; border: none; font-family: sans-serif; font-size: 12px;">
-            <p>Bekasi, <?php echo date('d F Y'); ?></p>
-            <p style="margin-bottom: 50px;">Owner SpotLight Studio</p>
-            <p style="text-decoration: underline; font-weight: bold;"><?php echo htmlspecialchars($nama_owner); ?></p>
-        </td>
-    </tr>
-</table>
+<div class="signature-wrap">
+<div class="signature-box">
+<div class="date">tanggal <?= date('d M Y') ?></div>
+<div class="approval">Approval</div>
+<div class="role">Owner</div>
+<div class="name"><?= htmlspecialchars($nama_owner) ?></div>
+</div>
+</div>
+<p class="note">Total <?= count($rows) ?> booking batal pada periode ini.</p>
+</body>
+</html>

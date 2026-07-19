@@ -106,7 +106,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action_type'])) {
         $d_pass = sqlsrv_fetch_array($q_pass, SQLSRV_FETCH_ASSOC);
 
         if ($d_pass) {
-            if ($pass_lama !== $d_pass['Password_Pelanggan']) {
+            // =====================================================
+            // VERIFIKASI PASSWORD LAMA -- pakai password_verify() dulu
+            // (untuk akun yang sudah ter-hash), dengan fallback plaintext
+            // buat akun lama yang belum sempat ke-migrate (konsisten
+            // sama pola auto-migrate di login.php).
+            // =====================================================
+            $is_hashed = password_verify($pass_lama, $d_pass['Password_Pelanggan']);
+            $is_plain_match = !$is_hashed && ($pass_lama === $d_pass['Password_Pelanggan']);
+            $pass_lama_valid = $is_hashed || $is_plain_match;
+
+            if (!$pass_lama_valid) {
                 $_SESSION['profile_msg'] = ['type' => 'error', 'title' => 'Verifikasi Gagal', 'text' => 'Kata sandi lama yang Anda masukkan salah.'];
             } else if ($pass_baru !== $pass_konfirmasi) {
                 $_SESSION['profile_msg'] = ['type' => 'error', 'title' => 'Gagal', 'text' => 'Konfirmasi kata sandi baru tidak cocok.'];
@@ -119,8 +129,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action_type'])) {
                 if ($len < 8 || !$has_letter || !$has_digit || !$has_special) {
                     $_SESSION['profile_msg'] = ['type' => 'error', 'title' => 'Sandi Lemah', 'text' => 'Kata sandi baru minimal 8 karakter (kombinasi huruf, angka, simbol)!'];
                 } else {
+                    // Password baru WAJIB di-hash sebelum disimpan -- jangan
+                    // pernah simpan plaintext lagi.
+                    $pass_baru_hash = password_hash($pass_baru, PASSWORD_BCRYPT);
                     $sql_up_pass = "UPDATE Pelanggan SET Password_Pelanggan = ?, Modified_By = 'customer', Modified_Date = GETDATE() WHERE ID_Pelanggan = ?";
-                    $stmt_up_pass = sqlsrv_query($conn, $sql_up_pass, array($pass_baru, $id_customer));
+                    $stmt_up_pass = sqlsrv_query($conn, $sql_up_pass, array($pass_baru_hash, $id_customer));
                     if ($stmt_up_pass) {
                         $_SESSION['profile_msg'] = ['type' => 'success', 'title' => 'Berhasil', 'text' => 'Kata sandi Anda berhasil diperbarui!'];
                     } else {
@@ -237,7 +250,6 @@ function fmtTgl($d) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SpotLight Studio - Booking Studio Foto Online</title>
-    <link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
