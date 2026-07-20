@@ -146,40 +146,64 @@ if (isset($_POST['simpan'])) {
     $deskripsi = isset($_POST['deskripsi']) ? trim($_POST['deskripsi']) : '';
     $kapasitas_orang = isset($_POST['kapasitas_orang']) ? (int)$_POST['kapasitas_orang'] : 0;
 
+    // Sinkronisasi validasi dengan edit.php demi integritas data
     if (empty($nama_paket)) {
         $errors['nama_paket'] = "Nama paket wajib diisi!";
+    } elseif (strlen($nama_paket) < 3) {
+        $errors['nama_paket'] = "Nama paket minimal 3 karakter!";
     } elseif (strlen($nama_paket) > 100) {
         $errors['nama_paket'] = "Nama paket maksimal 100 karakter!";
+    } elseif (!preg_match('/^[a-zA-Z0-9\s\-&]+$/', $nama_paket)) {
+        $errors['nama_paket'] = "Nama paket hanya boleh huruf, angka, spasi, -, &!";
     } else {
-        $sql_dup = "SELECT COUNT(*) AS Total FROM Paket_Foto WHERE Nama_Paket = ? AND Is_Deleted = 0";
+        // Cek duplikasi case-insensitive (LOWER) demi mencegah kecurangan input kembar
+        $sql_dup = "SELECT COUNT(*) AS Total FROM Paket_Foto WHERE LOWER(Nama_Paket) = LOWER(?) AND Is_Deleted = 0";
         $stmt_dup = sqlsrv_query($conn, $sql_dup, array($nama_paket));
         if ($stmt_dup !== false) {
             $row_dup = sqlsrv_fetch_array($stmt_dup, SQLSRV_FETCH_ASSOC);
             if ($row_dup && ($row_dup['Total'] ?? 0) > 0) {
-                $errors['nama_paket'] = "Nama paket sudah digunakan!";
+                $errors['nama_paket'] = "Nama paket sudah digunakan! Silakan pilih nama lain.";
             }
             sqlsrv_free_stmt($stmt_dup);
         }
     }
 
-    if ($durasi_waktu <= 0) {
-        $errors['durasi_waktu'] = "Durasi waktu harus lebih dari 0!";
-    } elseif ($durasi_waktu < 10) {
-        $errors['durasi_waktu'] = "Durasi waktu minimal 10 menit!";
+    if (empty($_POST['durasi_waktu']) && $_POST['durasi_waktu'] !== '0') {
+        $errors['durasi_waktu'] = "Durasi wajib diisi!";
+    } elseif ($durasi_waktu < 15) {
+        $errors['durasi_waktu'] = "Durasi minimal 15 menit!";
+    } elseif ($durasi_waktu > 300) {
+        $errors['durasi_waktu'] = "Durasi maksimal 300 menit!";
     }
 
-    if ($harga_paket < 0) {
-        $errors['harga_paket'] = "Harga paket tidak boleh negatif!";
+    if (empty($_POST['harga_paket']) && $_POST['harga_paket'] !== '0') {
+        $errors['harga_paket'] = "Harga wajib diisi!";
+    } elseif ($harga_paket < 10000) {
+        $errors['harga_paket'] = "Harga minimal Rp 10.000!";
+    } elseif ($harga_paket > 99999999) {
+        $errors['harga_paket'] = "Harga maksimal Rp 99.999.999!";
     }
 
-    if ($kapasitas_orang <= 0) {
-        $errors['kapasitas_orang'] = "Kapasitas orang harus lebih dari 0!";
+    if (empty($_POST['kapasitas_orang']) && $_POST['kapasitas_orang'] !== '0') {
+        $errors['kapasitas_orang'] = "Kapasitas wajib diisi!";
+    } elseif ($kapasitas_orang < 1) {
+        $errors['kapasitas_orang'] = "Kapasitas minimal 1 orang!";
+    } elseif ($kapasitas_orang > 50) {
+        $errors['kapasitas_orang'] = "Kapasitas maksimal 50 orang!";
+    }
+
+    if (!empty($deskripsi)) {
+        if (strlen($deskripsi) < 20) {
+            $errors['deskripsi'] = "Deskripsi minimal 20 karakter jika diisi!";
+        } elseif (strlen($deskripsi) > 255) {
+            $errors['deskripsi'] = "Deskripsi maksimal 255 karakter!";
+        }
     }
 
     $foto_paket = 'default_paket.jpg';
     if (empty($errors) && isset($_FILES['foto_paket']) && $_FILES['foto_paket']['error'] === UPLOAD_ERR_OK) {
         $file = $_FILES['foto_paket'];
-        $allowed_ext = ['jpg', 'jpeg', 'png', 'webp'];
+        $allowed_ext = ['jpg', 'jpeg', 'png', 'webp']; // Ditambahkan dukungan format modern webp
         $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
 
         if (!in_array($file_ext, $allowed_ext)) {
@@ -202,6 +226,12 @@ if (isset($_POST['simpan'])) {
         }
     }
 
+    // =====================================================
+    // CATATAN INTEGRITAS: Proses insert paket ini 
+    // JANGAN PERNAH menghubungkan paket ke ruangan secara otomatis.
+    // Relasi harus selalu diatur secara manual oleh user lewat edit terpisah
+    // demi menghindari kebingungan alur & gangguan validasi transaksi.
+    // =====================================================
     if (empty($errors)) {
         if (!sqlsrv_begin_transaction($conn)) {
             $errors['general'] = "Gagal memulai transaksi database!";
@@ -478,6 +508,21 @@ $_SESSION['csrf_token'] = $csrf_token;
             margin-bottom: 24px; display: flex; align-items: center; gap: 10px;
         }
         .alert-custom i { font-size: 1.1rem; }
+
+        /* INFO BADGE */
+        .info-badge { 
+            background: #eff6ff; 
+            border-radius: 12px; 
+            padding: 12px 16px; 
+            font-size: .8rem; 
+            color: #1d4ed8; 
+            font-weight: 600; 
+            display: flex; 
+            align-items: flex-start; 
+            gap: 8px; 
+            margin-bottom: 20px; 
+            border: 1px solid #bfdbfe; 
+        }
 
         .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
         @media (max-width: 768px) { .form-grid-3 { grid-template-columns: 1fr; } }
@@ -810,6 +855,15 @@ $_SESSION['csrf_token'] = $csrf_token;
             </div>
             <div class="form-card-body">
 
+                <!-- Info Badge penyelarasan master jadwal studio -->
+                <div class="info-badge">
+                    <i class="bi bi-info-circle-fill mt-1"></i>
+                    <div>
+                        Durasi paket menentukan panjang slot di <strong>Jadwal Studio</strong>. 
+                        Contoh: Durasi 60 menit = slot 08:00-09:00, 09:00-10:00, dst.
+                    </div>
+                </div>
+
                 <?php if(isset($errors['general']) || $error != ""): ?>
                     <div class="alert-custom">
                         <i class="bi bi-exclamation-triangle-fill"></i>
@@ -840,12 +894,12 @@ $_SESSION['csrf_token'] = $csrf_token;
                             <input type="number" name="durasi_waktu"
                                    class="form-control-custom <?= isset($errors['durasi_waktu']) ? 'is-invalid' : '' ?>"
                                    value="<?= htmlspecialchars($old_values['durasi_waktu'] ?? '') ?>"
-                                   placeholder="Contoh: 30, 60, 90, 120" min="10" required>
+                                   placeholder="Contoh: 30, 60, 90, 120" min="15" max="300" required>
                             <?php if(isset($errors['durasi_waktu'])): ?>
                                 <span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['durasi_waktu'] ?></span>
                             <?php endif; ?>
                             <div class="input-hint">
-                                <i class="bi bi-info-circle"></i> Minimal 10 menit
+                                <i class="bi bi-clock-history"></i> Minimal 15, maksimal 300 menit
                             </div>
                         </div>
 
@@ -856,13 +910,13 @@ $_SESSION['csrf_token'] = $csrf_token;
                                 <input type="number" name="harga_paket" 
                                        class="form-control-custom <?= isset($errors['harga_paket']) ? 'is-invalid' : '' ?>" 
                                        value="<?= htmlspecialchars($old_values['harga_paket'] ?? '') ?>" 
-                                       placeholder="250000" min="0" required>
+                                       placeholder="250000" min="10000" required>
                             </div>
                             <?php if(isset($errors['harga_paket'])): ?>
                                 <span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['harga_paket'] ?></span>
                             <?php endif; ?>
                             <div class="input-hint">
-                                <i class="bi bi-info-circle"></i> Biaya utama layanan
+                                <i class="bi bi-info-circle"></i> Minimal Rp 10.000
                             </div>
                         </div>
 
@@ -871,19 +925,19 @@ $_SESSION['csrf_token'] = $csrf_token;
                             <input type="number" name="kapasitas_orang" 
                                    class="form-control-custom <?= isset($errors['kapasitas_orang']) ? 'is-invalid' : '' ?>" 
                                    value="<?= htmlspecialchars($old_values['kapasitas_orang'] ?? '') ?>" 
-                                   placeholder="Contoh: 2, 5, 8, 20" min="1" required>
+                                   placeholder="Contoh: 2, 5, 8, 20" min="1" max="50" required>
                             <?php if(isset($errors['kapasitas_orang'])): ?>
                                 <span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['kapasitas_orang'] ?></span>
                             <?php endif; ?>
                             <div class="input-hint">
-                                <i class="bi bi-info-circle"></i> Maksimal orang per sesi
+                                <i class="bi bi-info-circle"></i> Maksimal 50 orang
                             </div>
                         </div>
                     </div>
 
                     <div class="mb-4">
                         <label class="form-label">Deskripsi <span style="color: #94a3b8; font-weight: 500; text-transform: none; letter-spacing: 0;">(opsional)</span></label>
-                        <textarea name="deskripsi" 
+                        <textarea name="deskripsi" id="inputDeskripsi"
                                   class="form-control-custom <?= isset($errors['deskripsi']) ? 'is-invalid' : '' ?>" 
                                   placeholder="Jelaskan detail paket, konsep, atau keunggulan layanan ini..." 
                                   maxlength="255"><?= htmlspecialchars($old_values['deskripsi'] ?? '') ?></textarea>
@@ -891,7 +945,7 @@ $_SESSION['csrf_token'] = $csrf_token;
                             <span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['deskripsi'] ?></span>
                         <?php endif; ?>
                         <div class="input-hint">
-                            <i class="bi bi-info-circle"></i> Maksimal 255 karakter. Akan ditampilkan di halaman pelanggan
+                            <i class="bi bi-info-circle"></i> Maksimal 255 karakter — <span id="countDeskripsi">0</span>/255
                         </div>
                     </div>
 
@@ -1106,33 +1160,48 @@ $_SESSION['csrf_token'] = $csrf_token;
         });
 
         // ===== VALIDASI FORM SEBELUM SUBMIT =====
+        // Disamakan dengan aturan ketat di edit.php & dilarang division by zero
         document.getElementById('formPaket').addEventListener('submit', function(e) {
             const nama = document.querySelector('input[name="nama_paket"]').value.trim();
-            const durasi = document.querySelector('input[name="durasi_waktu"]').value;
-            const harga = document.querySelector('input[name="harga_paket"]').value;
-            const kapasitas = document.querySelector('input[name="kapasitas_orang"]').value;
+            const durasi = parseInt(document.querySelector('input[name="durasi_waktu"]').value);
+            const harga = parseFloat(document.querySelector('input[name="harga_paket"]').value);
+            const kapasitas = parseInt(document.querySelector('input[name="kapasitas_orang"]').value);
+            const deskripsi = document.getElementById('inputDeskripsi').value.trim();
 
-            if (!nama) {
+            if (!nama || nama.length < 3) {
                 e.preventDefault();
-                Swal.fire({ icon: 'warning', title: 'Nama Paket Kosong', text: 'Silakan isi nama paket foto.', confirmButtonColor: '#D53D66' });
+                Swal.fire({ icon: 'warning', title: 'Nama Paket Tidak Valid', text: 'Nama paket minimal harus 3 karakter.', confirmButtonColor: '#D53D66' });
                 return false;
             }
-            if (!durasi || durasi < 10) {
+            if (!durasi || durasi < 15 || durasi > 300) {
                 e.preventDefault();
-                Swal.fire({ icon: 'warning', title: 'Durasi Tidak Valid', text: 'Durasi waktu minimal 10 menit.', confirmButtonColor: '#D53D66' });
+                Swal.fire({ icon: 'warning', title: 'Durasi Tidak Valid', text: 'Durasi waktu minimal 15 menit dan maksimal 300 menit.', confirmButtonColor: '#D53D66' });
                 return false;
             }
-            if (harga === '' || harga < 0) {
+            if (isNaN(harga) || harga < 10000 || harga > 99999999) {
                 e.preventDefault();
-                Swal.fire({ icon: 'warning', title: 'Harga Tidak Valid', text: 'Harga paket tidak boleh negatif.', confirmButtonColor: '#D53D66' });
+                Swal.fire({ icon: 'warning', title: 'Harga Tidak Valid', text: 'Harga paket minimal Rp 10.000 dan maksimal Rp 99.999.999.', confirmButtonColor: '#D53D66' });
                 return false;
             }
-            if (!kapasitas || kapasitas <= 0) {
+            if (!kapasitas || kapasitas < 1 || kapasitas > 50) {
                 e.preventDefault();
-                Swal.fire({ icon: 'warning', title: 'Kapasitas Tidak Valid', text: 'Kapasitas orang harus lebih dari 0.', confirmButtonColor: '#D53D66' });
+                Swal.fire({ icon: 'warning', title: 'Kapasitas Tidak Valid', text: 'Kapasitas orang minimal 1 dan maksimal 50 orang.', confirmButtonColor: '#D53D66' });
+                return false;
+            }
+            if (deskripsi !== "" && (deskripsi.length < 20 || deskripsi.length > 255)) {
+                e.preventDefault();
+                Swal.fire({ icon: 'warning', title: 'Deskripsi Tidak Valid', text: 'Deskripsi minimal 20 karakter dan maksimal 255 karakter.', confirmButtonColor: '#D53D66' });
                 return false;
             }
         });
+
+        // ===== LIVE COUNTER DESKRIPSI =====
+        const inputDeskripsi = document.getElementById('inputDeskripsi');
+        const countDeskripsi = document.getElementById('countDeskripsi');
+        if (inputDeskripsi && countDeskripsi) {
+            inputDeskripsi.addEventListener('input', function() { countDeskripsi.textContent = this.value.length; });
+            countDeskripsi.textContent = inputDeskripsi.value.length;
+        }
 
         // ===== MODAL PROFIL (Biodata + Edit) =====
         function bukaModalProfil() {

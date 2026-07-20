@@ -189,8 +189,17 @@ if ($query_count !== false) {
     $total_halaman = ceil($total_records / $limit);
 }
 
-// Ambil data (Ditambahkan Explicit Parameter Binding untuk SQLSRV_SQLTYPE_INT guna mencegah error OFFSET/FETCH)
-$sql_list = "SELECT * FROM Paket_Foto WHERE " . implode(" AND ", $conditions) . " ORDER BY " . $order_clause . " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
+// Ambil data dengan penambahan daftar ruangan terpilih (STRING_AGG) agar transparan dan sesuai pilihan user
+$sql_list = "SELECT *, 
+             (SELECT STRING_AGG(r.Nama_Ruangan, ', ') 
+              FROM Paket_Ruangan pr 
+              JOIN Ruangan r ON pr.ID_Ruangan = r.ID_Ruangan 
+              WHERE pr.ID_Paket = Paket_Foto.ID_Paket) AS Daftar_Ruangan
+             FROM Paket_Foto 
+             WHERE " . implode(" AND ", $conditions) . " 
+             ORDER BY " . $order_clause . " 
+             OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
+
 $params_list = $params;
 $params_list[] = array($offset, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_INT);
 $params_list[] = array($limit, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_INT);
@@ -312,9 +321,6 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         .stats-row { display: flex; gap: 16px; min-width: max-content; }
         .stat-card-item { min-width: 220px; max-width: 280px; flex: 0 0 auto; }
 
-        /* card-3d = struktur visual dasar (dipakai statistik & info non-klik).
-           card-3d-clickable = modifier opt-in untuk elemen yang benar-benar bisa diklik,
-           supaya efek hover-lift hanya muncul saat memang ada aksi. */
         .card-3d {
             background: #ffffff; border-radius: 22px;
             border: 1px solid rgba(255, 228, 233, 0.8);
@@ -385,8 +391,6 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         }
         .search-input-main:focus { outline: none; border-color: var(--p-pink); box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); }
 
-        /* Filter: gaya outline ringan (sinkron dengan tombol "Verifikasi Semua" di dashboard),
-           supaya tidak terlihat sama seperti tombol solid "Buat Paket Baru". */
         .btn-filter-modal {
             background: var(--s-pink);
             color: var(--p-pink);
@@ -414,7 +418,6 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         }
         .btn-search-icon:hover { border-color: var(--p-pink); color: var(--p-pink); transform: translateY(-2px); }
         
-        /* Tombol utama "Buat Paket Baru" tetap solid supaya beda level aksi dari Filter */
         .btn-reg-header {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink)) !important;
             color: #ffffff !important; border-radius: 14px !important;
@@ -504,12 +507,6 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             align-items: center;
             gap: 5px;
         }
-        .slot-count {
-            font-size: 0.7rem;
-            color: #94a3b8;
-            font-weight: 700;
-            margin-top: 4px;
-        }
 
         .badge-status {
             font-size: 0.72rem; font-weight: 800; padding: 6px 14px;
@@ -565,7 +562,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         }
         .page-link-pag.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
-        /* PROFIL: modal biodata & edit profil (disamakan dengan index.php) */
+        /* PROFIL */
         .required-star { color: #ef4444; font-weight: bold; margin-left: 2px; }
         .form-label { font-weight: 800; font-size: 11px; color: #8a99a8; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 8px; }
         .form-control, .form-select {
@@ -612,87 +609,85 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             .sidebar { transform: translateX(-100%); }
         }
     
-/* =====================================================
-   RESPONSIVE ENHANCEMENTS
-   ===================================================== */
-.mobile-menu-btn {
-    display: none; width: 44px; height: 44px; border-radius: 12px;
-    background: #ffffff; border: 2px solid var(--light-pink); color: var(--p-pink);
-    align-items: center; justify-content: center; font-size: 1.4rem; cursor: pointer;
-    transition: var(--transition-3d); flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-}
-.mobile-menu-btn:hover { background: var(--s-pink); transform: scale(1.05); }
+        /* RESPONSIVE ENHANCEMENTS */
+        .mobile-menu-btn {
+            display: none; width: 44px; height: 44px; border-radius: 12px;
+            background: #ffffff; border: 2px solid var(--light-pink); color: var(--p-pink);
+            align-items: center; justify-content: center; font-size: 1.4rem; cursor: pointer;
+            transition: var(--transition-3d); flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .mobile-menu-btn:hover { background: var(--s-pink); transform: scale(1.05); }
 
-.sidebar-overlay {
-    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(30, 30, 36, 0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    z-index: 99; opacity: 0; transition: opacity 0.35s ease;
-}
-.sidebar-overlay.show { display: block; opacity: 1; }
+        .sidebar-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(30, 30, 36, 0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            z-index: 99; opacity: 0; transition: opacity 0.35s ease;
+        }
+        .sidebar-overlay.show { display: block; opacity: 1; }
 
-@media (max-width: 1199px) {
-    .stats-row { gap: 12px; }
-    .stat-card-item { min-width: 200px; }
-}
+        @media (max-width: 1199px) {
+            .stats-row { gap: 12px; }
+            .stat-card-item { min-width: 200px; }
+        }
 
-@media (max-width: 992px) {
-    .mobile-menu-btn { display: inline-flex; }
-    .sidebar {
-        transform: translateX(-100%);
-        transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        box-shadow: none;
-    }
-    .sidebar.mobile-open { transform: translateX(0); box-shadow: 10px 0 50px rgba(0,0,0,0.15); }
-    .main-content { margin-left: 0; padding: 24px; }
-    .dashboard-header { flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
-    .dashboard-header h3 { font-size: 1.35rem; }
-}
+        @media (max-width: 992px) {
+            .mobile-menu-btn { display: inline-flex; }
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                box-shadow: none;
+            }
+            .sidebar.mobile-open { transform: translateX(0); box-shadow: 10px 0 50px rgba(0,0,0,0.15); }
+            .main-content { margin-left: 0; padding: 24px; }
+            .dashboard-header { flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
+            .dashboard-header h3 { font-size: 1.35rem; }
+        }
 
-@media (max-width: 768px) {
-    .main-content { padding: 18px; }
-    .dashboard-header { margin-bottom: 22px; }
-    .dashboard-header h3 { font-size: 1.15rem; }
-    .dashboard-header p { font-size: 0.8rem; }
+        @media (max-width: 768px) {
+            .main-content { padding: 18px; }
+            .dashboard-header { margin-bottom: 22px; }
+            .dashboard-header h3 { font-size: 1.15rem; }
+            .dashboard-header p { font-size: 0.8rem; }
 
-    .search-filter-bar { flex-direction: column; align-items: stretch; gap: 10px; }
-    .search-form-flex { min-width: 100%; flex-wrap: wrap; }
-    .search-input-wrapper { width: 100%; }
-    .btn-reg-header { width: 100%; justify-content: center; }
-    .best-seller-card { flex-direction: column; text-align: center; gap: 15px; padding: 20px; }
-    .best-seller-name { font-size: 1.1rem; }
-    .pagination-wrapper { flex-direction: column; gap: 12px; padding: 16px; }
-    .pagination-nav { justify-content: center; flex-wrap: wrap; }
-    .stat-card-item { min-width: 170px; }
-}
+            .search-filter-bar { flex-direction: column; align-items: stretch; gap: 10px; }
+            .search-form-flex { min-width: 100%; flex-wrap: wrap; }
+            .search-input-wrapper { width: 100%; }
+            .btn-reg-header { width: 100%; justify-content: center; }
+            .best-seller-card { flex-direction: column; text-align: center; gap: 15px; padding: 20px; }
+            .best-seller-name { font-size: 1.1rem; }
+            .pagination-wrapper { flex-direction: column; gap: 12px; padding: 16px; }
+            .pagination-nav { justify-content: center; flex-wrap: wrap; }
+            .stat-card-item { min-width: 170px; }
+        }
 
-@media (max-width: 576px) {
-    .main-content { padding: 14px; }
-    .dashboard-header h3 { font-size: 1.05rem; }
+        @media (max-width: 576px) {
+            .main-content { padding: 14px; }
+            .dashboard-header h3 { font-size: 1.05rem; }
 
-    .data-table tbody td { padding: 12px 14px; }
-    .data-table tbody td:first-child { padding-left: 16px; border-radius: 10px 0 0 10px; }
-    .data-table tbody td:last-child { padding-right: 16px; border-radius: 0 10px 10px 0; }
-    .paket-img { width: 48px; height: 48px; border-radius: 10px; }
-    .td-nama { font-size: 0.85rem; }
-    .td-deskripsi { font-size: 0.75rem; }
-    .td-harga { font-size: 0.9rem; }
-    .badge-status { font-size: 0.65rem; padding: 5px 10px; }
-    .btn-action-circle { width: 32px; height: 32px; font-size: 0.8rem; margin: 0 2px; }
-    .page-link-pag { min-width: 36px; height: 36px; padding: 0 10px; font-size: 0.85rem; }
-    .stat-val { font-size: 1.25rem; }
-    .stat-icon { width: 40px; height: 40px; font-size: 1.2rem; }
-    .modal-dialog { margin: 12px; }
-    .modal-content { border-radius: 20px !important; }
-    .profile-preview-box { width: 80px; height: 80px; }
-    .form-control, .form-select { padding: 10px 14px; font-size: 16px; border-radius: 12px; }
-    .btn-reg { padding: 14px; font-size: 14px; }
-    .form-label { font-size: 10px; }
-}
+            .data-table tbody td { padding: 12px 14px; }
+            .data-table tbody td:first-child { padding-left: 16px; border-radius: 10px 0 0 10px; }
+            .data-table tbody td:last-child { padding-right: 16px; border-radius: 0 10px 10px 0; }
+            .paket-img { width: 48px; height: 48px; border-radius: 10px; }
+            .td-nama { font-size: 0.85rem; }
+            .td-deskripsi { font-size: 0.75rem; }
+            .td-harga { font-size: 0.9rem; }
+            .badge-status { font-size: 0.65rem; padding: 5px 10px; }
+            .btn-action-circle { width: 32px; height: 32px; font-size: 0.8rem; margin: 0 2px; }
+            .page-link-pag { min-width: 36px; height: 36px; padding: 0 10px; font-size: 0.85rem; }
+            .stat-val { font-size: 1.25rem; }
+            .stat-icon { width: 40px; height: 40px; font-size: 1.2rem; }
+            .modal-dialog { margin: 12px; }
+            .modal-content { border-radius: 20px !important; }
+            .profile-preview-box { width: 80px; height: 80px; }
+            .form-control, .form-select { padding: 10px 14px; font-size: 16px; border-radius: 12px; }
+            .btn-reg { padding: 14px; font-size: 14px; }
+            .form-label { font-size: 10px; }
+        }
 
-@media (max-width: 375px) {
-    .dashboard-header h3 { font-size: 0.95rem; }
-}
-</style>
+        @media (max-width: 375px) {
+            .dashboard-header h3 { font-size: 0.95rem; }
+        }
+    </style>
 </head>
 <body>
 
@@ -780,7 +775,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             </div>
         </div>
 
-        <!-- STATISTIK CARDS (info saja, tidak diklik -> tanpa card-3d-clickable) -->
+        <!-- STATISTIK CARDS -->
         <div class="stats-scroll-wrapper animate-fade-in">
             <div class="stats-row">
                 <div class="stat-card-item">
@@ -863,8 +858,8 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                     <tr>
                         <th>Preview</th>
                         <th>Katalog Layanan</th>
-                        <th>Harga & Durasi</th>
-                        <th>Slot Jadwal</th>
+                        <th>Harga</th>
+                        <th>Durasi Sesi</th>
                         <th>Kapasitas</th>
                         <th>Status</th>
                         <th class="text-center">Aksi</th>
@@ -883,8 +878,9 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                             $badge_status = ($row['Status'] == 1) ? "badge-aktif" : "badge-nonaktif";
                             $text_status = ($row['Status'] == 1) ? "Aktif" : "Nonaktif";
 
+                            // Default pengaman durasi sesi agar tidak bernilai 0
                             $durasi = (int)($row['Durasi_Waktu'] ?? 30);
-                            $slot_per_hari = floor(720 / $durasi);
+                            if ($durasi <= 0) $durasi = 30; 
                     ?>
                         <tr class="fade-in-up">
                             <td>
@@ -892,20 +888,16 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                             </td>
                             <td>
                                 <div class="td-nama"><?= htmlspecialchars($row['Nama_Paket']) ?></div>
-                                <div class="td-deskripsi"><?= htmlspecialchars($row['Deskripsi'] ?? '-') ?></div>
-                            </td>
+                                <div class="td-deskripsi mb-2"><?= htmlspecialchars($row['Deskripsi'] ?? '-') ?></div>
+                                
                             <td>
                                 <div class="td-harga">Rp <?= number_format($row['Harga_Paket'] ?? 0, 0, ',', '.') ?></div>
-                                <div class="td-durasi"><i class="bi bi-stopwatch me-1"></i><?= $row['Durasi_Waktu'] ?? 0 ?> menit</div>
                             </td>
                             <td>
                                 <span class="slot-badge">
-                                    <i class="bi bi-clock"></i>
-                                    <?= $durasi ?> menit
+                                    <i class="bi bi-clock-fill text-danger me-1"></i>
+                                    <?= $durasi ?> Menit
                                 </span>
-                                <div class="slot-count">
-                                    <?= $slot_per_hari ?> slot/hari
-                                </div>
                             </td>
                             <td class="td-kapasitas">
                                 <i class="bi bi-people-fill me-1 text-danger"></i><?= $row['Kapasitas_Orang'] ?? 0 ?> orang
@@ -1040,7 +1032,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         </div>
     </div>
 
-    <!-- MODAL LIHAT BIODATA (sama seperti index.php) -->
+    <!-- MODAL LIHAT BIODATA -->
     <div class="modal fade" id="modalLihatBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0" style="border-radius:28px;box-shadow:0 20px 50px rgba(0,0,0,0.15);background:#ffffff;">
@@ -1072,7 +1064,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         </div>
     </div>
 
-    <!-- MODAL GANTI PROFIL (sama seperti index.php) -->
+    <!-- MODAL GANTI PROFIL -->
     <div class="modal fade" id="modalGantiProfil" tabindex="-1" aria-hidden="true" style="backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0" style="border-radius:28px;box-shadow:0 20px 50px rgba(213,61,102,0.25);background:rgba(255,255,255,0.95);">
@@ -1254,7 +1246,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         updateLiveClock();
         setInterval(updateLiveClock, 1000);
 
-        // ===== MODAL PROFIL (Biodata + Edit, sama perilaku dengan index.php) =====
+        // ===== MODAL PROFIL (Biodata + Edit) =====
         function bukaModalProfil() {
             var modalProfil = new bootstrap.Modal(document.getElementById('modalGantiProfil'));
             modalProfil.show();

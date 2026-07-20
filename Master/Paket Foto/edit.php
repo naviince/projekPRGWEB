@@ -174,7 +174,8 @@ if (isset($_POST['update'])) {
     } elseif (!preg_match('/^[a-zA-Z0-9\s\-&]+$/', $nama)) {
         $errors['nama'] = "Nama paket hanya boleh huruf, angka, spasi, -, &!";
     } else {
-        $sql_cek = "SELECT COUNT(*) AS Total FROM Paket_Foto WHERE Nama_Paket = ? AND ID_Paket <> ? AND Is_Deleted = 0";
+        // Cek duplikasi case-insensitive (LOWER) demi mencegah kecurangan input kembar
+        $sql_cek = "SELECT COUNT(*) AS Total FROM Paket_Foto WHERE LOWER(Nama_Paket) = LOWER(?) AND ID_Paket <> ? AND Is_Deleted = 0";
         $stmt_cek = safe_sqlsrv_query($conn, $sql_cek, [$nama, $id]);
         $row_cek = safe_sqlsrv_fetch($stmt_cek);
         if ($row_cek && ($row_cek['Total'] ?? 0) > 0) {
@@ -233,7 +234,7 @@ if (isset($_POST['update'])) {
 
             if ($foto_error == 0) {
                 $ext = strtolower(pathinfo($foto_name, PATHINFO_EXTENSION));
-                $allowed = ['jpg', 'jpeg', 'png'];
+                $allowed = ['jpg', 'jpeg', 'png', 'webp']; // Ditambahkan dukungan modern webp
 
                 if (in_array($ext, $allowed) && $foto_size <= 2097152) {
                     $upload_dir = "../../assets/img/paket/";
@@ -250,11 +251,17 @@ if (isset($_POST['update'])) {
                         $errors['foto'] = "Gagal mengupload foto baru!";
                     }
                 } else {
-                    $errors['foto'] = "Format JPG/JPEG/PNG, max 2MB!";
+                    $errors['foto'] = "Format JPG/JPEG/PNG/WEBP, max 2MB!";
                 }
             }
         }
 
+        // =====================================================
+        // CATATAN INTEGRITAS: Proses update paket ini 
+        // JANGAN PERNAH menghubungkan paket ke ruangan secara otomatis.
+        // Relasi harus selalu diatur secara manual oleh user lewat edit terpisah
+        // demi menghindari kebingungan alur & gangguan validasi transaksi.
+        // =====================================================
         if (empty($errors)) {
             $sql_update = "{CALL sp_UpdatePaketFoto(?, ?, ?, ?, ?, ?, ?, ?, ?)}";
             $params_update = [
@@ -304,7 +311,7 @@ $ada_foto_existing = !empty($foto_existing_name) && $foto_existing_name !== 'def
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Edit Paket Foto – SpotLight Studio</title>
-    <link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
+    <link class="favicon" rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -766,10 +773,10 @@ $ada_foto_existing = !empty($foto_existing_name) && $foto_existing_name !== 'def
             border: 1px solid #bfdbfe; 
         }
 
-        /* card-3d hanya dipakai di dalam modal biodata (elemen non-klik -> tetap datar) */
+        /* card-3d */
         .card-3d { background: #ffffff; border-radius: 22px; border: 1px solid rgba(255, 228, 233, 0.8); box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03); }
 
-        /* Modal profil (sinkron index.php) */
+        /* Modal profil */
         .required-star { color: #ef4444; font-weight: bold; margin-left: 2px; }
         .form-control, .form-select {
             border-radius: 14px; padding: 12px 18px; border: 2px solid #eef2f6;
@@ -810,10 +817,6 @@ $ada_foto_existing = !empty($foto_existing_name) && $foto_existing_name !== 'def
             to { opacity:1; transform:translateY(0); } 
         }
         .fade-in-up { animation: fadeIn .5s ease-out; }
-
-        /* ============================================
-           RESPONSIVE BREAKPOINTS
-           ============================================ */
 
         /* Tablet & below */
         @media (max-width: 991.98px) {
@@ -1189,10 +1192,10 @@ $ada_foto_existing = !empty($foto_existing_name) && $foto_existing_name !== 'def
 
                     <div class="file-upload-zone" id="dropzone" onclick="document.getElementById('foto-input').click()">
                         <input type="file" name="foto" id="foto-input" 
-                               accept="image/jpeg,image/jpg,image/png" onchange="handleFileSelect(event)">
+                               accept="image/jpeg,image/jpg,image/png,image/webp" onchange="handleFileSelect(event)">
                         <i class="bi bi-arrow-up-circle-fill" id="upload-icon"></i>
                         <p id="upload-text">Klik atau seret foto baru ke sini (opsional)</p>
-                        <small>JPG, JPEG, PNG — Maksimal 2MB</small>
+                        <small>JPG, JPEG, PNG, WEBP — Maksimal 2MB</small>
                     </div>
                     <div id="preview-container">
                         <img id="preview-img" src="" alt="Preview">
@@ -1332,9 +1335,9 @@ $ada_foto_existing = !empty($foto_existing_name) && $foto_existing_name !== 'def
             Swal.fire({ icon: 'error', title: 'Ukuran Terlalu Besar', text: 'Ukuran gambar maksimal 2MB.', confirmButtonColor: '#D53D66' });
             event.target.value = ''; return;
         }
-        const allowed = ['image/jpeg', 'image/jpg', 'image/png'];
+        const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
         if (!allowed.includes(file.type)) {
-            Swal.fire({ icon: 'error', title: 'Format Tidak Valid', text: 'Format gambar harus JPG, JPEG, atau PNG.', confirmButtonColor: '#D53D66' });
+            Swal.fire({ icon: 'error', title: 'Format Tidak Valid', text: 'Format gambar harus JPG, JPEG, PNG, atau WEBP.', confirmButtonColor: '#D53D66' });
             event.target.value = ''; return;
         }
         const reader = new FileReader();

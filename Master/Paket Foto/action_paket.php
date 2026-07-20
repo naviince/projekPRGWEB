@@ -9,7 +9,16 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 }
 
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
-$nama_admin = $_SESSION['nama'] ?? 'Administrator';
+
+// Ambil profil admin secara dinamis agar pencatatan log audit konsisten dengan nama asli
+$nama_admin = 'Administrator';
+if ($id_admin) {
+    $q_profile = sqlsrv_query($conn, "SELECT Nama_Karyawan FROM Karyawan WHERE ID_Karyawan = ?", array($id_admin));
+    if ($q_profile && sqlsrv_has_rows($q_profile)) {
+        $d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
+        $nama_admin = $d_profile['Nama_Karyawan'] ?? $_SESSION['nama'] ?? 'Administrator';
+    }
+}
 
 $aksi = isset($_GET['aksi']) ? trim($_GET['aksi']) : '';
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
@@ -23,29 +32,11 @@ if ($id <= 0) {
 // HELPER FUNCTIONS - UNTUK MENJAGA INTEGRITAS RELASI
 // =====================================================
 
+// Satu-satunya validasi wajib: Cek apakah paket sudah masuk ke dalam transaksi booking riil
 function hasOrder($conn, $id_paket) {
-    $sql = "SELECT COUNT(*) as total FROM [Order] WHERE ID_Paket = ? AND Status = 1";
+    $sql = "SELECT COUNT(*) as total FROM [Order] WHERE ID_Paket = ?";
     $stmt = sqlsrv_query($conn, $sql, [$id_paket]);
-    if ($stmt === false) return true;
-    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
-    return ($row['total'] ?? 0) > 0;
-}
-
-function hasRuangan($conn, $id_paket) {
-    $sql = "SELECT COUNT(*) as total FROM Ruangan WHERE ID_Paket = ? AND Is_Deleted = 0";
-    $stmt = sqlsrv_query($conn, $sql, [$id_paket]);
-    if ($stmt === false) return true;
-    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
-    return ($row['total'] ?? 0) > 0;
-}
-
-function hasJadwal($conn, $id_paket) {
-    $sql = "SELECT COUNT(*) as total 
-            FROM Jadwal_Studio js
-            JOIN Ruangan r ON js.ID_Ruangan = r.ID_Ruangan
-            WHERE r.ID_Paket = ? AND js.Is_Deleted = 0";
-    $stmt = sqlsrv_query($conn, $sql, [$id_paket]);
-    if ($stmt === false) return true;
+    if ($stmt === false) return true; // Fallback aman jika query gagal
     $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
     return ($row['total'] ?? 0) > 0;
 }
@@ -135,23 +126,19 @@ switch ($aksi) {
         break;
 
     case 'hard_delete':
+        // Cek 1: Proteksi Transaksi Booking Riil Pelanggan (Wajib dilindungi)
         if (hasOrder($conn, $id)) {
             header("Location: list.php?status_sukses=error&message=Gagal+Hapus!+Paket+ini+memiliki+riwayat+transaksi+booking+pelanggan.");
             exit();
         }
 
-        if (hasRuangan($conn, $id)) {
-            header("Location: list.php?status_sukses=error&message=Gagal+Hapus!+Paket+ini+terikat+dengan+Ruangan+Studio.");
-            exit();
-        }
-
-        if (hasJadwal($conn, $id)) {
-            header("Location: list.php?status_sukses=error&message=Gagal+Hapus!+Paket+ini+terikat+dengan+Jadwal+Studio.");
-            exit();
-        }
+        // Catatan: Pengecekan hasRuangan() dan hasJadwal() dihapus karena:
+        // 1. Menyebabkan crash database akibat salah rujukan kolom r.ID_Paket.
+        // 2. Database menggunakan ON DELETE CASCADE pada tabel junction Paket_Ruangan, 
+        //    sehingga relasi ruangan akan otomatis terhapus dengan aman jika paket dihapus [1].
 
         $foto_name = getFotoPaket($conn, $id);
-        if ($foto_name != 'default_paket.jpg') {
+        if ($foto_name != 'default_paket.jpg' && !empty($foto_name)) {
             $foto_path = "../../assets/img/paket/" . $foto_name;
             if (file_exists($foto_path)) {
                 @unlink($foto_path);
