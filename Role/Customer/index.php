@@ -250,6 +250,7 @@ function fmtTgl($d) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SpotLight Studio - Booking Studio Foto Online</title>
+    <link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -988,7 +989,7 @@ function fmtTgl($d) {
         }
         .scroll-nav-btn.left { left: -22px; }
         .scroll-nav-btn.right { right: -22px; }
-        .scroll-nav-btn.hidden { display: none; }
+        .scroll-nav-btn.hidden { display: none !important; }
 
         .info-section {
             display: grid;
@@ -2513,13 +2514,70 @@ function fmtTgl($d) {
             }
         }
 
+        // Fungsi tambahan untuk mengecek posisi scroll (Agar panah hilang/muncul)
+        function updateScrollButtons() {
+            const container = document.getElementById('paketContainer');
+            const leftBtn = document.getElementById('scrollLeft');
+            const rightBtn = document.getElementById('scrollRight');
+
+            if (!container || !leftBtn || !rightBtn) return;
+
+            const scrollLeft = container.scrollLeft;
+            const maxScroll = container.scrollWidth - container.clientWidth;
+
+            // Sembunyikan panah kiri jika posisi sudah paling awal
+            if (scrollLeft <= 5) {
+                leftBtn.classList.add('hidden');
+            } else {
+                leftBtn.classList.remove('hidden');
+            }
+
+            // Sembunyikan panah kanan jika posisi sudah mentok akhir
+            if (scrollLeft >= maxScroll - 5) {
+                rightBtn.classList.add('hidden');
+            } else {
+                rightBtn.classList.remove('hidden');
+            }
+        }
+
+        // Tambahkan fungsi baru ini untuk mengatur visibilitas tombol
+        function updateScrollButtons() {
+            const container = document.getElementById('paketContainer');
+            const leftBtn = document.getElementById('scrollLeft');
+            const rightBtn = document.getElementById('scrollRight');
+
+            if (!container || !leftBtn || !rightBtn) return;
+
+            const scrollLeft = container.scrollLeft;
+            const maxScroll = container.scrollWidth - container.clientWidth;
+
+            // Jika posisi scroll di awal (0), sembunyikan panah kiri
+            if (scrollLeft <= 5) {
+                leftBtn.classList.add('hidden');
+            } else {
+                leftBtn.classList.remove('hidden');
+            }
+
+            // Jika posisi scroll sudah mentok di akhir, sembunyikan panah kanan
+            if (scrollLeft >= maxScroll - 5) {
+                rightBtn.classList.add('hidden');
+            } else {
+                rightBtn.classList.remove('hidden');
+            }
+        }
 
         // ===== INTERSECTION OBSERVER UNTUK NAVBAR ACTIVE =====
         document.addEventListener("DOMContentLoaded", function() {
             const dashboardLink = document.querySelector('a[href="index.php"]');
             const bookingLink = document.getElementById('navBookingBaru');
             const paketSection = document.getElementById('section-paket');
-
+            // Tambahkan ini di dalam DOMContentLoaded
+            const containerPaket = document.getElementById('paketContainer');
+            if (containerPaket) {
+                updateScrollButtons(); // Jalankan sekali saat baru buka halaman
+                containerPaket.addEventListener('scroll', updateScrollButtons); // Jalankan setiap kali digeser
+            }
+            
             if (paketSection && bookingLink && dashboardLink) {
                 const observer = new IntersectionObserver((entries) => {
                     entries.forEach(entry => {

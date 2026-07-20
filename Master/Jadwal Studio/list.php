@@ -149,6 +149,7 @@ $cari = isset($_GET['cari']) ? trim($_GET['cari']) : "";
 $filter_ruangan = isset($_GET['ruangan']) ? (int)$_GET['ruangan'] : 0;
 $filter_paket = isset($_GET['paket']) ? (int)$_GET['paket'] : 0;
 $filter_status = isset($_GET['status']) ? trim($_GET['status']) : "";
+$filter_waktu = isset($_GET['waktu']) ? trim($_GET['waktu']) : ""; // Tambahkan ini
 $filter_tanggal = isset($_GET['tanggal']) ? trim($_GET['tanggal']) : "";
 $sort = isset($_GET['sort']) ? trim($_GET['sort']) : "tanggal_asc";
 
@@ -171,7 +172,24 @@ if ($q_stats !== false) {
 // =====================================================
 // QUERY LIST DATA
 // =====================================================
-$conditions = array("j.Is_Deleted = 0");
+$is_deleted_val = ($filter_waktu === "expired") ? "j.Is_Deleted IN (0,1)" : "j.Is_Deleted = 0";
+$conditions = array($is_deleted_val);
+if ($filter_status !== "") {
+    $conditions[] = "j.Status = ?";
+    $params[] = (int)$filter_status;
+}
+// --- FILTER STATUS WAKTU (AKTIF VS EXPIRED) ---
+if ($filter_waktu === "aktif") {
+    // Jadwal hari ini yang belum mulai ATAU jadwal hari esok dan seterusnya
+    $conditions[] = "(j.Tanggal_Jadwal > CAST(GETDATE() AS DATE) OR (j.Tanggal_Jadwal = CAST(GETDATE() AS DATE) AND j.Jam_Mulai >= CAST(GETDATE() AS TIME)))";
+} elseif ($filter_waktu === "expired") {
+    // Jadwal hari kemarin dan sebelumnya ATAU jadwal hari ini yang sudah lewat jam mulainya
+    $conditions[] = "(j.Tanggal_Jadwal < CAST(GETDATE() AS DATE) OR (j.Tanggal_Jadwal = CAST(GETDATE() AS DATE) AND j.Jam_Mulai < CAST(GETDATE() AS TIME)))";
+    
+    // PENTING: Karena jadwal lampau di-auto soft-delete oleh kode kamu di atas, 
+    // kita perlu memaksa query untuk mencari data yang Is_Deleted = 1 JUGA khusus saat filter expired aktif.
+    // Cari baris $conditions = array("j.Is_Deleted = 0"); di atas, lalu ubah logika array-nya jika perlu.
+}
 $params = array();
 
 if (!empty($cari)) {
@@ -270,6 +288,28 @@ function hariIndo($d) {
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <style>
+/* Memberikan icon dropdown panah pada select modal */
+.modal-body .form-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23718096' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    background-size: 16px 12px;
+    padding-right: 2.5rem;
+}
+
+/* Mempercantik label filter */
+.modal-body .form-label {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    display: block;
+}
 :root {
     --p-pink: #D53D66;
     --d-pink: #CA3366;
@@ -861,6 +901,7 @@ body {
         <!-- SEARCH & FILTER BAR -->
         <div class="search-filter-bar">
             <form method="GET" class="search-form-flex" id="mainSearchForm">
+                <input type="hidden" name="waktu" id="hiddenWaktu" value="<?= htmlspecialchars($filter_waktu) ?>">
                 <input type="hidden" name="ruangan" id="hiddenRuangan" value="<?= htmlspecialchars($filter_ruangan) ?>">
                 <input type="hidden" name="paket" id="hiddenPaket" value="<?= htmlspecialchars($filter_paket) ?>">
                 <input type="hidden" name="status" id="hiddenStatus" value="<?= htmlspecialchars($filter_status) ?>">
@@ -1083,19 +1124,34 @@ body {
 
     </div>
 
-    <!-- FILTER MODAL -->
-    <div class="modal fade filter-modal" id="modalFilterData" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-sm">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="fw-bold mb-0"><i class="bi bi-funnel-fill me-2 text-danger"></i>Filter Data</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">PAKET</label>
-                        <select class="filter-select" id="modalPaket">
-                            <option value="0" <?= $filter_paket == 0 ? 'selected' : '' ?>>Semua Paket</option>
+    <!-- FILTER MODAL PREMIUM -->
+<div class="modal fade" id="modalFilterData" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0" style="border-radius: 24px; box-shadow: 0 20px 60px rgba(0,0,0,0.15);">
+            <div class="modal-header border-0 px-4 pt-4 pb-0">
+                <h5 class="fw-800 mb-0" style="color: var(--text-dark); letter-spacing: -0.5px;">
+                    <i class="bi bi-funnel-fill text-danger me-2"></i>Saring Jadwal
+                </h5>
+                <button type="button" class="btn-close shadow-none" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body px-4 pt-3 pb-4">
+                <p class="text-muted small mb-4">Gunakan filter di bawah ini untuk merampingkan daftar jadwal studio.</p>
+                
+                <div class="row g-3">
+                    <!-- Filter Berdasarkan Waktu (BARU) -->
+                    <div class="col-12">
+                        <label class="form-label">Status Waktu Jadwal</label>
+                        <select class="form-select shadow-none" id="modalWaktu">
+                            <option value="" <?= $filter_waktu == '' ? 'selected' : '' ?>>Semua Waktu</option>
+                            <option value="aktif" <?= $filter_waktu == 'aktif' ? 'selected' : '' ?>>Aktif (Mendatang)</option>
+                            <option value="expired" <?= $filter_waktu == 'expired' ? 'selected' : '' ?>>Kedaluwarsa (Lampau)</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">Pilih Paket</label>
+                        <select class="form-select shadow-none" id="modalPaket">
+                            <option value="0">Semua Paket</option>
                             <?php 
                             sqlsrv_free_stmt($q_paket);
                             $q_paket = sqlsrv_query($conn, "SELECT ID_Paket, Nama_Paket FROM Paket_Foto WHERE Status = 1 AND Is_Deleted = 0 ORDER BY Nama_Paket");
@@ -1105,10 +1161,11 @@ body {
                             <?php endwhile; ?>
                         </select>
                     </div>
-                    <div class="mb-3">
-                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">RUANGAN</label>
-                        <select class="filter-select" id="modalRuangan">
-                            <option value="0" <?= $filter_ruangan == 0 ? 'selected' : '' ?>>Semua Ruangan</option>
+
+                    <div class="col-md-6">
+                        <label class="form-label">Pilih Ruangan</label>
+                        <select class="form-select shadow-none" id="modalRuangan">
+                            <option value="0">Semua Ruangan</option>
                             <?php 
                             sqlsrv_free_stmt($q_ruangan);
                             $q_ruangan = sqlsrv_query($conn, "SELECT ID_Ruangan, Nama_Ruangan FROM Ruangan WHERE Status = 1 AND Is_Deleted = 0 ORDER BY Nama_Ruangan");
@@ -1118,39 +1175,28 @@ body {
                             <?php endwhile; ?>
                         </select>
                     </div>
-                    <div class="mb-3">
-                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">TANGGAL</label>
-                        <input type="date" class="filter-select" id="modalTanggal" value="<?= htmlspecialchars($filter_tanggal) ?>">
-                    </div>
-                    <div class="mb-3">
-                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">STATUS AKTIF</label>
-                        <select class="filter-select" id="modalStatus">
-                            <option value="" <?= $filter_status === '' ? 'selected' : '' ?>>Semua</option>
-                            <option value="1" <?= $filter_status === '1' ? 'selected' : '' ?>>Aktif</option>
-                            <option value="0" <?= $filter_status === '0' ? 'selected' : '' ?>>Nonaktif</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">URUTAN</label>
-                        <select class="filter-select" id="modalSort">
-                            <option value="tanggal_asc" <?= $sort == 'tanggal_asc' ? 'selected' : '' ?>>Tanggal ↑ (Terdekat)</option>
-                            <option value="tanggal_desc" <?= $sort == 'tanggal_desc' ? 'selected' : '' ?>>Tanggal ↓ (Terjauh)</option>
+
+                    <div class="col-md-12">
+                        <label class="form-label">Urutan Tampilan</label>
+                        <select class="form-select shadow-none" id="modalSort">
+                            <option value="tanggal_asc" <?= $sort == 'tanggal_asc' ? 'selected' : '' ?>>Tanggal Terdekat</option>
+                            <option value="tanggal_desc" <?= $sort == 'tanggal_desc' ? 'selected' : '' ?>>Tanggal Terjauh</option>
                             <option value="ruangan_asc" <?= $sort == 'ruangan_asc' ? 'selected' : '' ?>>Ruangan A-Z</option>
-                            <option value="paket_asc" <?= $sort == 'paket_asc' ? 'selected' : '' ?>>Paket A-Z</option>
                         </select>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" style="flex: 1; background: #f1f5f9; color: #475569; border: none; border-radius: 14px; padding: 14px 20px; font-weight: 700;" onclick="resetFilter()">
-                        <i class="bi bi-arrow-counterclockwise me-2"></i>Reset
-                    </button>
-                    <button type="button" class="btn btn-danger" style="flex: 1; background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; border-radius: 14px; padding: 14px 20px; font-weight: 700;" onclick="applyFilter()">
-                        <i class="bi bi-check-lg me-2"></i>Terapkan
-                    </button>
-                </div>
+            </div>
+            <div class="modal-footer border-0 px-4 pb-4 pt-0 gap-2">
+                <button type="button" class="btn btn-light fw-bold flex-fill py-3" style="border-radius: 14px; color: #718096;" onclick="resetFilter()">
+                    <i class="bi bi-arrow-counterclockwise me-2"></i>Reset
+                </button>
+                <button type="button" class="btn btn-danger fw-bold flex-fill py-3" style="border-radius: 14px; background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); border:none;" onclick="applyFilter()">
+                    Terapkan Filter
+                </button>
             </div>
         </div>
     </div>
+</div>
 
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
@@ -1181,26 +1227,32 @@ body {
         filterModal.show();
     }
     function applyFilter() {
-        document.getElementById('hiddenPaket').value = document.getElementById('modalPaket').value;
-        document.getElementById('hiddenRuangan').value = document.getElementById('modalRuangan').value;
-        document.getElementById('hiddenTanggal').value = document.getElementById('modalTanggal').value;
-        document.getElementById('hiddenStatus').value = document.getElementById('modalStatus').value;
-        document.getElementById('hiddenSort').value = document.getElementById('modalSort').value;
-        document.getElementById('mainSearchForm').submit();
-    }
-    function resetFilter() {
-        document.getElementById('modalPaket').value = '0';
-        document.getElementById('modalRuangan').value = '0';
-        document.getElementById('modalTanggal').value = '';
-        document.getElementById('modalStatus').value = '';
-        document.getElementById('modalSort').value = 'tanggal_asc';
-        document.getElementById('hiddenPaket').value = '0';
-        document.getElementById('hiddenRuangan').value = '0';
-        document.getElementById('hiddenTanggal').value = '';
-        document.getElementById('hiddenStatus').value = '';
-        document.getElementById('hiddenSort').value = 'tanggal_asc';
-        document.getElementById('mainSearchForm').submit();
-    }
+    // Ambil nilai dari select modal
+    const waktu = document.getElementById('modalWaktu').value;
+    const paket = document.getElementById('modalPaket').value;
+    const ruangan = document.getElementById('modalRuangan').value;
+    const sort = document.getElementById('modalSort').value;
+
+    // Masukkan ke input hidden di form utama
+    document.getElementById('hiddenWaktu').value = waktu;
+    document.getElementById('hiddenPaket').value = paket;
+    document.getElementById('hiddenRuangan').value = ruangan;
+    document.getElementById('hiddenSort').value = sort;
+
+    // Submit form utama
+    document.getElementById('mainSearchForm').submit();
+}
+
+function resetFilter() {
+    // Reset semua nilai ke default
+    document.getElementById('hiddenPaket').value = '0';
+    document.getElementById('hiddenRuangan').value = '0';
+    document.getElementById('hiddenWaktu').value = '';
+    document.getElementById('hiddenStatus').value = '';
+    document.getElementById('hiddenTanggal').value = '';
+    document.getElementById('hiddenSort').value = 'tanggal_asc';
+    document.getElementById('mainSearchForm').submit();
+}
 
     // Toggle Status
     function toggleStatus(id, currentStatus, info) {
