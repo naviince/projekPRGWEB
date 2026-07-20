@@ -1,5 +1,5 @@
 <?php
-$serverName = "ELVINA-PARAMITA";
+$serverName = "LAPTOP-EEPS0DEJ\ALSQLSERVER";
 $connectionOptions = array(
     "Database" => "SpotLight",
     "TrustServerCertificate" => true
