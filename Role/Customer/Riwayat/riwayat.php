@@ -2908,7 +2908,7 @@ function confirmLogout() {
         cancelButtonText: 'Batal'
     }).then((result) => {
         if (result.isConfirmed) {
-            window.location.href = '../../logout.php';
+            window.location.href = '../../../logout.php';
         }
     });
 }
