@@ -153,8 +153,6 @@ if (isset($_POST['update_profil'])) {
     }
 }
 
-
-
 // =====================================================
 // PAGINATION & FILTER
 // =====================================================
@@ -243,8 +241,9 @@ ORDER BY " . $order_clause . "
 OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
 
 $params_list = $params;
-$params_list[] = $offset;
-$params_list[] = $limit;
+// Penyelarasan Eksplisit Parameter Binding tipe data Integer untuk mencegah crash OFFSET/FETCH
+$params_list[] = array($offset, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_INT);
+$params_list[] = array($limit, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_INT);
 
 $tema_list = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
 
@@ -377,9 +376,6 @@ if (!empty($tema_list)) {
         .stats-scroll-wrapper::-webkit-scrollbar-thumb { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); border-radius: 10px; }
         .stats-row { display: flex; gap: 16px; min-width: max-content; }
         .stat-card-item { min-width: 220px; max-width: 280px; flex: 0 0 auto; }
-        /* card-3d = struktur visual dasar (dipakai statistik & info non-klik).
-           card-3d-clickable = modifier opt-in untuk elemen yang benar-benar bisa diklik,
-           supaya efek hover-lift hanya muncul saat memang ada aksi. */
         .card-3d {
             background: #ffffff; border-radius: 22px;
             border: 1px solid rgba(255, 228, 233, 0.8);
@@ -431,8 +427,6 @@ if (!empty($tema_list)) {
             color: #1e293b; transition: var(--transition-3d); background: #ffffff;
         }
         .search-input-main:focus { outline: none; border-color: var(--p-pink); box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); }
-        /* Filter: gaya outline ringan (sinkron dengan tombol "Verifikasi Semua" di dashboard),
-           supaya tidak terlihat sama seperti tombol solid "Tambah Tema Foto". */
         .btn-filter-modal {
             background: var(--s-pink);
             color: var(--p-pink);
@@ -592,8 +586,7 @@ if (!empty($tema_list)) {
             .sidebar { transform: translateX(-100%); }
         }
 
-
-        /* PROFIL: modal biodata & edit profil */
+        /* PROFIL */
         .required-star { color: #ef4444; font-weight: bold; margin-left: 2px; }
         .form-label { font-weight: 800; font-size: 11px; color: #8a99a8; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 8px; }
         .form-control, .form-select {
@@ -629,79 +622,77 @@ if (!empty($tema_list)) {
         .toggle-password { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #94a3b8; font-size: 18px; z-index: 10; transition: 0.3s; }
         .toggle-password:hover { color: var(--p-pink); }
 
-/* =====================================================
-   RESPONSIVE ENHANCEMENTS
-   ===================================================== */
-.mobile-menu-btn {
-    display: none; width: 44px; height: 44px; border-radius: 12px;
-    background: #ffffff; border: 2px solid var(--light-pink); color: var(--p-pink);
-    align-items: center; justify-content: center; font-size: 1.4rem; cursor: pointer;
-    transition: var(--transition-3d); flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-}
-.mobile-menu-btn:hover { background: var(--s-pink); transform: scale(1.05); }
+        /* RESPONSIVE ENHANCEMENTS */
+        .mobile-menu-btn {
+            display: none; width: 44px; height: 44px; border-radius: 12px;
+            background: #ffffff; border: 2px solid var(--light-pink); color: var(--p-pink);
+            align-items: center; justify-content: center; font-size: 1.4rem; cursor: pointer;
+            transition: var(--transition-3d); flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .mobile-menu-btn:hover { background: var(--s-pink); transform: scale(1.05); }
 
-.sidebar-overlay {
-    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(30, 30, 36, 0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    z-index: 99; opacity: 0; transition: opacity 0.35s ease;
-}
-.sidebar-overlay.show { display: block; opacity: 1; }
+        .sidebar-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(30, 30, 36, 0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            z-index: 99; opacity: 0; transition: opacity 0.35s ease;
+        }
+        .sidebar-overlay.show { display: block; opacity: 1; }
 
-@media (max-width: 1199px) {
-    .stats-row { gap: 12px; }
-    .stat-card-item { min-width: 200px; }
-}
+        @media (max-width: 1199px) {
+            .stats-row { gap: 12px; }
+            .stat-card-item { min-width: 200px; }
+        }
 
-@media (max-width: 992px) {
-    .mobile-menu-btn { display: inline-flex; }
-    .sidebar {
-        transform: translateX(-100%);
-        transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        box-shadow: none;
-    }
-    .sidebar.mobile-open { transform: translateX(0); box-shadow: 10px 0 50px rgba(0,0,0,0.15); }
-    .main-content { margin-left: 0; padding: 24px; }
-    .dashboard-header { flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
-    .dashboard-header h3 { font-size: 1.35rem; }
-}
+        @media (max-width: 992px) {
+            .mobile-menu-btn { display: inline-flex; }
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                box-shadow: none;
+            }
+            .sidebar.mobile-open { transform: translateX(0); box-shadow: 10px 0 50px rgba(0,0,0,0.15); }
+            .main-content { margin-left: 0; padding: 24px; }
+            .dashboard-header { flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
+            .dashboard-header h3 { font-size: 1.35rem; }
+        }
 
-@media (max-width: 768px) {
-    .main-content { padding: 18px; }
-    .dashboard-header { margin-bottom: 22px; }
-    .dashboard-header h3 { font-size: 1.15rem; }
-    .dashboard-header p { font-size: 0.8rem; }
+        @media (max-width: 768px) {
+            .main-content { padding: 18px; }
+            .dashboard-header { margin-bottom: 22px; }
+            .dashboard-header h3 { font-size: 1.15rem; }
+            .dashboard-header p { font-size: 0.8rem; }
 
-    .search-filter-bar { flex-direction: column; align-items: stretch; gap: 10px; }
-    .search-form-flex { min-width: 100%; flex-wrap: wrap; }
-    .search-input-wrapper { width: 100%; }
-    .btn-reg-header { width: 100%; justify-content: center; }
-    .pagination-wrapper { flex-direction: column; gap: 12px; padding: 16px; }
-    .pagination-nav { justify-content: center; flex-wrap: wrap; }
-    .stat-card-item { min-width: 170px; }
-}
+            .search-filter-bar { flex-direction: column; align-items: stretch; gap: 10px; }
+            .search-form-flex { min-width: 100%; flex-wrap: wrap; }
+            .search-input-wrapper { width: 100%; }
+            .btn-reg-header { width: 100%; justify-content: center; }
+            .pagination-wrapper { flex-direction: column; gap: 12px; padding: 16px; }
+            .pagination-nav { justify-content: center; flex-wrap: wrap; }
+            .stat-card-item { min-width: 170px; }
+        }
 
-@media (max-width: 576px) {
-    .main-content { padding: 14px; }
-    .dashboard-header h3 { font-size: 1.05rem; }
+        @media (max-width: 576px) {
+            .main-content { padding: 14px; }
+            .dashboard-header h3 { font-size: 1.05rem; }
 
-    .data-table tbody td { padding: 12px 14px; }
-    .data-table tbody td:first-child { padding-left: 16px; border-radius: 10px 0 0 10px; }
-    .data-table tbody td:last-child { padding-right: 16px; border-radius: 0 10px 10px 0; }
-    .tema-preview { width: 48px; height: 48px; border-radius: 10px; }
-    .td-nama { font-size: 0.85rem; }
-    .td-deskripsi { font-size: 0.75rem; }
-    .badge-status { font-size: 0.65rem; padding: 5px 10px; }
-    .btn-action-circle { width: 32px; height: 32px; font-size: 0.8rem; margin: 0 2px; }
-    .page-link-pag { min-width: 36px; height: 36px; padding: 0 10px; font-size: 0.85rem; }
-    .stat-val { font-size: 1.25rem; }
-    .stat-icon { width: 40px; height: 40px; font-size: 1.2rem; }
-    .modal-dialog { margin: 12px; }
-    .modal-content { border-radius: 20px !important; }
-}
+            .data-table tbody td { padding: 12px 14px; }
+            .data-table tbody td:first-child { padding-left: 16px; border-radius: 10px 0 0 10px; }
+            .data-table tbody td:last-child { padding-right: 16px; border-radius: 0 10px 10px 0; }
+            .tema-preview { width: 48px; height: 48px; border-radius: 10px; }
+            .td-nama { font-size: 0.85rem; }
+            .td-deskripsi { font-size: 0.75rem; }
+            .badge-status { font-size: 0.65rem; padding: 5px 10px; }
+            .btn-action-circle { width: 32px; height: 32px; font-size: 0.8rem; margin: 0 2px; }
+            .page-link-pag { min-width: 36px; height: 36px; padding: 0 10px; font-size: 0.85rem; }
+            .stat-val { font-size: 1.25rem; }
+            .stat-icon { width: 40px; height: 40px; font-size: 1.2rem; }
+            .modal-dialog { margin: 12px; }
+            .modal-content { border-radius: 20px !important; }
+        }
 
-@media (max-width: 375px) {
-    .dashboard-header h3 { font-size: 0.95rem; }
-}
+        @media (max-width: 375px) {
+            .dashboard-header h3 { font-size: 0.95rem; }
+        }
     </style>
 </head>
 <body>
@@ -1071,6 +1062,72 @@ if (!empty($tema_list)) {
                     <button type="button" class="btn btn-danger" style="flex: 1; background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: #ffffff; border: none; border-radius: 14px; padding: 14px 20px; font-weight: 700;" onclick="applyFilter()">
                         <i class="bi bi-check-lg me-2"></i>Terapkan
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL LIHAT BIODATA -->
+    <div class="modal fade" id="modalLihatBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0" style="border-radius:28px;box-shadow:0 20px 50px rgba(0,0,0,0.15);background:#ffffff;">
+                <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-vcard-fill text-danger me-2"></i>Biodata Admin</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body px-4 pb-4 pt-3">
+                    <div class="text-center mb-4">
+                        <div class="profile-preview-box mx-auto" style="width:100px;height:100px;border:3px solid var(--s-pink);">
+                            <img src="<?= $foto_admin_src ?>" alt="Foto Profil">
+                        </div>
+                        <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_admin) ?></h5>
+                        <span class="badge bg-primary px-3 py-1 text-white text-uppercase" style="font-size:0.72rem;border-radius:50px;font-weight:700;">Administrator</span>
+                    </div>
+                    <div class="card-3d p-3 border-0 mb-4" style="border-radius:20px;background-color:#f8fafc;">
+                        <div class="row g-3">
+                            <div class="col-6"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">NIK</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['nik'] ?? '-') ?></span></div>
+                            <div class="col-6"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Nama Pengguna</small><span class="fw-bold text-dark" style="font-size:0.85rem;">@<?= htmlspecialchars($username_admin) ?></span></div>
+                            <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Email</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($email_admin) ?></span></div>
+                            <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Jenis Kelamin</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['jenis_kelamin'] ?? '-') ?></span></div>
+                            <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Nomor Telepon</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['no_hp'] ?? '-') ?></span></div>
+                            <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Lengkap</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['alamat'] ?? '-') ?></span></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-reg shadow-sm py-3 mt-0" onclick="bukaModalEditDariBiodata()" style="border-radius:14px;">Edit Profil Anda</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL GANTI PROFIL -->
+    <div class="modal fade" id="modalGantiProfil" tabindex="-1" aria-hidden="true" style="backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0" style="border-radius:28px;box-shadow:0 20px 50px rgba(213,61,102,0.25);background:rgba(255,255,255,0.95);">
+                <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-gear-fill text-danger me-2"></i>Pengaturan Profil Admin</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body px-4 pb-4 pt-3">
+                    <p class="text-muted small mb-4" style="line-height:1.6;">Perbarui informasi profil pribadi Anda di bawah ini secara akurat.</p>
+                    <form method="POST" enctype="multipart/form-data">
+                        <div class="text-center mb-4">
+                            <div class="d-inline-block position-relative">
+                                <div class="profile-preview-box mx-auto"><img id="profile-preview-modal" src="<?= $foto_admin_src ?>" alt="Foto Profil"></div>
+                                <input type="file" name="foto_profil" id="inputFotoModal" class="form-control d-none" accept=".jpg,.jpeg,.png">
+                                <button type="button" class="btn btn-pilih-foto btn-sm position-absolute" style="bottom:-10px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:0.75rem;padding:5px 12px;" onclick="document.getElementById('inputFotoModal').click();">Ganti Foto</button>
+                            </div>
+                        </div>
+                        <div class="mb-3"><label class="form-label">Nama Lengkap Anda<span class="required-star">*</span></label><input type="text" name="nama" id="inputNamaModal" class="form-control" placeholder="Masukkan nama lengkap Anda" value="<?= htmlspecialchars($nama_admin) ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Nama Pengguna (Username)<span class="required-star">*</span></label><input type="text" name="username" id="inputUsernameModal" class="form-control" placeholder="Masukkan nama pengguna kustom" value="<?= htmlspecialchars($username_admin) ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Alamat Email<span class="required-star">*</span></label><input type="email" name="email" class="form-control" placeholder="nama@email.com" value="<?= htmlspecialchars($email_admin) ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Nomor Telepon<span class="required-star">*</span></label><input type="text" name="no_hp" id="inputHPModal" class="form-control" placeholder="Contoh: +628xxxxxxxxxx" value="<?= htmlspecialchars($d_profile['no_hp'] ?? '') ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Alamat Lengkap<span class="required-star">*</span></label><textarea name="alamat" class="form-control" rows="2" placeholder="Masukkan alamat domisili lengkap" required style="resize:none;"><?= htmlspecialchars($d_profile['alamat'] ?? '') ?></textarea></div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3"><label class="form-label">Sandi Baru (Opsional)</label><div class="password-group"><input type="password" name="password" id="pass_baru_modal" class="form-control" placeholder="Minimal 8 karakter"><i class="bi bi-eye-slash toggle-password" id="btnToggleBaru"></i></div></div>
+                            <div class="col-md-6 mb-3"><label class="form-label">Konfirmasi Sandi</label><div class="password-group"><input type="password" name="confirm_password" id="pass_konf_modal" class="form-control" placeholder="Ulangi sandi baru"><i class="bi bi-eye-slash toggle-password" id="btnToggleKonf"></i></div></div>
+                        </div>
+                        <button type="submit" name="update_profil" class="btn btn-reg shadow-sm py-3 mt-2">Simpan Perubahan</button>
+                    </form>
                 </div>
             </div>
         </div>

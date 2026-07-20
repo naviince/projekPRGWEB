@@ -99,9 +99,9 @@ if (isset($_POST['simpan'])) {
     } elseif (empty($ruangan_terpilih)) {
         $error = "Pilih minimal 1 ruangan yang bisa menggunakan tema ini!";
     } else {
-        // --- CEK DUPLIKAT NAMA ---
+        // --- CEK DUPLIKAT NAMA (Dibuat Case-Insensitive) ---
         $cek_dup = safe_sqlsrv_fetch($conn, 
-            "SELECT COUNT(*) as total FROM Tema_Foto WHERE Nama_Tema = ? AND Is_Deleted = 0", 
+            "SELECT COUNT(*) as total FROM Tema_Foto WHERE LOWER(Nama_Tema) = LOWER(?) AND Is_Deleted = 0", 
             [$nama]
         );
         if (($cek_dup['total'] ?? 0) > 0) {
@@ -171,6 +171,9 @@ if (isset($_POST['simpan'])) {
                         throw new Exception($error_msg);
                     }
 
+                    // Melompati row affected/done token dari proses INSERT agar bisa membaca hasil SELECT SCOPE_IDENTITY()
+                    sqlsrv_next_result($stmt_tema);
+
                     // Ambil ID Baru yang di-return dari Stored Procedure
                     $row_tema = sqlsrv_fetch_array($stmt_tema, SQLSRV_FETCH_ASSOC);
                     $id_tema_baru = $row_tema['ID_Tema'] ?? null;
@@ -180,10 +183,10 @@ if (isset($_POST['simpan'])) {
                         throw new Exception("Gagal mendapatkan ID Tema baru dari database.");
                     }
 
-                    // 2. INSERT RUANGAN_TEMA MENGGUNAKAN STORED PROCEDURE (sp_InsertRuanganTema)
+                    // 2. INSERT RUANGAN_TEMA MENGGUNAKAN DIRECT QUERY (Menghindari dependency SP sp_InsertRuanganTema yang tidak ada di DB)
                     foreach ($ruangan_terpilih as $id_ruangan) {
                         $id_ruangan = (int)$id_ruangan;
-                        $sql_junction = "EXEC sp_InsertRuanganTema ?, ?";
+                        $sql_junction = "INSERT INTO Ruangan_Tema (ID_Ruangan, ID_Tema) VALUES (?, ?)";
                         $stmt_junction = sqlsrv_query($conn, $sql_junction, [$id_ruangan, $id_tema_baru]);
                         if ($stmt_junction === false) {
                             throw new Exception("Gagal menghubungkan ke ruangan ID {$id_ruangan}.");
@@ -906,6 +909,72 @@ if (isset($_POST['simpan'])) {
 
     </div>
 
+    <!-- MODAL LIHAT BIODATA -->
+    <div class="modal fade" id="modalLihatBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0" style="border-radius:28px;box-shadow:0 20px 50px rgba(0,0,0,0.15);background:#ffffff;">
+                <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-vcard-fill text-danger me-2"></i>Biodata Admin</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body px-4 pb-4 pt-3">
+                    <div class="text-center mb-4">
+                        <div class="profile-preview-box mx-auto" style="width:100px;height:100px;border:3px solid var(--s-pink);">
+                            <img src="<?= $foto_admin_src ?>" alt="Foto Profil">
+                        </div>
+                        <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_admin) ?></h5>
+                        <span class="badge bg-primary px-3 py-1 text-white text-uppercase" style="font-size:0.72rem;border-radius:50px;font-weight:700;">Administrator</span>
+                    </div>
+                    <div class="card-3d p-3 border-0 mb-4" style="border-radius:20px;background-color:#f8fafc;">
+                        <div class="row g-3">
+                            <div class="col-6"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">NIK</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['nik'] ?? '-') ?></span></div>
+                            <div class="col-6"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Nama Pengguna</small><span class="fw-bold text-dark" style="font-size:0.85rem;">@<?= htmlspecialchars($username_admin) ?></span></div>
+                            <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Email</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($email_admin) ?></span></div>
+                            <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Jenis Kelamin</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['jenis_kelamin'] ?? '-') ?></span></div>
+                            <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Nomor Telepon</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['no_hp'] ?? '-') ?></span></div>
+                            <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Lengkap</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['alamat'] ?? '-') ?></span></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-reg shadow-sm py-3 mt-0" onclick="bukaModalEditDariBiodata()" style="border-radius:14px;">Edit Profil Anda</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL GANTI PROFIL -->
+    <div class="modal fade" id="modalGantiProfil" tabindex="-1" aria-hidden="true" style="backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0" style="border-radius:28px;box-shadow:0 20px 50px rgba(213,61,102,0.25);background:rgba(255,255,255,0.95);">
+                <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-gear-fill text-danger me-2"></i>Pengaturan Profil Admin</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body px-4 pb-4 pt-3">
+                    <p class="text-muted small mb-4" style="line-height:1.6;">Perbarui informasi profil pribadi Anda di bawah ini secara akurat.</p>
+                    <form method="POST" enctype="multipart/form-data">
+                        <div class="text-center mb-4">
+                            <div class="d-inline-block position-relative">
+                                <div class="profile-preview-box mx-auto"><img id="profile-preview-modal" src="<?= $foto_admin_src ?>" alt="Foto Profil"></div>
+                                <input type="file" name="foto_profil" id="inputFotoModal" class="form-control d-none" accept=".jpg,.jpeg,.png">
+                                <button type="button" class="btn btn-pilih-foto btn-sm position-absolute" style="bottom:-10px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:0.75rem;padding:5px 12px;" onclick="document.getElementById('inputFotoModal').click();">Ganti Foto</button>
+                            </div>
+                        </div>
+                        <div class="mb-3"><label class="form-label">Nama Lengkap Anda<span class="required-star">*</span></label><input type="text" name="nama" id="inputNamaModal" class="form-control" placeholder="Masukkan nama lengkap Anda" value="<?= htmlspecialchars($nama_admin) ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Nama Pengguna (Username)<span class="required-star">*</span></label><input type="text" name="username" id="inputUsernameModal" class="form-control" placeholder="Masukkan nama pengguna kustom" value="<?= htmlspecialchars($username_admin) ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Alamat Email<span class="required-star">*</span></label><input type="email" name="email" class="form-control" placeholder="nama@email.com" value="<?= htmlspecialchars($email_admin) ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Nomor Telepon<span class="required-star">*</span></label><input type="text" name="no_hp" id="inputHPModal" class="form-control" placeholder="Contoh: +628xxxxxxxxxx" value="<?= htmlspecialchars($d_profile['no_hp'] ?? '') ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Alamat Lengkap<span class="required-star">*</span></label><textarea name="alamat" class="form-control" rows="2" placeholder="Masukkan alamat domisili lengkap" required style="resize:none;"><?= htmlspecialchars($d_profile['alamat'] ?? '') ?></textarea></div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3"><label class="form-label">Sandi Baru (Opsional)</label><div class="password-group"><input type="password" name="password" id="pass_baru_modal" class="form-control" placeholder="Minimal 8 karakter"><i class="bi bi-eye-slash toggle-password" id="btnToggleBaru"></i></div></div>
+                            <div class="col-md-6 mb-3"><label class="form-label">Konfirmasi Sandi</label><div class="password-group"><input type="password" name="confirm_password" id="pass_konf_modal" class="form-control" placeholder="Ulangi sandi baru"><i class="bi bi-eye-slash toggle-password" id="btnToggleKonf"></i></div></div>
+                        </div>
+                        <button type="submit" name="update_profil" class="btn btn-reg shadow-sm py-3 mt-2">Simpan Perubahan</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
     <script>
@@ -981,6 +1050,7 @@ if (isset($_POST['simpan'])) {
             updateRuanganCount();
         }
 
+        // Hitung Ruangan Terpilih
         function updateRuanganCount() {
             const checked = document.querySelectorAll('input[name="ruangan[]"]:checked').length;
             document.getElementById('ruangan-count').textContent = checked;

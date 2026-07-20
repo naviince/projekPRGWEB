@@ -9,7 +9,16 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 }
 
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
-$nama_admin = $_SESSION['nama'] ?? 'Administrator';
+
+// Ambil profil admin secara dinamis untuk konsistensi pencatatan audit log
+$nama_admin = 'Administrator';
+if ($id_admin) {
+    $q_profile = sqlsrv_query($conn, "SELECT Nama_Karyawan FROM Karyawan WHERE ID_Karyawan = ?", array($id_admin));
+    if ($q_profile && sqlsrv_has_rows($q_profile)) {
+        $d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
+        $nama_admin = $d_profile['Nama_Karyawan'] ?? $_SESSION['nama'] ?? 'Administrator';
+    }
+}
 
 // =====================================================
 // HELPER FUNCTIONS - Safe SQLSRV (Anti-Crash)
@@ -69,9 +78,9 @@ if ($aksi == 'toggle_status') {
     $current_status = (int)($tema['Status'] ?? 1);
     $new_status = $current_status === 1 ? 0 : 1;
 
-    // Memanggil Stored Procedure sp_UpdateStatusTemaFoto
-    $sql = "EXEC sp_UpdateStatusTemaFoto ?, ?, ?";
-    $params = [$id, $new_status, $nama_admin];
+    // Menggunakan Direct SQL UPDATE agar aman dari stored procedure sp_UpdateStatusTemaFoto yang tidak ada di DB
+    $sql = "UPDATE Tema_Foto SET Status = ?, Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Tema = ?";
+    $params = [$new_status, $nama_admin, $id];
     $stmt = sqlsrv_query($conn, $sql, $params);
 
     if ($stmt === false) {
@@ -90,56 +99,42 @@ if ($aksi == 'toggle_status') {
 // =====================================================
 if ($aksi == 'hard_delete') {
     // --- CEK RELASI YANG MASIH AKTIF ---
-    $error_relasi = [];
-
-    // 1. Cek Order aktif yang menggunakan tema ini
+    // 1. Cek Order aktif yang menggunakan tema ini (Satu-satunya penghalang wajib)
     $cek_order = safe_sqlsrv_count($conn,
         "SELECT COUNT(*) as total FROM [Order] 
          WHERE ID_Tema = ? AND Status = 1 AND Status_Order <> 4",
         [$id]
     );
+
+    // --- JIKA ADA ORDER AKTIF PELANGGAN -> BLOKIR PENGHAPUSAN ---
     if ($cek_order > 0) {
-        $error_relasi[] = "{$cek_order} order aktif";
-    }
-
-    // 2. Cek Ruangan terhubung
-    $cek_ruangan = safe_sqlsrv_count($conn,
-        "SELECT COUNT(*) as total FROM Ruangan_Tema WHERE ID_Tema = ?",
-        [$id]
-    );
-    if ($cek_ruangan > 0) {
-        $error_relasi[] = "{$cek_ruangan} ruangan terhubung";
-    }
-
-    // --- JIKA ADA RELASI AKTIF (HANYA ORDER YANG MENGHALANGI) ---
-    if (!empty($error_relasi) && $cek_order > 0) {
-        $error_msg = "Tema foto tidak bisa dihapus karena masih memiliki: " . implode(", ", $error_relasi) . ". Nonaktifkan terlebih dahulu atau selesaikan order terkait.";
+        $error_msg = "Gagal Hapus! Tema foto ini tidak bisa dihapus karena masih memiliki {$cek_order} order aktif pelanggan.";
         header("Location: list.php?status_sukses=error&message=" . urlencode($error_msg));
         exit();
     }
 
-    // --- SOFT DELETE (Is_Deleted = 1) ---
+    // --- JIKA TIDAK ADA ORDER AKTIF -> JALANKAN PROSES HAPUS SECARA AMAN ---
     sqlsrv_begin_transaction($conn);
 
     try {
-        // 1. Hapus relasi Ruangan_Tema (tidak ada order, jadi aman)
+        // 1. Bersihkan dahulu relasi ruangan di tabel Ruangan_Tema (aman karena tidak ada order aktif)
         $sql_del_ruangan = "DELETE FROM Ruangan_Tema WHERE ID_Tema = ?";
         $stmt1 = sqlsrv_query($conn, $sql_del_ruangan, [$id]);
         if ($stmt1 === false) throw new Exception("Gagal hapus relasi ruangan");
         sqlsrv_free_stmt($stmt1);
 
-        // 2. Soft delete Tema menggunakan Stored Procedure sp_DeleteTemaFoto
+        // 2. Tandai hapus tema menggunakan Stored Procedure resmi (sp_DeleteTemaFoto)
         $sql_soft = "EXEC sp_DeleteTemaFoto ?, ?";
         $stmt2 = sqlsrv_query($conn, $sql_soft, [$id, $nama_admin]);
         if ($stmt2 === false) throw new Exception("Gagal soft delete tema foto");
         sqlsrv_free_stmt($stmt2);
 
-        // 3. Hapus foto dari server (opsional, tapi direkomendasikan)
+        // 3. Bersihkan file foto fisik di penyimpanan server jika bukan gambar default
         $foto = $tema['Foto_Tema'] ?? '';
         if (!empty($foto) && $foto != 'default_tema.jpg' && $foto != 'default.jpg') {
             $foto_path = "../../assets/img/tema/" . $foto;
             if (file_exists($foto_path)) {
-                unlink($foto_path);
+                @unlink($foto_path);
             }
         }
 

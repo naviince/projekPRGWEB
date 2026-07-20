@@ -12,7 +12,7 @@ $id_admin   = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 $nama_admin = $_SESSION['nama'] ?? 'Administrator';
 
 // =====================================================
-// HELPER FUNCTIONS
+// HELPER FUNCTIONS - Safe SQLSRV (Anti-Crash)
 // =====================================================
 function safe_sqlsrv_fetch($conn, $sql, $params = []) {
     $stmt = sqlsrv_query($conn, $sql, $params);
@@ -52,17 +52,109 @@ if ($id_tema <= 0) {
 // =====================================================
 // AMBIL PROFIL ADMIN
 // =====================================================
-$admin_data = safe_sqlsrv_fetch($conn,
-    "SELECT Nama_Karyawan, Foto_Profil FROM Karyawan WHERE ID_Karyawan = ? AND Status = 1 AND Is_Deleted = 0",
-    [$id_admin]
-);
-$nama_admin    = $admin_data['Nama_Karyawan'] ?? 'Administrator';
-$foto_admin    = $admin_data['Foto_Profil']   ?? 'default.jpg';
-
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
+
+$q_profile = sqlsrv_query($conn, "SELECT * FROM Karyawan WHERE ID_Karyawan = ?", array($id_admin));
+$d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
+if ($d_profile) { $d_profile = array_change_key_case($d_profile, CASE_LOWER); }
+
+$nama_admin = $d_profile['nama_karyawan'] ?? 'Admin';
+$username_admin = $d_profile['username_karyawan'] ?? 'admin';
+$email_admin = $d_profile['email_karyawan'] ?? 'admin@spotlight.com';
+$foto_admin = $d_profile['foto_profil'] ?? 'default.jpg';
+
 $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin))
-    ? "../../assets/img/karyawan/" . $foto_admin
-    : $default_svg_avatar;
+    ? "../../assets/img/karyawan/" . $foto_admin : $default_svg_avatar;
+
+$error_profile = "";
+$success_profile = false;
+
+if (isset($_POST['update_profil'])) {
+    $nama_input = trim($_POST['nama']);
+    $username_input = trim($_POST['username']);
+    $email_input = trim($_POST['email']);
+    $no_hp_input = str_replace(' ', '', trim($_POST['no_hp']));
+    $alamat_input = trim($_POST['alamat']);
+    $pass_baru = $_POST['password'];
+    $confirm_pass = $_POST['confirm_password'];
+    $hp_bersih_input = str_replace(['+', ' '], '', $no_hp_input);
+
+    if (empty($nama_input) || !preg_match("/^[a-zA-Z ]*$/", $nama_input)) {
+        $error_profile = "Nama lengkap hanya boleh berisi huruf!";
+    } elseif (empty($username_input) || !preg_match("/^[a-zA-Z0-9_]*$/", $username_input)) {
+        $error_profile = "Nama pengguna tidak valid!";
+    } elseif (empty($email_input) || !filter_var($email_input, FILTER_VALIDATE_EMAIL)) {
+        $error_profile = "Email tidak valid!";
+    } elseif (empty($no_hp_input) || substr($no_hp_input, 0, 3) !== '+62' || !ctype_digit($hp_bersih_input) || strlen($no_hp_input) < 12 || strlen($no_hp_input) > 16) {
+        $error_profile = "Nomor telepon tidak valid! Harus diawali dengan +62, berisi angka, dan panjang total 12-16 karakter.";
+    } elseif (empty($alamat_input) || strlen($alamat_input) < 10) {
+        $error_profile = "Alamat lengkap minimal harus 10 karakter!";
+    } else {
+        $sandi_final = $d_profile['password_karyawan'];
+        if (!empty($pass_baru)) {
+            if (strlen($pass_baru) < 8 || !preg_match("/[A-Za-z]/", $pass_baru) || !preg_match("/[0-9]/", $pass_baru) || !preg_match("/[^A-Za-z0-9]/", $pass_baru)) {
+                $error_profile = "Sandi baru minimal 8 karakter (kombinasi huruf, angka, simbol)!";
+            } elseif ($pass_baru !== $confirm_pass) {
+                $error_profile = "Konfirmasi kata sandi tidak cocok!";
+            } else {
+                $sandi_final = $pass_baru;
+            }
+        }
+        if ($error_profile == "") {
+            $sql_cek = "SELECT Email_Karyawan, Username_Karyawan, No_Hp FROM Karyawan WHERE (Email_Karyawan = ? OR Username_Karyawan = ? OR No_Hp = ?) AND ID_Karyawan != ?";
+            $stmt_cek = sqlsrv_query($conn, $sql_cek, array($email_input, $username_input, $no_hp_input, $id_admin));
+            if ($stmt_cek && sqlsrv_has_rows($stmt_cek)) {
+                while ($row_cek = sqlsrv_fetch_array($stmt_cek, SQLSRV_FETCH_ASSOC)) {
+                    $row_cek = array_change_key_case($row_cek, CASE_LOWER);
+                    if (strtolower($row_cek['email_karyawan']) == strtolower($email_input)) { $error_profile = "Email sudah digunakan!"; }
+                    if (strtolower($row_cek['username_karyawan']) == strtolower($username_input)) { $error_profile = "Username sudah digunakan!"; }
+                    if ($row_cek['no_hp'] == $no_hp_input) { $error_profile = "Nomor telepon sudah digunakan!"; }
+                }
+            }
+        }
+        if ($error_profile == "") {
+            $foto_baru = $foto_admin;
+            if (isset($_FILES['foto_profil']) && $_FILES['foto_profil']['error'] === UPLOAD_ERR_OK) {
+                $file_name = $_FILES['foto_profil']['name'];
+                $file_size = $_FILES['foto_profil']['size'];
+                $file_tmp = $_FILES['foto_profil']['tmp_name'];
+                $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+                $allowed_ext = ['jpg', 'jpeg', 'png'];
+                if (!in_array($file_ext, $allowed_ext)) {
+                    $error_profile = "Format foto profil harus JPG, JPEG, atau PNG!";
+                } elseif ($file_size > 2097152) {
+                    $error_profile = "Ukuran foto profil maksimal 2MB!";
+                } else {
+                    $foto_baru = "admin_" . time() . "_" . uniqid() . "." . $file_ext;
+                    $target_dir = "../../assets/img/karyawan/";
+                    if (!is_dir($target_dir)) { mkdir($target_dir, 0777, true); }
+                    if (move_uploaded_file($file_tmp, $target_dir . $foto_baru)) {
+                        if ($foto_admin != 'default.jpg' && file_exists($target_dir . $foto_admin)) { unlink($target_dir . $foto_admin); }
+                    } else {
+                        $error_profile = "Gagal mengunggah foto profil!";
+                    }
+                }
+            }
+            if ($error_profile == "") {
+                $sql_upd = "UPDATE Karyawan SET Nama_Karyawan = ?, Username_Karyawan = ?, Email_Karyawan = ?, Password_Karyawan = ?, No_Hp = ?, Alamat = ?, Foto_Profil = ?, Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Karyawan = ?";
+                $stmt_upd = sqlsrv_query($conn, $sql_upd, array($nama_input, $username_input, $email_input, $sandi_final, $no_hp_input, $alamat_input, $foto_baru, $username_admin, $id_admin));
+                if ($stmt_upd) {
+                    $success_profile = true;
+                    $nama_admin = $nama_input;
+                    $username_admin = $username_input;
+                    $email_admin = $email_input;
+                    $foto_admin = $foto_baru;
+                    $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin))
+                        ? "../../assets/img/karyawan/" . $foto_admin : $default_svg_avatar;
+                    $d_profile['no_hp'] = $no_hp_input;
+                    $d_profile['alamat'] = $alamat_input;
+                } else {
+                    $error_profile = "Gagal memperbarui data di database!";
+                }
+            }
+        }
+    }
+}
 
 // =====================================================
 // AMBIL DATA TEMA YANG AKAN DIEDIT
@@ -123,9 +215,9 @@ if (isset($_POST['simpan'])) {
     } elseif (empty($ruangan_terpilih)) {
         $error = "Pilih minimal 1 ruangan yang bisa menggunakan tema ini!";
     } else {
-        // Cek duplikat nama (kecuali record ini sendiri)
+        // Cek duplikat nama secara Case-Insensitive (kecuali record ini sendiri)
         $cek_dup = safe_sqlsrv_fetch($conn,
-            "SELECT COUNT(*) as total FROM Tema_Foto WHERE Nama_Tema = ? AND Is_Deleted = 0 AND ID_Tema <> ?",
+            "SELECT COUNT(*) as total FROM Tema_Foto WHERE LOWER(Nama_Tema) = LOWER(?) AND Is_Deleted = 0 AND ID_Tema <> ?",
             [$nama, $id_tema]
         );
         if (($cek_dup['total'] ?? 0) > 0) {
@@ -216,10 +308,12 @@ if (isset($_POST['simpan'])) {
                     if ($stmt_del === false) throw new Exception("Gagal memperbarui relasi ruangan.");
                     sqlsrv_free_stmt($stmt_del);
 
+                    // --- PERBAIKAN BUG UTAMA ---
+                    // Mengubah 'EXEC sp_InsertRuanganTema' menjadi direct SQL INSERT karena prosedur tersebut tidak ada di DB
                     foreach ($ruangan_terpilih as $id_ruangan) {
                         $id_ruangan    = (int)$id_ruangan;
                         $stmt_junction = sqlsrv_query($conn,
-                            "EXEC sp_InsertRuanganTema ?, ?",
+                            "INSERT INTO Ruangan_Tema (ID_Ruangan, ID_Tema) VALUES (?, ?)",
                             [$id_ruangan, $id_tema]
                         );
                         if ($stmt_junction === false) {
@@ -678,7 +772,7 @@ if (isset($_POST['simpan'])) {
         .ruangan-checkbox-item.selected { 
             border-color: var(--p-pink); 
             background: var(--s-pink); 
-            box-shadow: 0 4px 12px rgba(213,61,102,.1); 
+            box-shadow: 0 4px 12px rgba(213, 61, 102, 0.1); 
         }
         .ruangan-checkbox-item input[type="checkbox"] { 
             width: 20px; 
@@ -811,16 +905,42 @@ if (isset($_POST['simpan'])) {
             border: 1px solid #bfdbfe; 
         }
 
+        /* card-3d */
+        .card-3d { background: #ffffff; border-radius: 22px; border: 1px solid rgba(255, 228, 233, 0.8); box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03); }
+
+        /* Modal profil */
+        .required-star { color: #ef4444; font-weight: bold; margin-left: 2px; }
+        .profile-preview-box {
+            width: 90px; height: 90px; border-radius: 50%; overflow: hidden;
+            border: 2.5px solid #eef2f6; background: #f8fafc;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.02); transition: var(--transition-3d);
+        }
+        .profile-preview-box img { width: 100%; height: 100%; object-fit: cover; }
+        .btn-pilih-foto {
+            background: #ffffff; border: 1.5px solid var(--p-pink); color: var(--p-pink);
+            font-weight: 700; border-radius: 10px; padding: 8px 18px; font-size: 0.85rem; transition: var(--transition-3d);
+        }
+        .btn-pilih-foto:hover { background: var(--p-pink); color: #ffffff; transform: translateY(-2px); box-shadow: 0 6px 15px rgba(213, 61, 102, 0.15); }
+        .btn-reg {
+            background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); color: white; border-radius: 16px;
+            padding: 16px; font-weight: 800; border: none; width: 100%; transition: var(--transition-3d);
+            margin-top: 15px; font-size: 15px; box-shadow: 0 10px 25px rgba(213, 61, 102, 0.25);
+        }
+        .btn-reg:hover { transform: translateY(-4px) scale(1.02); box-shadow: 0 15px 35px rgba(213, 61, 102, 0.35); }
+        .password-group { position: relative; transition: var(--transition-3d); border-radius: 14px; }
+        .password-group:focus-within { transform: translateY(-3px) scale(1.01); box-shadow: 0 12px 25px rgba(213, 61, 102, 0.15); }
+        .password-group .form-control { transition: border-color 0.3s ease, background-color 0.3s ease; }
+        .password-group .form-control:focus { transform: none!important; box-shadow: none!important; background: #ffffff; border-color: var(--p-pink); }
+        .toggle-password { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #94a3b8; font-size: 18px; z-index: 10; transition: 0.3s; }
+        .toggle-password:hover { color: var(--p-pink); }
+
         /* ANIMATIONS */
         @keyframes fadeIn { 
             from { opacity:0; transform:translateY(-10px); } 
             to { opacity:1; transform:translateY(0); } 
         }
         .fade-in-up { animation: fadeIn .5s ease-out; }
-
-        /* ============================================
-           RESPONSIVE BREAKPOINTS
-           ============================================ */
 
         /* Tablet & below */
         @media (max-width: 991.98px) {
@@ -1092,8 +1212,8 @@ if (isset($_POST['simpan'])) {
                 <i class="bi bi-clock-history me-1 text-danger"></i>
                 <span id="live-clock">Memuat waktu...</span>
             </span>
-            <div class="profile-header-btn shadow-sm" title="Profil">
-                <img src="<?= $foto_admin_src ?>" alt="Admin">
+            <div class="profile-header-btn shadow-sm" onclick="bukaModalBiodata()" title="Klik untuk melihat Biodata Anda">
+                <img src="<?= $foto_admin_src ?>" alt="Admin Profil">
             </div>
         </div>
     </div>
@@ -1274,6 +1394,72 @@ if (isset($_POST['simpan'])) {
     </div>
 </div>
 
+    <!-- MODAL LIHAT BIODATA -->
+    <div class="modal fade" id="modalLihatBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0" style="border-radius:28px;box-shadow:0 20px 50px rgba(0,0,0,0.15);background:#ffffff;">
+                <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-vcard-fill text-danger me-2"></i>Biodata Admin</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body px-4 pb-4 pt-3">
+                    <div class="text-center mb-4">
+                        <div class="profile-preview-box mx-auto" style="width:100px;height:100px;border:3px solid var(--s-pink);">
+                            <img src="<?= $foto_admin_src ?>" alt="Foto Profil">
+                        </div>
+                        <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_admin) ?></h5>
+                        <span class="badge bg-primary px-3 py-1 text-white text-uppercase" style="font-size:0.72rem;border-radius:50px;font-weight:700;">Administrator</span>
+                    </div>
+                    <div class="card-3d p-3 border-0 mb-4" style="border-radius:20px;background-color:#f8fafc;">
+                        <div class="row g-3">
+                            <div class="col-6"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">NIK</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['nik'] ?? '-') ?></span></div>
+                            <div class="col-6"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Nama Pengguna</small><span class="fw-bold text-dark" style="font-size:0.85rem;">@<?= htmlspecialchars($username_admin) ?></span></div>
+                            <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Email</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($email_admin) ?></span></div>
+                            <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Jenis Kelamin</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['jenis_kelamin'] ?? '-') ?></span></div>
+                            <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Nomor Telepon</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['no_hp'] ?? '-') ?></span></div>
+                            <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Lengkap</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['alamat'] ?? '-') ?></span></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-reg shadow-sm py-3 mt-0" onclick="bukaModalEditDariBiodata()" style="border-radius:14px;">Edit Profil Anda</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL GANTI PROFIL -->
+    <div class="modal fade" id="modalGantiProfil" tabindex="-1" aria-hidden="true" style="backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0" style="border-radius:28px;box-shadow:0 20px 50px rgba(213,61,102,0.25);background:rgba(255,255,255,0.95);">
+                <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-gear-fill text-danger me-2"></i>Pengaturan Profil Admin</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body px-4 pb-4 pt-3">
+                    <p class="text-muted small mb-4" style="line-height:1.6;">Perbarui informasi profil pribadi Anda di bawah ini secara akurat.</p>
+                    <form method="POST" enctype="multipart/form-data">
+                        <div class="text-center mb-4">
+                            <div class="d-inline-block position-relative">
+                                <div class="profile-preview-box mx-auto"><img id="profile-preview-modal" src="<?= $foto_admin_src ?>" alt="Foto Profil"></div>
+                                <input type="file" name="foto_profil" id="inputFotoModal" class="form-control d-none" accept=".jpg,.jpeg,.png">
+                                <button type="button" class="btn btn-pilih-foto btn-sm position-absolute" style="bottom:-10px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:0.75rem;padding:5px 12px;" onclick="document.getElementById('inputFotoModal').click();">Ganti Foto</button>
+                            </div>
+                        </div>
+                        <div class="mb-3"><label class="form-label">Nama Lengkap Anda<span class="required-star">*</span></label><input type="text" name="nama" id="inputNamaModal" class="form-control" placeholder="Masukkan nama lengkap Anda" value="<?= htmlspecialchars($nama_admin) ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Nama Pengguna (Username)<span class="required-star">*</span></label><input type="text" name="username" id="inputUsernameModal" class="form-control" placeholder="Masukkan nama pengguna kustom" value="<?= htmlspecialchars($username_admin) ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Alamat Email<span class="required-star">*</span></label><input type="email" name="email" class="form-control" placeholder="nama@email.com" value="<?= htmlspecialchars($email_admin) ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Nomor Telepon<span class="required-star">*</span></label><input type="text" name="no_hp" id="inputHPModal" class="form-control" placeholder="Contoh: +628xxxxxxxxxx" value="<?= htmlspecialchars($d_profile['no_hp'] ?? '') ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Alamat Lengkap<span class="required-star">*</span></label><textarea name="alamat" class="form-control" rows="2" placeholder="Masukkan alamat domisili lengkap" required style="resize:none;"><?= htmlspecialchars($d_profile['alamat'] ?? '') ?></textarea></div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3"><label class="form-label">Sandi Baru (Opsional)</label><div class="password-group"><input type="password" name="password" id="pass_baru_modal" class="form-control" placeholder="Minimal 8 karakter"><i class="bi bi-eye-slash toggle-password" id="btnToggleBaru"></i></div></div>
+                            <div class="col-md-6 mb-3"><label class="form-label">Konfirmasi Sandi</label><div class="password-group"><input type="password" name="confirm_password" id="pass_konf_modal" class="form-control" placeholder="Ulangi sandi baru"><i class="bi bi-eye-slash toggle-password" id="btnToggleKonf"></i></div></div>
+                        </div>
+                        <button type="submit" name="update_profil" class="btn btn-reg shadow-sm py-3 mt-2">Simpan Perubahan</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
 <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script>
     // Toggle Sidebar Mobile
@@ -1415,6 +1601,71 @@ if (isset($_POST['simpan'])) {
             `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')} WIB`;
     }
     setInterval(updateLiveClock, 1000); updateLiveClock();
+
+    // ===== MODAL PROFIL =====
+    function bukaModalProfil() {
+        var modalProfil = new bootstrap.Modal(document.getElementById('modalGantiProfil'));
+        modalProfil.show();
+    }
+    function bukaModalBiodata() {
+        var modalBiodata = new bootstrap.Modal(document.getElementById('modalLihatBiodata'));
+        modalBiodata.show();
+    }
+    function bukaModalEditDariBiodata() {
+        var modalBiodata = bootstrap.Modal.getInstance(document.getElementById('modalLihatBiodata'));
+        if (modalBiodata) modalBiodata.hide();
+        setTimeout(bukaModalProfil, 400);
+    }
+
+    // ===== FILE INPUT PREVIEW =====
+    const inputFotoModal = document.getElementById('inputFotoModal');
+    if (inputFotoModal) {
+        inputFotoModal.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) { document.getElementById('profile-preview-modal').src = event.target.result; };
+                reader.readAsDataURL(file);
+            }
+        });
+    }
+
+    // ===== VALIDASI INPUT =====
+    const inputNamaModal = document.getElementById('inputNamaModal');
+    if (inputNamaModal) {
+        inputNamaModal.addEventListener('input', function() { this.value = this.value.replace(/[^a-zA-Z ]/g, ''); });
+    }
+    const inputUsernameModal = document.getElementById('inputUsernameModal');
+    if (inputUsernameModal) {
+        inputUsernameModal.addEventListener('input', function() { this.value = this.value.replace(/[^a-zA-Z0-9_]/g, ''); });
+    }
+
+    // ===== TOGGLE PASSWORD =====
+    function setupPasswordToggle(buttonId, inputId) {
+        const btn = document.getElementById(buttonId);
+        const input = document.getElementById(inputId);
+        if (btn && input) {
+            btn.addEventListener('click', function() {
+                const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
+                input.setAttribute('type', type);
+                this.classList.toggle('bi-eye');
+                this.classList.toggle('bi-eye-slash');
+            });
+        }
+    }
+    setupPasswordToggle('btnToggleBaru', 'pass_baru_modal');
+    setupPasswordToggle('btnToggleKonf', 'pass_konf_modal');
+
+    // ===== FORMAT NOMOR TELEPON =====
+    const inputHPModal = document.getElementById('inputHPModal'), prefix = '+62';
+    if (inputHPModal) {
+        inputHPModal.addEventListener('input', function() {
+            if (!this.value.startsWith(prefix)) { this.value = prefix + this.value.replace(/[^0-9]/g, ''); }
+            let digits = this.value.split(prefix)[1]?.replace(/[^0-9]/g, '') || '';
+            if (digits.length > 13) digits = digits.slice(0, 13);
+            this.value = prefix + digits;
+        });
+    }
 
     // Init count
     updateRuanganCount();
