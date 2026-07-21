@@ -151,13 +151,23 @@ elseif ($aksi === 'soft_delete') {
 elseif ($aksi === 'generate_7hari') {
     $generated = 0;
 
-    // Ambil semua paket dan ruangan valid dari Paket_Ruangan (many-to-many)
+    // Ambil kombinasi paket-ruangan dari Paket_Ruangan (many-to-many)
+    // --- PERBAIKAN BUG: Generate 7 Hari sebelumnya membuat jadwal untuk SEMUA relasi
+    //     paket-ruangan di tabel master Paket_Ruangan, termasuk ruangan yang belum
+    //     pernah dibuatkan jadwal manual sama sekali oleh admin via "Tambah Jadwal".
+    //     Sekarang dibatasi: hanya generate untuk ruangan yang SUDAH punya minimal
+    //     1 jadwal manual (bukan hasil generate) agar sesuai dengan yang benar-benar
+    //     sudah di-set up oleh admin. ---
     $q_valid = sqlsrv_query($conn, "
         SELECT pr.ID_Paket, pr.ID_Ruangan, p.Durasi_Waktu, p.Nama_Paket, r.Nama_Ruangan
         FROM Paket_Ruangan pr
         INNER JOIN Paket_Foto p ON pr.ID_Paket = p.ID_Paket
         INNER JOIN Ruangan r ON pr.ID_Ruangan = r.ID_Ruangan
         WHERE p.Status = 1 AND p.Is_Deleted = 0 AND r.Status = 1 AND r.Is_Deleted = 0
+          AND EXISTS (
+              SELECT 1 FROM Jadwal_Studio j
+              WHERE j.ID_Ruangan = pr.ID_Ruangan AND j.Is_Deleted = 0
+          )
     ");
 
     if ($q_valid === false) {
@@ -171,7 +181,7 @@ elseif ($aksi === 'generate_7hari') {
     }
 
     if (empty($valid_combinations)) {
-        header("Location: list.php?status_sukses=error&message=Tidak+ada+kombinasi+paket+ruangan+yang+valid");
+        header("Location: list.php?status_sukses=error&message=" . urlencode("Belum ada ruangan yang memiliki jadwal manual. Tambahkan jadwal terlebih dahulu lewat Tambah Jadwal sebelum generate."));
         exit();
     }
 
