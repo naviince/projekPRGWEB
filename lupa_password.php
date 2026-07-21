@@ -14,8 +14,6 @@ if ($step < 1 || $step > 2) $step = 1;
 
 $error = "";
 $success = false;
-$verified_user = null;
-$verified_type = ''; // 'pelanggan' or 'karyawan'
 
 // ============================================================
 // STEP 1: VERIFIKASI IDENTITAS (Email/Username)
@@ -47,7 +45,6 @@ if (isset($_POST['verify']) && $step == 1) {
                 $_SESSION['reset_email'] = $user_cust['Email_Pelanggan'];
                 $_SESSION['reset_password'] = $user_cust['Password_Pelanggan']; // untuk cek tidak sama dengan yang lama
 
-                // Redirect ke step 2
                 header("Location: lupa_password.php?step=2");
                 exit();
             } else {
@@ -82,6 +79,11 @@ if (isset($_POST['verify']) && $step == 1) {
 // ============================================================
 // STEP 2: RESET PASSWORD BARU
 // ============================================================
+if ($step == 2 && (!isset($_SESSION['reset_id']) || !isset($_SESSION['reset_type']))) {
+    header("Location: lupa_password.php?step=1&error=session_expired");
+    exit();
+}
+
 if (isset($_POST['reset_password']) && $step == 2) {
     // CSRF check
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
@@ -599,7 +601,7 @@ if (isset($_GET['error']) && $_GET['error'] == 'session_expired') {
             <div class="reset-icon">
                 <i class="bi bi-key"></i>
             </div>
-            <h2 class="reset-title">Atur Ulang Sandi 🔑</h2>
+            <h2 class="reset-title">Atur Ulang Sandi</h2>
             <p class="reset-subtitle">Buat kata sandi baru yang kuat untuk melindungi akun Anda.</p>
         </div>
 

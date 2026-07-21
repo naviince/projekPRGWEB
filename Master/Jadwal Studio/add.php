@@ -267,7 +267,7 @@ if (isset($old_values['id_paket']) && (int)$old_values['id_paket'] > 0) {
 :root { --p-pink: #D53D66; --d-pink: #CA3366; --s-pink: #FFF0F3; --light-pink: #FFE4E9; --accent-pink: #E85D84; --text-dark: #1e1e24; --text-muted: #718096; --sidebar-bg: #ffffff; --body-bg: #f8fafc; --transition-3d: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
 body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--body-bg); color: var(--text-dark); overflow-x: hidden; }
 .sidebar { width: 260px; height: 100vh; background: var(--sidebar-bg); position: fixed; top: 0; left: 0; border-right: 1px solid rgba(255, 228, 233, 0.8); display: flex; flex-direction: column; justify-content: space-between; padding: 30px 20px; z-index: 100; }
-.sidebar-brand { font-weight: 800; font-size: 1.5rem; color: var(--p-pink); text-decoration: none; letter-spacing: -1px; margin-bottom: 40px; display: block; }
+.sidebar-brand { font-weight: 800; font-size: 1.5rem; color: var(--p-pink); letter-spacing: -1px; margin-bottom: 40px; display: block; text-decoration: none; }
 .sidebar-brand span { color: var(--text-dark); font-size: 0.85rem; font-weight: 600; }
 .sidebar-menu-wrapper { flex-grow: 1; overflow-y: auto; margin-bottom: 20px; scrollbar-width: none; }
 .sidebar-menu-wrapper::-webkit-scrollbar { display: none; }
@@ -557,8 +557,8 @@ select.form-select-custom { cursor: pointer; appearance: none; background-image:
                 <div class="durasi-preview mb-4" id="durasiPreview">
                     <i class="bi bi-clock-history"></i>
                     <div class="durasi-text">
-                        Durasi Paket: <strong id="durasiText">-</strong> menit<br>
-                        <span style="font-size: 0.8rem; color: #718096;">Jam selesai dihitung otomatis</span>
+                        Durasi Paket: <span id="durasiText">-</span> menit<br>
+                        <span style="font-size: 0.8rem; color: #718096;" id="liveJamSelesai">Jam selesai dihitung otomatis</span>
                     </div>
                 </div>
 
@@ -642,6 +642,42 @@ window.addEventListener('resize', function() {
     }
 });
 
+// Fungsi Interaktif Kalkulasi Estimasi Jam Selesai Pemotretan
+function calculateEndTime() {
+    const paketSelect = document.getElementById('idPaket');
+    const jamMulaiInput = document.getElementById('jamMulai');
+    const liveJamSelesai = document.getElementById('liveJamSelesai');
+
+    if (!paketSelect || !jamMulaiInput || !liveJamSelesai) return;
+
+    if (!paketSelect.value || !jamMulaiInput.value) {
+        liveJamSelesai.innerHTML = "Jam selesai dihitung otomatis";
+        liveJamSelesai.style.color = "#718096";
+        return;
+    }
+
+    const selectedOption = paketSelect.options[paketSelect.selectedIndex];
+    const durasi = parseInt(selectedOption.getAttribute('data-durasi') ?? 30);
+    const jamMulaiVal = jamMulaiInput.value; // Format: "HH:MM"
+
+    const timeParts = jamMulaiVal.split(':');
+    if (timeParts.length < 2) return;
+
+    let hours = parseInt(timeParts[0]);
+    let minutes = parseInt(timeParts[1]);
+
+    // Lakukan penjumlahan matematika menit dan jam operasional
+    minutes += durasi;
+    hours += Math.floor(minutes / 60);
+    minutes = minutes % 60;
+    hours = hours % 24;
+
+    const jamSelesaiVal = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+
+    // Tampilkan notifikasi visual secara interaktif dan presisi
+    liveJamSelesai.innerHTML = `<span class="badge bg-success mt-1 fw-bold px-2 py-1"><i class="bi bi-clock-fill me-1"></i>Estimasi Selesai: ${jamSelesaiVal} WIB</span>`;
+}
+
 // Cascade Paket -> Ruangan
 document.getElementById('idPaket').addEventListener('change', function() {
     const paketId = this.value;
@@ -660,6 +696,9 @@ document.getElementById('idPaket').addEventListener('change', function() {
     durasiText.textContent = durasi;
     durasiPreview.classList.add('show');
 
+    // Trigger update estimasi jam selesai
+    calculateEndTime();
+
     fetch('get_ruangan_by_paket.php?id_paket=' + paketId)
         .then(response => response.json())
         .then(data => {
@@ -673,6 +712,9 @@ document.getElementById('idPaket').addEventListener('change', function() {
             ruanganSelect.innerHTML = '<option value="">Error loading ruangan</option>';
         });
 });
+
+// Listener interaktif untuk perubahan input Jam Mulai
+document.getElementById('jamMulai').addEventListener('input', calculateEndTime);
 
 // Form Validation
 document.getElementById('formJadwal').addEventListener('submit', function(e) {
@@ -730,6 +772,7 @@ window.addEventListener('DOMContentLoaded', function() {
         if (durasi) {
             document.getElementById('durasiText').textContent = durasi;
             document.getElementById('durasiPreview').classList.add('show');
+            calculateEndTime(); // Jalankan kalkulasi inisial saat reload gagal
         }
     }
 });

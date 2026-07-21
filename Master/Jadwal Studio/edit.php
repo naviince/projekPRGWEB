@@ -684,19 +684,11 @@ if (isset($data['Jam_Mulai'])) {
             transform: translateY(-3px); 
         }
 
-        /* card-3d hanya dipakai di dalam modal biodata (elemen non-klik -> tetap datar) */
+        /* card-3d */
         .card-3d { background: #ffffff; border-radius: 22px; border: 1px solid rgba(255, 228, 233, 0.8); box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03); }
 
-        /* Modal profil (sinkron index.php) */
+        /* Modal profil */
         .required-star { color: #ef4444; font-weight: bold; margin-left: 2px; }
-        .form-control, .form-select {
-            border-radius: 14px; padding: 12px 18px; border: 2px solid #eef2f6;
-            background: #f8fafc; font-size: 14px; font-weight: 600; transition: var(--transition-3d); color: var(--text-dark);
-        }
-        .form-control:focus, .form-select:focus {
-            border-color: var(--p-pink); background: #ffffff;
-            transform: translateY(-3px) scale(1.01); box-shadow: 0 12px 25px rgba(213, 61, 102, 0.15); outline: none;
-        }
         .profile-preview-box {
             width: 90px; height: 90px; border-radius: 50%; overflow: hidden;
             border: 2.5px solid #eef2f6; background: #f8fafc;
@@ -1016,11 +1008,11 @@ if (isset($data['Jam_Mulai'])) {
                     </div>
                 </div>
 
-                <div class="durasi-preview" id="durasiPreview">
+                <div class="durasi-preview show" id="durasiPreview">
                     <i class="bi bi-clock-history"></i>
                     <div class="durasi-text">
-                        Durasi Paket: <strong id="durasiText"><?= $durasi_menit ?></strong> menit<br>
-                        <span style="font-size: 0.8rem; color: #718096;">Jam selesai dihitung otomatis</span>
+                        Durasi Paket: <span id="durasiText"><?= $durasi_menit ?></span> menit<br>
+                        <span style="font-size: 0.8rem; color: #718096;" id="liveJamSelesai">Jam selesai dihitung otomatis</span>
                     </div>
                 </div>
 
@@ -1172,6 +1164,42 @@ if (isset($data['Jam_Mulai'])) {
         });
     });
 
+    // Fungsi Interaktif Kalkulasi Estimasi Jam Selesai Pemotretan
+    function calculateEndTime() {
+        const paketSelect = document.getElementById('idPaket');
+        const jamMulaiInput = document.getElementById('jamMulai');
+        const liveJamSelesai = document.getElementById('liveJamSelesai');
+
+        if (!paketSelect || !jamMulaiInput || !liveJamSelesai) return;
+
+        if (!paketSelect.value || !jamMulaiInput.value) {
+            liveJamSelesai.innerHTML = "Jam selesai dihitung otomatis";
+            liveJamSelesai.style.color = "#718096";
+            return;
+        }
+
+        const selectedOption = paketSelect.options[paketSelect.selectedIndex];
+        const durasi = parseInt(selectedOption.getAttribute('data-durasi') ?? 30);
+        const jamMulaiVal = jamMulaiInput.value; // Format: "HH:MM"
+
+        const timeParts = jamMulaiVal.split(':');
+        if (timeParts.length < 2) return;
+
+        let hours = parseInt(timeParts[0]);
+        let minutes = parseInt(timeParts[1]);
+
+        // Lakukan penjumlahan matematika menit dan jam operasional
+        minutes += durasi;
+        hours += Math.floor(minutes / 60);
+        minutes = minutes % 60;
+        hours = hours % 24;
+
+        const jamSelesaiVal = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+
+        // Tampilkan notifikasi visual secara interaktif dan presisi
+        liveJamSelesai.innerHTML = `<span class="badge bg-success mt-1 fw-bold px-2 py-1"><i class="bi bi-clock-fill me-1"></i>Estimasi Selesai: ${jamSelesaiVal} WIB</span>`;
+    }
+
     // Cascade Paket → Ruangan (only if not booked)
     <?php if (!$is_booked): ?>
     document.getElementById('idPaket').addEventListener('change', function() {
@@ -1187,6 +1215,9 @@ if (isset($data['Jam_Mulai'])) {
         const selectedOption = this.options[this.selectedIndex];
         durasiText.textContent = selectedOption.getAttribute('data-durasi');
 
+        // Trigger kalkulasi estimasi selesai
+        calculateEndTime();
+
         fetch('get_ruangan_by_paket.php?id_paket=' + paketId)
             .then(response => response.json())
             .then(data => {
@@ -1200,6 +1231,9 @@ if (isset($data['Jam_Mulai'])) {
                 ruanganSelect.innerHTML = '<option value="">Error loading ruangan</option>';
             });
     });
+
+    // Listener interaktif untuk perubahan input Jam Mulai
+    document.getElementById('jamMulai').addEventListener('input', calculateEndTime);
     <?php endif; ?>
 
     // Form Validation
@@ -1301,6 +1335,11 @@ if (isset($data['Jam_Mulai'])) {
             this.value = prefix + digits;
         });
     }
+
+    // Init estimasi jam selesai pemotretan saat halaman pertama kali dibuka
+    window.addEventListener('DOMContentLoaded', function() {
+        calculateEndTime();
+    });
 </script>
 
 <?php if($success): ?>

@@ -13,7 +13,16 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 }
 
 $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
-$nama_admin = $_SESSION['nama'] ?? 'Administrator';
+
+// Ambil profil nama admin secara dinamis untuk keakuratan audit log
+$nama_admin = 'Administrator';
+if ($id_admin) {
+    $q_profile = sqlsrv_query($conn, "SELECT Nama_Karyawan FROM Karyawan WHERE ID_Karyawan = ?", array($id_admin));
+    if ($q_profile && sqlsrv_has_rows($q_profile)) {
+        $d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
+        $nama_admin = $d_profile['Nama_Karyawan'] ?? $_SESSION['nama'] ?? 'Administrator';
+    }
+}
 
 // =====================================================
 // HELPER FUNCTIONS - Safe SQLSRV (Anti-Crash)
@@ -196,11 +205,11 @@ elseif ($aksi === 'generate_7hari') {
                 $jam_selesai_str = $jam_selesai->format('H:i');
 
                 // Pengecekan bentrok jadwal di database
+                // --- SINKRONISASI: Filter "Status = 1" dihilangkan agar memeriksa semua jadwal yang belum terhapus ---
                 $cek_bentrok = sqlsrv_query($conn, "
                     SELECT ID_Jadwal FROM Jadwal_Studio 
                     WHERE ID_Ruangan = ? 
                       AND Tanggal_Jadwal = ? 
-                      AND Status = 1 
                       AND Is_Deleted = 0
                       AND CAST(? AS TIME) < Jam_Selesai 
                       AND Jam_Mulai < CAST(? AS TIME)
@@ -257,3 +266,59 @@ else {
     exit();
 }
 ?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redirecting - SpotLight Studio</title>
+    <meta http-equiv="refresh" content="0;url=list.php?status_sukses=error&message=Aksi+tidak+valid">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f8fafc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .box {
+            background: #ffffff;
+            padding: 40px 30px;
+            border-radius: 24px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+            text-align: center;
+            max-width: 90%;
+            width: 400px;
+            border: 1px solid #FFE4E9;
+        }
+        .box h1 { color: #D53D66; font-size: 1.5rem; margin-bottom: 12px; }
+        .box p { color: #718096; margin-bottom: 20px; line-height: 1.5; font-size: 0.95rem; }
+        .box a {
+            display: inline-block;
+            background: linear-gradient(135deg, #D53D66, #CA3366);
+            color: #fff;
+            text-decoration: none;
+            font-weight: 700;
+            padding: 12px 28px;
+            border-radius: 14px;
+            transition: all 0.3s ease;
+        }
+        .box a:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(213,61,102,0.3); }
+        @media (max-width: 576px) {
+            .box { padding: 30px 20px; border-radius: 20px; }
+            .box h1 { font-size: 1.25rem; }
+            .box p { font-size: 0.9rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>SpotLight Studio</h1>
+        <p>Memproses aksi, silakan tunggu...</p>
+        <a href="list.php?status_sukses=error&message=Aksi+tidak+valid">Klik di sini jika tidak dialihkan</a>
+    </div>
+</body>
+</html>

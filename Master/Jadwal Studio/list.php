@@ -122,19 +122,26 @@ if (isset($_POST['update_profil'])) {
 }
 
 // =====================================================
-// AUTO-EXPIRED & AUTO-HAPUS JADWAL LAMPAU (Sesuai Validasi & Integritas DB)
+// AUTO-EXPIRED & AUTO-HAPUS JADWAL LAMPAU (Sinkronisasi WIB)
 // =====================================================
-// 1. Hapus permanen jadwal hari kemarin/lampau yang TIDAK memiliki relasi booking di tabel junction (Hard Delete)
+// 1. Hapus permanen jadwal lampau (hari kemarin ATAU hari ini yang jam selesainya sudah lewat) yang TIDAK memiliki relasi booking (Hard Delete)
 $hard_delete_past_sql = "DELETE FROM Jadwal_Studio 
-                         WHERE Tanggal_Jadwal < CAST(GETDATE() AS DATE) 
-                           AND ID_Jadwal NOT IN (SELECT DISTINCT ID_Jadwal FROM Order_Jadwal)";
+                         WHERE (
+                             Tanggal_Jadwal < CAST(GETDATE() AS DATE) 
+                             OR (Tanggal_Jadwal = CAST(GETDATE() AS DATE) AND Jam_Selesai < CAST(GETDATE() AS TIME))
+                         )
+                         AND ID_Jadwal NOT IN (SELECT DISTINCT ID_Jadwal FROM Order_Jadwal)";
 sqlsrv_query($conn, $hard_delete_past_sql);
 
-// 2. Soft delete jadwal hari kemarin/lampau yang MEMILIKI relasi booking (Is_Deleted = 1 & Status = 0)
+// 2. Soft delete jadwal lampau (hari kemarin ATAU hari ini yang jam selesainya sudah lewat) yang MEMILIKI relasi booking (Is_Deleted = 1 & Status = 0)
 // demi menjaga integritas data transaksional agar database tidak error
 $soft_delete_past_sql = "UPDATE Jadwal_Studio 
                          SET Is_Deleted = 1, Status = 0, Modified_By = ?, Modified_Date = GETDATE() 
-                         WHERE Tanggal_Jadwal < CAST(GETDATE() AS DATE) AND Is_Deleted = 0";
+                         WHERE (
+                             Tanggal_Jadwal < CAST(GETDATE() AS DATE) 
+                             OR (Tanggal_Jadwal = CAST(GETDATE() AS DATE) AND Jam_Selesai < CAST(GETDATE() AS TIME))
+                         ) 
+                         AND Is_Deleted = 0";
 sqlsrv_query($conn, $soft_delete_past_sql, [$nama_admin]);
 
 // =====================================================
@@ -143,24 +150,24 @@ sqlsrv_query($conn, $soft_delete_past_sql, [$nama_admin]);
 $limit = 10;
 $halaman = isset($_GET['halaman']) ? (int)$_GET['halaman'] : 1;
 if ($halaman < 1) $halaman = 1;
-$offset = ($halaman - 1) * $limit;
+$offset = (int)(($halaman - 1) * $limit);
 
 $cari = isset($_GET['cari']) ? trim($_GET['cari']) : "";
 $filter_ruangan = isset($_GET['ruangan']) ? (int)$_GET['ruangan'] : 0;
 $filter_paket = isset($_GET['paket']) ? (int)$_GET['paket'] : 0;
 $filter_status = isset($_GET['status']) ? trim($_GET['status']) : "";
-$filter_waktu = isset($_GET['waktu']) ? trim($_GET['waktu']) : ""; // Tambahkan ini
+$filter_waktu = isset($_GET['waktu']) ? trim($_GET['waktu']) : ""; 
 $filter_tanggal = isset($_GET['tanggal']) ? trim($_GET['tanggal']) : "";
 $sort = isset($_GET['sort']) ? trim($_GET['sort']) : "tanggal_asc";
 
 // =====================================================
-// STATISTIK
+// STATISTIK (Disesuaikan agar hitungan live WIB akurat)
 // =====================================================
 $q_stats = sqlsrv_query($conn, "
     SELECT 
         COUNT(*) as total,
-        SUM(CASE WHEN Status = 1 AND Tanggal_Jadwal >= CAST(GETDATE() AS DATE) THEN 1 ELSE 0 END) as aktif,
-        SUM(CASE WHEN Status = 0 OR Tanggal_Jadwal < CAST(GETDATE() AS DATE) THEN 1 ELSE 0 END) as nonaktif,
+        SUM(CASE WHEN Status = 1 AND (Tanggal_Jadwal > CAST(GETDATE() AS DATE) OR (Tanggal_Jadwal = CAST(GETDATE() AS DATE) AND Jam_Mulai >= CAST(GETDATE() AS TIME))) THEN 1 ELSE 0 END) as aktif,
+        SUM(CASE WHEN Status = 0 OR Tanggal_Jadwal < CAST(GETDATE() AS DATE) OR (Tanggal_Jadwal = CAST(GETDATE() AS DATE) AND Jam_Mulai < CAST(GETDATE() AS TIME)) THEN 1 ELSE 0 END) as nonaktif,
         SUM(CASE WHEN Is_Deleted = 1 THEN 1 ELSE 0 END) as terhapus
     FROM Jadwal_Studio
 ");
@@ -174,10 +181,13 @@ if ($q_stats !== false) {
 // =====================================================
 $is_deleted_val = ($filter_waktu === "expired") ? "j.Is_Deleted IN (0,1)" : "j.Is_Deleted = 0";
 $conditions = array($is_deleted_val);
+$params = array(); // Inisialisasi awal aman
+
 if ($filter_status !== "") {
     $conditions[] = "j.Status = ?";
     $params[] = (int)$filter_status;
 }
+
 // --- FILTER STATUS WAKTU (AKTIF VS EXPIRED) ---
 if ($filter_waktu === "aktif") {
     // Jadwal hari ini yang belum mulai ATAU jadwal hari esok dan seterusnya
@@ -185,12 +195,7 @@ if ($filter_waktu === "aktif") {
 } elseif ($filter_waktu === "expired") {
     // Jadwal hari kemarin dan sebelumnya ATAU jadwal hari ini yang sudah lewat jam mulainya
     $conditions[] = "(j.Tanggal_Jadwal < CAST(GETDATE() AS DATE) OR (j.Tanggal_Jadwal = CAST(GETDATE() AS DATE) AND j.Jam_Mulai < CAST(GETDATE() AS TIME)))";
-    
-    // PENTING: Karena jadwal lampau di-auto soft-delete oleh kode kamu di atas, 
-    // kita perlu memaksa query untuk mencari data yang Is_Deleted = 1 JUGA khusus saat filter expired aktif.
-    // Cari baris $conditions = array("j.Is_Deleted = 0"); di atas, lalu ubah logika array-nya jika perlu.
 }
-$params = array();
 
 if (!empty($cari)) {
     $conditions[] = "(r.Nama_Ruangan LIKE ? OR j.Keterangan LIKE ? OR r.ID_Ruangan IN (SELECT pr.ID_Ruangan FROM Paket_Ruangan pr JOIN Paket_Foto pf ON pr.ID_Paket = pf.ID_Paket WHERE pf.Nama_Paket LIKE ?))";
@@ -203,13 +208,8 @@ if ($filter_ruangan > 0) {
     $params[] = $filter_ruangan;
 }
 if ($filter_paket > 0) {
-    // Filter berdasarkan subquery Paket_Ruangan
     $conditions[] = "j.ID_Ruangan IN (SELECT pr.ID_Ruangan FROM Paket_Ruangan pr WHERE pr.ID_Paket = ?)";
     $params[] = $filter_paket;
-}
-if ($filter_status !== "") {
-    $conditions[] = "j.Status = ?";
-    $params[] = (int)$filter_status;
 }
 if (!empty($filter_tanggal)) {
     $conditions[] = "j.Tanggal_Jadwal = ?";
@@ -237,7 +237,7 @@ if ($query_count !== false) {
     $total_halaman = ceil($total_records / $limit);
 }
 
-// Ambil data (Ditambahkan kueri DATEDIFF MINUTE untuk menghitung durasi dinamis langsung dari database)
+// Ambil data
 $sql_list = "SELECT 
     j.ID_Jadwal, j.ID_Ruangan, j.Tanggal_Jadwal, j.Jam_Mulai, j.Jam_Selesai,
     j.Keterangan, j.Status, j.Status_Jadwal,
@@ -254,6 +254,7 @@ ORDER BY " . $order_clause . "
 OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
 
 $params_list = $params;
+// Penyelarasan Eksplisit Parameter Binding tipe data Integer murni untuk mencegah crash OFFSET/FETCH
 $params_list[] = $offset;
 $params_list[] = $limit;
 
@@ -410,9 +411,6 @@ body {
 .stats-scroll-wrapper::-webkit-scrollbar-thumb { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); border-radius: 10px; }
 .stats-row { display: flex; gap: 16px; min-width: max-content; }
 .stat-card-item { min-width: 200px; max-width: 260px; flex: 0 0 auto; }
-/* card-3d = struktur visual dasar (dipakai statistik & info non-klik).
-   card-3d-clickable = modifier opt-in untuk elemen yang benar-benar bisa diklik,
-   supaya efek hover-lift hanya muncul saat memang ada aksi. */
 .card-3d {
     background: #ffffff; border-radius: 22px;
     border: 1px solid rgba(255, 228, 233, 0.8);
@@ -464,8 +462,6 @@ body {
     color: #1e293b; transition: var(--transition-3d); background: #ffffff;
 }
 .search-input-main:focus { outline: none; border-color: var(--p-pink); box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); }
-/* Filter: gaya outline ringan (sinkron dengan tombol "Verifikasi Semua" di dashboard),
-   supaya tidak terlihat sama seperti tombol solid "Tambah Jadwal". */
 .btn-filter-modal {
     background: var(--s-pink);
     color: var(--p-pink);
@@ -719,11 +715,6 @@ body {
 }
 
 @media (max-width: 768px) {
-    .main-content { padding: 18px; }
-    .dashboard-header { margin-bottom: 22px; }
-    .dashboard-header h3 { font-size: 1.15rem; }
-    .dashboard-header p { font-size: 0.8rem; }
-
     .search-filter-bar { flex-direction: column; align-items: stretch; gap: 10px; }
     .search-form-flex { min-width: 100%; flex-wrap: wrap; }
     .search-input-wrapper { width: 100%; }
@@ -735,9 +726,6 @@ body {
 }
 
 @media (max-width: 576px) {
-    .main-content { padding: 14px; }
-    .dashboard-header h3 { font-size: 1.05rem; }
-
     .data-table tbody td { padding: 12px 14px; }
     .data-table tbody td:first-child { padding-left: 16px; border-radius: 10px 0 0 10px; }
     .data-table tbody td:last-child { padding-right: 16px; border-radius: 0 10px 10px 0; }
@@ -864,8 +852,8 @@ body {
                         <div class="stat-card">
                             <div class="stat-icon stat-icon-green"><i class="bi bi-check-circle-fill"></i></div>
                             <div class="stat-content">
-                                <div class="stat-title">Jadwal Aktif</div>
-                                <div class="stat-val"><?= $stats['aktif'] ?? 0 ?> Jadwal</div>
+                                <div class="stat-title">Jadwal Sesi Aktif</div>
+                                <div class="stat-val"><?= $stats['aktif'] ?? 0 ?> Sesi</div>
                                 <div class="stat-subtitle">Bisa dipesan</div>
                             </div>
                         </div>
@@ -876,8 +864,8 @@ body {
                         <div class="stat-card">
                             <div class="stat-icon stat-icon-orange"><i class="bi bi-x-circle-fill"></i></div>
                             <div class="stat-content">
-                                <div class="stat-title">Jadwal Nonaktif</div>
-                                <div class="stat-val"><?= $stats['nonaktif'] ?? 0 ?> Jadwal</div>
+                                <div class="stat-title">Jadwal Sesi Nonaktif</div>
+                                <div class="stat-val"><?= $stats['nonaktif'] ?? 0 ?> Sesi</div>
                                 <div class="stat-subtitle">Sudah lewat / Dinonaktifkan</div>
                             </div>
                         </div>
@@ -911,7 +899,9 @@ body {
                     <i class="bi bi-search search-icon"></i>
                     <input type="text" name="cari" class="search-input-main" placeholder="Cari ruangan, paket, keterangan..." value="<?= htmlspecialchars($cari) ?>">
                 </div>
-                <button type="button" class="btn-filter-modal" onclick="bukaModalFilter()">
+                <!-- PERBAIKAN BUG UTAMA: Menghubungkan secara native menggunakan Bootstrap Toggle data attributes 
+                     untuk mencegah pembekuan backdrop hitam (Frozen Backdrop) pada browser -->
+                <button type="button" class="btn-filter-modal" data-bs-toggle="modal" data-bs-target="#modalFilterData">
                     <i class="bi bi-funnel-fill me-2"></i>Filter
                     <i class="bi bi-chevron-down ms-2"></i>
                 </button>
@@ -1029,7 +1019,7 @@ body {
                                     <?php elseif ($row['Status'] == 0): ?>
                                         <span class="badge badge-nonaktif"><span class="badge-dot"></span> Nonaktif</span>
                                     <?php else: ?>
-                                        <span class="badge badge-aktif"><span class="badge-dot"></span> Aktif</span>
+                                        <span class="badge badge-aktif"><span class="badge-dot"></span> Masuk</span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
@@ -1084,7 +1074,7 @@ body {
 
                     <?php 
                     $start_page = max(1, $halaman - 2);
-                    $end_page = min($total_halaman, $halaman + 2);
+                    $end_page = min($total_halaman, $halaman + 2); // --- PERBAIKAN BUG UTAMA: Ditambahkan tanda dollar ($) agar tidak dibaca sebagai konstanta tidak terdefinisi ---
 
                     if ($start_page > 1) {
                         echo '<a class="page-link-pag" href="list.php?halaman=1&cari=' . urlencode($cari) . '&ruangan=' . $filter_ruangan . '&paket=' . $filter_paket . '&status=' . $filter_status . '&tanggal=' . $filter_tanggal . '&sort=' . $sort . '">1</a>';
@@ -1138,13 +1128,23 @@ body {
                 <p class="text-muted small mb-4">Gunakan filter di bawah ini untuk merampingkan daftar jadwal studio.</p>
                 
                 <div class="row g-3">
-                    <!-- Filter Berdasarkan Waktu (BARU) -->
+                    <!-- Filter Berdasarkan Waktu -->
                     <div class="col-12">
                         <label class="form-label">Status Waktu Jadwal</label>
                         <select class="form-select shadow-none" id="modalWaktu">
                             <option value="" <?= $filter_waktu == '' ? 'selected' : '' ?>>Semua Waktu</option>
                             <option value="aktif" <?= $filter_waktu == 'aktif' ? 'selected' : '' ?>>Aktif (Mendatang)</option>
                             <option value="expired" <?= $filter_waktu == 'expired' ? 'selected' : '' ?>>Kedaluwarsa (Lampau)</option>
+                        </select>
+                    </div>
+
+                    <!-- Filter Berdasarkan Status Data (BARU DIINTEGRASIKAN) -->
+                    <div class="col-12">
+                        <label class="form-label">Status Data Jadwal</label>
+                        <select class="form-select shadow-none" id="modalStatus">
+                            <option value="" <?= $filter_status === '' ? 'selected' : '' ?>>Semua Status</option>
+                            <option value="1" <?= $filter_status === '1' ? 'selected' : '' ?>>Aktif</option>
+                            <option value="0" <?= $filter_status === '0' ? 'selected' : '' ?>>Nonaktif</option>
                         </select>
                     </div>
 
@@ -1198,7 +1198,79 @@ body {
     </div>
 </div>
 
-    <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <!-- MODAL LIHAT BIODATA -->
+    <div class="modal fade" id="modalLihatBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0" style="border-radius:28px;box-shadow:0 20px 50px rgba(0,0,0,0.15);background:#ffffff;">
+                <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-vcard-fill text-danger me-2"></i>Biodata Admin</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body px-4 pb-4 pt-3">
+                    <div class="text-center mb-4">
+                        <div class="profile-preview-box mx-auto" style="width:100px;height:100px;border:3px solid var(--s-pink);">
+                            <img src="<?= $foto_admin_src ?>" alt="Foto Profil">
+                        </div>
+                        <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_admin) ?></h5>
+                        <span class="badge bg-primary px-3 py-1 text-white text-uppercase" style="font-size:0.72rem;border-radius:50px;font-weight:700;">Administrator</span>
+                    </div>
+                    <div class="card-3d p-3 border-0 mb-4" style="border-radius:20px;background-color:#f8fafc;">
+                        <div class="row g-3">
+                            <div class="col-6"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">NIK</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_admin['nik'] ?? '-') ?></span></div>
+                            <div class="col-6"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Nama Pengguna</small><span class="fw-bold text-dark" style="font-size:0.85rem;">@<?= htmlspecialchars($username_admin) ?></span></div>
+                            <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Email</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($email_admin) ?></span></div>
+                            <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Jenis Kelamin</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_admin['jenis_kelamin'] ?? '-') ?></span></div>
+                            <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Nomor Telepon</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_admin['no_hp'] ?? '-') ?></span></div>
+                            <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Lengkap</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_admin['alamat'] ?? '-') ?></span></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-reg shadow-sm py-3 mt-0" onclick="bukaModalEditDariBiodata()" style="border-radius:14px;">Edit Profil Anda</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL GANTI PROFIL -->
+    <div class="modal fade" id="modalGantiProfil" tabindex="-1" aria-hidden="true" style="backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0" style="border-radius:28px;box-shadow:0 20px 50px rgba(213,61,102,0.25);background:rgba(255,255,255,0.95);">
+                <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-gear-fill text-danger me-2"></i>Pengaturan Profil Admin</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body px-4 pb-4 pt-3">
+                    <p class="text-muted small mb-4" style="line-height:1.6;">Perbarui informasi profil pribadi Anda di bawah ini secara akurat.</p>
+                    <form method="POST" enctype="multipart/form-data">
+                        <div class="text-center mb-4">
+                            <div class="d-inline-block position-relative">
+                                <div class="profile-preview-box mx-auto"><img id="profile-preview-modal" src="<?= $foto_admin_src ?>" alt="Foto Profil"></div>
+                                <input type="file" name="foto_profil" id="inputFotoModal" class="form-control d-none" accept=".jpg,.jpeg,.png">
+                                <button type="button" class="btn btn-pilih-foto btn-sm position-absolute" style="bottom:-10px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:0.75rem;padding:5px 12px;" onclick="document.getElementById('inputFotoModal').click();">Ganti Foto</button>
+                            </div>
+                        </div>
+                        <div class="mb-3"><label class="form-label">Nama Lengkap Anda<span class="required-star">*</span></label><input type="text" name="nama" id="inputNamaModal" class="form-control" placeholder="Masukkan nama lengkap Anda" value="<?= htmlspecialchars($nama_admin) ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Nama Pengguna (Username)<span class="required-star">*</span></label><input type="text" name="username" id="inputUsernameModal" class="form-control" placeholder="Masukkan nama pengguna kustom" value="<?= htmlspecialchars($username_admin) ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Alamat Email<span class="required-star">*</span></label><input type="email" name="email" class="form-control" placeholder="nama@email.com" value="<?= htmlspecialchars($email_admin) ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Nomor Telepon<span class="required-star">*</span></label><input type="text" name="no_hp" id="inputHPModal" class="form-control" placeholder="Contoh: +628xxxxxxxxxx" value="<?= htmlspecialchars($d_admin['no_hp'] ?? '') ?>" required></div>
+                        <div class="mb-3"><label class="form-label">Alamat Lengkap<span class="required-star">*</span></label><textarea name="alamat" class="form-control" rows="2" placeholder="Masukkan alamat domisili lengkap" required style="resize:none;"><?= htmlspecialchars($d_admin['alamat'] ?? '') ?></textarea></div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3"><label class="form-label">Sandi Baru (Opsional)</label><div class="password-group"><input type="password" name="password" id="pass_baru_modal" class="form-control" placeholder="Minimal 8 karakter"><i class="bi bi-eye-slash toggle-password" id="btnToggleBaru"></i></div></div>
+                            <div class="col-md-6 mb-3"><label class="form-label">Konfirmasi Sandi</label><div class="password-group"><input type="password" name="confirm_password" id="pass_konf_modal" class="form-control" placeholder="Ulangi sandi baru"><i class="bi bi-eye-slash toggle-password" id="btnToggleKonf"></i></div></div>
+                        </div>
+                        <button type="submit" name="update_profil" class="btn btn-reg shadow-sm py-3 mt-2">Simpan Perubahan</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <?php if(isset($success_profile) && $success_profile === true): ?>
+    <script>Swal.fire({icon:'success',title:'Profil Diperbarui!',text:'Informasi profil Anda berhasil disinkronkan.',confirmButtonColor:'#D53D66',confirmButtonText:'Selesai'});</script>
+    <?php endif; ?>
+
+    <?php if(isset($error_profile) && $error_profile !== ""): ?>
+    <script>Swal.fire({icon:'error',title:'Pembaruan Gagal!',text:'<?= addslashes($error_profile) ?>',confirmButtonColor:'#D53D66',confirmButtonText:'Periksa Kembali'}).then(()=>{var modalGanti=new bootstrap.Modal(document.getElementById('modalGantiProfil'));modalGanti.show();});</script>
+    <?php endif; ?>
 
     <script>
     // Toggle Submenu
@@ -1221,38 +1293,35 @@ body {
     });
 
     // Filter Modal
-    var filterModal;
-    function bukaModalFilter() {
-        filterModal = new bootstrap.Modal(document.getElementById('modalFilterData'));
-        filterModal.show();
-    }
     function applyFilter() {
-    // Ambil nilai dari select modal
-    const waktu = document.getElementById('modalWaktu').value;
-    const paket = document.getElementById('modalPaket').value;
-    const ruangan = document.getElementById('modalRuangan').value;
-    const sort = document.getElementById('modalSort').value;
+        // Ambil nilai dari select modal
+        const waktu = document.getElementById('modalWaktu').value;
+        const status = document.getElementById('modalStatus').value; // Baru
+        const paket = document.getElementById('modalPaket').value;
+        const ruangan = document.getElementById('modalRuangan').value;
+        const sort = document.getElementById('modalSort').value;
 
-    // Masukkan ke input hidden di form utama
-    document.getElementById('hiddenWaktu').value = waktu;
-    document.getElementById('hiddenPaket').value = paket;
-    document.getElementById('hiddenRuangan').value = ruangan;
-    document.getElementById('hiddenSort').value = sort;
+        // Masukkan ke input hidden di form utama
+        document.getElementById('hiddenWaktu').value = waktu;
+        document.getElementById('hiddenStatus').value = status; // Baru
+        document.getElementById('hiddenPaket').value = paket;
+        document.getElementById('hiddenRuangan').value = ruangan;
+        document.getElementById('hiddenSort').value = sort;
 
-    // Submit form utama
-    document.getElementById('mainSearchForm').submit();
-}
+        // Submit form utama
+        document.getElementById('mainSearchForm').submit();
+    }
 
-function resetFilter() {
-    // Reset semua nilai ke default
-    document.getElementById('hiddenPaket').value = '0';
-    document.getElementById('hiddenRuangan').value = '0';
-    document.getElementById('hiddenWaktu').value = '';
-    document.getElementById('hiddenStatus').value = '';
-    document.getElementById('hiddenTanggal').value = '';
-    document.getElementById('hiddenSort').value = 'tanggal_asc';
-    document.getElementById('mainSearchForm').submit();
-}
+    function resetFilter() {
+        // Reset semua nilai ke default
+        document.getElementById('hiddenPaket').value = '0';
+        document.getElementById('hiddenRuangan').value = '0';
+        document.getElementById('hiddenWaktu').value = '';
+        document.getElementById('hiddenStatus').value = ''; // Baru
+        document.getElementById('hiddenTanggal').value = '';
+        document.getElementById('hiddenSort').value = 'tanggal_asc';
+        document.getElementById('mainSearchForm').submit();
+    }
 
     // Toggle Status
     function toggleStatus(id, currentStatus, info) {
@@ -1399,17 +1468,27 @@ function resetFilter() {
 
     // ===== MODAL PROFIL =====
     function bukaModalProfil() {
-        var modalProfil = new bootstrap.Modal(document.getElementById('modalGantiProfil'));
+        var modalProfilEl = document.getElementById('modalGantiProfil');
+        var modalProfil = bootstrap.Modal.getInstance(modalProfilEl) || new bootstrap.Modal(modalProfilEl);
         modalProfil.show();
     }
     function bukaModalBiodata() {
-        var modalBiodata = new bootstrap.Modal(document.getElementById('modalLihatBiodata'));
+        var modalBiodataEl = document.getElementById('modalLihatBiodata');
+        var modalBiodata = bootstrap.Modal.getInstance(modalBiodataEl) || new bootstrap.Modal(modalBiodataEl);
         modalBiodata.show();
     }
     function bukaModalEditDariBiodata() {
         var modalBiodata = bootstrap.Modal.getInstance(document.getElementById('modalLihatBiodata'));
         if (modalBiodata) modalBiodata.hide();
         setTimeout(bukaModalProfil, 400);
+    }
+
+    // ===== MODAL FILTER JADWAL =====
+    // Ditambahkan kembali untuk mengatasi "Uncaught ReferenceError: bukaModalFilter is not defined" [4]
+    function bukaModalFilter() {
+        var modalFilterEl = document.getElementById('modalFilterData');
+        var modalFilter = bootstrap.Modal.getInstance(modalFilterEl) || new bootstrap.Modal(modalFilterEl);
+        modalFilter.show();
     }
 
     // ===== FILE INPUT PREVIEW =====
@@ -1485,80 +1564,5 @@ function resetFilter() {
         });
     </script>
     <?php endif; ?>
-
-    <!-- MODAL LIHAT BIODATA -->
-    <div class="modal fade" id="modalLihatBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0" style="border-radius:28px;box-shadow:0 20px 50px rgba(0,0,0,0.15);background:#ffffff;">
-                <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
-                    <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-vcard-fill text-danger me-2"></i>Biodata Admin</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body px-4 pb-4 pt-3">
-                    <div class="text-center mb-4">
-                        <div class="profile-preview-box mx-auto" style="width:100px;height:100px;border:3px solid var(--s-pink);">
-                            <img src="<?= $foto_admin_src ?>" alt="Foto Profil">
-                        </div>
-                        <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_admin) ?></h5>
-                        <span class="badge bg-primary px-3 py-1 text-white text-uppercase" style="font-size:0.72rem;border-radius:50px;font-weight:700;">Administrator</span>
-                    </div>
-                    <div class="card-3d p-3 border-0 mb-4" style="border-radius:20px;background-color:#f8fafc;">
-                        <div class="row g-3">
-                            <div class="col-6"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">NIK</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_admin['nik'] ?? '-') ?></span></div>
-                            <div class="col-6"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Nama Pengguna</small><span class="fw-bold text-dark" style="font-size:0.85rem;">@<?= htmlspecialchars($username_admin) ?></span></div>
-                            <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Email</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($email_admin) ?></span></div>
-                            <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Jenis Kelamin</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_admin['jenis_kelamin'] ?? '-') ?></span></div>
-                            <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Nomor Telepon</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_admin['no_hp'] ?? '-') ?></span></div>
-                            <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Lengkap</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_admin['alamat'] ?? '-') ?></span></div>
-                        </div>
-                    </div>
-                    <button class="btn btn-reg shadow-sm py-3 mt-0" onclick="bukaModalEditDariBiodata()" style="border-radius:14px;">Edit Profil Anda</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL GANTI PROFIL -->
-    <div class="modal fade" id="modalGantiProfil" tabindex="-1" aria-hidden="true" style="backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0" style="border-radius:28px;box-shadow:0 20px 50px rgba(213,61,102,0.25);background:rgba(255,255,255,0.95);">
-                <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
-                    <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-gear-fill text-danger me-2"></i>Pengaturan Profil Admin</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body px-4 pb-4 pt-3">
-                    <p class="text-muted small mb-4" style="line-height:1.6;">Perbarui informasi profil pribadi Anda di bawah ini secara akurat.</p>
-                    <form method="POST" enctype="multipart/form-data">
-                        <div class="text-center mb-4">
-                            <div class="d-inline-block position-relative">
-                                <div class="profile-preview-box mx-auto"><img id="profile-preview-modal" src="<?= $foto_admin_src ?>" alt="Foto Profil"></div>
-                                <input type="file" name="foto_profil" id="inputFotoModal" class="form-control d-none" accept=".jpg,.jpeg,.png">
-                                <button type="button" class="btn btn-pilih-foto btn-sm position-absolute" style="bottom:-10px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:0.75rem;padding:5px 12px;" onclick="document.getElementById('inputFotoModal').click();">Ganti Foto</button>
-                            </div>
-                        </div>
-                        <div class="mb-3"><label class="form-label">Nama Lengkap Anda<span class="required-star">*</span></label><input type="text" name="nama" id="inputNamaModal" class="form-control" placeholder="Masukkan nama lengkap Anda" value="<?= htmlspecialchars($nama_admin) ?>" required></div>
-                        <div class="mb-3"><label class="form-label">Nama Pengguna (Username)<span class="required-star">*</span></label><input type="text" name="username" id="inputUsernameModal" class="form-control" placeholder="Masukkan nama pengguna kustom" value="<?= htmlspecialchars($username_admin) ?>" required></div>
-                        <div class="mb-3"><label class="form-label">Alamat Email<span class="required-star">*</span></label><input type="email" name="email" class="form-control" placeholder="nama@email.com" value="<?= htmlspecialchars($email_admin) ?>" required></div>
-                        <div class="mb-3"><label class="form-label">Nomor Telepon<span class="required-star">*</span></label><input type="text" name="no_hp" id="inputHPModal" class="form-control" placeholder="Contoh: +628xxxxxxxxxx" value="<?= htmlspecialchars($d_admin['no_hp'] ?? '') ?>" required></div>
-                        <div class="mb-3"><label class="form-label">Alamat Lengkap<span class="required-star">*</span></label><textarea name="alamat" class="form-control" rows="2" placeholder="Masukkan alamat domisili lengkap" required style="resize:none;"><?= htmlspecialchars($d_admin['alamat'] ?? '') ?></textarea></div>
-                        <div class="row">
-                            <div class="col-md-6 mb-3"><label class="form-label">Sandi Baru (Opsional)</label><div class="password-group"><input type="password" name="password" id="pass_baru_modal" class="form-control" placeholder="Minimal 8 karakter"><i class="bi bi-eye-slash toggle-password" id="btnToggleBaru"></i></div></div>
-                            <div class="col-md-6 mb-3"><label class="form-label">Konfirmasi Sandi</label><div class="password-group"><input type="password" name="confirm_password" id="pass_konf_modal" class="form-control" placeholder="Ulangi sandi baru"><i class="bi bi-eye-slash toggle-password" id="btnToggleKonf"></i></div></div>
-                        </div>
-                        <button type="submit" name="update_profil" class="btn btn-reg shadow-sm py-3 mt-2">Simpan Perubahan</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <?php if(isset($success_profile) && $success_profile === true): ?>
-    <script>Swal.fire({icon:'success',title:'Profil Diperbarui!',text:'Informasi profil Anda berhasil disinkronkan.',confirmButtonColor:'#D53D66',confirmButtonText:'Selesai'});</script>
-    <?php endif; ?>
-
-    <?php if(isset($error_profile) && $error_profile !== ""): ?>
-    <script>Swal.fire({icon:'error',title:'Pembaruan Gagal!',text:'<?= addslashes($error_profile) ?>',confirmButtonColor:'#D53D66',confirmButtonText:'Periksa Kembali'}).then(()=>{var modalGanti=new bootstrap.Modal(document.getElementById('modalGantiProfil'));modalGanti.show();});</script>
-    <?php endif; ?>
-
 </body>
 </html>

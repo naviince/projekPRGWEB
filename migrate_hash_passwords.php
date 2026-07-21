@@ -33,6 +33,10 @@ if (!isset($conn) || $conn === false) {
     die('<h2 style="color:red;">Koneksi database gagal!</h2>');
 }
 
+// Jaga-jaga kalau data cukup banyak -- migrasi ini scan+hash semua baris
+// sekaligus dalam 1 request, jangan sampai keburu timeout PHP default.
+set_time_limit(0);
+
 function isBcryptHash($str) {
     return is_string($str) && preg_match('/^\$2[aby]\$/', $str) === 1;
 }
@@ -54,6 +58,11 @@ while ($row = sqlsrv_fetch_array($q_pelanggan, SQLSRV_FETCH_ASSOC)) {
     $pw = $row['Password_Pelanggan'];
     if (isBcryptHash($pw)) {
         $total_skipped++;
+        continue;
+    }
+    if (empty($pw)) {
+        $total_error++;
+        $log[] = "⚠️ Pelanggan #{$row['ID_Pelanggan']} ({$row['Username_Pelanggan']}) -- password kosong, dilewati (perlu dicek manual).";
         continue;
     }
 
@@ -82,6 +91,11 @@ while ($row = sqlsrv_fetch_array($q_karyawan, SQLSRV_FETCH_ASSOC)) {
     $pw = $row['Password_Karyawan'];
     if (isBcryptHash($pw)) {
         $total_skipped++;
+        continue;
+    }
+    if (empty($pw)) {
+        $total_error++;
+        $log[] = "⚠️ Karyawan #{$row['ID_Karyawan']} ({$row['Username_Karyawan']}) -- password kosong, dilewati (perlu dicek manual).";
         continue;
     }
 
