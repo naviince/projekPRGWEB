@@ -234,6 +234,12 @@ if (strtotime($selected_date) < strtotime($today)) {
     $selected_date = $today;
 }
 
+// Redirect kalau user manually masukkan tanggal lampau di URL
+if (strtotime($selected_date) < strtotime($today)) {
+    header("Location: ?id_paket=$id_paket&id_ruangan=$id_ruangan&id_tema=$id_tema&tanggal=$today");
+    exit();
+}
+
 // Hitung range tanggal (7 hari dari selected_date)
 $date_start = new DateTime($selected_date);
 $date_end = clone $date_start;
@@ -2007,10 +2013,21 @@ $selected_jadwal_ids = array_map(function($item) {
                 <i class="bi bi-calendar-week-fill"></i>
                 Pilih Tanggal
             </div>
-            <a href="?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&tanggal=<?= $prev_date->format('Y-m-d') ?>" 
-               class="date-nav-btn <?= ($prev_date->format('Y-m-d') < $today) ? 'disabled' : '' ?>">
-                <i class="bi bi-chevron-left"></i>
-            </a>
+            <!-- SESUDAH (FIXED): -->
+            <?php 
+            $prev_date_str = $prev_date->format('Y-m-d');
+            $is_prev_disabled = ($prev_date_str < $today);
+            ?>
+            <?php if ($is_prev_disabled): ?>
+                <span class="date-nav-btn disabled" style="pointer-events:none;">
+                    <i class="bi bi-chevron-left"></i>
+                </span>
+            <?php else: ?>
+                <a href="?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&tanggal=<?= $prev_date_str ?>" 
+                class="date-nav-btn">
+                    <i class="bi bi-chevron-left"></i>
+                </a>
+            <?php endif; ?>
             <div class="date-tabs-wrapper">
                 <?php foreach ($date_tabs as $tab): ?>
                     <a href="?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&tanggal=<?= $tab['date'] ?>" 

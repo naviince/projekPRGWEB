@@ -147,53 +147,18 @@ if (isset($_POST['update_profil'])) {
 // =====================================================
 // FILTER TAHUN (untuk laporan/statistik dashboard)
 // Owner bisa memilih tahun mana yang ingin dilihat (tahun ini, tahun lalu,
-// dst) atau "Semua Tahun" untuk agregat sepanjang waktu (perilaku default
-// sebelum filter ini ada). Daftar tahun yang muncul di dropdown HANYA
-// tahun yang benar-benar punya data transaksi (dari Order/Pembayaran/
-// Penjualan), supaya tidak ada pilihan tahun kosong -- tahun berjalan tetap
-// selalu tersedia meski belum ada transaksi.
+// dst). Daftar tahun yang muncul di dropdown adalah rentang tetap 5 tahun
+// (tahun ini s/d 4 tahun ke belakang), sama seperti dashboard Admin --
+// tidak lagi mengambil daftar tahun dari data transaksi.
 // =====================================================
-$q_tahun_tersedia = sqlsrv_query($conn, "
-    SELECT DISTINCT thn FROM (
-        SELECT YEAR(Created_Date) AS thn FROM [Order]
-        UNION
-        SELECT YEAR(Tanggal_Upload) AS thn FROM Pembayaran
-        UNION
-        SELECT YEAR(Tanggal_Penjualan) AS thn FROM Penjualan
-    ) x
-    WHERE thn IS NOT NULL
-    ORDER BY thn DESC
-");
-$daftar_tahun = [];
-if ($q_tahun_tersedia) {
-    while ($r = sqlsrv_fetch_array($q_tahun_tersedia, SQLSRV_FETCH_ASSOC)) {
-        $daftar_tahun[] = (int)$r['thn'];
-    }
-}
-$tahun_sekarang = (int)date('Y');
-if (!in_array($tahun_sekarang, $daftar_tahun, true)) {
-    $daftar_tahun[] = $tahun_sekarang;
-}
-rsort($daftar_tahun);
+$label_periode = "Tahun $tahun_filter";
 
-// Tahun terpilih lewat dropdown (?tahun=2025, atau ?tahun=semua). Divalidasi
-// ketat terhadap whitelist $daftar_tahun di atas -- tidak langsung dipakai
-// mentah dari $_GET -- supaya tidak bisa disuntik nilai sembarang lewat URL.
-$tahun_filter_raw = isset($_GET['tahun']) ? trim($_GET['tahun']) : (string)$tahun_sekarang;
-$filter_semua_tahun = ($tahun_filter_raw === 'semua');
-$tahun_filter = $filter_semua_tahun ? null : (int)$tahun_filter_raw;
-if (!$filter_semua_tahun && !in_array($tahun_filter, $daftar_tahun, true)) {
-    $tahun_filter = $tahun_sekarang; // fallback aman kalau nilai tidak valid/di luar whitelist
-}
-$label_periode = $filter_semua_tahun ? 'Semua Tahun' : "Tahun $tahun_filter";
-
-// Helper: bikin fragmen kondisi "YEAR(kolom) = tahun_filter", atau string
-// kosong kalau mode "Semua Tahun" (tanpa filter). $tahun_filter sendiri
-// sudah dipastikan integer murni oleh validasi whitelist di atas, aman
-// untuk disisipkan langsung ke SQL.
+// Helper: bikin fragmen kondisi "YEAR(kolom) = tahun_filter". $tahun_filter
+// sendiri sudah dipastikan integer murni oleh validasi ctype_digit di atas,
+// aman untuk disisipkan langsung ke SQL.
 function condTahun($kolom) {
-    global $filter_semua_tahun, $tahun_filter;
-    return $filter_semua_tahun ? "" : " AND YEAR($kolom) = $tahun_filter";
+    global $tahun_filter;
+    return " AND YEAR($kolom) = $tahun_filter";
 }
 
 $q_pendapatan = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1" . condTahun('Tanggal_Upload'));
@@ -231,7 +196,7 @@ $stok_menipis = $d_stok_menipis['total'] ?? 0;
 $q_status_booking = sqlsrv_query($conn, "SELECT SUM(CASE WHEN Status_Order = 0 THEN 1 ELSE 0 END) AS menunggu_dp, SUM(CASE WHEN Status_Order = 1 THEN 1 ELSE 0 END) AS dp_verified, SUM(CASE WHEN Status_Order = 2 THEN 1 ELSE 0 END) AS tunggu_pelunasan, SUM(CASE WHEN Status_Order = 3 THEN 1 ELSE 0 END) AS lunas, SUM(CASE WHEN Status_Order = 4 THEN 1 ELSE 0 END) AS dibatalkan FROM [Order] WHERE Status = 1" . condTahun('Tanggal_Booking'));
 $d_status_booking = sqlsrv_fetch_array($q_status_booking, SQLSRV_FETCH_ASSOC);
 
-$q_top_paket = sqlsrv_query($conn, "SELECT TOP 5 p.Nama_Paket, COUNT(o.ID_Order) AS total_order FROM Paket_Foto p LEFT JOIN [Order] o ON p.ID_Paket = o.ID_Paket" . ($filter_semua_tahun ? "" : " AND YEAR(o.Tanggal_Booking) = $tahun_filter") . " WHERE p.Status = 1 AND p.Is_Deleted = 0 GROUP BY p.ID_Paket, p.Nama_Paket ORDER BY total_order DESC");
+$q_top_paket = sqlsrv_query($conn, "SELECT TOP 5 p.Nama_Paket, COUNT(o.ID_Order) AS total_order FROM Paket_Foto p LEFT JOIN [Order] o ON p.ID_Paket = o.ID_Paket AND YEAR(o.Tanggal_Booking) = $tahun_filter WHERE p.Status = 1 AND p.Is_Deleted = 0 GROUP BY p.ID_Paket, p.Nama_Paket ORDER BY total_order DESC");
 $top_paket_labels = [];
 $top_paket_data = [];
 while ($row = sqlsrv_fetch_array($q_top_paket, SQLSRV_FETCH_ASSOC)) {
@@ -251,9 +216,7 @@ $q_pendapatan_barang = sqlsrv_query($conn, "SELECT SUM(Total_Penjualan) AS total
 $d_pendapatan_barang = sqlsrv_fetch_array($q_pendapatan_barang, SQLSRV_FETCH_ASSOC);
 $pendapatan_barang = $d_pendapatan_barang['total'] ?? 0;
 
-// Tren pendaftaran pelanggan per bulan -- untuk tahun spesifik ditampilkan
-// Jan-Des tahun itu; untuk "Semua Tahun" ditampilkan pola musiman gabungan
-// dari seluruh tahun (bukan lagi rolling 5 bulan terakhir dari hari ini).
+// Tren pendaftaran pelanggan per bulan -- Jan-Des untuk tahun terpilih.
 $q_tren_pelanggan = sqlsrv_query($conn, "SELECT MONTH(Created_Date) AS bulan, COUNT(*) AS total FROM Pelanggan WHERE 1=1" . condTahun('Created_Date') . " GROUP BY MONTH(Created_Date) ORDER BY MONTH(Created_Date)");
 $tren_pelanggan_labels = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 $tren_pelanggan_data = array_fill(0, 12, 0);
@@ -521,93 +484,6 @@ body {
     font-size: 0.85rem;
 }
 
-/* ========== FILTER PERIODE LAPORAN ========== */
-.period-filter-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-    background: #ffffff;
-    border: 1px solid rgba(216,63,103,0.12);
-    border-radius: 14px;
-    padding: 12px 18px;
-    margin-bottom: 24px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.03);
-}
-.period-select {
-    border: 1.5px solid var(--light-pink);
-    background: var(--s-pink);
-    color: var(--text-dark);
-    font-weight: 700;
-    font-size: 0.85rem;
-    border-radius: 10px;
-    padding: 7px 14px;
-    cursor: pointer;
-    outline: none;
-    transition: var(--transition-3d);
-}
-.period-select:hover, .period-select:focus {
-    border-color: var(--p-pink);
-    box-shadow: 0 0 0 3px rgba(216,63,103,0.1);
-}
-.period-filter-note {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    font-weight: 600;
-    max-width: 480px;
-}
-@media (max-width: 768px) {
-    .period-filter-bar { flex-direction: column; align-items: flex-start; }
-    .period-filter-note { max-width: 100%; }
-}
-
-.profile-header-btn {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    overflow: hidden;
-    border: 2px solid #ffffff;
-    cursor: pointer;
-    transition: var(--transition-3d);
-    background: #ffffff;
-    flex-shrink: 0;
-}
-.profile-header-btn:hover {
-    transform: scale(1.08) translateY(-2px);
-    box-shadow: 0 8px 20px rgba(216, 63, 103, 0.15);
-    border-color: var(--p-pink);
-}
-.profile-header-btn img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.admin-name-badge{
-    display:inline-flex;
-    align-items:center;
-    gap:6px;
-    background:linear-gradient(135deg,var(--p-pink),var(--d-pink));
-    color:#ffffff;
-    font-weight:700;
-    font-size:0.78rem;
-    padding:6px 14px;
-    border-radius:50px;
-    box-shadow:0 4px 12px rgba(216,63,103,0.2);
-    white-space:nowrap;
-}
-.admin-username-tag{
-    font-size:0.72rem;
-    font-weight:700;
-    color:var(--text-muted);
-    white-space:nowrap;
-}
-.admin-id-chip{
-    text-align:right;
-    line-height:1.4;
-}
-
 /* ========== TOOLBAR: LIVE CLOCK + FILTER LAPORAN (di luar semua card, cakupannya menyeluruh) ========== */
 .dashboard-toolbar{
     background:#ffffff;
@@ -663,6 +539,52 @@ body {
     outline:none;
 }
 
+.profile-header-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 2px solid #ffffff;
+    cursor: pointer;
+    transition: var(--transition-3d);
+    background: #ffffff;
+    flex-shrink: 0;
+}
+.profile-header-btn:hover {
+    transform: scale(1.08) translateY(-2px);
+    box-shadow: 0 8px 20px rgba(216, 63, 103, 0.15);
+    border-color: var(--p-pink);
+}
+.profile-header-btn img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.admin-name-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    background:linear-gradient(135deg,var(--p-pink),var(--d-pink));
+    color:#ffffff;
+    font-weight:700;
+    font-size:0.78rem;
+    padding:6px 14px;
+    border-radius:50px;
+    box-shadow:0 4px 12px rgba(216,63,103,0.2);
+    white-space:nowrap;
+}
+.admin-username-tag{
+    font-size:0.72rem;
+    font-weight:700;
+    color:var(--text-muted);
+    white-space:nowrap;
+}
+.admin-id-chip{
+    text-align:right;
+    line-height:1.4;
+}
+
 /* ========== STATS CARDS SCROLL ========== */
 .stats-scroll-wrapper {
     width: 100%;
@@ -700,9 +622,6 @@ body {
     position: relative;
     overflow: hidden;
 }
-/* Hover-lift is opt-in: only elements that are actually clickable (wrapped in a real
-   link/button) get the .card-3d-clickable modifier. Non-interactive cards (stat
-   summaries, biodata info box) stay flat so they don't imply an action that isn't there. */
 .card-3d-clickable {
     transition: var(--transition-3d);
 }
@@ -791,6 +710,17 @@ body {
     padding: 22px;
     height: 100%;
 }
+
+/* Padding lebih lega untuk card non-chart (tabel & akses cepat), tetap ikut aturan responsive */
+.chart-card-spacious { padding: 28px; }
+
+@media (max-width: 767.98px) {
+    .chart-card-spacious { padding: 18px; }
+}
+@media (max-width: 575.98px) {
+    .chart-card-spacious { padding: 16px; }
+}
+
 .chart-header {
     display: flex;
     justify-content: space-between;
@@ -881,6 +811,17 @@ body {
 .badge-pelunasan { background: #e0e7ff; color: #4f46e5; }
 .badge-lunas { background: #ecfdf5; color: #059669; }
 .badge-batal { background: #fef2f2; color: #dc2626; }
+
+/* ========== TABLE RESPONSIVE SCROLL ========== */
+/* Base rule -- di luar semua media query, berlaku universal di semua ukuran layar
+   supaya tablet (576px-991px) juga tetap bisa scroll horizontal, bukan cuma mobile */
+.table-responsive-custom {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.table-responsive-custom .table-custom {
+    min-width: 560px;
+}
 
 /* ========== FORM ========== */
 .required-star { color: #ef4444; font-weight: bold; margin-left: 2px; }
@@ -1043,14 +984,15 @@ body {
     .live-clock-chip { font-size: 0.72rem; padding: 7px 12px; }
     .year-filter-label { font-size: 0.7rem; }
     .year-filter-select { font-size: 0.78rem; padding: 7px 30px 7px 12px; }
+
+    /* Hanya override yang beda dari base rule -- TIDAK deklarasi ulang overflow-x */
     .table-responsive-custom {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
         margin: 0 -4px;
         padding: 0 4px;
     }
     .table-responsive-custom::-webkit-scrollbar { height: 4px; }
     .table-responsive-custom .table-custom { min-width: 600px; }
+
     .alert-item { padding: 8px 0; }
     .alert-icon { width: 32px; height: 32px; font-size: 0.9rem; }
     .modal-dialog { margin: 12px; }
@@ -1173,25 +1115,19 @@ body {
     </div>
 </div>
 
-<!-- FILTER PERIODE LAPORAN -->
-<div class="period-filter-bar animate-fade-in delay-1">
-    <div class="d-flex align-items-center gap-2" style="min-width:0;">
-        <i class="bi bi-funnel-fill text-danger"></i>
-        <span class="fw-bold" style="font-size:0.85rem;">Periode Laporan:</span>
-        <form method="GET" id="formFilterTahun" class="d-inline-flex">
-            <select name="tahun" class="period-select" onchange="document.getElementById('formFilterTahun').submit()">
-                <?php foreach ($daftar_tahun as $thn): ?>
-                    <option value="<?= $thn ?>" <?= (!$filter_semua_tahun && $tahun_filter == $thn) ? 'selected' : '' ?>>
-                        Tahun <?= $thn ?><?= $thn == $tahun_sekarang ? ' (Ini)' : ($thn == $tahun_sekarang - 1 ? ' (Lalu)' : '') ?>
-                    </option>
-                <?php endforeach; ?>
-                <option value="semua" <?= $filter_semua_tahun ? 'selected' : '' ?>>Semua Tahun</option>
-            </select>
-        </form>
-    </div>
-    <div class="period-filter-note">
-        <i class="bi bi-info-circle me-1"></i>Berlaku untuk pendapatan, grafik &amp; laporan. Kartu "Booking Hari Ini", "Menunggu Verifikasi" &amp; peringatan sistem selalu real-time.
-    </div>
+<!-- TOOLBAR: JAM REALTIME + FILTER LAPORAN TAHUNAN (di luar semua card, cakupannya menyeluruh -- sama seperti Admin) -->
+<div class="dashboard-toolbar d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4 animate-fade-in delay-1">
+    <span class="live-clock-chip">
+        <i class="bi bi-clock-history"></i> <span id="live-clock">Memuat waktu...</span>
+    </span>
+    <form method="GET" class="year-filter-form d-flex align-items-center gap-2 flex-wrap">
+        <label for="filterTahun" class="year-filter-label"><i class="bi bi-funnel-fill"></i> Filter Laporan Tahun</label>
+        <select name="tahun" id="filterTahun" class="year-filter-select" onchange="this.form.submit()">
+            <?php foreach ($tahun_options as $th): ?>
+            <option value="<?= $th ?>" <?= $th == $tahun_filter ? 'selected' : '' ?>><?= $th ?></option>
+            <?php endforeach; ?>
+        </select>
+    </form>
 </div>
 
 <!-- BARIS 1: STAT CARDS -->
@@ -1406,7 +1342,7 @@ body {
 <!-- BARIS 5: SEBARAN STAF & AKTIVITAS TERKINI -->
 <div class="row g-3 mb-4">
     <div class="col-lg-4 animate-fade-in delay-1">
-        <div class="chart-card">
+        <div class="chart-card chart-card-spacious">
             <div class="chart-header">
                 <h5 class="chart-title"><i class="bi bi-diagram-3-fill text-danger me-2"></i>Sebaran Staf Studio</h5>
             </div>
@@ -1416,10 +1352,9 @@ body {
         </div>
     </div>
     <div class="col-lg-8 animate-fade-in delay-2">
-        <div class="chart-card">
+        <div class="chart-card chart-card-spacious">
             <div class="chart-header">
                 <h5 class="chart-title"><i class="bi bi-activity text-danger me-2"></i>Aktivitas Booking Terkini</h5>
-                <a href="../../Transaksi/Order/index.php" class="btn btn-sm" style="background:var(--s-pink);color:var(--p-pink);font-weight:700;border-radius:8px;font-size:0.72rem;text-decoration:none;white-space:nowrap;">Lihat Semua</a>
             </div>
             <div class="table-responsive-custom">
                 <table class="table-custom">
@@ -1478,7 +1413,7 @@ body {
 <!-- BARIS 6: JADWAL & PEMBATALAN -->
 <div class="row g-3">
     <div class="col-lg-7 animate-fade-in delay-1">
-        <div class="chart-card">
+        <div class="chart-card chart-card-spacious">
             <div class="chart-header">
                 <h5 class="chart-title"><i class="bi bi-calendar-event-fill text-danger me-2"></i>Sesi Pemotretan Terdekat</h5>
             </div>
@@ -1518,7 +1453,7 @@ body {
         </div>
     </div>
     <div class="col-lg-5 animate-fade-in delay-2">
-        <div class="chart-card">
+        <div class="chart-card chart-card-spacious">
             <div class="chart-header">
                 <h5 class="chart-title"><i class="bi bi-calendar-x-fill text-danger me-2"></i>Pembatalan Booking Terakhir</h5>
             </div>
@@ -1558,7 +1493,7 @@ body {
 <!-- BARIS 7: AKSES CEPAT -->
 <div class="row g-3">
     <div class="col-12 animate-fade-in delay-1">
-        <div class="chart-card">
+        <div class="chart-card chart-card-spacious">
             <div class="chart-header">
                 <h5 class="chart-title"><i class="bi bi-lightning-charge-fill text-warning me-2"></i>Akses Cepat</h5>
             </div>

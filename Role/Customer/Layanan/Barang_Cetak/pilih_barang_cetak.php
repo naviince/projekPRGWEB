@@ -1260,11 +1260,6 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                         <button type="submit" class="btn-lanjut">
                             <i class="bi bi-arrow-right-circle-fill"></i> Lanjut Pilih Jadwal
                         </button>
-                        
-                        <a href="?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&action=lewati" 
-                           class="btn-lewati" onclick="return confirmSkip(event)">
-                            <i class="bi bi-skip-forward-fill"></i> Lewati Langkah Ini
-                        </a>
                     </div>
                 </div>
             </div>
@@ -1415,6 +1410,8 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
         </div>
     </div>
 
+    <!-- GANTI BAGIAN SCRIPT DI BAWAH INI -->
+
     <script src="../../../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
         const HARGA_PAKET = <?= $d_paket['Harga_Paket'] ?>;
@@ -1483,34 +1480,6 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
 
             const totalAkhir = HARGA_PAKET + subtotalCetak;
             totalLabel.innerText = 'Rp ' + totalAkhir.toLocaleString('id-ID');
-        }
-
-        function showLoading() {
-            document.getElementById('loadingOverlay').classList.add('show');
-        }
-        function hideLoading() {
-            document.getElementById('loadingOverlay').classList.remove('show');
-        }
-
-        function confirmSkip(e) {
-            e.preventDefault();
-            const linkHref = e.currentTarget.href;
-            Swal.fire({
-                title: 'Lewati Langkah Ini?',
-                text: 'Anda akan melanjutkan pemesanan tanpa menambahkan produk cetak foto.',
-                icon: 'info',
-                showCancelButton: true,
-                confirmButtonColor: '#d83f67',
-                cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Lewati',
-                cancelButtonText: 'Batal'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    showLoading();
-                    window.location.href = linkHref;
-                }
-            });
-            return false;
         }
 
         document.addEventListener('DOMContentLoaded', recalculateSummary);
