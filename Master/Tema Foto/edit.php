@@ -39,6 +39,18 @@ function safe_sqlsrv_fetch_all($conn, $sql, $params = []) {
     return $results;
 }
 
+// PERBAIKAN SINKRONISASI: Helper count didefinisikan secara kokoh
+function safe_sqlsrv_count($conn, $sql, $params = []) {
+    $stmt = sqlsrv_query($conn, $sql, $params);
+    if ($stmt === false) {
+        error_log("[SpotLight] SQL Error: " . print_r(sqlsrv_errors(), true));
+        return 0;
+    }
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    return $row ? ($row['total'] ?? 0) : 0;
+}
+
 // =====================================================
 // AMBIL ID DARI URL
 // =====================================================
@@ -101,7 +113,7 @@ if (isset($_POST['update_profil'])) {
             }
         }
         if ($error_profile == "") {
-            $sql_cek = "SELECT Email_Karyawan, Username_Karyawan, No_Hp FROM Karyawan WHERE (Email_Karyawan = ? OR Username_Karyawan = ? OR No_Hp = ?) AND ID_Karyawan != ?";
+            $sql_cek = "SELECT Email_Karyawan, Username_Karyawan, No_Hp FROM Karyawan WHERE (Email_Karyawan = ? OR Username_Karyawan = ? OR No_Hp = ?) AND ID_Karyawan != ? AND Is_Deleted = 0";
             $stmt_cek = sqlsrv_query($conn, $sql_cek, array($email_input, $username_input, $no_hp_input, $id_admin));
             if ($stmt_cek && sqlsrv_has_rows($stmt_cek)) {
                 while ($row_cek = sqlsrv_fetch_array($stmt_cek, SQLSRV_FETCH_ASSOC)) {
@@ -200,6 +212,9 @@ if (isset($_POST['simpan'])) {
     $deskripsi         = trim($_POST['deskripsi']  ?? '');
     $status            = (int)($_POST['status']    ?? 1);
     $ruangan_terpilih  = $_POST['ruangan']         ?? [];
+    
+    // Normalisasi input ruangan_terpilih ke integer
+    $ruangan_terpilih = array_map('intval', $ruangan_terpilih);
 
     // --- VALIDASI SERVER-SIDE ---
     if (empty($nama)) {
@@ -212,8 +227,6 @@ if (isset($_POST['simpan'])) {
         $error = "Kategori maksimal 50 karakter!";
     } elseif (strlen($deskripsi) > 255) {
         $error = "Deskripsi maksimal 255 karakter!";
-    } elseif (empty($ruangan_terpilih)) {
-        $error = "Pilih minimal 1 ruangan yang bisa menggunakan tema ini!";
     } else {
         // Cek duplikat nama secara Case-Insensitive (kecuali record ini sendiri)
         $cek_dup = safe_sqlsrv_fetch($conn,
@@ -270,70 +283,101 @@ if (isset($_POST['simpan'])) {
                 );
                 $ada_order_aktif = (($cek_order_aktif['total'] ?? 0) > 0);
 
-                sqlsrv_begin_transaction($conn);
+                if ($ada_order_aktif) {
+                    $ruangan_order_aktif_raw = safe_sqlsrv_fetch_all($conn,
+                        "SELECT DISTINCT ID_Ruangan FROM [Order] 
+                         WHERE ID_Tema = ? AND Status = 1 AND Status_Order <> 4",
+                        [$id_tema]
+                    );
+                    $ruangan_order_aktif = array_column($ruangan_order_aktif_raw, 'ID_Ruangan');
 
-                try {
-                    $sql_update = "EXEC sp_UpdateTemaFoto ?, ?, ?, ?, ?, ?, ?";
-                    $params_update = [
-                        $id_tema,
-                        $nama,
-                        $kategori,
-                        empty($deskripsi) ? null : $deskripsi,
-                        $new_filename,
-                        $status,
-                        $nama_admin
-                    ];
-                    $stmt_update   = sqlsrv_query($conn, $sql_update, $params_update);
-                    if ($stmt_update === false) {
-                        throw new Exception("Gagal memperbarui data tema foto.");
+                    // PERBAIKAN BUG: Otomatis masukkan kembali ruangan yang disabled (terdapat order aktif) ke array $ruangan_terpilih
+                    // Hal ini karena browser tidak mengirimkan data input yang berstatus disabled saat form di-submit
+                    foreach ($ruangan_order_aktif as $r_aktif) {
+                        if (!in_array($r_aktif, $ruangan_terpilih)) {
+                            $ruangan_terpilih[] = (int)$r_aktif;
+                        }
                     }
-                    sqlsrv_free_stmt($stmt_update);
+                }
 
-                    if ($ada_order_aktif) {
-                        $ruangan_order_aktif_raw = safe_sqlsrv_fetch_all($conn,
-                            "SELECT DISTINCT ID_Ruangan FROM [Order] 
-                             WHERE ID_Tema = ? AND Status = 1 AND Status_Order <> 4",
-                            [$id_tema]
-                        );
-                        $ruangan_order_aktif = array_column($ruangan_order_aktif_raw, 'ID_Ruangan');
+                if (empty($ruangan_terpilih)) {
+                    $error = "Pilih minimal 1 ruangan yang bisa menggunakan tema ini!";
+                } else {
+                    sqlsrv_begin_transaction($conn);
 
-                        foreach ($ruangan_order_aktif as $r_aktif) {
-                            if (!in_array($r_aktif, $ruangan_terpilih)) {
-                                throw new Exception("Ruangan yang digunakan oleh order aktif tidak boleh dihapus dari tema ini.");
+                    try {
+                        $sql_update = "EXEC sp_UpdateTemaFoto ?, ?, ?, ?, ?, ?, ?";
+                        $params_update = [
+                            $id_tema,
+                            $nama,
+                            $kategori,
+                            empty($deskripsi) ? null : $deskripsi,
+                            $new_filename,
+                            $status,
+                            $nama_admin
+                        ];
+                        $stmt_update   = sqlsrv_query($conn, $sql_update, $params_update);
+                        if ($stmt_update === false) {
+                            throw new Exception("Gagal memperbarui data tema foto.");
+                        }
+                        sqlsrv_free_stmt($stmt_update);
+
+                        // PERBAIKAN UTAMA: Manipulasi relasi ruangan secara selektif (SINKRON DENGAN MASTER RUANGAN)
+                        // Langkah ini menggantikan "DELETE total" yang berbenturan dengan Foreign Key order aktif
+                        
+                        // A. Masukkan relasi baru yang dicentang oleh pengguna
+                        foreach ($ruangan_terpilih as $id_ruangan) {
+                            $id_ruangan = (int)$id_ruangan;
+                            if (!in_array($id_ruangan, $ruangan_terhubung)) {
+                                $stmt_junction = sqlsrv_query($conn,
+                                    "INSERT INTO Ruangan_Tema (ID_Ruangan, ID_Tema) VALUES (?, ?)",
+                                    [$id_ruangan, $id_tema]
+                                );
+                                if ($stmt_junction === false) {
+                                    throw new Exception("Gagal menghubungkan ke ruangan ID {$id_ruangan}.");
+                                }
+                                sqlsrv_free_stmt($stmt_junction);
                             }
                         }
-                    }
 
-                    $stmt_del = sqlsrv_query($conn, "DELETE FROM Ruangan_Tema WHERE ID_Tema = ?", [$id_tema]);
-                    if ($stmt_del === false) throw new Exception("Gagal memperbarui relasi ruangan.");
-                    sqlsrv_free_stmt($stmt_del);
+                        // B. Hapus relasi lama yang sengaja di-uncheck oleh admin
+                        foreach ($ruangan_terhubung as $id_ruangan_lama) {
+                            $id_ruangan_lama = (int)$id_ruangan_lama;
+                            if (!in_array($id_ruangan_lama, $ruangan_terpilih)) {
+                                // Double safety check: pastikan tidak menghapus relasi yang sedang terikat transaksi order
+                                $cek_order_ruangan = safe_sqlsrv_count($conn,
+                                    "SELECT COUNT(*) as total FROM [Order] 
+                                     WHERE ID_Tema = ? AND ID_Ruangan = ? AND Status = 1 AND Status_Order <> 4",
+                                    [$id_tema, $id_ruangan_lama]
+                                );
+                                if ($cek_order_ruangan > 0) {
+                                    throw new Exception("Ruangan yang digunakan oleh order aktif tidak boleh dihapus dari tema ini.");
+                                }
 
-                    // --- PERBAIKAN BUG UTAMA ---
-                    // Mengubah 'EXEC sp_InsertRuanganTema' menjadi direct SQL INSERT karena prosedur tersebut tidak ada di DB
-                    foreach ($ruangan_terpilih as $id_ruangan) {
-                        $id_ruangan    = (int)$id_ruangan;
-                        $stmt_junction = sqlsrv_query($conn,
-                            "INSERT INTO Ruangan_Tema (ID_Ruangan, ID_Tema) VALUES (?, ?)",
-                            [$id_ruangan, $id_tema]
-                        );
-                        if ($stmt_junction === false) {
-                            throw new Exception("Gagal menghubungkan ke ruangan ID {$id_ruangan}.");
+                                $stmt_delete_relasi = sqlsrv_query($conn,
+                                    "DELETE FROM Ruangan_Tema WHERE ID_Ruangan = ? AND ID_Tema = ?",
+                                    [$id_ruangan_lama, $id_tema]
+                                );
+                                if ($stmt_delete_relasi === false) {
+                                    throw new Exception("Gagal menghapus relasi ruangan ID {$id_ruangan_lama}.");
+                                }
+                                sqlsrv_free_stmt($stmt_delete_relasi);
+                            }
                         }
-                        sqlsrv_free_stmt($stmt_junction);
+
+                        if (!empty($upload_path) && !empty($foto_lama) && $foto_lama !== 'default_tema.jpg') {
+                            $old_path = "../../assets/img/tema/" . $foto_lama;
+                            if (file_exists($old_path)) unlink($old_path);
+                        }
+
+                        sqlsrv_commit($conn);
+                        $success = true;
+
+                    } catch (Exception $e) {
+                        sqlsrv_rollback($conn);
+                        if (!empty($upload_path) && file_exists($upload_path)) unlink($upload_path);
+                        $error = $e->getMessage();
                     }
-
-                    if (!empty($upload_path) && !empty($foto_lama) && $foto_lama !== 'default_tema.jpg') {
-                        $old_path = "../../assets/img/tema/" . $foto_lama;
-                        if (file_exists($old_path)) unlink($old_path);
-                    }
-
-                    sqlsrv_commit($conn);
-                    $success = true;
-
-                } catch (Exception $e) {
-                    sqlsrv_rollback($conn);
-                    if (!empty($upload_path) && file_exists($upload_path)) unlink($upload_path);
-                    $error = $e->getMessage();
                 }
             }
         }
@@ -774,13 +818,10 @@ if (isset($_POST['simpan'])) {
             background: var(--s-pink); 
             box-shadow: 0 4px 12px rgba(213, 61, 102, 0.1); 
         }
-        .ruangan-checkbox-item input[type="checkbox"] { 
-            width: 20px; 
-            height: 20px; 
-            accent-color: var(--p-pink); 
-            cursor: pointer; 
-            flex-shrink: 0; 
-        }
+        
+        /* PERBAIKAN: Sembunyikan checkbox bawaan browser agar tampilan kartu seleksi bersih */
+        .ruangan-checkbox-item input[type="checkbox"] { display: none !important; }
+        
         .ruangan-checkbox-item .ruangan-info { flex: 1; min-width: 0; }
         .ruangan-checkbox-item .ruangan-nama { 
             font-weight: 700; 
@@ -797,12 +838,27 @@ if (isset($_POST['simpan'])) {
             overflow: hidden; 
             text-overflow: ellipsis; 
         }
+        
+        /* PERBAIKAN: Atur posisi absolute lencana centang dengan border-radius putih kustom yang presisi dan indah */
         .ruangan-checkbox-item .ruangan-check-icon { 
-            display: none; 
-            color: var(--p-pink); 
-            font-size: 1.2rem; 
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ffffff;
+            border-radius: 50%;
+            line-height: 1;
+            font-size: 1.35rem !important;
+            color: var(--p-pink) !important;
+            box-shadow: 0 4px 10px rgba(213, 61, 102, 0.25);
+            display: none;
+            z-index: 5;
         }
-        .ruangan-checkbox-item.selected .ruangan-check-icon { display: block; }
+        .ruangan-checkbox-item.selected .ruangan-check-icon { display: block !important; }
+        
+        .ruangan-checkbox-item.has-order { opacity: 0.7; background: #f8fafc; border-color: #e2e8f0; cursor: not-allowed; }
+        .ruangan-checkbox-item.has-order:hover { border-color: #e2e8f0; transform: none; }
+        .ruangan-checkbox-item.has-order.selected { border-color: #059669; background: #ecfdf5; }
+        .order-badge { font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 50px; background: #fef3c7; color: #d97706; margin-left: 6px; }
         .ruangan-empty { 
             text-align: center; 
             padding: 30px; 
@@ -929,7 +985,6 @@ if (isset($_POST['simpan'])) {
         }
         .btn-reg:hover { transform: translateY(-4px) scale(1.02); box-shadow: 0 15px 35px rgba(213, 61, 102, 0.35); }
         .password-group { position: relative; transition: var(--transition-3d); border-radius: 14px; }
-        .password-group:focus-within { transform: translateY(-3px) scale(1.01); box-shadow: 0 12px 25px rgba(213, 61, 102, 0.15); }
         .password-group .form-control { transition: border-color 0.3s ease, background-color 0.3s ease; }
         .password-group .form-control:focus { transform: none!important; box-shadow: none!important; background: #ffffff; border-color: var(--p-pink); }
         .toggle-password { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #94a3b8; font-size: 18px; z-index: 10; transition: 0.3s; }
@@ -1351,14 +1406,26 @@ if (isset($_POST['simpan'])) {
                                 <?php foreach ($daftar_ruangan as $ruangan):
                                     $is_checked  = in_array($ruangan['ID_Ruangan'], $ruangan_terhubung);
                                     $is_selected = $is_checked ? 'selected' : '';
+                                    
+                                    // Hitung jumlah order aktif untuk kombinasi tema dan ruangan ini
+                                    $cek_order_ruangan = safe_sqlsrv_count($conn,
+                                        "SELECT COUNT(*) as total FROM [Order] 
+                                         WHERE ID_Tema = ? AND ID_Ruangan = ? AND Status = 1 AND Status_Order <> 4",
+                                        [$id_tema, $ruangan['ID_Ruangan']]
+                                    );
+                                    $has_order = ($cek_order_ruangan > 0);
+                                    $disabled = $has_order ? 'disabled' : '';
+                                    $order_badge = $has_order ? '<span class="order-badge">' . $cek_order_ruangan . ' order aktif</span>' : '';
                                 ?>
-                                    <div class="ruangan-checkbox-item <?= $is_selected ?>" onclick="toggleRuangan(this)">
+                                    <!-- PERBAIKAN: Checkbox bawaan browser disembunyikan menggunakan CSS, lencana dipasang absolut, serta penanganan order aktif yang aman -->
+                                    <div class="ruangan-checkbox-item <?= $is_selected ?> <?= $has_order ? 'has-order' : '' ?>">
                                         <input type="checkbox" name="ruangan[]"
                                                value="<?= $ruangan['ID_Ruangan'] ?>"
                                                <?= $is_checked ? 'checked' : '' ?>
+                                               <?= $disabled ?>
                                                onchange="updateRuanganCount()">
                                         <div class="ruangan-info">
-                                            <div class="ruangan-nama"><?= htmlspecialchars($ruangan['Nama_Ruangan']) ?></div>
+                                            <div class="ruangan-nama fw-bold text-dark"><?= htmlspecialchars($ruangan['Nama_Ruangan']) ?> <?= $order_badge ?></div>
                                             <div class="ruangan-kapasitas"><?= htmlspecialchars($ruangan['Deskripsi'] ?? 'Tidak ada deskripsi ruangan') ?></div>
                                         </div>
                                         <i class="bi bi-check-circle-fill ruangan-check-icon"></i>
@@ -1416,7 +1483,9 @@ if (isset($_POST['simpan'])) {
                             <div class="col-6"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Nama Pengguna</small><span class="fw-bold text-dark" style="font-size:0.85rem;">@<?= htmlspecialchars($username_admin) ?></span></div>
                             <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Email</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($email_admin) ?></span></div>
                             <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Jenis Kelamin</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['jenis_kelamin'] ?? '-') ?></span></div>
-                            <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Nomor Telepon</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['no_hp'] ?? '-') ?></span></div>
+                            <!-- PERBAIKAN: Menambahkan pengaman instanceof DateTime agar tidak memicu Fatal Error PHP -->
+                            <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Tanggal Lahir</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= ($d_profile['tanggal_lahir'] instanceof DateTime) ? $d_profile['tanggal_lahir']->format('d M Y') : ($d_profile['tanggal_lahir'] ?? '-') ?></span></div>
+                            <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Nomor Telepon</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['no_hp'] ?? '-') ?></span></div>
                             <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size:0.7rem;text-transform:uppercase;">Alamat Lengkap</small><span class="fw-bold text-dark" style="font-size:0.85rem;"><?= htmlspecialchars($d_profile['alamat'] ?? '-') ?></span></div>
                         </div>
                     </div>
@@ -1496,17 +1565,57 @@ if (isset($_POST['simpan'])) {
         });
     });
 
-    // Ruangan Checkbox Toggle
-    function toggleRuangan(el) {
-        const checkbox = el.querySelector('input[type="checkbox"]');
-        checkbox.checked = !checkbox.checked;
-        if (checkbox.checked) {
-            el.classList.add('selected');
-        } else {
-            el.classList.remove('selected');
-        }
-        updateRuanganCount();
+    // Status Toggle
+    function selectStatus(el, val) {
+        document.querySelectorAll('.status-option').forEach(opt => opt.classList.remove('active'));
+        el.classList.add('active');
+        el.querySelector('input').checked = true;
     }
+
+    // ============================================
+    // PERBAIKAN BUG: Ruangan Checkbox - Multiple Selection
+    // ============================================
+    // BUG SEBELUMNYA: Efek klik ganda akibat event bubbling inline onclick pada checkbox.
+    // PERBAIKAN: Penggunaan event listener kustom yang bersih dan aman (sama seperti Master Ruangan).
+
+    document.querySelectorAll('.ruangan-checkbox-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            // Jangan proses klik jika ruangan memiliki order aktif (disabled)
+            if (this.classList.contains('has-order')) return;
+            
+            // Jangan proses klik langsung pada checkbox (biarkan event change handle)
+            if (e.target.tagName === 'INPUT') return;
+            
+            const checkbox = this.querySelector('input[type="checkbox"]');
+            checkbox.checked = !checkbox.checked;
+            
+            if (checkbox.checked) {
+                this.classList.add('selected');
+            } else {
+                this.classList.remove('selected');
+            }
+            
+            updateRuanganCount();
+        });
+    });
+
+    document.querySelectorAll('.ruangan-checkbox-item input[type="checkbox"]').forEach(chk => {
+        chk.addEventListener('change', function(e) {
+            e.stopPropagation();
+            const row = this.closest('.ruangan-checkbox-item');
+            
+            // Jangan proses ruangan yang memiliki order aktif
+            if (row.classList.contains('has-order')) return;
+            
+            if (this.checked) {
+                row.classList.add('selected');
+            } else {
+                row.classList.remove('selected');
+            }
+            
+            updateRuanganCount();
+        });
+    });
 
     function updateRuanganCount() {
         const checked = document.querySelectorAll('input[name="ruangan[]"]:checked').length;
@@ -1585,6 +1694,7 @@ if (isset($_POST['simpan'])) {
         .then(r => { if (r.isConfirmed) window.location.href = '../../logout.php'; });
     }
 
+    // Confirm Landing Page
     function confirmLandingPage(e) {
         e.preventDefault();
         Swal.fire({ title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama publik.', icon: 'info', showCancelButton: true, confirmButtonColor: '#D53D66', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal' })
