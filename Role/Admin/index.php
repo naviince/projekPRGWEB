@@ -1449,7 +1449,6 @@ body{
         <div class="chart-card">
             <div class="chart-header">
                 <h5 class="chart-title"><i class="bi bi-activity text-danger me-2"></i>Pembayaran Menunggu Verifikasi</h5>
-                <a href="../../Transaksi/Pembayaran/list.php" class="btn btn-sm btn-verifikasi-all" style="background:var(--s-pink);color:var(--p-pink);font-weight:700;border-radius:8px;font-size:0.72rem;text-decoration:none;white-space:nowrap;">Verifikasi Semua</a>
             </div>
             <div class="table-responsive-custom">
                 <table class="table-custom">
@@ -1479,9 +1478,9 @@ body{
                             <td class="d-none d-md-table-cell"><?= $row['Tanggal_Upload']->format('d M Y H:i')?></td>
                             <td><span class="badge-status badge-menunggu">Menunggu</span></td>
                             <td>
-                                <a href="../../Transaksi/Pembayaran/verifikasi.php?id=<?= $row['ID_Pembayaran']?>&aksi=terima" class="btn btn-sm btn-verifikasi-row" style="background:linear-gradient(135deg,var(--p-pink),var(--d-pink));color:#fff;border-radius:8px;font-weight:700;font-size:0.72rem;text-decoration:none;padding:6px 12px;white-space:nowrap;">
+                                <button type="button" class="btn btn-sm btn-verifikasi-row" onclick="konfirmasiVerifikasi('<?= $row['ID_Pembayaran']?>','<?= htmlspecialchars($row['Nama_Pelanggan'])?>','<?= $row['Tipe_Pembayaran']?>','Rp<?= number_format($row['Jumlah_Bayar'],0,',','.')?>')" style="background:linear-gradient(135deg,var(--p-pink),var(--d-pink));color:#fff;border-radius:8px;font-weight:700;font-size:0.72rem;text-decoration:none;padding:6px 12px;white-space:nowrap;border:none;">
                                     <i class="bi bi-check-lg me-1"></i>Verifikasi
-                                </a>
+                                </button>
                             </td>
                         </tr>
                         <?php endwhile;else:?>
@@ -1870,6 +1869,105 @@ if(ctxPembayaran){
         }
     });
 }
+</script>
+
+<script>
+// ===== POPUP VERIFIKASI LUNAS =====
+function konfirmasiVerifikasi(idPembayaran, namaPelanggan, tipePembayaran, jumlah) {
+    const tipeLabel = tipePembayaran === 'DP' ? 'Uang Muka (DP)' : 'Pelunasan';
+    const tipeIcon = tipePembayaran === 'DP' ? 'bi-credit-card' : 'bi-cash-stack';
+    const tipeColor = tipePembayaran === 'DP' ? '#D53D66' : '#059669';
+
+    Swal.fire({
+        title: '<div style="font-size:1.15rem;font-weight:800;color:var(--text-dark);letter-spacing:-0.3px;">Konfirmasi Verifikasi</div>',
+        html: `
+            <div style="padding:4px;">
+                <!-- Info Card -->
+                <div style="display:flex;align-items:center;gap:14px;margin-bottom:22px;padding:16px;background:linear-gradient(135deg,rgba(213,61,102,0.06),rgba(255,240,243,0.4));border-radius:18px;border:1.5px solid rgba(213,61,102,0.12);">
+                    <div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,${tipeColor},var(--d-pink));display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.4rem;flex-shrink:0;box-shadow:0 6px 16px rgba(213,61,102,0.2);">
+                        <i class="bi ${tipeIcon}"></i>
+                    </div>
+                    <div style="min-width:0;text-align:left;">
+                        <div style="font-weight:800;font-size:0.95rem;color:var(--text-dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${namaPelanggan}</div>
+                        <div style="font-size:0.78rem;color:var(--text-muted);font-weight:600;margin-top:3px;">
+                            <span style="display:inline-block;padding:3px 10px;background:rgba(213,61,102,0.08);border-radius:20px;color:var(--p-pink);font-weight:700;">${tipeLabel}</span>
+                            <span style="margin-left:6px;">${jumlah}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons Grid -->
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px;">
+                    <button id="btn-terima" style="grid-column:span 2;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 16px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:14px;font-weight:800;font-size:0.85rem;cursor:pointer;transition:all 0.3s cubic-bezier(0.175,0.885,0.32,1.275);box-shadow:0 6px 18px rgba(16,185,129,0.25);">
+                        <i class="bi bi-check-circle-fill" style="font-size:1rem;"></i>
+                        <span>Terima Pembayaran</span>
+                    </button>
+
+                    <button id="btn-detail" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 10px;background:#f8fafc;color:var(--text-dark);border:2px solid #e2e8f0;border-radius:12px;font-weight:700;font-size:0.78rem;cursor:pointer;transition:all 0.3s ease;">
+                        <i class="bi bi-eye" style="color:var(--p-pink);"></i>
+                        <span>Lihat Detail</span>
+                    </button>
+
+                    <button id="btn-batal" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 10px;background:#f8fafc;color:#718096;border:2px solid #e2e8f0;border-radius:12px;font-weight:700;font-size:0.78rem;cursor:pointer;transition:all 0.3s ease;">
+                        <i class="bi bi-x-lg"></i>
+                        <span>Batal</span>
+                    </button>
+                </div>
+            </div>
+        `,
+        showConfirmButton: false,
+        showCancelButton: false,
+        allowOutsideClick: true,
+        background: '#ffffff',
+        width: '420px',
+        padding: '24px 20px 20px',
+        customClass: {
+            popup: 'verifikasi-popup',
+            title: 'verifikasi-title'
+        },
+        didOpen: () => {
+            const popup = Swal.getPopup();
+            if(popup) {
+                popup.style.borderRadius = '28px';
+                popup.style.boxShadow = '0 25px 60px rgba(0,0,0,0.15)';
+            }
+
+            // Hover effects via JS
+            const btnTerima = document.getElementById('btn-terima');
+            const btnDetail = document.getElementById('btn-detail');
+            const btnBatal = document.getElementById('btn-batal');
+
+            if(btnTerima) {
+                btnTerima.onmouseenter = () => { btnTerima.style.transform = 'translateY(-3px) scale(1.02)'; btnTerima.style.boxShadow = '0 10px 28px rgba(16,185,129,0.35)'; };
+                btnTerima.onmouseleave = () => { btnTerima.style.transform = 'none'; btnTerima.style.boxShadow = '0 6px 18px rgba(16,185,129,0.25)'; };
+                btnTerima.onclick = () => {
+                        if (tipePembayaran === 'DP') {
+                            window.location.href = `../../Transaksi/Pembayaran/verifikasi.php?id=${idPembayaran}&aksi=terima`;
+                        } else {
+                            window.location.href = `../../Transaksi/Pelunasan/verifikasi.php?id=${idPembayaran}&aksi=terima`;
+                        }
+                    };
+            }
+            if(btnDetail) {
+                btnDetail.onmouseenter = () => { btnDetail.style.background = 'var(--s-pink)'; btnDetail.style.borderColor = 'var(--p-pink)'; btnDetail.style.color = 'var(--p-pink)'; };
+                btnDetail.onmouseleave = () => { btnDetail.style.background = '#f8fafc'; btnDetail.style.borderColor = '#e2e8f0'; btnDetail.style.color = 'var(--text-dark)'; };
+                btnDetail.onclick = () => {
+                        if (tipePembayaran === 'DP') {
+                            window.location.href = '../../Transaksi/Pembayaran/list.php';
+                        } else {
+                            window.location.href = '../../Transaksi/Pelunasan/list.php';
+                        }
+                    };
+            }
+            if(btnBatal) {
+                btnBatal.onmouseenter = () => { btnBatal.style.background = '#fef2f2'; btnBatal.style.borderColor = '#fca5a5'; btnBatal.style.color = '#dc2626'; };
+                btnBatal.onmouseleave = () => { btnBatal.style.background = '#f8fafc'; btnBatal.style.borderColor = '#e2e8f0'; btnBatal.style.color = '#718096'; };
+                btnBatal.onclick = () => { Swal.close(); };
+            }
+        }
+    });
+}
+
 </script>
 
 <?php if(isset($success_profile)&&$success_profile===true):?>

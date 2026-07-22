@@ -1100,23 +1100,50 @@ $durasi_js = (int)$d_order['Durasi_Waktu'];
         .form-group { margin-bottom: 20px; }
         .form-label { display: block; font-size: 0.85rem; font-weight: 700; color: var(--text-dark); margin-bottom: 10px; }
         .form-label span { color: var(--danger); }
-        .form-select, .form-input {
-            width: 100%;
-            padding: 14px 18px;
-            border: 2px solid #e2e8f0;
-            border-radius: var(--radius-md);
-            font-family: inherit;
-            font-weight: 600;
-            font-size: 0.9rem;
-            color: var(--text-dark);
-            transition: var(--transition-smooth);
-            background: #ffffff;
-        }
-        .form-select:focus, .form-input:focus {
-            outline: none;
-            border-color: var(--p-pink);
-            box-shadow: 0 0 0 4px rgba(216, 63, 103, 0.08);
-        }
+        .form-select {
+        width: 100%;
+        padding: 14px 18px;
+        border: 2px solid #e2e8f0;
+        border-radius: var(--radius-md);
+        font-family: inherit;
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: var(--text-dark);
+        transition: var(--transition-smooth);
+        background: #ffffff;
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23718096' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 16px center;
+        background-size: 16px;
+        padding-right: 48px;
+    }
+    .form-select:focus {
+        outline: none;
+        border-color: var(--p-pink);
+        box-shadow: 0 0 0 4px rgba(216, 63, 103, 0.08);
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23d83f67' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3E%3C/svg%3E");
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 14px 18px;
+        border: 2px solid #e2e8f0;
+        border-radius: var(--radius-md);
+        font-family: inherit;
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: var(--text-dark);
+        transition: var(--transition-smooth);
+        background: #ffffff;
+    }
+    .form-input:focus {
+        outline: none;
+        border-color: var(--p-pink);
+        box-shadow: 0 0 0 4px rgba(216, 63, 103, 0.08);
+    }
         .file-upload-area {
             border: 2px dashed #e2e8f0;
             border-radius: var(--radius-lg);
@@ -1714,15 +1741,18 @@ $durasi_js = (int)$d_order['Durasi_Waktu'];
                     <input type="hidden" name="tipe_pembayaran" value="<?= $tipe_bayar === 'Lunas' ? 'Lunas' : 'DP' ?>">
 
                     <div class="form-group">
-                        <label class="form-label">Metode Pembayaran <span>*</span></label>
-                        <select name="metode_pembayaran" class="form-select" required>
-                            <option value="">-- Pilih Metode --</option>
-                            <option value="Transfer Bank BCA">Transfer Bank BCA</option>
-                            <option value="Transfer Bank BNI">Transfer Bank BNI</option>
-                            <option value="Transfer Bank Mandiri">Transfer Bank Mandiri</option>
-                            <option value="QRIS">QRIS</option>
-                        </select>
-                    </div>
+                    <label class="form-label">Metode Pembayaran <span>*</span></label>
+                    <select name="metode_pembayaran" id="metodePembayaran" class="form-select" required>
+                        <option value="">-- Pilih Metode --</option>
+                        <option value="Transfer Bank BCA">Transfer Bank BCA</option>
+                        <option value="Transfer Bank BNI">Transfer Bank BNI</option>
+                        <option value="Transfer Bank Mandiri">Transfer Bank Mandiri</option>
+                        <option value="QRIS">QRIS</option>
+                    </select>
+                    <small id="errorMetode" style="color:#dc2626;font-size:0.8rem;font-weight:600;display:none;margin-top:6px;">
+                        <i class="bi bi-exclamation-circle-fill"></i> Silakan pilih metode pembayaran terlebih dahulu
+                    </small>
+                </div>
 
                     <div class="form-group">
                         <label class="form-label">Jumlah Transfer <span>*</span></label>
@@ -2085,7 +2115,25 @@ $durasi_js = (int)$d_order['Durasi_Waktu'];
 
         // Form submit
         document.getElementById('formPembayaran')?.addEventListener('submit', function(e) {
+            const metode = document.getElementById('metodePembayaran');
             const file = document.getElementById('inputFile').files[0];
+            const errorMetode = document.getElementById('errorMetode');
+            let hasError = false;
+
+            // Reset error
+            errorMetode.style.display = 'none';
+            metode.style.borderColor = '#e2e8f0';
+
+            // Validasi: Metode pembayaran harus dipilih
+            if (!metode.value) {
+                e.preventDefault();
+                metode.style.borderColor = '#dc2626';
+                metode.focus();
+                errorMetode.style.display = 'block';
+                hasError = true;
+            }
+
+            // Validasi: Bukti transfer wajib
             if (!file) {
                 e.preventDefault();
                 Swal.fire({
@@ -2094,12 +2142,67 @@ $durasi_js = (int)$d_order['Durasi_Waktu'];
                     text: 'Silakan upload bukti transfer terlebih dahulu.',
                     confirmButtonColor: '#d83f67'
                 });
-                return;
+                hasError = true;
             }
+
+            if (hasError) return;
+
             showLoading();
             document.getElementById('btnSubmit').disabled = true;
             document.getElementById('btnSubmit').innerHTML = '<i class="bi bi-hourglass-split"></i> Mengupload...';
         });
+
+        // Visual feedback saat metode pembayaran dipilih
+document.getElementById('metodePembayaran')?.addEventListener('change', function() {
+    const errorMetode = document.getElementById('errorMetode');
+    if (this.value) {
+        this.style.borderColor = 'var(--p-pink)';
+        this.style.boxShadow = '0 0 0 4px rgba(216, 63, 103, 0.1)';
+        errorMetode.style.display = 'none';
+    } else {
+        this.style.borderColor = '#e2e8f0';
+        this.style.boxShadow = 'none';
+    }
+});
+
+// Form submit dengan validasi metode pembayaran
+document.getElementById('formPembayaran')?.addEventListener('submit', function(e) {
+    const metode = document.getElementById('metodePembayaran');
+    const file = document.getElementById('inputFile').files[0];
+    const errorMetode = document.getElementById('errorMetode');
+    let hasError = false;
+
+    // Reset error
+    errorMetode.style.display = 'none';
+    metode.style.borderColor = '#e2e8f0';
+
+    // Validasi: Metode pembayaran harus dipilih
+    if (!metode.value) {
+        e.preventDefault();
+        metode.style.borderColor = '#dc2626';
+        metode.focus();
+        errorMetode.style.display = 'block';
+        hasError = true;
+    }
+
+    // Validasi: Bukti transfer wajib
+    if (!file) {
+        e.preventDefault();
+        Swal.fire({
+            icon: 'warning',
+            title: 'Bukti Transfer Wajib',
+            text: 'Silakan upload bukti transfer terlebih dahulu.',
+            confirmButtonColor: '#d83f67'
+        });
+        hasError = true;
+    }
+
+    if (hasError) return;
+
+    showLoading();
+    document.getElementById('btnSubmit').disabled = true;
+    document.getElementById('btnSubmit').innerHTML = '<i class="bi bi-hourglass-split"></i> Mengupload...';
+});
 
         // Preview image untuk modal profil
         function previewImage(event) {
@@ -2175,11 +2278,42 @@ $durasi_js = (int)$d_order['Durasi_Waktu'];
             text: 'Bukti pembayaran Anda telah dikirim. Mohon tunggu verifikasi admin.',
             confirmButtonColor: '#d83f67'
         });
-        <?php elseif (isset($_GET['error'])): ?>
+        <?php elseif (isset($_GET['error'])): 
+            $error_msg = htmlspecialchars($_GET['error']);
+            $error_title = 'Gagal!';
+            $error_text = $error_msg;
+            
+            switch ($error_msg) {
+                case 'metode_pembayaran_wajib_dipilih':
+                    $error_title = 'Metode Pembayaran Belum Dipilih';
+                    $error_text = 'Silakan pilih metode pembayaran terlebih dahulu sebelum mengupload bukti transfer.';
+                    break;
+                case 'bukti_transfer_wajib_diupload':
+                    $error_title = 'Bukti Transfer Wajib';
+                    $error_text = 'Silakan upload bukti transfer terlebih dahulu.';
+                    break;
+                case 'nominal_tidak_sesuai':
+                    $error_title = 'Nominal Tidak Sesuai';
+                    $error_text = 'Nominal pembayaran tidak sesuai dengan yang seharusnya.';
+                    break;
+                case 'sudah_upload_dp':
+                    $error_title = 'Sudah Upload';
+                    $error_text = 'Anda sudah pernah upload bukti pembayaran untuk order ini.';
+                    break;
+                case 'format_file_tidak_valid':
+                    $error_title = 'Format File Tidak Valid';
+                    $error_text = 'Format file harus JPG, JPEG, PNG, atau PDF.';
+                    break;
+                case 'file_terlalu_besar':
+                    $error_title = 'File Terlalu Besar';
+                    $error_text = 'Ukuran file maksimal 5MB.';
+                    break;
+            }
+        ?>
         Swal.fire({
             icon: 'error',
-            title: 'Gagal!',
-            text: '<?= htmlspecialchars($_GET['error']) ?>',
+            title: '<?= $error_title ?>',
+            text: '<?= $error_text ?>',
             confirmButtonColor: '#d83f67'
         });
         <?php endif; ?>

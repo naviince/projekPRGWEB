@@ -1554,6 +1554,10 @@ foreach ($riwayat_list as $item) {
             padding: 20px;
             overflow-y: auto;
         }
+        /* Fix: pastikan SweetAlert2 selalu tampil di atas modal popup lain */
+        .swal2-container {
+            z-index: 99999 !important;
+        }
         .modal-overlay.active { display: flex; }
         .modal-content {
             background: #ffffff;
@@ -2990,7 +2994,7 @@ function bukaModalPembayaran(id_order, tipe, jumlah, total_harga) {
     const area = document.getElementById('fileUploadAreaPopup');
     const text = document.getElementById('fileTextPopup');
     area.classList.remove('has-file');
-    text.innerHTML = '<i class="bi bi-cloud-arrow-up" style="font-size:2rem;color:#94a3b8;display:block;margin-bottom:8px;"></i> Klik untuk upload bukti transfer';
+    text.textContent = 'Klik untuk upload bukti transfer';
 
     const oldPreview = document.getElementById('previewBuktiPopup');
     if (oldPreview) oldPreview.remove();
@@ -3051,15 +3055,16 @@ function handleFileSelectPopup(input) {
             });
             input.value = '';
             area.classList.remove('has-file');
-            text.innerHTML = '<i class="bi bi-cloud-arrow-up" style="font-size:2rem;color:#94a3b8;display:block;margin-bottom:8px;"></i> Klik untuk upload bukti transfer';
-
+            text.textContent = 'Klik untuk upload bukti transfer';
             const oldPreview = document.getElementById('previewBuktiPopup');
             if (oldPreview) oldPreview.remove();
             return;
         }
 
         area.classList.add('has-file');
-        text.innerHTML = '<i class="bi bi-check-circle-fill" style="color: var(--success); font-size: 2rem; display: block; margin-bottom: 8px;"></i> ' + file.name;
+        document.querySelector('#fileUploadAreaPopup .modal-file-upload-icon i').className = 'bi bi-check-circle-fill';
+        document.querySelector('#fileUploadAreaPopup .modal-file-upload-icon i').style.color = 'var(--success)';
+        text.textContent = file.name;
 
         const reader = new FileReader();
         reader.onload = function(e) {
