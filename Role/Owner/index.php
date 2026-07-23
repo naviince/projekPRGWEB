@@ -53,18 +53,12 @@ $success_profile = false;
 
 // =====================================================
 // HELPER HASH PASSWORD (migrasi aman dari plain-text -> bcrypt)
-// Password lama di database kemungkinan masih tersimpan sebagai plain-text
-// (belum pernah di-hash). Fungsi ini menerima KEDUANYA: kalau nilai yang
-// tersimpan sudah berupa hash bcrypt, verifikasi pakai password_verify();
-// kalau belum (masih plain-text lama), fallback ke perbandingan string
-// biasa. Supaya akun lama tidak langsung terkunci begitu fitur hashing ini
-// diaktifkan, sebelum sempat ganti password.
 // =====================================================
 function verifikasiPasswordLegacy($input, $stored) {
     if (password_get_info($stored)['algo'] !== null) {
         return password_verify($input, $stored);
     }
-    return hash_equals((string)$stored, (string)$input); // fallback plain-text lama
+    return hash_equals((string)$stored, (string)$input);
 }
 
 if (isset($_POST['update_profil'])) {
@@ -160,59 +154,60 @@ if (isset($_POST['update_profil'])) {
     }
 }
 
-// =====================================================
-// FILTER TAHUN (untuk laporan/statistik dashboard)
-// Owner bisa memilih tahun mana yang ingin dilihat (tahun ini, tahun lalu,
-// dst). Daftar tahun yang muncul di dropdown adalah rentang tetap 5 tahun
-// (tahun ini s/d 4 tahun ke belakang), sama seperti dashboard Admin --
-// tidak lagi mengambil daftar tahun dari data transaksi.
-// =====================================================
 $label_periode = "Tahun $tahun_filter";
 
-// Helper: bikin fragmen kondisi "YEAR(kolom) = tahun_filter". $tahun_filter
-// sendiri sudah dipastikan integer murni oleh validasi ctype_digit di atas,
-// aman untuk disisipkan langsung ke SQL.
+// Helper: kondisi filter berdasarkan tahun yang dipilih
 function condTahun($kolom) {
     global $tahun_filter;
     return " AND YEAR($kolom) = $tahun_filter";
 }
 
-$q_pendapatan = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1" . condTahun('Tanggal_Upload'));
+// 1. Total Pendapatan (Berdasarkan filter tahun aktif)
+$q_pendapatan = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1 AND Status = 1" . condTahun('Tanggal_Upload'));
 $d_pendapatan = sqlsrv_fetch_array($q_pendapatan, SQLSRV_FETCH_ASSOC);
 $total_pendapatan = $d_pendapatan['total'] ?? 0;
 
+// 2. Total Karyawan (Sifatnya data master aktif)
 $q_karyawan = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE Status = 1 AND Is_Deleted = 0");
 $d_karyawan = sqlsrv_fetch_array($q_karyawan, SQLSRV_FETCH_ASSOC);
 $total_karyawan = $d_karyawan['total'] ?? 0;
 
-$q_pelanggan = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Pelanggan WHERE Status = 1 AND Is_Deleted = 0");
+// 3. Pelanggan Aktif Terdaftar (Sesuai tahun pendaftaran yang dipilih)
+$q_pelanggan = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Pelanggan WHERE Status = 1 AND Is_Deleted = 0" . condTahun('Created_Date'));
 $d_pelanggan = sqlsrv_fetch_array($q_pelanggan, SQLSRV_FETCH_ASSOC);
 $total_pelanggan = $d_pelanggan['total'] ?? 0;
 
-$q_sesi = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Sesi_Foto WHERE Status_Sesi = 1" . condTahun('Waktu_Selesai'));
+// 4. Sesi Foto Selesai (Sesuai tahun penyelesaian sesi foto)
+$q_sesi = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Sesi_Foto WHERE Status_Sesi = 1 AND Status = 1" . condTahun('Waktu_Selesai'));
 $d_sesi = sqlsrv_fetch_array($q_sesi, SQLSRV_FETCH_ASSOC);
 $total_sesi = $d_sesi['total'] ?? 0;
 
-$q_booking_today = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM [Order] WHERE CAST(Tanggal_Booking AS DATE) = CAST(GETDATE() AS DATE)");
+// 5. Booking Hari Ini (Real-time hari berjalan)
+$q_booking_today = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM [Order] WHERE Status = 1 AND CAST(Tanggal_Booking AS DATE) = CAST(GETDATE() AS DATE)");
 $d_booking_today = sqlsrv_fetch_array($q_booking_today, SQLSRV_FETCH_ASSOC);
 $booking_today = $d_booking_today['total'] ?? 0;
 
-$q_wait_dp = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Pembayaran WHERE Status_Pembayaran = 0 AND Tipe_Pembayaran = 'DP'");
+// 6. Menunggu Verifikasi DP (Antrean real-time)
+$q_wait_dp = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Pembayaran WHERE Status_Pembayaran = 0 AND Status = 1 AND Tipe_Pembayaran = 'DP'");
 $d_wait_dp = sqlsrv_fetch_array($q_wait_dp, SQLSRV_FETCH_ASSOC);
 $wait_dp = $d_wait_dp['total'] ?? 0;
 
-$q_batal_month = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM [Order] WHERE Status_Order = 4" . condTahun('Created_Date'));
+// 7. Pembatalan Booking (Sesuai tahun transaksi booking)
+$q_batal_month = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM [Order] WHERE Status_Order = 4 AND Status = 1" . condTahun('Tanggal_Booking'));
 $d_batal_month = sqlsrv_fetch_array($q_batal_month, SQLSRV_FETCH_ASSOC);
 $batal_month = $d_batal_month['total'] ?? 0;
 
+// 8. Stok Produk Menipis (Antrean inventaris real-time)
 $q_stok_menipis = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Barang_Cetak WHERE Stok_Barang <= Stok_Minimum AND Status = 1 AND Is_Deleted = 0");
 $d_stok_menipis = sqlsrv_fetch_array($q_stok_menipis, SQLSRV_FETCH_ASSOC);
 $stok_menipis = $d_stok_menipis['total'] ?? 0;
 
+// 9. Distribusi Status Booking (Dinamis sesuai filter tahun)
 $q_status_booking = sqlsrv_query($conn, "SELECT SUM(CASE WHEN Status_Order = 0 THEN 1 ELSE 0 END) AS menunggu_dp, SUM(CASE WHEN Status_Order = 1 THEN 1 ELSE 0 END) AS dp_verified, SUM(CASE WHEN Status_Order = 2 THEN 1 ELSE 0 END) AS tunggu_pelunasan, SUM(CASE WHEN Status_Order = 3 THEN 1 ELSE 0 END) AS lunas, SUM(CASE WHEN Status_Order = 4 THEN 1 ELSE 0 END) AS dibatalkan FROM [Order] WHERE Status = 1" . condTahun('Tanggal_Booking'));
 $d_status_booking = sqlsrv_fetch_array($q_status_booking, SQLSRV_FETCH_ASSOC);
 
-$q_top_paket = sqlsrv_query($conn, "SELECT TOP 5 p.Nama_Paket, COUNT(o.ID_Order) AS total_order FROM Paket_Foto p LEFT JOIN [Order] o ON p.ID_Paket = o.ID_Paket AND YEAR(o.Tanggal_Booking) = $tahun_filter WHERE p.Status = 1 AND p.Is_Deleted = 0 GROUP BY p.ID_Paket, p.Nama_Paket ORDER BY total_order DESC");
+// 10. Top 5 Paket Terfavorit (Dinamis sesuai filter tahun)
+$q_top_paket = sqlsrv_query($conn, "SELECT TOP 5 p.Nama_Paket, COUNT(o.ID_Order) AS total_order FROM Paket_Foto p LEFT JOIN [Order] o ON p.ID_Paket = o.ID_Paket AND YEAR(o.Tanggal_Booking) = $tahun_filter AND o.Status = 1 WHERE p.Status = 1 AND p.Is_Deleted = 0 GROUP BY p.ID_Paket, p.Nama_Paket ORDER BY total_order DESC");
 $top_paket_labels = [];
 $top_paket_data = [];
 while ($row = sqlsrv_fetch_array($q_top_paket, SQLSRV_FETCH_ASSOC)) {
@@ -220,20 +215,21 @@ while ($row = sqlsrv_fetch_array($q_top_paket, SQLSRV_FETCH_ASSOC)) {
     $top_paket_data[] = $row['total_order'];
 }
 
-$q_pendapatan_dp = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1 AND Tipe_Pembayaran = 'DP'" . condTahun('Tanggal_Upload'));
+// 11. Pendapatan per Kategori (Dinamis sesuai filter tahun)
+$q_pendapatan_dp = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1 AND Status = 1 AND Tipe_Pembayaran = 'DP'" . condTahun('Tanggal_Upload'));
 $d_pendapatan_dp = sqlsrv_fetch_array($q_pendapatan_dp, SQLSRV_FETCH_ASSOC);
 $pendapatan_dp = $d_pendapatan_dp['total'] ?? 0;
 
-$q_pendapatan_lunas = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1 AND Tipe_Pembayaran = 'Pelunasan'" . condTahun('Tanggal_Upload'));
+$q_pendapatan_lunas = sqlsrv_query($conn, "SELECT SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1 AND Status = 1 AND Tipe_Pembayaran = 'Pelunasan'" . condTahun('Tanggal_Upload'));
 $d_pendapatan_lunas = sqlsrv_fetch_array($q_pendapatan_lunas, SQLSRV_FETCH_ASSOC);
 $pendapatan_lunas = $d_pendapatan_lunas['total'] ?? 0;
 
-$q_pendapatan_barang = sqlsrv_query($conn, "SELECT SUM(Total_Penjualan) AS total FROM Penjualan WHERE Status_Penjualan = 1" . condTahun('Tanggal_Penjualan'));
+$q_pendapatan_barang = sqlsrv_query($conn, "SELECT SUM(Total_Penjualan) AS total FROM Penjualan WHERE Status_Penjualan = 1 AND Status = 1" . condTahun('Tanggal_Penjualan'));
 $d_pendapatan_barang = sqlsrv_fetch_array($q_pendapatan_barang, SQLSRV_FETCH_ASSOC);
 $pendapatan_barang = $d_pendapatan_barang['total'] ?? 0;
 
-// Tren pendaftaran pelanggan per bulan -- Jan-Des untuk tahun terpilih.
-$q_tren_pelanggan = sqlsrv_query($conn, "SELECT MONTH(Created_Date) AS bulan, COUNT(*) AS total FROM Pelanggan WHERE 1=1" . condTahun('Created_Date') . " GROUP BY MONTH(Created_Date) ORDER BY MONTH(Created_Date)");
+// 12. Tren Pelanggan Baru Bulanan (Dinamis sesuai filter tahun)
+$q_tren_pelanggan = sqlsrv_query($conn, "SELECT MONTH(Created_Date) AS bulan, COUNT(*) AS total FROM Pelanggan WHERE Status = 1 AND Is_Deleted = 0" . condTahun('Created_Date') . " GROUP BY MONTH(Created_Date) ORDER BY MONTH(Created_Date)");
 $tren_pelanggan_labels = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 $tren_pelanggan_data = array_fill(0, 12, 0);
 while ($row = sqlsrv_fetch_array($q_tren_pelanggan, SQLSRV_FETCH_ASSOC)) {
@@ -242,9 +238,9 @@ while ($row = sqlsrv_fetch_array($q_tren_pelanggan, SQLSRV_FETCH_ASSOC)) {
 
 $q_stok_alert = sqlsrv_query($conn, "SELECT TOP 3 Nama_Barang, Stok_Barang, Stok_Minimum FROM Barang_Cetak WHERE Stok_Barang <= Stok_Minimum AND Status = 1 AND Is_Deleted = 0 ORDER BY Stok_Barang ASC");
 
-$q_pembayaran_alert = sqlsrv_query($conn, "SELECT TOP 3 p.ID_Pembayaran, pl.Nama_Pelanggan, p.Tanggal_Upload, p.Jumlah_Bayar FROM Pembayaran p JOIN [Order] o ON p.ID_Order = o.ID_Order JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan WHERE p.Status_Pembayaran = 0 AND DATEDIFF(HOUR, p.Tanggal_Upload, GETDATE()) > 24 ORDER BY p.Tanggal_Upload ASC");
+$q_pembayaran_alert = sqlsrv_query($conn, "SELECT TOP 3 p.ID_Pembayaran, pl.Nama_Pelanggan, p.Tanggal_Upload, p.Jumlah_Bayar FROM Pembayaran p JOIN [Order] o ON p.ID_Order = o.ID_Order JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan WHERE p.Status_Pembayaran = 0 AND p.Status = 1 AND o.Status = 1 AND DATEDIFF(HOUR, p.Tanggal_Upload, GETDATE()) > 24 ORDER BY p.Tanggal_Upload ASC");
 
-$q_aktivitas = sqlsrv_query($conn, "SELECT TOP 5 o.ID_Order, pl.Nama_Pelanggan, pk.Nama_Paket, o.Tanggal_Booking, o.Status_Order, o.Total_Harga FROM [Order] o JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket WHERE 1=1" . condTahun('o.Created_Date') . " ORDER BY o.Created_Date DESC");
+$q_aktivitas = sqlsrv_query($conn, "SELECT TOP 5 o.ID_Order, pl.Nama_Pelanggan, pk.Nama_Paket, o.Tanggal_Booking, o.Status_Order, o.Total_Harga FROM [Order] o JOIN Pelanggan pl ON o.ID_Pelanggan = pl.ID_Pelanggan JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket WHERE o.Status = 1" . condTahun('o.Tanggal_Booking') . " ORDER BY o.Tanggal_Booking DESC");
 
 $q_role_admin = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE Role_Karyawan = 'Admin' AND Status = 1 AND Is_Deleted = 0");
 $d_role_admin = sqlsrv_fetch_array($q_role_admin, SQLSRV_FETCH_ASSOC);
@@ -258,7 +254,7 @@ $q_role_owner = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHER
 $d_role_owner = sqlsrv_fetch_array($q_role_owner, SQLSRV_FETCH_ASSOC);
 $count_owner = $d_role_owner['total'] ?? 0;
 
-$q_pendapatan_bulan = sqlsrv_query($conn, "SELECT MONTH(Tanggal_Upload) AS bulan, SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1" . condTahun('Tanggal_Upload') . " GROUP BY MONTH(Tanggal_Upload) ORDER BY MONTH(Tanggal_Upload)");
+$q_pendapatan_bulan = sqlsrv_query($conn, "SELECT MONTH(Tanggal_Upload) AS bulan, SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1 AND Status = 1" . condTahun('Tanggal_Upload') . " GROUP BY MONTH(Tanggal_Upload) ORDER BY MONTH(Tanggal_Upload)");
 $pendapatan_bulan_data = array_fill(0, 12, 0);
 while ($row = sqlsrv_fetch_array($q_pendapatan_bulan, SQLSRV_FETCH_ASSOC)) {
     $pendapatan_bulan_data[$row['bulan'] - 1] = $row['total'];
@@ -500,7 +496,7 @@ body {
     font-size: 0.85rem;
 }
 
-/* ========== TOOLBAR: LIVE CLOCK + FILTER LAPORAN (di luar semua card, cakupannya menyeluruh) ========== */
+/* ========== TOOLBAR: LIVE CLOCK + FILTER LAPORAN ========== */
 .dashboard-toolbar{
     background:#ffffff;
     border:1px solid rgba(255,236,239,0.8);
@@ -601,7 +597,7 @@ body {
     line-height:1.4;
 }
 
-/* ========== STATS CARDS SCROLL ========== */
+/* ========== STATS CARDS ========== */
 .stats-scroll-wrapper {
     width: 100%;
     overflow-x: auto;
@@ -627,7 +623,6 @@ body {
     flex: 0 0 auto;
 }
 
-/* ========== CARD 3D ========== */
 .card-3d {
     background: #ffffff;
     border-radius: 20px;
@@ -684,7 +679,6 @@ body {
 .stat-icon-red { background: linear-gradient(135deg, #fef2f2, #fee2e2); color: #dc2626; }
 .stat-icon-purple { background: linear-gradient(135deg, #f5f3ff, #ede9fe); color: #7c3aed; }
 .stat-icon-dark { background: linear-gradient(135deg, #f1f5f9, #e2e8f0); color: #1e1e24; }
-.stat-icon-cyan { background: linear-gradient(135deg, #ecfeff, #cffafe); color: #0891b2; }
 
 .stat-content { flex: 1; min-width: 0; overflow: hidden; }
 .stat-val {
@@ -726,8 +720,6 @@ body {
     padding: 22px;
     height: 100%;
 }
-
-/* Padding lebih lega untuk card non-chart (tabel & akses cepat), tetap ikut aturan responsive */
 .chart-card-spacious { padding: 28px; }
 
 @media (max-width: 767.98px) {
@@ -780,7 +772,6 @@ body {
 }
 .alert-icon-warning { background: #fffbeb; color: #d97706; }
 .alert-icon-danger { background: #fef2f2; color: #dc2626; }
-.alert-icon-info { background: #eff6ff; color: #2563eb; }
 
 /* ========== TABLE ========== */
 .table-custom {
@@ -828,9 +819,6 @@ body {
 .badge-lunas { background: #ecfdf5; color: #059669; }
 .badge-batal { background: #fef2f2; color: #dc2626; }
 
-/* ========== TABLE RESPONSIVE SCROLL ========== */
-/* Base rule -- di luar semua media query, berlaku universal di semua ukuran layar
-   supaya tablet (576px-991px) juga tetap bisa scroll horizontal, bukan cuma mobile */
 .table-responsive-custom {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -932,20 +920,11 @@ body {
 .delay-3 { animation-delay: 0.3s; }
 .delay-4 { animation-delay: 0.4s; }
 
-/* ========== SCROLLBAR ========== */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
-::-webkit-scrollbar-thumb { background: linear-gradient(135deg, var(--p-pink), var(--d-pink)); border-radius: 10px; }
-
 /* ========== RESPONSIVE BREAKPOINTS ========== */
-
-/* Large Desktop */
 @media (min-width: 1400px) {
     .main-content { padding: 40px 36px; }
     .stat-card-item { min-width: 220px; }
 }
-
-/* Tablet & Below - Sidebar collapses */
 @media (max-width: 991.98px) {
     .sidebar {
         transform: translateX(-260px);
@@ -963,8 +942,6 @@ body {
     .card-3d { padding: 16px; }
     .chart-card { padding: 18px; }
 }
-
-/* Small Tablet */
 @media (max-width: 767.98px) {
     .main-content { padding: 85px 12px 20px; }
     .dashboard-header { flex-direction: column; align-items: flex-start; }
@@ -977,8 +954,6 @@ body {
     .table-custom thead th { font-size: 0.62rem; padding: 8px 12px; }
     .badge-status { padding: 4px 10px; font-size: 0.68rem; }
 }
-
-/* Mobile */
 @media (max-width: 575.98px) {
     .main-content { padding: 80px 10px 16px; }
     .mobile-header { height: 64px; padding: 0 12px; }
@@ -1000,15 +975,12 @@ body {
     .live-clock-chip { font-size: 0.72rem; padding: 7px 12px; }
     .year-filter-label { font-size: 0.7rem; }
     .year-filter-select { font-size: 0.78rem; padding: 7px 30px 7px 12px; }
-
-    /* Hanya override yang beda dari base rule -- TIDAK deklarasi ulang overflow-x */
     .table-responsive-custom {
         margin: 0 -4px;
         padding: 0 4px;
     }
     .table-responsive-custom::-webkit-scrollbar { height: 4px; }
     .table-responsive-custom .table-custom { min-width: 600px; }
-
     .alert-item { padding: 8px 0; }
     .alert-icon { width: 32px; height: 32px; font-size: 0.9rem; }
     .modal-dialog { margin: 12px; }
@@ -1019,14 +991,10 @@ body {
     .form-label { font-size: 10px; }
     .quick-access-col { flex: 0 0 50%; max-width: 50%; }
 }
-
-/* Very small mobile */
 @media (max-width: 359.98px) {
     .stat-card-item { min-width: 140px; }
     .quick-access-col { flex: 0 0 100%; max-width: 100%; }
 }
-
-/* Landscape mobile */
 @media (max-height: 500px) and (orientation: landscape) {
     .sidebar { padding: 16px 12px; }
     .sidebar-brand { font-size: 1.1rem; margin-bottom: 16px; }
@@ -1131,7 +1099,7 @@ body {
     </div>
 </div>
 
-<!-- TOOLBAR: JAM REALTIME + FILTER LAPORAN TAHUNAN (di luar semua card, cakupannya menyeluruh -- sama seperti Admin) -->
+<!-- TOOLBAR -->
 <div class="dashboard-toolbar d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4 animate-fade-in delay-1">
     <span class="live-clock-chip">
         <i class="bi bi-clock-history"></i> <span id="live-clock">Memuat waktu...</span>
@@ -1446,7 +1414,7 @@ body {
                     </thead>
                     <tbody>
                         <?php
-                        $sql_booking = "SELECT TOP 3 P.Nama_Pelanggan, R.Nama_Ruangan, J.Tanggal_Jadwal, J.Jam_Mulai, S.Status FROM Sesi_Foto S JOIN [Order] O ON S.ID_Order = O.ID_Order JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan JOIN Jadwal_Studio J ON O.ID_Jadwal = J.ID_Jadwal WHERE S.Status_Sesi = 0 ORDER BY J.Tanggal_Jadwal ASC";
+                        $sql_booking = "SELECT TOP 3 P.Nama_Pelanggan, R.Nama_Ruangan, J.Tanggal_Jadwal, J.Jam_Mulai, S.Status FROM Sesi_Foto S JOIN [Order] O ON S.ID_Order = O.ID_Order JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan JOIN Ruangan R ON O.ID_Ruangan = R.ID_Ruangan JOIN Order_Jadwal OJ ON O.ID_Order = OJ.ID_Order JOIN Jadwal_Studio J ON OJ.ID_Jadwal = J.ID_Jadwal WHERE S.Status_Sesi = 0 AND S.Status = 1 ORDER BY J.Tanggal_Jadwal ASC, J.Jam_Mulai ASC";
                         $query_booking = sqlsrv_query($conn, $sql_booking);
                         if($query_booking && sqlsrv_has_rows($query_booking)):
                             while($row_book = sqlsrv_fetch_array($query_booking, SQLSRV_FETCH_ASSOC)):
@@ -1484,7 +1452,7 @@ body {
                     </thead>
                     <tbody>
                         <?php
-                        $sql_batal = "SELECT TOP 3 P.Nama_Pelanggan, O.Tanggal_Booking FROM [Order] O JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan WHERE O.Status_Order = 4" . condTahun('O.Created_Date') . " ORDER BY O.Tanggal_Booking DESC";
+                        $sql_batal = "SELECT TOP 3 P.Nama_Pelanggan, O.Tanggal_Booking FROM [Order] O JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan WHERE O.Status_Order = 4 AND O.Status = 1" . condTahun('O.Tanggal_Booking') . " ORDER BY O.Tanggal_Booking DESC";
                         $query_batal = sqlsrv_query($conn, $sql_batal);
                         if($query_batal && sqlsrv_has_rows($query_batal)):
                             while($row_batal = sqlsrv_fetch_array($query_batal, SQLSRV_FETCH_ASSOC)):
