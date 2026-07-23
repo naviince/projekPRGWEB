@@ -47,7 +47,6 @@ if (isset($_POST['update_profil'])) {
     $username_post = trim($_POST['username']);
     $email_post = trim($_POST['email']);
     $no_hp_post = trim($_POST['no_hp']);
-    $no_hp_post = str_replace(' ', '', $no_hp_post); // PERBAIKAN: Hapus spasi pengganggu agar lolos CHK_Karyawan_NoHp
     $alamat_post = trim($_POST['alamat']);
     $password_post = $_POST['password'];
     $confirm_password_post = $_POST['confirm_password'];
@@ -56,8 +55,7 @@ if (isset($_POST['update_profil'])) {
     } elseif (preg_match('/[^a-zA-Z0-9_]/', $username_post)) {
         $error_profile = "Username hanya boleh berisi huruf, angka, dan underscore!";
     } else {
-        // PERBAIKAN: Ditambahkan filter Is_Deleted = 0 agar akun karyawan terhapus tidak memblokir update profil owner
-        $q_check = safe_sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE (Username_Karyawan = ? OR Email_Karyawan = ?) AND ID_Karyawan != ? AND Is_Deleted = 0", array($username_post, $email_post, $id_owner));
+        $q_check = safe_sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE (Username_Karyawan = ? OR Email_Karyawan = ?) AND ID_Karyawan != ?", array($username_post, $email_post, $id_owner));
         $d_check = safe_sqlsrv_fetch($q_check);
         if (($d_check['total'] ?? 0) > 0) {
             $error_profile = "Username atau Email sudah terdaftar oleh akun staf lain!";
@@ -129,16 +127,6 @@ $stats['owner'] = safe_sqlsrv_count($conn, "SELECT COUNT(*) AS total FROM Karyaw
 $stats['aktif'] = safe_sqlsrv_count($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE Status = 1 AND Is_Deleted = 0 AND ID_Karyawan != ?", array($id_owner));
 $stats['nonaktif'] = safe_sqlsrv_count($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE Status = 0 AND Is_Deleted = 0 AND ID_Karyawan != ?", array($id_owner));
 $stats['dihapus'] = safe_sqlsrv_count($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE Is_Deleted = 1 AND ID_Karyawan != ?", array($id_owner));
-
-// Deklarasi Filter Terpadu untuk List Karyawan
-$limit = 10;
-$halaman = isset($_GET['halaman']) ? (int)$_GET['halaman'] : 1;
-if ($halaman < 1) $halaman = 1;
-$offset = ($halaman - 1) * $limit;
-$cari = isset($_GET['cari']) ? trim($_GET['cari']) : "";
-$status_filter = isset($_GET['status']) ? trim($_GET['status']) : "";
-$role_filter = isset($_GET['role']) ? trim($_GET['role']) : "";
-$sort = isset($_GET['sort']) ? trim($_GET['sort']) : "nama_asc";
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -365,23 +353,18 @@ $sort = isset($_GET['sort']) ? trim($_GET['sort']) : "nama_asc";
         </div>
     </div>
 
-    <!-- PERBAIKAN: Tombol filter tab kini membawa serta parameter pencarian, status, peran, dan sortasi agar tidak tersetel ulang -->
     <div class="tab-filter-wrapper">
-        <a href="?tab=aktif<?= !empty($cari) ? '&cari='.urlencode($cari) : '' ?><?= !empty($sort) ? '&sort='.urlencode($sort) : '' ?><?= $status_filter !== '' ? '&status='.urlencode($status_filter) : '' ?><?= !empty($role_filter) ? '&role='.urlencode($role_filter) : '' ?>" class="tab-filter-btn <?= $tab == 'aktif' ? 'active' : '' ?>"><i class="bi bi-check-circle-fill"></i> Aktif <span class="badge-count"><?= $stats['total'] ?></span></a>
-        <a href="?tab=dihapus<?= !empty($cari) ? '&cari='.urlencode($cari) : '' ?><?= !empty($sort) ? '&sort='.urlencode($sort) : '' ?><?= $status_filter !== '' ? '&status='.urlencode($status_filter) : '' ?><?= !empty($role_filter) ? '&role='.urlencode($role_filter) : '' ?>" class="tab-filter-btn <?= $tab == 'dihapus' ? 'active' : '' ?>"><i class="bi bi-trash-fill"></i> Dihapus <span class="badge-count"><?= $stats['dihapus'] ?></span></a>
-        <a href="?tab=semua<?= !empty($cari) ? '&cari='.urlencode($cari) : '' ?><?= !empty($sort) ? '&sort='.urlencode($sort) : '' ?><?= $status_filter !== '' ? '&status='.urlencode($status_filter) : '' ?><?= !empty($role_filter) ? '&role='.urlencode($role_filter) : '' ?>" class="tab-filter-btn <?= $tab == 'semua' ? 'active' : '' ?>"><i class="bi bi-grid-fill"></i> Semua <span class="badge-count"><?= $stats['total'] + $stats['dihapus'] ?></span></a>
+        <a href="?tab=aktif<?= !empty($cari) ? '&cari='.urlencode($cari) : '' ?>" class="tab-filter-btn <?= $tab == 'aktif' ? 'active' : '' ?>"><i class="bi bi-check-circle-fill"></i> Aktif <span class="badge-count"><?= $stats['total'] ?></span></a>
+        <a href="?tab=dihapus<?= !empty($cari) ? '&cari='.urlencode($cari) : '' ?>" class="tab-filter-btn <?= $tab == 'dihapus' ? 'active' : '' ?>"><i class="bi bi-trash-fill"></i> Dihapus <span class="badge-count"><?= $stats['dihapus'] ?></span></a>
+        <a href="?tab=semua<?= !empty($cari) ? '&cari='.urlencode($cari) : '' ?>" class="tab-filter-btn <?= $tab == 'semua' ? 'active' : '' ?>"><i class="bi bi-grid-fill"></i> Semua <span class="badge-count"><?= $stats['total'] + $stats['dihapus'] ?></span></a>
     </div>
 
     <div class="search-filter-bar">
         <form method="GET" class="search-form-flex" id="mainSearchForm">
             <input type="hidden" name="tab" value="<?= htmlspecialchars($tab) ?>">
-            <!-- PERBAIKAN: Form pencarian utama kini mempertahankan parameter filter modal yang sedang aktif -->
-            <input type="hidden" name="sort" value="<?= htmlspecialchars($sort) ?>">
-            <input type="hidden" name="status" value="<?= htmlspecialchars($status_filter) ?>">
-            <input type="hidden" name="role" value="<?= htmlspecialchars($role_filter) ?>">
             <div class="search-input-wrapper">
                 <i class="bi bi-search search-icon"></i>
-                <input type="text" name="cari" class="search-input-main" placeholder="Cari nama, NIK, atau email..." value="<?= htmlspecialchars($cari) ?>">
+                <input type="text" name="cari" class="search-input-main" placeholder="Cari nama, NIK, atau email..." value="<?= htmlspecialchars(@$_GET['cari']) ?>">
             </div>
             <button type="button" class="btn-filter-modal" data-bs-toggle="modal" data-bs-target="#modalFilter">
                 <i class="bi bi-funnel-fill me-2"></i> Filter
@@ -400,6 +383,14 @@ $sort = isset($_GET['sort']) ? trim($_GET['sort']) : "nama_asc";
                 </thead>
                 <tbody>
 <?php
+$limit = 10;
+$halaman = isset($_GET['halaman']) ? (int)$_GET['halaman'] : 1;
+if ($halaman < 1) $halaman = 1;
+$offset = ($halaman - 1) * $limit;
+$cari = isset($_GET['cari']) ? trim($_GET['cari']) : "";
+$status_filter = isset($_GET['status']) ? trim($_GET['status']) : "";
+$role_filter = isset($_GET['role']) ? trim($_GET['role']) : "";
+$sort = isset($_GET['sort']) ? trim($_GET['sort']) : "nama_asc";
 $conditions = array("ID_Karyawan != ?");
 $params = array($id_owner);
 if ($tab == 'aktif') { $conditions[] = "Is_Deleted = 0"; }
@@ -496,10 +487,9 @@ if ($query_list && sqlsrv_has_rows($query_list)):
         <div class="pagination-wrapper">
             <div class="pagination-info">Menampilkan <span><?= $offset + 1 ?></span> - <span><?= min($offset + $limit, $total_records) ?></span> dari <span><?= $total_records ?></span> data</div>
             <nav class="pagination-nav">
-                <!-- PERBAIKAN: Navigasi pagination kini mengikat semua parameter pencarian dan penyaringan aktif agar tidak hilang -->
-                <?php if ($halaman > 1): ?><a class="page-link-pag" href="?tab=<?= $tab ?>&halaman=<?= $halaman - 1 ?>&cari=<?= urlencode($cari) ?>&sort=<?= urlencode($sort) ?>&status=<?= urlencode($status_filter) ?>&role=<?= urlencode($role_filter) ?>"><i class="bi bi-chevron-left"></i></a><?php else: ?><span class="page-link-pag disabled"><i class="bi bi-chevron-left"></i></span><?php endif; ?>
-                <?php for ($i = 1; $i <= $total_halaman; $i++): ?><a class="page-link-pag <?= ($halaman == $i) ? 'active-pag' : '' ?>" href="?tab=<?= $tab ?>&halaman=<?= $i ?>&cari=<?= urlencode($cari) ?>&sort=<?= urlencode($sort) ?>&status=<?= urlencode($status_filter) ?>&role=<?= urlencode($role_filter) ?>"><?= $i ?></a><?php endfor; ?>
-                <?php if ($halaman < $total_halaman): ?><a class="page-link-pag" href="?tab=<?= $tab ?>&halaman=<?= $halaman + 1 ?>&cari=<?= urlencode($cari) ?>&sort=<?= urlencode($sort) ?>&status=<?= urlencode($status_filter) ?>&role=<?= urlencode($role_filter) ?>"><i class="bi bi-chevron-right"></i></a><?php else: ?><span class="page-link-pag disabled"><i class="bi bi-chevron-right"></i></span><?php endif; ?>
+                <?php if ($halaman > 1): ?><a class="page-link-pag" href="?tab=<?= $tab ?>&halaman=<?= $halaman - 1 ?>&cari=<?= urlencode($cari) ?>"><i class="bi bi-chevron-left"></i></a><?php else: ?><span class="page-link-pag disabled"><i class="bi bi-chevron-left"></i></span><?php endif; ?>
+                <?php for ($i = 1; $i <= $total_halaman; $i++): ?><a class="page-link-pag <?= ($halaman == $i) ? 'active-pag' : '' ?>" href="?tab=<?= $tab ?>&halaman=<?= $i ?>&cari=<?= urlencode($cari) ?>"><?= $i ?></a><?php endfor; ?>
+                <?php if ($halaman < $total_halaman): ?><a class="page-link-pag" href="?tab=<?= $tab ?>&halaman=<?= $halaman + 1 ?>&cari=<?= urlencode($cari) ?>"><i class="bi bi-chevron-right"></i></a><?php else: ?><span class="page-link-pag disabled"><i class="bi bi-chevron-right"></i></span><?php endif; ?>
             </nav>
         </div>
         <?php endif; ?>
@@ -517,8 +507,6 @@ if ($query_list && sqlsrv_has_rows($query_list)):
             <div class="modal-body px-4 pb-4 pt-3">
                 <form method="GET" id="formModalFilter">
                     <input type="hidden" name="tab" value="<?= htmlspecialchars($tab) ?>">
-                    <!-- PERBAIKAN: Form modal filter kini mempertahankan kata kunci pencarian utama -->
-                    <input type="hidden" name="cari" value="<?= htmlspecialchars($cari) ?>">
                     <div class="mb-3">
                         <label class="form-label">Urutkan Berdasarkan</label>
                         <select name="sort" class="form-select">
@@ -575,13 +563,7 @@ if ($query_list && sqlsrv_has_rows($query_list)):
             <div class="col-6"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Nama Pengguna</small><span class="fw-bold text-dark" style="font-size: 0.85rem;">@<?= htmlspecialchars($username_owner) ?></span></div>
             <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Alamat Email</small><span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($email_owner) ?></span></div>
             <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Jenis Kelamin</small><span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['jenis_kelamin']) ?></span></div>
-            <div class="col-6 border-top pt-2">
-                <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Tanggal Lahir</small>
-                <!-- PERBAIKAN: Ditambahkan defensive check instanceof DateTime agar tidak memicu PHP error -->
-                <span class="fw-bold text-dark" style="font-size: 0.85rem;">
-                    <?= ($d_profile['tanggal_lahir'] instanceof DateTime) ? $d_profile['tanggal_lahir']->format('d M Y') : ($d_profile['tanggal_lahir'] ?? '-') ?>
-                </span>
-            </div>
+            <div class="col-6 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Tanggal Lahir</small><span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= $d_profile['tanggal_lahir'] ? $d_profile['tanggal_lahir']->format('d M Y') : '-' ?></span></div>
             <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Nomor Telepon</small><span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['no_hp']) ?></span></div>
             <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Alamat Lengkap</small><span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['alamat']) ?></span></div>
           </div>
@@ -659,7 +641,7 @@ if ($query_list && sqlsrv_has_rows($query_list)):
 
 <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script>
-    // ===== SIDEBAR TOGGLE =====
+    // ===== SIDEBAR TOGGLE (SINKRON LIST.PHP) =====
     function toggleSidebar() {
         const sidebar = document.getElementById('sidebar');
         const overlay = document.getElementById('sidebarOverlay');
@@ -755,20 +737,9 @@ if ($query_list && sqlsrv_has_rows($query_list)):
     function confirmRestore(id, nama) {
         Swal.fire({ title: 'Pulihkan Data? 🟢', text: '"' + nama + '" akan dikembalikan ke daftar aktif dengan status diaktifkan kembali.', icon: 'info', showCancelButton: true, confirmButtonColor: '#059669', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Pulihkan', cancelButtonText: 'Batal' }).then(r => { if (r.isConfirmed) window.location = 'action_karyawan.php?aksi=restore&id=' + id; });
     }
-function confirmHardDelete(id, nama) {
-    Swal.fire({ 
-        title: 'Hapus Permanen? ❌', 
-        text: '"' + nama + '" akan dihapus secara PERMANEN dari database!', 
-        icon: 'error', 
-        showCancelButton: true, 
-        confirmButtonColor: '#dc2626', 
-        cancelButtonColor: '#718096', 
-        confirmButtonText: 'Ya, Hapus', 
-        cancelButtonText: 'Batal' 
-    }).then(r => { 
-        if (r.isConfirmed) window.location = 'action_karyawan.php?aksi=hard_delete&id=' + id; 
-    });
-}
+    function confirmHardDelete(id, nama) {
+        Swal.fire({ title: 'Hapus Permanen? ❌', text: '"' + nama + '" akan dihapus secara PERMANEN dari database!', icon: 'error', showCancelButton: true, confirmButtonColor: '#dc2626', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Hapus', cancelButtonText: 'Batal', input: 'text', inputPlaceholder: 'Ketik "HAPUS" untuk konfirmasi', inputValidator: v => v !== 'HAPUS' ? 'Ketik "HAPUS" untuk mengonfirmasi!' : null }).then(r => { if (r.isConfirmed) window.location = 'action_karyawan.php?aksi=hard_delete&id=' + id; });
+    }
     function confirmLogout(e) { e.preventDefault(); Swal.fire({ title: 'Keluar Sistem? ❌', text: 'Yakin ingin keluar dari sistem SpotLight Studio?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d83f67', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Keluar', cancelButtonText: 'Batal' }).then(r => { if (r.isConfirmed) window.location = '../../logout.php'; }); }
     function confirmLandingPage(e) { e.preventDefault(); Swal.fire({ title: 'Kembali ke Beranda? ✦', text: 'Anda akan dialihkan kembali ke halaman utama publik SpotLight Studio.', icon: 'info', showCancelButton: true, confirmButtonColor: '#d83f67', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal' }).then(r => { if (r.isConfirmed) window.location = '../../index.php'; }); }
 

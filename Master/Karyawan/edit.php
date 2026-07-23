@@ -55,7 +55,6 @@ if (isset($_POST['update_profil'])) {
     $username_post = trim($_POST['username']);
     $email_post = trim($_POST['email']);
     $no_hp_post = trim($_POST['no_hp']);
-    $no_hp_post = str_replace(' ', '', $no_hp_post); // PERBAIKAN: Hapus spasi agar lolos CHK_Karyawan_NoHp
     $alamat_post = trim($_POST['alamat']);
     $password_post = $_POST['password'];
     $confirm_password_post = $_POST['confirm_password'];
@@ -65,8 +64,7 @@ if (isset($_POST['update_profil'])) {
     } elseif (preg_match('/[^a-zA-Z0-9_]/', $username_post)) {
         $error_profile = "Username hanya boleh berisi huruf, angka, dan underscore!";
     } else {
-        // PERBAIKAN: Tambahkan Is_Deleted = 0 agar akun terhapus tidak memblokir update profil owner
-        $q_check = safe_sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE (Username_Karyawan = ? OR Email_Karyawan = ?) AND ID_Karyawan != ? AND Is_Deleted = 0", array($username_post, $email_post, $id_owner));
+        $q_check = safe_sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE (Username_Karyawan = ? OR Email_Karyawan = ?) AND ID_Karyawan != ?", array($username_post, $email_post, $id_owner));
         $d_check = safe_sqlsrv_fetch($q_check);
         if (($d_check['total'] ?? 0) > 0) {
             $error_profile = "Username atau Email sudah terdaftar oleh akun staf lain!";
@@ -182,12 +180,6 @@ if (isset($_POST['edit_karyawan'])) {
 
         $errors = array();
 
-        // PERBAIKAN: Proteksi agar owner tidak mendeaktivasi atau mengubah perannya sendiri secara tidak sengaja
-        if ($id_edit === $id_owner) {
-            if ($role !== 'Owner') { $errors[] = "Anda tidak dapat menurunkan peran (role) Anda sendiri!"; $error_fields['role_karyawan'] = true; }
-            if ($status !== 1) { $errors[] = "Anda tidak dapat menonaktifkan akun Owner Anda sendiri!"; $error_fields['status_karyawan'] = true; }
-        }
-
         if (empty($nik)) { $errors[] = "NIK wajib diisi!"; $error_fields['nik'] = true; }
         elseif (!validateNIK($nik)) { $errors[] = "NIK harus 16 digit angka!"; $error_fields['nik'] = true; }
 
@@ -267,7 +259,6 @@ if (isset($_POST['edit_karyawan'])) {
                         @unlink('../../assets/img/karyawan/' . $old_foto);
                     }
 
-<<<<<<< HEAD
                     // --- PERBAIKAN DI SINI (CEK GD EXTENSION) ---
                     if (extension_loaded('gd')) {
                         list($width, $height) = $img_info; 
@@ -293,23 +284,6 @@ if (isset($_POST['edit_karyawan'])) {
                     } else {
                         // Jika GD mati, langsung pindahkan file tanpa resize agar tidak Error
                         move_uploaded_file($file_tmp, $upload_path);
-=======
-                    // PERBAIKAN: Ditambahkan pengaman pengecekan tersedianya ekstensi GD di XAMPP agar tidak crash
-                    if (extension_loaded('gd') && function_exists('imagecreatetruecolor')) {
-                        list($width, $height) = $img_info; $new_width = 300; $new_height = 300;
-                        $thumb = imagecreatetruecolor($new_width, $new_height);
-                        if ($mime_type == 'image/png') { $source = imagecreatefrompng($file_tmp); imagealphablending($thumb, false); imagesavealpha($thumb, true); }
-                        else $source = imagecreatefromjpeg($file_tmp);
-                        imagecopyresampled($thumb, $source, 0, 0, 0, 0, $new_width, $new_height, $width, $height);
-                        if ($mime_type == 'image/png') imagepng($thumb, $upload_path, 8); else imagejpeg($thumb, $upload_path, 85);
-                        imagedestroy($thumb); imagedestroy($source);
-                    } else {
-                        // Fallback aman: Jika GD library mati di XAMPP, gunakan upload file standar tanpa resize
-                        if (!move_uploaded_file($file_tmp, $upload_path)) {
-                            $errors[] = "Gagal mengupload foto!";
-                            $foto_profil = $data_karyawan['Foto_Profil'] ?? 'default.jpg';
-                        }
->>>>>>> 56011b38cf3c711765aa03cc32fc259cd8ce406f
                     }
                 }
             }
@@ -1128,7 +1102,7 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
 
                     <div class="preview-info">
                         <div class="preview-info-item"><span class="preview-info-label">NIK</span><span class="preview-info-value" id="previewNIK"><?= htmlspecialchars($current_nik) ?></span></div>
-                        <div class="preview-info-item"><span class="preview-info-label">Umur</span><span class="preview-info-value" id="previewUmur"><?= hitungUmur($current_dob) ?></span></div>
+                        <div class="preview-info-item"><span class="preview-info-label">Umur</span><span class="preview-info-value" id="previewUmur"><?= hitungUmur($current_dob) ?> tahun</span></div>
                         <div class="preview-info-item"><span class="preview-info-label">Jenis Kelamin</span><span class="preview-info-value" id="previewJK"><?= htmlspecialchars($current_jk) ?></span></div>
                         <div class="preview-info-item"><span class="preview-info-label">Telepon</span><span class="preview-info-value" id="previewHP"><?= htmlspecialchars($data_karyawan['No_Hp'] ?? '-') ?></span></div>
                         <div class="preview-info-item"><span class="preview-info-label">Email</span><span class="preview-info-value" id="previewEmail"><?= htmlspecialchars($current_email) ?></span></div>
@@ -1298,10 +1272,7 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
                 </div>
                 <div class="col-6 border-top pt-2">
                   <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Tanggal Lahir</small>
-                  <!-- PERBAIKAN: Ditambahkan defensive check instanceof DateTime agar tidak memicu Fatal Error PHP -->
-                  <span class="fw-bold text-dark" style="font-size: 0.85rem;">
-                    <?= ($d_profile['tanggal_lahir'] instanceof DateTime) ? $d_profile['tanggal_lahir']->format('d M Y') : ($d_profile['tanggal_lahir'] ?? '-') ?>
-                  </span>
+                  <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= $d_profile['tanggal_lahir'] ? $d_profile['tanggal_lahir']->format('d M Y') : '-' ?></span>
                 </div>
                 <div class="col-12 border-top pt-2">
                   <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Nomor Telepon</small>
@@ -1544,11 +1515,8 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
 
         // PASANG EVENT LISTENERS UNTUK REAL-TIME INPUTS
         ['inputNama', 'inputNIK', 'inputRole', 'inputHP', 'inputEmail', 'inputStatus'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.addEventListener('input', updatePreview);
-                el.addEventListener('change', updatePreview);
-            }
+            document.getElementById(id).addEventListener('input', updatePreview);
+            document.getElementById(id).addEventListener('change', updatePreview);
         });
         document.querySelectorAll('input[name="jenis_kelamin"]').forEach(radio => {
             radio.addEventListener('change', updatePreview);

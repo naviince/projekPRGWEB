@@ -89,23 +89,14 @@ if ($id == $id_owner && in_array($aksi, ['soft_delete', 'hard_delete', 'toggle_s
 switch ($aksi) {
 
     // ============================================
-    // TOGGLE STATUS (Aktif/Nonaktif) via Query Direct (Aman & Sinkron)
+    // TOGGLE STATUS (Aktif/Nonaktif) via Stored Procedure
     // ============================================
     case 'toggle_status':
-        // Ambil status saat ini langsung dari database
-        $cek_status = safe_sqlsrv_query($conn, "SELECT Status FROM Karyawan WHERE ID_Karyawan = ?", array($id));
-        $data_status = safe_sqlsrv_fetch($cek_status);
+        $new_status = ($status == 1) ? 1 : 0;
 
-        if (!$data_status) {
-            header("Location: index.php?status_sukses=error_general");
-            exit();
-        }
-
-        // Balikkan status: jika 1 jadi 0, jika 0 jadi 1
-        $new_status = ($data_status['Status'] == 1) ? 0 : 1;
-
-        $sql = "UPDATE Karyawan SET Status = ?, Modified_By = ?, Modified_Date = GETDATE() WHERE ID_Karyawan = ?";
-        $query = safe_sqlsrv_query($conn, $sql, array($new_status, $username_session, $id));
+        // Menggunakan Stored Procedure sp_UpdateStatusKaryawan
+        $sql = "{CALL sp_UpdateStatusKaryawan(?, ?, ?)}";
+        $query = safe_sqlsrv_query($conn, $sql, array($id, $new_status, $username_session));
 
         if ($query) {
             header("Location: index.php?status_sukses=toggle_status");
@@ -116,9 +107,10 @@ switch ($aksi) {
         break;
 
     // ============================================
-    // SOFT DELETE (Arsipkan & Nonaktifkan)
+    // SOFT DELETE (Arsipkan) via Stored Procedure
     // ============================================
     case 'soft_delete':
+        // Cek terlebih dahulu apakah data sudah dihapus
         $cek = safe_sqlsrv_query($conn, "SELECT Is_Deleted FROM Karyawan WHERE ID_Karyawan = ?", array($id));
         $data = safe_sqlsrv_fetch($cek);
 
@@ -127,17 +119,9 @@ switch ($aksi) {
             exit();
         }
 
-        // PERBAIKAN: Mengubah Is_Deleted menjadi 1 SEKALIGUS mengubah Status menjadi 0 (Nonaktif) agar sinkron
-        $sql = "UPDATE Karyawan SET 
-                Is_Deleted = 1, 
-                Status = 0, 
-                Deleted_By = ?, 
-                Deleted_Date = GETDATE(),
-                Modified_By = ?,
-                Modified_Date = GETDATE()
-                WHERE ID_Karyawan = ?";
-        
-        $query = safe_sqlsrv_query($conn, $sql, array($username_session, $username_session, $id));
+        // Menggunakan Stored Procedure sp_DeleteKaryawan
+        $sql = "{CALL sp_DeleteKaryawan(?, ?)}";
+        $query = safe_sqlsrv_query($conn, $sql, array($id, $username_session));
 
         if ($query) {
             header("Location: index.php?tab=dihapus&status_sukses=soft_delete");
@@ -148,7 +132,7 @@ switch ($aksi) {
         break;
 
     // ============================================
-    // RESTORE (Pulihkan dari Soft Delete & Aktifkan Kembali)
+    // RESTORE (Pulihkan dari Soft Delete)
     // ============================================
     case 'restore':
         $cek = safe_sqlsrv_query($conn, "SELECT Is_Deleted FROM Karyawan WHERE ID_Karyawan = ?", array($id));
@@ -159,7 +143,7 @@ switch ($aksi) {
             exit();
         }
 
-        // Set Is_Deleted kembali ke 0, Status otomatis diaktifkan (1)
+        // Set Is_Deleted kembali ke 0, Status menjadi aktif (1)
         $sql = "UPDATE Karyawan SET 
                 Is_Deleted = 0, 
                 Status = 1, 
@@ -183,6 +167,7 @@ switch ($aksi) {
     // HARD DELETE (Hapus Permanen)
     // ============================================
     case 'hard_delete':
+        // Cegah penghapusan jika ada relasi transaksi aktif
         $relasi = cekRelasiKaryawan($conn, $id);
 
         if (!empty($relasi)) {
