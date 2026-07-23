@@ -22,7 +22,25 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
     exit();
 }
 
+// --- AMBIL PROFIL PELANGGAN ---
 $id_customer = $_SESSION['id_user'];
+$q_profile = sqlsrv_query($conn, "SELECT Nama_Pelanggan, Foto_Profil FROM Pelanggan WHERE ID_Pelanggan = ?", array($id_customer));
+$d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
+
+$nama_customer = $d_profile['Nama_Pelanggan'] ?? 'Pelanggan';
+$foto_db = $d_profile['Foto_Profil'];
+
+// Path: Naik 4 tingkat ke root project, lalu masuk ke folder foto pelanggan
+$path_foto_pelanggan = "../../../../assets/img/pelanggan/" . $foto_db;
+
+$default_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23d83f67'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
+
+// Logika cek file: Jika ada di DB DAN filenya fisik ada di folder
+if (!empty($foto_db) && $foto_db != 'default.jpg' && file_exists($path_foto_pelanggan)) {
+    $foto_customer_src = $path_foto_pelanggan;
+} else {
+    $foto_customer_src = $default_avatar;
+}
 
 // --- Fungsi Pembantu Format Tanggal Indonesia ---
 if (!function_exists('fmtTgl')) {
@@ -1212,26 +1230,31 @@ function formatTimeSafe($val) {
             <a href="../../Riwayat/riwayat.php" class="nav-link-item">Riwayat</a>
             <a href="../../Hasil Foto/hasil_foto.php" class="nav-link-item">Hasil Foto</a>
         </div>
-        <div class="nav-right">
-            <a href="../Paket/pilih_paket.php?id_paket=<?= $id_paket ?>" class="nav-btn-booking">
-                <i class="bi bi-plus-lg"></i> Booking
-            </a>
-            <div class="nav-avatar-wrapper">
-                <img src="<?= $foto_customer_src ?>" class="nav-avatar" alt="Profil" onclick="toggleDropdown()">
-                <div class="nav-dropdown" id="navDropdown">
-                    <div class="dropdown-header">Halo, <?= htmlspecialchars($nama_customer) ?></div>
-                    <div class="dropdown-divider"></div>
-                    <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalProfil">
-                        <i class="bi bi-person-circle"></i> Profil Saya
-                    </button>
-                    <a href="../../../../index.php" class="dropdown-item" onclick="return confirmLandingPage(event)">
-                        <i class="bi bi-house-door"></i> Kembali ke Beranda
-                    </a>
-                    <div class="dropdown-divider"></div>
-                    <button class="dropdown-item logout" onclick="confirmLogout()">
-                        <i class="bi bi-box-arrow-right"></i> Keluar Sistem
-                    </button>
-                </div>
+      <!-- BAGIAN NAVBAR SEBELAH KANAN -->
+<div class="nav-right">
+    <!-- Tombol Booking -->
+    <a href="../Paket/pilih_paket.php?id_paket=<?= $id_paket ?>" class="nav-btn-booking">
+        <i class="bi bi-plus-lg"></i> Booking
+    </a>
+
+    <!-- Foto Profil (Hanya 1) -->
+    <div class="nav-avatar-wrapper">
+        <img src="<?= $foto_customer_src ?>" class="nav-avatar" alt="Profil Pelanggan" onclick="toggleDropdown()">
+        
+        <!-- Menu Dropdown (muncul saat foto diklik) -->
+        <div class="nav-dropdown" id="navDropdown">
+            <div class="dropdown-header">Halo, <?= htmlspecialchars($nama_customer) ?></div>
+            <div class="dropdown-divider"></div>
+            <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalProfil">
+                <i class="bi bi-person-circle"></i> Profil Saya
+            </button>
+            <div class="dropdown-divider"></div>
+            <button class="dropdown-item logout" onclick="confirmLogout()">
+                <i class="bi bi-box-arrow-right"></i> Keluar
+            </button>
+        </div>
+    </div>
+</div>
             </div>
         </div>
     </nav>
@@ -1309,14 +1332,18 @@ function formatTimeSafe($val) {
                     <div class="ruangan-badge"><i class="bi bi-camera-fill"></i> Ruangan Studio</div>
                     <h1 class="ruangan-title"><?= htmlspecialchars($d_ruangan['Nama_Ruangan']) ?></h1>
                     <div class="ruangan-meta">
-                        <div class="ruangan-meta-item">
-                            <i class="bi bi-people-fill"></i>
-                            Kapasitas <?= $d_paket['Kapasitas_Orang'] ?> orang
-                        </div>
-                        <div class="ruangan-meta-item">
-                            <i class="bi bi-box-seam-fill"></i>
-                            <?= count($properti_list) ?> Properti
-                        </div>
+                        <div class="ruangan-meta">
+    <div class="ruangan-meta-item">
+        <i class="bi bi-people-fill"></i>
+        <!-- Ambil Kapasitas_Orang dari tabel Paket_Foto -->
+        Kapasitas <?= $d_paket['Kapasitas_Orang'] ?> orang
+    </div>
+    <div class="ruangan-meta-item">
+        <i class="bi bi-box-seam-fill"></i>
+        <?= count($properti_list) ?> Properti
+    </div>
+    <!-- ... sisanya ... -->
+</div>
                         <div class="ruangan-meta-item">
                             <i class="bi bi-palette-fill"></i>
                             <?= count($tema_list) ?> Tema
@@ -1338,17 +1365,18 @@ function formatTimeSafe($val) {
                         </div>
                         <?php if (!empty($properti_list)): ?>
                             <div class="properti-grid">
-                                <?php foreach ($properti_list as $p): 
-                                    $icon = $icon_map[$p['Kategori_Properti']] ?? 'bi-box-seam';
-                                ?>
-                                    <div class="properti-card">
-                                        <div class="properti-icon">
-                                            <i class="bi <?= $icon ?>"></i>
-                                        </div>
-                                        <div class="properti-nama"><?= htmlspecialchars($p['Nama_Properti']) ?></div>
-                                        <div class="properti-kategori"><?= htmlspecialchars($p['Kategori_Properti']) ?></div>
-                                    </div>
-                                <?php endforeach; ?>
+                               <?php foreach ($properti_list as $p): 
+    $img_prop = "../../../../assets/img/properti/" . $p['Foto_Properti'];
+    $src_prop = (!empty($p['Foto_Properti']) && file_exists($img_prop)) ? $img_prop : "../../../../assets/img/properti/default_properti.jpg";
+?>
+    <div class="properti-card">
+        <div class="properti-icon">
+            <!-- Jika ingin pakai gambar fisik, ganti <i> dengan <img> -->
+            <img src="<?= $src_prop ?>" style="width:100%; height:100%; object-fit:cover; border-radius:10px;">
+        </div>
+        <div class="properti-nama"><?= htmlspecialchars($p['Nama_Properti']) ?></div>
+    </div>
+<?php endforeach; ?>
                             </div>
                         <?php else: ?>
                             <div class="empty-state" style="padding: 40px 20px;">
