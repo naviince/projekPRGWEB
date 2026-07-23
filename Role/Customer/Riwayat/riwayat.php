@@ -2534,33 +2534,42 @@ foreach ($riwayat_list as $item) {
                                 </div>
                             </div>
 
-                            <!-- BARANG CETAK -->
-                            <?php if (!empty($barang_order)): ?>
-                            <div class="barang-cetak-section">
-                                <h4><i class="bi bi-box-seam"></i> Detail Barang Cetak</h4>
-                                <div class="barang-cetak-grid">
-                                    <?php foreach ($barang_order as $b): 
-                                        $foto_barang = $b['Foto_Barang'] ?? 'default_barang.jpg';
-                                        $foto_barang_src = file_exists("../../../assets/img/barang/" . $foto_barang) 
-                                            ? "../../../assets/img/barang/" . $foto_barang 
-                                            : "../../../assets/img/barang/default_barang.jpg";
-                                    ?>
-                                    <div class="barang-cetak-item">
-                                        <img src="<?php echo $foto_barang_src; ?>" alt="<?php echo htmlspecialchars($b['Nama_Barang']); ?>">
-                                        <div class="barang-cetak-info">
-                                            <div class="barang-cetak-nama"><?php echo htmlspecialchars($b['Nama_Barang']); ?></div>
-                                            <div class="barang-cetak-detail"><?php echo $b['Jumlah']; ?> x <?php echo formatRupiah($b['Harga_Satuan']); ?></div>
-                                        </div>
-                                        <div class="barang-cetak-subtotal"><?php echo formatRupiah($b['Subtotal']); ?></div>
-                                    </div>
-                                    <?php endforeach; ?>
-                                </div>
-                                <div style="margin-top:12px;text-align:right;">
-                                    <span style="font-size:0.8rem;color:var(--text-muted);font-weight:600;">Status Penjualan: </span>
-                                    <?php echo getStatusPenjualanBadge($barang_order[0]['Status_Penjualan'] ?? null); ?>
-                                </div>
-                            </div>
-                            <?php endif; ?>
+<!-- BARANG CETAK -->
+<?php if (!empty($barang_order)): ?>
+<div class="barang-cetak-section">
+    <h4><i class="bi bi-box-seam"></i> Detail Barang Cetak</h4>
+    <div class="barang-cetak-grid">
+        <?php foreach ($barang_order as $b): 
+            // 1. Ambil nama file dari database
+            $nama_file_foto = $b['Foto_Barang'] ?? '';
+            
+            // 2. Tentukan Path (Naik 3 tingkat ke folder utama: Role -> Customer -> Riwayat -> Root)
+            $path_ke_folder_barang = "../../../uploads/barang/" . $nama_file_foto;
+            
+            // 3. Cek apakah file benar-benar ada di folder tersebut
+            if (!empty($nama_file_foto) && $nama_file_foto !== 'default_barang.jpg' && file_exists($path_ke_folder_barang)) {
+                $foto_barang_src = $path_ke_folder_barang;
+            } else {
+                // Fallback jika foto tidak ditemukan
+                $foto_barang_src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='100%25' height='100%25' fill='%23FFF0F3'/%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z' fill='%23d83f67' transform='scale(0.8) translate(3, 3)'/%3E%3C/svg%3e";
+            }
+        ?>
+            <div class="barang-cetak-item">
+                <img src="<?php echo $foto_barang_src; ?>" alt="<?php echo htmlspecialchars($b['Nama_Barang']); ?>">
+                <div class="barang-cetak-info">
+                    <div class="barang-cetak-nama"><?php echo htmlspecialchars($b['Nama_Barang']); ?></div>
+                    <div class="barang-cetak-detail"><?php echo $b['Jumlah']; ?> x <?php echo formatRupiah($b['Harga_Satuan']); ?></div>
+                </div>
+                <div class="barang-cetak-subtotal"><?php echo formatRupiah($b['Subtotal']); ?></div>
+            </div>
+        <?php endforeach; ?>
+    </div>
+    <div style="margin-top:12px;text-align:right;">
+        <span style="font-size:0.8rem;color:var(--text-muted);font-weight:600;">Status Penjualan: </span>
+        <?php echo getStatusPenjualanBadge($barang_order[0]['Status_Penjualan'] ?? null); ?>
+    </div>
+</div>
+<?php endif; ?>
 
                             <!-- PEMBAYARAN -->
                             <div class="pembayaran-section">
