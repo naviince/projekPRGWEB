@@ -55,15 +55,13 @@ if ($id <= 0) {
 }
 
 // =====================================================
-// AMBIL PROFIL ADMIN
+// AMBIL PROFIL ADMIN (DISELARASKAN DENGAN ADD.PHP)
 // =====================================================
-$admin_data = safe_sqlsrv_fetch(safe_sqlsrv_query($conn, 
-    "SELECT Nama_Karyawan, Foto_Profil, Email_Karyawan FROM Karyawan WHERE ID_Karyawan = ? AND Is_Deleted = 0", 
-    [$id_admin]
-));
-
-$nama_admin = $admin_data['Nama_Karyawan'] ?? 'Administrator';
-$foto_admin = $admin_data['Foto_Profil'] ?? 'default.jpg';
+$q_admin = safe_sqlsrv_query($conn, "SELECT * FROM Karyawan WHERE ID_Karyawan = ? AND Is_Deleted = 0", [$id_admin]);
+$d_admin = safe_sqlsrv_fetch($q_admin);
+if ($d_admin) { $d_admin = array_change_key_case($d_admin, CASE_LOWER); }
+$nama_admin = $d_admin['nama_karyawan'] ?? 'Administrator';
+$foto_admin = $d_admin['foto_profil'] ?? 'default.jpg';
 
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
@@ -119,6 +117,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
     $nama           = trim($_POST['nama_ruangan'] ?? '');
     $deskripsi      = trim($_POST['deskripsi'] ?? '');
     $paket_terpilih = $_POST['paket'] ?? [];
+    
+    // Normalisasi value paket terpilih ke bentuk integer
+    $paket_terpilih = array_map('intval', $paket_terpilih);
 
     if (empty($nama)) {
         $field_errors['nama_ruangan'] = "Nama ruangan wajib diisi!";
@@ -132,6 +133,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
         $field_errors['deskripsi'] = "Maksimal 255 karakter!";
     }
 
+    $paket_sekarang = [];
+    $q_now = safe_sqlsrv_query($conn, "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?", [$id]);
+    if ($q_now) {
+        while ($row = safe_sqlsrv_fetch($q_now)) {
+            $paket_sekarang[] = (int)$row['ID_Paket'];
+        }
+    }
+
+    // PERBAIKAN BUG: Mengembalikan paket berstatus disabled (yang memiliki order aktif) ke array $paket_terpilih.
+    // Hal ini karena browser tidak mengirimkan data input yang berstatus disabled saat form di-submit.
+    foreach ($paket_sekarang as $id_paket_lama) {
+        $cek_order_sql = "SELECT COUNT(*) as total FROM [Order] 
+                          WHERE ID_Paket = ? AND ID_Ruangan = ? AND Status = 1 AND Status_Order <> 4";
+        $cek_order = safe_sqlsrv_fetch(safe_sqlsrv_query($conn, $cek_order_sql, [$id_paket_lama, $id]));
+        if (($cek_order['total'] ?? 0) > 0) {
+            if (!in_array($id_paket_lama, $paket_terpilih)) {
+                $paket_terpilih[] = $id_paket_lama;
+            }
+        }
+    }
+
     if (empty($paket_terpilih)) {
         $field_errors['paket'] = "Pilih minimal 1 paket!";
     }
@@ -142,14 +164,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
         $cek_dup = safe_sqlsrv_fetch($stmt_dup);
         if (($cek_dup['total'] ?? 0) > 0) {
             $field_errors['nama_ruangan'] = "Nama ini sudah digunakan ruangan lain!";
-        }
-    }
-
-    $paket_sekarang = [];
-    $q_now = safe_sqlsrv_query($conn, "SELECT ID_Paket FROM Paket_Ruangan WHERE ID_Ruangan = ?", [$id]);
-    if ($q_now) {
-        while ($row = safe_sqlsrv_fetch($q_now)) {
-            $paket_sekarang[] = (int)$row['ID_Paket'];
         }
     }
 
@@ -198,7 +212,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
                 } else {
                     $new_filename = "ruangan_" . time() . "_" . bin2hex(random_bytes(4)) . "." . $ext;
                     $upload_dir = "../../assets/img/ruangan/";
-                    if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
+                    if (!is_dir($upload_dir)) mkdir($upload_dir, 0775, true);
                     $upload_path = $upload_dir . $new_filename;
 
                     if (move_uploaded_file($foto_tmp, $upload_path)) {
@@ -301,7 +315,7 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Edit Ruangan – SpotLight Studio</title>
-    <link rel="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
+    <link class="icon" type="image/png" href="/projekPRGWEB/assets/img/favicon.png">
     <link href="../../assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="../../assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -467,14 +481,32 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
         .paket-checkbox-item { position: relative; background: #ffffff; border: 2px solid #e2e8f0; border-radius: 14px; padding: 16px; cursor: pointer; transition: var(--transition-3d); display: flex; align-items: center; gap: 12px; }
         .paket-checkbox-item:hover { border-color: var(--p-pink); }
         .paket-checkbox-item.selected { border-color: var(--p-pink); background: var(--s-pink); box-shadow: 0 4px 12px rgba(213, 61, 102, 0.1); }
-        .paket-checkbox-item input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--p-pink); cursor: pointer; flex-shrink: 0; }
+        
+        /* PERBAIKAN: Sembunyikan checkbox bawaan browser agar tampilan kartu seleksi bersih */
+        .paket-checkbox-item input[type="checkbox"] { display: none !important; }
+        
         .paket-checkbox-item .paket-info { flex: 1; min-width: 0; }
         .paket-checkbox-item .paket-nama { font-weight: 700; font-size: 0.85rem; color: var(--text-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .paket-checkbox-item .paket-harga { font-size: 0.75rem; color: var(--p-pink); font-weight: 700; }
         .paket-checkbox-item .paket-kapasitas { font-size: 0.7rem; color: var(--text-muted); }
         .paket-checkbox-item .paket-durasi { font-size: 0.7rem; color: #94a3b8; font-weight: 600; }
-        .paket-checkbox-item .paket-check-icon { display: none; color: var(--p-pink); font-size: 1.2rem; }
-        .paket-checkbox-item.selected .paket-check-icon { display: block; }
+        
+        /* PERBAIKAN: Atur posisi absolute lencana centang dengan border-radius putih kustom yang presisi dan indah */
+        .paket-checkbox-item .paket-check-icon { 
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ffffff;
+            border-radius: 50%;
+            line-height: 1;
+            font-size: 1.35rem !important;
+            color: var(--p-pink) !important;
+            box-shadow: 0 4px 10px rgba(213, 61, 102, 0.25);
+            display: none;
+            z-index: 5;
+        }
+        .paket-checkbox-item.selected .paket-check-icon { display: block !important; }
+        
         .paket-checkbox-item.has-order { opacity: 0.7; background: #f8fafc; border-color: #e2e8f0; cursor: not-allowed; }
         .paket-checkbox-item.has-order:hover { border-color: #e2e8f0; transform: none; }
         .paket-checkbox-item.has-order.selected { border-color: #059669; background: #ecfdf5; }
@@ -791,6 +823,12 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
                             <?php if (!empty($daftar_paket)): ?>
                                 <div class="paket-grid">
                                     <?php foreach ($daftar_paket as $paket): 
+                                        $foto_p = $paket['Foto_Paket'] ?? 'default_paket.jpg';
+                                        
+                                        // PERBAIKAN: Default paket SVG diganti dengan icon kamera agar selaras dan estetik
+                                        $default_paket_svg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zm8 3c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zm0 2c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm7-3c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z'/%3E%3C/svg%3e";
+                                        
+                                        $foto_p_src = ($foto_p != 'default_paket.jpg' && file_exists("../../assets/img/paket/" . $foto_p)) ? "../../assets/img/paket/" . $foto_p : $default_paket_svg;
                                         $is_checked = in_array($paket['ID_Paket'], $paket_terhubung_ids) ? 'checked' : '';
                                         $is_selected = $is_checked ? 'selected' : '';
                                         $cek_order_paket = safe_sqlsrv_count($conn,
@@ -802,13 +840,20 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
                                         $disabled = $has_order ? 'disabled' : '';
                                         $order_badge = $has_order ? '<span class="order-badge">' . $cek_order_paket . ' order</span>' : '';
                                     ?>
+                                        <!-- PERBAIKAN: Layout disinkronkan sepenuhnya agar identik dengan add.php dan meletakkan lencana centang secara absolut -->
                                         <div class="paket-checkbox-item <?= $is_selected ?> <?= $has_order ? 'has-order' : '' ?>">
                                             <input type="checkbox" name="paket[]" value="<?= $paket['ID_Paket'] ?>" <?= $is_checked ?> <?= $disabled ?> onchange="updatePaketCount()">
-                                            <div class="paket-info">
-                                                <div class="paket-nama"><?= htmlspecialchars($paket['Nama_Paket']) ?> <?= $order_badge ?></div>
-                                                <div class="paket-harga">Rp <?= number_format($paket['Harga_Paket'], 0, ',', '.') ?></div>
-                                                <div class="paket-kapasitas"><?= $paket['Kapasitas_Orang'] ?> orang</div>
-                                                <div class="paket-durasi"><?= $paket['Durasi_Waktu'] ?> menit</div>
+                                            <div class="d-flex align-items-center gap-3 w-100">
+                                                <img src="<?= $foto_p_src ?>" style="width: 45px; height: 45px; object-fit: cover; border-radius: 8px; flex-shrink: 0;">
+                                                <div class="paket-info flex-grow-1" style="min-width: 0;">
+                                                    <div class="paket-nama fw-bold text-dark" style="font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><?= htmlspecialchars($paket['Nama_Paket']) ?> <?= $order_badge ?></div>
+                                                    <div class="d-flex gap-2 align-items-center flex-wrap" style="font-size: 0.75rem; margin-top: 2px;">
+                                                        <span class="text-muted"><i class="bi bi-clock me-1"></i><?= htmlspecialchars($paket['Durasi_Waktu']) ?> Menit</span>
+                                                        <span class="text-muted">•</span>
+                                                        <span class="text-muted"><i class="bi bi-people me-1"></i><?= htmlspecialchars($paket['Kapasitas_Orang']) ?> Orang</span>
+                                                    </div>
+                                                    <div class="paket-harga fw-bold text-danger mt-1" style="font-size: 0.85rem; color: var(--p-pink) !important;">Rp <?= number_format($paket['Harga_Paket'], 0, ',', '.') ?></div>
+                                                </div>
                                             </div>
                                             <i class="bi bi-check-circle-fill paket-check-icon"></i>
                                         </div>
@@ -844,7 +889,7 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
             </div>
             <div class="card-3d p-3 border-0 mb-3" style="border-radius: 20px; background-color: #f8fafc;">
               <div class="row g-3">
-                <div class="col-12"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Email Karyawan</small><span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($admin_data['Email_Karyawan'] ?? 'admin@spotlight.com') ?></span></div>
+                <div class="col-12"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Email Karyawan</small><span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_admin['email_karyawan'] ?? 'admin@spotlight.com') ?></span></div>
                 <div class="col-12 border-top pt-2"><small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Hak Akses Sistem</small><span class="fw-bold text-dark" style="font-size: 0.85rem;">Administrator (Admin)</span></div>
               </div>
             </div>
@@ -905,20 +950,29 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
         document.getElementById('nama_ruangan').addEventListener('input', function() { if (this.value.trim()) clearFieldError('nama_ruangan'); });
         document.getElementById('deskripsi').addEventListener('input', function() { if (this.value.trim()) clearFieldError('deskripsi'); });
         
+        // ============================================
+        // PERBAIKAN BUG: Paket Checkbox - Multiple Selection
+        // ============================================
+        // BUG SEBELUMNYA: JavaScript memaksa hanya 1 paket (radio button behavior)
+        // PERBAIKAN: Multiple checkbox selection (sesuai PHP backend yang support banyak paket)
+        
         document.querySelectorAll('.paket-checkbox-item').forEach(item => {
             item.addEventListener('click', function(e) {
+                // Jangan proses klik jika paket memiliki order aktif (disabled)
                 if (this.classList.contains('has-order')) return;
+                
+                // Jangan proses klik langsung pada checkbox (biarkan event change handle)
                 if (e.target.tagName === 'INPUT') return;
+                
                 const checkbox = this.querySelector('input[type="checkbox"]');
-                const wasChecked = checkbox.checked;
-                document.querySelectorAll('.paket-checkbox-item input[type="checkbox"]').forEach(otherChk => {
-                    if (!otherChk.closest('.paket-checkbox-item').classList.contains('has-order')) {
-                        otherChk.checked = false;
-                        otherChk.closest('.paket-checkbox-item').classList.remove('selected');
-                    }
-                });
-                checkbox.checked = !wasChecked;
-                if (checkbox.checked) this.classList.add('selected'); else this.classList.remove('selected');
+                checkbox.checked = !checkbox.checked;
+                
+                if (checkbox.checked) {
+                    this.classList.add('selected');
+                } else {
+                    this.classList.remove('selected');
+                }
+                
                 updatePaketCount();
                 clearFieldError('paket');
             });
@@ -928,18 +982,16 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
             chk.addEventListener('change', function(e) {
                 e.stopPropagation();
                 const row = this.closest('.paket-checkbox-item');
+                
+                // Jangan proses paket yang memiliki order aktif
                 if (row.classList.contains('has-order')) return;
+                
                 if (this.checked) {
-                    document.querySelectorAll('.paket-checkbox-item input[type="checkbox"]').forEach(otherChk => {
-                        if (otherChk !== this && !otherChk.closest('.paket-checkbox-item').classList.contains('has-order')) {
-                            otherChk.checked = false;
-                            otherChk.closest('.paket-checkbox-item').classList.remove('selected');
-                        }
-                    });
                     row.classList.add('selected');
                 } else {
                     row.classList.remove('selected');
                 }
+                
                 updatePaketCount();
                 clearFieldError('paket');
             });
@@ -951,26 +1003,25 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
             const hint = document.getElementById('paket-count-hint');
             if (checked === 0) {
                 hint.style.color = '#dc2626';
-                hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Pilih 1 paket foto!';
-            } else if (checked > 1) {
-                hint.style.color = '#dc2626';
-                hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Maksimal hanya boleh memilih 1 paket foto!';
+                hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Pilih minimal 1 paket foto!';
             } else {
                 hint.style.color = '#059669';
                 hint.innerHTML = '<i class="bi bi-check-circle-fill"></i> ' + checked + ' paket terpilih';
             }
         }
 
+        // ============================================
+        // PERBAIKAN BUG: Submit Handler
+        // ============================================
+        // BUG SEBELUMNYA: Memblok submit jika >1 paket (inkonsisten dengan PHP)
+        // PERBAIKAN: Hanya memblok jika 0 paket (sesuai PHP validasi)
+        
         document.getElementById('formRuangan').addEventListener('submit', function(e) { 
             const paketChecked = document.querySelectorAll('input[name="paket[]"]:checked').length; 
             if (paketChecked === 0) { 
                 e.preventDefault(); 
-                Swal.fire({ icon: 'warning', title: 'Paket Belum Dipilih', text: 'Pilih 1 paket foto yang bisa menggunakan ruangan ini!', confirmButtonColor: '#D53D66' }); 
+                Swal.fire({ icon: 'warning', title: 'Paket Belum Dipilih', text: 'Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini!', confirmButtonColor: '#D53D66' }); 
                 return false; 
-            } else if (paketChecked > 1) {
-                e.preventDefault(); 
-                Swal.fire({ icon: 'warning', title: 'Paket Melebihi Batas', text: 'Satu ruangan hanya boleh terhubung dengan maksimal 1 paket foto!', confirmButtonColor: '#D53D66' }); 
-                return false;
             }
             document.getElementById('loadingOverlay').classList.add('active'); 
             return true; 
