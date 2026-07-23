@@ -55,6 +55,7 @@ if (isset($_POST['update_profil'])) {
     $username_post = trim($_POST['username']);
     $email_post = trim($_POST['email']);
     $no_hp_post = trim($_POST['no_hp']);
+    $no_hp_post = str_replace(' ', '', $no_hp_post); // PERBAIKAN: Hapus spasi pengganggu agar lolos CHK_Karyawan_NoHp
     $alamat_post = trim($_POST['alamat']);
     $password_post = $_POST['password'];
     $confirm_password_post = $_POST['confirm_password'];
@@ -64,7 +65,8 @@ if (isset($_POST['update_profil'])) {
     } elseif (preg_match('/[^a-zA-Z0-9_]/', $username_post)) {
         $error_profile = "Username hanya boleh berisi huruf, angka, dan underscore!";
     } else {
-        $q_check = safe_sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE (Username_Karyawan = ? OR Email_Karyawan = ?) AND ID_Karyawan != ?", array($username_post, $email_post, $id_owner));
+        // PERBAIKAN: Tambahkan Is_Deleted = 0 agar akun terhapus tidak memblokir update profil owner
+        $q_check = safe_sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE (Username_Karyawan = ? OR Email_Karyawan = ?) AND ID_Karyawan != ? AND Is_Deleted = 0", array($username_post, $email_post, $id_owner));
         $d_check = safe_sqlsrv_fetch($q_check);
         if (($d_check['total'] ?? 0) > 0) {
             $error_profile = "Username atau Email sudah terdaftar oleh akun staf lain!";
@@ -196,7 +198,12 @@ if (isset($_POST['tambah_karyawan'])) {
         if (empty($alamat)) { $errors[] = "Alamat wajib diisi!"; $error_fields['alamat'] = true; }
 
         if (empty($errors)) {
-            $sql_dup = "{CALL sp_CekDuplikatKaryawan(?, ?, ?, NULL)}";
+            // PERBAIKAN: Ganti pemanggilan sp_CekDuplikatKaryawan dengan query SQL inline karena prosedurnya absen di DB
+            $sql_dup = "SELECT 
+                (SELECT COUNT(*) FROM Karyawan WHERE NIK = ? AND Is_Deleted = 0) AS Duplikat_NIK,
+                (SELECT COUNT(*) FROM Karyawan WHERE Username_Karyawan = ? AND Is_Deleted = 0) AS Duplikat_Username,
+                (SELECT COUNT(*) FROM Karyawan WHERE Email_Karyawan = ? AND Is_Deleted = 0) AS Duplikat_Email";
+            
             $q_dup = safe_sqlsrv_query($conn, $sql_dup, array($nik, $username, $email));
             $d_dup = safe_sqlsrv_fetch($q_dup);
             
@@ -783,6 +790,15 @@ function hasError($field, $error_fields) { return isset($error_fields[$field]) &
 
         @media (max-width: 1200px) { .landscape-wrapper { flex-direction: column; } .landscape-left { width: 100%; } .preview-card { position: static; } }
         @media (max-width: 992px) { .main-content { margin-left: 0; padding: 20px; } .sidebar { transform: translateX(-100%); } }
+
+        .form-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23d83f67' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    background-size: 16px 12px;
+    cursor: pointer;
+}
     </style>
 </head>
 <body>
@@ -934,15 +950,15 @@ function hasError($field, $error_fields) { return isset($error_fields[$field]) &
                             <label class="form-label">Alamat Email<span class="required-star">*</span></label>
                             <input type="email" name="email" id="inputEmail" class="form-control <?= hasError('email', $error_fields) ? 'has-error' : '' ?>" placeholder="staf@spotlight.com" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" required>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Peran Kerja (Role)<span class="required-star">*</span></label>
-                            <select name="role_karyawan" id="inputRole" class="form-select <?= hasError('role_karyawan', $error_fields) ? 'has-error' : '' ?>" required>
-                                <option value="" disabled <?= empty($_POST['role_karyawan']) ? 'selected' : '' ?>>Pilih Peran Kerja</option>
-                                <option value="Admin" <?= ($_POST['role_karyawan'] ?? '') == 'Admin' ? 'selected' : '' ?>>Admin</option>
-                                <option value="Fotografer" <?= ($_POST['role_karyawan'] ?? '') == 'Fotografer' ? 'selected' : '' ?>>Fotografer</option>
-                                <option value="Owner" <?= ($_POST['role_karyawan'] ?? '') == 'Owner' ? 'selected' : '' ?>>Owner</option>
-                            </select>
-                        </div>
+                       <div class="col-md-4">
+    <label class="form-label">Peran Kerja (Role)<span class="required-star">*</span></label>
+    <select name="role_karyawan" id="inputRole" class="form-select <?= hasError('role_karyawan', $error_fields) ? 'has-error' : '' ?>" required>
+        <option value="" disabled <?= empty($_POST['role_karyawan']) ? 'selected' : '' ?>>Pilih Peran Kerja</option>
+        <option value="Admin" <?= ($_POST['role_karyawan'] ?? '') == 'Admin' ? 'selected' : '' ?>>Admin</option>
+        <option value="Fotografer" <?= ($_POST['role_karyawan'] ?? '') == 'Fotografer' ? 'selected' : '' ?>>Fotografer</option>
+        <option value="Owner" <?= ($_POST['role_karyawan'] ?? '') == 'Owner' ? 'selected' : '' ?>>Owner</option>
+    </select>
+</div>
                         <div class="col-md-6">
                             <label class="form-label">Kata Sandi<span class="required-star">*</span></label>
                             <div class="password-wrapper">
@@ -1026,7 +1042,10 @@ function hasError($field, $error_fields) { return isset($error_fields[$field]) &
             </div>
             <div class="col-6 border-top pt-2">
               <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Tanggal Lahir</small>
-              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= $d_profile['tanggal_lahir'] ? $d_profile['tanggal_lahir']->format('d M Y') : '-' ?></span>
+              <!-- PERBAIKAN: Tambahkan validasi DateTime object agar tidak crash jika bertipe string -->
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;">
+                <?= ($d_profile['tanggal_lahir'] instanceof DateTime) ? $d_profile['tanggal_lahir']->format('d M Y') : ($d_profile['tanggal_lahir'] ?? '-') ?>
+              </span>
             </div>
             <div class="col-12 border-top pt-2">
               <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Nomor Telepon</small>
@@ -1179,6 +1198,47 @@ function hasError($field, $error_fields) { return isset($error_fields[$field]) &
         if (modalBiodata) modalBiodata.hide();
         setTimeout(bukaModalProfil, 400);
     }
+
+    // Tambahkan 'inputRole' ke daftar listener change
+['inputNama', 'inputNIK', 'inputHP', 'inputEmail'].forEach(id => {
+    document.getElementById(id).addEventListener('input', updatePreview);
+});
+
+// Listener khusus untuk dropdown Role
+document.getElementById('inputRole').addEventListener('change', updatePreview);
+
+function updatePreview() {
+    document.getElementById('previewNama').textContent = document.getElementById('inputNama').value || 'Nama Karyawan';
+    
+    // Logika update Role di Preview Card
+    const role = document.getElementById('inputRole').value;
+    const roleEl = document.getElementById('previewRole');
+    
+    if (role) { 
+        roleEl.textContent = role;
+        
+        // Ganti warna badge berdasarkan role
+        const colors = {
+            'Admin': { bg: '#eff6ff', text: '#2563eb' },
+            'Fotografer': { bg: 'var(--s-pink)', text: 'var(--p-pink)' },
+            'Owner': { bg: '#f5f3ff', text: '#8b5cf6' }
+        };
+        
+        roleEl.style.background = colors[role].bg;
+        roleEl.style.color = colors[role].text;
+    } else {
+        roleEl.textContent = 'Pilih Peran';
+        roleEl.style.background = 'var(--s-pink)';
+        roleEl.style.color = 'var(--p-pink)';
+    }
+
+    document.getElementById('previewNIK').textContent = document.getElementById('inputNIK').value || '-';
+    const jk = document.querySelector('input[name="jenis_kelamin"]:checked');
+    document.getElementById('previewJK').textContent = jk ? jk.value : '-';
+    const hp = document.getElementById('inputHP').value;
+    document.getElementById('previewHP').textContent = hp ? '+62 ' + hp : '-';
+    document.getElementById('previewEmail').textContent = document.getElementById('inputEmail').value || '-';
+}
 
     // VISIBILITAS PASSWORD TOGGLE
     function togglePassword(inputId, btn) {
@@ -1401,7 +1461,8 @@ function hasError($field, $error_fields) { return isset($error_fields[$field]) &
     const inputNamaModal = document.getElementById('inputNamaModal');
     if (inputNamaModal) {
         inputNamaModal.addEventListener('input', function() {
-            this.value = this.value.replace(/a-zA-Z ]/g, '');
+            // PERBAIKAN: Karakter penyeleksi ditambahkan caret ^ agar tidak keliru memotong huruf nama
+            this.value = this.value.replace(/[^a-zA-Z ]/g, '');
         });
     }
 

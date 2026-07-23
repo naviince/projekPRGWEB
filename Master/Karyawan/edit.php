@@ -55,6 +55,7 @@ if (isset($_POST['update_profil'])) {
     $username_post = trim($_POST['username']);
     $email_post = trim($_POST['email']);
     $no_hp_post = trim($_POST['no_hp']);
+    $no_hp_post = str_replace(' ', '', $no_hp_post); // PERBAIKAN: Hapus spasi agar lolos CHK_Karyawan_NoHp
     $alamat_post = trim($_POST['alamat']);
     $password_post = $_POST['password'];
     $confirm_password_post = $_POST['confirm_password'];
@@ -64,7 +65,8 @@ if (isset($_POST['update_profil'])) {
     } elseif (preg_match('/[^a-zA-Z0-9_]/', $username_post)) {
         $error_profile = "Username hanya boleh berisi huruf, angka, dan underscore!";
     } else {
-        $q_check = safe_sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE (Username_Karyawan = ? OR Email_Karyawan = ?) AND ID_Karyawan != ?", array($username_post, $email_post, $id_owner));
+        // PERBAIKAN: Tambahkan Is_Deleted = 0 agar akun terhapus tidak memblokir update profil owner
+        $q_check = safe_sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHERE (Username_Karyawan = ? OR Email_Karyawan = ?) AND ID_Karyawan != ? AND Is_Deleted = 0", array($username_post, $email_post, $id_owner));
         $d_check = safe_sqlsrv_fetch($q_check);
         if (($d_check['total'] ?? 0) > 0) {
             $error_profile = "Username atau Email sudah terdaftar oleh akun staf lain!";
@@ -180,6 +182,12 @@ if (isset($_POST['edit_karyawan'])) {
 
         $errors = array();
 
+        // PERBAIKAN: Proteksi agar owner tidak mendeaktivasi atau mengubah perannya sendiri secara tidak sengaja
+        if ($id_edit === $id_owner) {
+            if ($role !== 'Owner') { $errors[] = "Anda tidak dapat menurunkan peran (role) Anda sendiri!"; $error_fields['role_karyawan'] = true; }
+            if ($status !== 1) { $errors[] = "Anda tidak dapat menonaktifkan akun Owner Anda sendiri!"; $error_fields['status_karyawan'] = true; }
+        }
+
         if (empty($nik)) { $errors[] = "NIK wajib diisi!"; $error_fields['nik'] = true; }
         elseif (!validateNIK($nik)) { $errors[] = "NIK harus 16 digit angka!"; $error_fields['nik'] = true; }
 
@@ -228,30 +236,20 @@ if (isset($_POST['edit_karyawan'])) {
             if ($owner_count > 0) { $errors[] = "Sudah ada Owner dalam sistem! Hanya boleh 1 Owner."; $error_fields['role_karyawan'] = true; }
         }
 
-       $foto_profil = $data_karyawan['Foto_Profil'] ?? 'default.jpg';
+        $foto_profil = $data_karyawan['Foto_Profil'] ?? 'default.jpg';
         if (empty($errors) && isset($_FILES['foto_profil']) && $_FILES['foto_profil']['error'] === UPLOAD_ERR_OK) {
-            $file_tmp = $_FILES['foto_profil']['tmp_name']; 
-            $file_size = $_FILES['foto_profil']['size']; 
-            $file_name = $_FILES['foto_profil']['name'];
-            
-            $finfo = finfo_open(FILEINFO_MIME_TYPE); 
-            $mime_type = finfo_file($finfo, $file_tmp); 
-            finfo_close($finfo);
-            
+            $file_tmp = $_FILES['foto_profil']['tmp_name']; $file_size = $_FILES['foto_profil']['size']; $file_name = $_FILES['foto_profil']['name'];
+            $finfo = finfo_open(FILEINFO_MIME_TYPE); $mime_type = finfo_file($finfo, $file_tmp); finfo_close($finfo);
             $allowed = array('image/jpeg','image/png','image/jpg');
-            if (!in_array($mime_type, $allowed)) { 
-                $errors[] = "Format foto harus JPG, JPEG, atau PNG!"; 
-            } elseif ($file_size > 2 * 1024 * 1024) { 
-                $errors[] = "Ukuran foto maksimal 2MB!"; 
-            } else {
+            if (!in_array($mime_type, $allowed)) { $errors[] = "Format foto harus JPG, JPEG, atau PNG!"; }
+            elseif ($file_size > 2 * 1024 * 1024) { $errors[] = "Ukuran foto maksimal 2MB!"; }
+            else {
                 $img_info = getimagesize($file_tmp);
-                if (!$img_info) { 
-                    $errors[] = "File bukan gambar yang valid!"; 
-                } else {
+                if (!$img_info) { $errors[] = "File bukan gambar yang valid!"; }
+                else {
                     $ext = pathinfo($file_name, PATHINFO_EXTENSION);
                     $foto_profil = 'karyawan_' . time() . '_' . rand(1000,9999) . '.' . $ext;
                     $upload_path = '../../assets/img/karyawan/' . $foto_profil;
-                    
                     if (!file_exists('../../assets/img/karyawan/')) mkdir('../../assets/img/karyawan/', 0777, true);
 
                     $old_foto = $data_karyawan['Foto_Profil'] ?? 'default.jpg';
@@ -259,31 +257,21 @@ if (isset($_POST['edit_karyawan'])) {
                         @unlink('../../assets/img/karyawan/' . $old_foto);
                     }
 
-                    // --- PERBAIKAN DI SINI (CEK GD EXTENSION) ---
-                    if (extension_loaded('gd')) {
-                        list($width, $height) = $img_info; 
-                        $new_width = 300; 
-                        $new_height = 300;
+                    // PERBAIKAN: Ditambahkan pengaman pengecekan tersedianya ekstensi GD di XAMPP agar tidak crash
+                    if (extension_loaded('gd') && function_exists('imagecreatetruecolor')) {
+                        list($width, $height) = $img_info; $new_width = 300; $new_height = 300;
                         $thumb = imagecreatetruecolor($new_width, $new_height);
-                        
-                        if ($mime_type == 'image/png') { 
-                            $source = imagecreatefrompng($file_tmp); 
-                            imagealphablending($thumb, false); 
-                            imagesavealpha($thumb, true); 
-                        } else {
-                            $source = imagecreatefromjpeg($file_tmp);
-                        }
-                        
+                        if ($mime_type == 'image/png') { $source = imagecreatefrompng($file_tmp); imagealphablending($thumb, false); imagesavealpha($thumb, true); }
+                        else $source = imagecreatefromjpeg($file_tmp);
                         imagecopyresampled($thumb, $source, 0, 0, 0, 0, $new_width, $new_height, $width, $height);
-                        
-                        if ($mime_type == 'image/png') imagepng($thumb, $upload_path, 8); 
-                        else imagejpeg($thumb, $upload_path, 85);
-                        
-                        imagedestroy($thumb); 
-                        imagedestroy($source);
+                        if ($mime_type == 'image/png') imagepng($thumb, $upload_path, 8); else imagejpeg($thumb, $upload_path, 85);
+                        imagedestroy($thumb); imagedestroy($source);
                     } else {
-                        // Jika GD mati, langsung pindahkan file tanpa resize agar tidak Error
-                        move_uploaded_file($file_tmp, $upload_path);
+                        // Fallback aman: Jika GD library mati di XAMPP, gunakan upload file standar tanpa resize
+                        if (!move_uploaded_file($file_tmp, $upload_path)) {
+                            $errors[] = "Gagal mengupload foto!";
+                            $foto_profil = $data_karyawan['Foto_Profil'] ?? 'default.jpg';
+                        }
                     }
                 }
             }
@@ -1011,6 +999,20 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
                 padding: 40px;
             }
         }
+
+        .form-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23d83f67' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    background-size: 16px 12px;
+    cursor: pointer;
+}
+
+.form-select:focus {
+    border-color: var(--p-pink);
+    box-shadow: 0 12px 25px rgba(216, 63, 103, 0.15);
+}
     </style>
 </head>
 <body>
@@ -1102,7 +1104,7 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
 
                     <div class="preview-info">
                         <div class="preview-info-item"><span class="preview-info-label">NIK</span><span class="preview-info-value" id="previewNIK"><?= htmlspecialchars($current_nik) ?></span></div>
-                        <div class="preview-info-item"><span class="preview-info-label">Umur</span><span class="preview-info-value" id="previewUmur"><?= hitungUmur($current_dob) ?> tahun</span></div>
+                        <div class="preview-info-item"><span class="preview-info-label">Umur</span><span class="preview-info-value" id="previewUmur"><?= hitungUmur($current_dob) ?></span></div>
                         <div class="preview-info-item"><span class="preview-info-label">Jenis Kelamin</span><span class="preview-info-value" id="previewJK"><?= htmlspecialchars($current_jk) ?></span></div>
                         <div class="preview-info-item"><span class="preview-info-label">Telepon</span><span class="preview-info-value" id="previewHP"><?= htmlspecialchars($data_karyawan['No_Hp'] ?? '-') ?></span></div>
                         <div class="preview-info-item"><span class="preview-info-label">Email</span><span class="preview-info-value" id="previewEmail"><?= htmlspecialchars($current_email) ?></span></div>
@@ -1174,14 +1176,15 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
                                 <label class="form-label">Alamat Email<span class="required-star">*</span></label>
                                 <input type="email" name="email" id="inputEmail" class="form-control <?= hasError('email', $error_fields) ? 'has-error' : '' ?>" placeholder="nama@email.com" value="<?= $current_email ?>" required>
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Peran Kerja (Role)<span class="required-star">*</span></label>
-                                <select name="role_karyawan" id="inputRole" class="form-select <?= hasError('role_karyawan', $error_fields) ? 'has-error' : '' ?>" required>
-                                    <option value="Admin" <?= $current_role == 'Admin' ? 'selected' : '' ?>>Admin</option>
-                                    <option value="Fotografer" <?= $current_role == 'Fotografer' ? 'selected' : '' ?>>Fotografer</option>
-                                    <option value="Owner" <?= $current_role == 'Owner' ? 'selected' : '' ?>>Owner</option>
-                                </select>
-                            </div>
+                           <div class="col-md-4">
+    <label class="form-label">Peran Kerja (Role)<span class="required-star">*</span></label>
+    <select name="role_karyawan" id="inputRole" class="form-select <?= hasError('role_karyawan', $error_fields) ? 'has-error' : '' ?>" required>
+        <!-- Opsi dropdown otomatis memilih role saat ini dari database -->
+        <option value="Admin" <?= $current_role == 'Admin' ? 'selected' : '' ?>>Admin</option>
+        <option value="Fotografer" <?= $current_role == 'Fotografer' ? 'selected' : '' ?>>Fotografer</option>
+        <option value="Owner" <?= $current_role == 'Owner' ? 'selected' : '' ?>>Owner</option>
+    </select>
+</div>
                             <div class="col-md-6">
                                 <label class="form-label">Kata Sandi Baru <span style="color: var(--text-muted); font-weight: 600; text-transform: none; letter-spacing: 0;">(Kosongkan jika tidak diganti)</span></label>
                                 <div class="password-wrapper">
@@ -1272,7 +1275,10 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
                 </div>
                 <div class="col-6 border-top pt-2">
                   <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Tanggal Lahir</small>
-                  <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= $d_profile['tanggal_lahir'] ? $d_profile['tanggal_lahir']->format('d M Y') : '-' ?></span>
+                  <!-- PERBAIKAN: Ditambahkan defensive check instanceof DateTime agar tidak memicu Fatal Error PHP -->
+                  <span class="fw-bold text-dark" style="font-size: 0.85rem;">
+                    <?= ($d_profile['tanggal_lahir'] instanceof DateTime) ? $d_profile['tanggal_lahir']->format('d M Y') : ($d_profile['tanggal_lahir'] ?? '-') ?>
+                  </span>
                 </div>
                 <div class="col-12 border-top pt-2">
                   <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Nomor Telepon</small>
@@ -1498,6 +1504,46 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
             document.getElementById('previewStatus').textContent = status == '1' ? 'Aktif' : 'Nonaktif';
         }
 
+        // Daftarkan listener untuk dropdown Role
+const inputRole = document.getElementById('inputRole');
+if (inputRole) {
+    inputRole.addEventListener('change', updatePreview);
+}
+
+function updatePreview() {
+    // Update Nama
+    document.getElementById('previewNama').textContent = document.getElementById('inputNama').value || 'Nama Karyawan';
+    
+    // Update Role & Warna Badge di kartu kiri
+    const roleValue = document.getElementById('inputRole').value;
+    const roleEl = document.getElementById('previewRole');
+    
+    if (roleValue) { 
+        roleEl.textContent = roleValue;
+        
+        // Logika warna badge otomatis (Sama seperti dashboard)
+        const colors = {
+            'Admin': { bg: '#eff6ff', text: '#2563eb' },
+            'Fotografer': { bg: 'var(--s-pink)', text: 'var(--p-pink)' },
+            'Owner': { bg: '#f5f3ff', text: '#8b5cf6' }
+        };
+        
+        roleEl.style.background = colors[roleValue].bg;
+        roleEl.style.color = colors[roleValue].text;
+    }
+
+    // Update info lainnya
+    document.getElementById('previewNIK').textContent = document.getElementById('inputNIK').value || '-';
+    const jk = document.querySelector('input[name="jenis_kelamin"]:checked');
+    document.getElementById('previewJK').textContent = jk ? jk.value : '-';
+    const hp = document.getElementById('inputHP').value;
+    document.getElementById('previewHP').textContent = hp ? '+62' + hp : '-';
+    document.getElementById('previewEmail').textContent = document.getElementById('inputEmail').value || '-';
+    
+    const status = document.getElementById('inputStatus').value;
+    document.getElementById('previewStatus').textContent = status == '1' ? 'Aktif' : 'Nonaktif';
+}
+
         // KALKULASI & PREVIEW UMUR REAL-TIME
         function updateUmur() {
             const dob = document.getElementById('inputDOB').value;
@@ -1515,8 +1561,11 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
 
         // PASANG EVENT LISTENERS UNTUK REAL-TIME INPUTS
         ['inputNama', 'inputNIK', 'inputRole', 'inputHP', 'inputEmail', 'inputStatus'].forEach(id => {
-            document.getElementById(id).addEventListener('input', updatePreview);
-            document.getElementById(id).addEventListener('change', updatePreview);
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input', updatePreview);
+                el.addEventListener('change', updatePreview);
+            }
         });
         document.querySelectorAll('input[name="jenis_kelamin"]').forEach(radio => {
             radio.addEventListener('change', updatePreview);
