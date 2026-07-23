@@ -236,30 +236,20 @@ if (isset($_POST['edit_karyawan'])) {
             if ($owner_count > 0) { $errors[] = "Sudah ada Owner dalam sistem! Hanya boleh 1 Owner."; $error_fields['role_karyawan'] = true; }
         }
 
-       $foto_profil = $data_karyawan['Foto_Profil'] ?? 'default.jpg';
+        $foto_profil = $data_karyawan['Foto_Profil'] ?? 'default.jpg';
         if (empty($errors) && isset($_FILES['foto_profil']) && $_FILES['foto_profil']['error'] === UPLOAD_ERR_OK) {
-            $file_tmp = $_FILES['foto_profil']['tmp_name']; 
-            $file_size = $_FILES['foto_profil']['size']; 
-            $file_name = $_FILES['foto_profil']['name'];
-            
-            $finfo = finfo_open(FILEINFO_MIME_TYPE); 
-            $mime_type = finfo_file($finfo, $file_tmp); 
-            finfo_close($finfo);
-            
+            $file_tmp = $_FILES['foto_profil']['tmp_name']; $file_size = $_FILES['foto_profil']['size']; $file_name = $_FILES['foto_profil']['name'];
+            $finfo = finfo_open(FILEINFO_MIME_TYPE); $mime_type = finfo_file($finfo, $file_tmp); finfo_close($finfo);
             $allowed = array('image/jpeg','image/png','image/jpg');
-            if (!in_array($mime_type, $allowed)) { 
-                $errors[] = "Format foto harus JPG, JPEG, atau PNG!"; 
-            } elseif ($file_size > 2 * 1024 * 1024) { 
-                $errors[] = "Ukuran foto maksimal 2MB!"; 
-            } else {
+            if (!in_array($mime_type, $allowed)) { $errors[] = "Format foto harus JPG, JPEG, atau PNG!"; }
+            elseif ($file_size > 2 * 1024 * 1024) { $errors[] = "Ukuran foto maksimal 2MB!"; }
+            else {
                 $img_info = getimagesize($file_tmp);
-                if (!$img_info) { 
-                    $errors[] = "File bukan gambar yang valid!"; 
-                } else {
+                if (!$img_info) { $errors[] = "File bukan gambar yang valid!"; }
+                else {
                     $ext = pathinfo($file_name, PATHINFO_EXTENSION);
                     $foto_profil = 'karyawan_' . time() . '_' . rand(1000,9999) . '.' . $ext;
                     $upload_path = '../../assets/img/karyawan/' . $foto_profil;
-                    
                     if (!file_exists('../../assets/img/karyawan/')) mkdir('../../assets/img/karyawan/', 0777, true);
 
                     $old_foto = $data_karyawan['Foto_Profil'] ?? 'default.jpg';
@@ -267,33 +257,6 @@ if (isset($_POST['edit_karyawan'])) {
                         @unlink('../../assets/img/karyawan/' . $old_foto);
                     }
 
-<<<<<<< HEAD
-                    // --- PERBAIKAN DI SINI (CEK GD EXTENSION) ---
-                    if (extension_loaded('gd')) {
-                        list($width, $height) = $img_info; 
-                        $new_width = 300; 
-                        $new_height = 300;
-                        $thumb = imagecreatetruecolor($new_width, $new_height);
-                        
-                        if ($mime_type == 'image/png') { 
-                            $source = imagecreatefrompng($file_tmp); 
-                            imagealphablending($thumb, false); 
-                            imagesavealpha($thumb, true); 
-                        } else {
-                            $source = imagecreatefromjpeg($file_tmp);
-                        }
-                        
-                        imagecopyresampled($thumb, $source, 0, 0, 0, 0, $new_width, $new_height, $width, $height);
-                        
-                        if ($mime_type == 'image/png') imagepng($thumb, $upload_path, 8); 
-                        else imagejpeg($thumb, $upload_path, 85);
-                        
-                        imagedestroy($thumb); 
-                        imagedestroy($source);
-                    } else {
-                        // Jika GD mati, langsung pindahkan file tanpa resize agar tidak Error
-                        move_uploaded_file($file_tmp, $upload_path);
-=======
                     // PERBAIKAN: Ditambahkan pengaman pengecekan tersedianya ekstensi GD di XAMPP agar tidak crash
                     if (extension_loaded('gd') && function_exists('imagecreatetruecolor')) {
                         list($width, $height) = $img_info; $new_width = 300; $new_height = 300;
@@ -309,7 +272,6 @@ if (isset($_POST['edit_karyawan'])) {
                             $errors[] = "Gagal mengupload foto!";
                             $foto_profil = $data_karyawan['Foto_Profil'] ?? 'default.jpg';
                         }
->>>>>>> 56011b38cf3c711765aa03cc32fc259cd8ce406f
                     }
                 }
             }
@@ -766,7 +728,7 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
         }
         .form-control:focus, .form-select:focus { 
             border-color: var(--p-pink); 
-            background: #ffffff; 
+            background-color: #ffffff; 
             transform: translateY(-3px) scale(1.01); 
             box-shadow: 0 12px 25px rgba(216, 63, 103, 0.15); 
             outline: none; 
@@ -774,6 +736,22 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
         .form-control.has-error, .form-select.has-error { 
             border-color: #ef4444 !important; 
             background-color: #fffbfa !important; 
+        }
+
+        /* ICON PANAH DROPDOWN UNTUK SEMUA <select class="form-select"> */
+        .form-select {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%238a99a8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 18px center;
+            background-size: 12px 8px;
+            padding-right: 44px;
+            cursor: pointer;
+        }
+        .form-select:focus {
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%23d83f67' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
         }
 
         /* PASSWORD WRAPPER */

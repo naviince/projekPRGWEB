@@ -519,7 +519,7 @@ if ($query_list && sqlsrv_has_rows($query_list)):
                     <input type="hidden" name="tab" value="<?= htmlspecialchars($tab) ?>">
                     <!-- PERBAIKAN: Form modal filter kini mempertahankan kata kunci pencarian utama -->
                     <input type="hidden" name="cari" value="<?= htmlspecialchars($cari) ?>">
-                    <div class="mb-3">
+                    <div class="mb-2">
                         <label class="form-label">Urutkan Berdasarkan</label>
                         <select name="sort" class="form-select">
                             <option value="nama_asc" <?= ($sort == 'nama_asc') ? 'selected' : '' ?>>Nama A-Z</option>
@@ -554,7 +554,7 @@ if ($query_list && sqlsrv_has_rows($query_list)):
 </div>
 
 <!-- MODAL LIHAT BIODATA OWNER -->
-<div class="modal fade" id="modalLihatBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
+<div class="modal fade" id="modalBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); background: #ffffff;">
       <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
