@@ -58,7 +58,6 @@ $data_karyawan = safe_sqlsrv_fetch($stmt_fetch);
 
 if (!$data_karyawan) { header("Location: index.php"); exit(); }
 
-// Convert object tanggal lahir ke format string HTML
 if (is_object($data_karyawan['Tanggal_Lahir'])) {
     $data_karyawan['Tanggal_Lahir'] = $data_karyawan['Tanggal_Lahir']->format('Y-m-d');
 }
@@ -80,6 +79,7 @@ function cekDuplikatEdit($conn, $field, $value, $exclude_id) { return safe_sqlsr
 function sanitizeInput($input) { return htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8'); }
 function generateCsrfToken() { if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(32)); } return $_SESSION['csrf_token']; }
 function verifyCsrfToken($token) { return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token); }
+function hasError($field, $error_fields) { return isset($error_fields[$field]) && $error_fields[$field]; }
 
 // =====================================================
 // PROSES PENYIMPANAN PERUBAHAN
@@ -97,7 +97,6 @@ if (isset($_POST['edit_karyawan'])) {
         $status = (int)($_POST['status_karyawan'] ?? 1); $hp_raw = trim($_POST['no_hp'] ?? ''); $hp = '+62' . $hp_raw; $alamat = sanitizeInput($_POST['alamat'] ?? '');
         $umur = !empty($dob) && validateTanggal($dob) ? hitungUmur($dob) : 0;
 
-        // Proteksi agar owner tidak mendeaktivasi atau menurunkan peran owner sendiri
         if ($id_edit === $id_owner) {
             if ($role !== 'Owner') { $errors['role_karyawan'] = "Anda tidak dapat menurunkan peran (role) Owner Anda sendiri!"; $error_fields['role_karyawan'] = true; }
             if ($status !== 1) { $errors['status_karyawan'] = "Anda tidak dapat menonaktifkan akun Owner Anda sendiri!"; $error_fields['status_karyawan'] = true; }
@@ -117,7 +116,7 @@ if (isset($_POST['edit_karyawan'])) {
 
         if (!empty($pass)) {
             if (!validatePassword($pass)) { $errors['password'] = "Sandi baru harus minimal 8 karakter dengan kombinasi huruf, angka, dan simbol!"; $error_fields['password'] = true; }
-            elseif ($pass !== $pass_confirm) { $errors['password_confirm'] = "Konfirmasi sandi baru tidak sesuai!"; $error_fields['password_confirm'] = true; }
+            elseif ($pass !== $pass_confirm) { $errors['password_confirm'] = "Konfirmasi sandi baru tidak sesuai dengan sandi baru utama!"; $error_fields['password_confirm'] = true; }
         }
 
         if (empty($hp_raw)) { $errors['no_hp'] = "Nomor telepon wajib diisi!"; $error_fields['no_hp'] = true; }
@@ -642,7 +641,7 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
             background-color: #fffbfa !important; 
         }
 
-        /* ICON PANAH DROPDOWN UNTUK SEMUA <select class="form-select"> */
+        /* Penyesuaian Gaya Indikator Dropdown Arrow Kustom (Garis Merah Muda Khas SpotLight) */
         .form-select {
             appearance: none !important;
             -webkit-appearance: none !important;
@@ -650,7 +649,6 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
             background: #f8fafc url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23d83f67'%3E%3Cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E") no-repeat right 18px center !important;
             background-size: 14px !important;
             padding-right: 45px !important;
-            cursor: pointer;
         }
 
         /* Penyesuaian Placeholder: Font normal (tidak bold) dan berwarna abu-abu redup saat kosong */

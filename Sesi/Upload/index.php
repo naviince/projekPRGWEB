@@ -2,6 +2,8 @@
 session_start();
 include '../../koneksi.php';
 
+$default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
+
 if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['role'] != 'Fotografer') {
     header("Location: ../../login.php");
     exit();
@@ -351,38 +353,66 @@ function formatWaktu($time) {
                 </div>
             </div>
 
-            <?php
-            $has_data = false;
-            if ($q_list && sqlsrv_has_rows($q_list)):
-                $has_data = true;
-                while ($row = sqlsrv_fetch_array($q_list, SQLSRV_FETCH_ASSOC)):
-            ?>
-                <div class="sesi-item">
-                    <div class="sesi-icon" style="background: linear-gradient(135deg, #fffbeb, #fef3c7); color: #d97706;"><i class="bi bi-camera-fill"></i></div>
-                    <div class="flex-grow-1" style="min-width: 0;">
-                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-                            <div style="min-width: 0;">
-                                <div class="sesi-title text-truncate"><?= htmlspecialchars($row['Nama_Pelanggan']) ?></div>
-                                <div class="sesi-info"><?= htmlspecialchars($row['Nama_Paket']) ?> • <?= htmlspecialchars($row['Nama_Ruangan']) ?></div>
-                                <div class="sesi-time mt-1"><i class="bi bi-calendar-event me-1"></i><?= formatTanggal($row['Tanggal_Jadwal']) ?> • <?= formatWaktu($row['Jam_Mulai']) ?> - <?= formatWaktu($row['Jam_Selesai']) ?></div>
-                            </div>
-                            <span class="badge-status badge-belum">Belum Upload</span>
-                        </div>
-                    </div>
-                    <a href="../../Role/Fotografer/upload_hasil.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action"><i class="bi bi-cloud-upload"></i> Upload</a>
-                </div>
-            <?php endwhile; endif; ?>
+ <?php
+$has_data = false;
+if ($q_list && sqlsrv_has_rows($q_list)):
+    $has_data = true;
+    while ($row = sqlsrv_fetch_array($q_list, SQLSRV_FETCH_ASSOC)):
+        
+        // --- TRIK: AMBIL FOTO MANUAL TANPA UBAH SP ---
+        $id_sesi = $row['ID_Sesi_Foto'];
+        $foto_db = 'default.jpg'; // default jika tidak ditemukan
 
-            <?php if (!$has_data): ?>
-                <div class="text-center py-5">
-                    <div style="width: 72px; height: 72px; background: linear-gradient(135deg, #ecfdf5, #d1fae5); border-radius: 18px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
-                        <i class="bi bi-check-circle fs-1" style="color: #059669;"></i>
+        $sql_cari_foto = "SELECT p.Foto_Profil 
+                          FROM Pelanggan p
+                          JOIN [Order] o ON p.ID_Pelanggan = o.ID_Pelanggan
+                          JOIN Sesi_Foto s ON o.ID_Order = s.ID_Order
+                          WHERE s.ID_Sesi_Foto = ?";
+        
+        $stmt_foto = sqlsrv_query($conn, $sql_cari_foto, array($id_sesi));
+        if ($stmt_foto && $res_foto = sqlsrv_fetch_array($stmt_foto, SQLSRV_FETCH_ASSOC)) {
+            if (!empty($res_foto['Foto_Profil'])) {
+                $foto_db = $res_foto['Foto_Profil'];
+            }
+        }
+
+        // Tentukan path gambar
+        $path_foto = "../../assets/img/pelanggan/" . $foto_db;
+        
+        // Cek fisik file di folder
+        if ($foto_db != 'default.jpg' && file_exists($path_foto)) {
+            $foto_final = $path_foto;
+        } else {
+            $foto_final = $default_svg_avatar;
+        }
+?>
+    <div class="sesi-item shadow-sm">
+        <!-- Foto Profil Customer -->
+        <div class="sesi-icon" style="overflow: hidden; border: 2.5px solid var(--light-pink); background: #fff; width: 55px; height: 55px; border-radius: 14px; flex-shrink: 0;">
+            <img src="<?= $foto_final ?>" alt="Cust" style="width: 100%; height: 100%; object-fit: cover;">
+        </div>
+        
+        <div class="flex-grow-1 ms-3" style="min-width: 0;">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div style="min-width: 0; text-align: left;">
+                    <div class="sesi-title text-truncate" style="font-weight: 800; font-size: 1.05rem; color: #1e1e24; margin-bottom: 2px;"><?= htmlspecialchars($row['Nama_Pelanggan']) ?></div>
+                    <div class="sesi-info" style="font-size: 0.85rem; color: #718096;"><?= htmlspecialchars($row['Nama_Paket']) ?> • <?= htmlspecialchars($row['Nama_Ruangan']) ?></div>
+                    <div class="sesi-time mt-1" style="color: var(--p-pink); font-weight: 700; font-size: 0.85rem;">
+                        <i class="bi bi-calendar-event me-1"></i>
+                        <?= formatTanggal($row['Tanggal_Jadwal']) ?> • <?= formatWaktu($row['Jam_Mulai']) ?> - <?= formatWaktu($row['Jam_Selesai']) ?>
                     </div>
-                    <h6 class="fw-bold text-muted">Semua Sesi Sudah Diupload!</h6>
-                    <p class="text-muted" style="font-size: 0.8rem;">Tidak ada sesi foto yang menunggu upload. Semua hasil foto sudah tersimpan.</p>
-                    <a href="../../Sesi/RiwayatUpload/index.php" class="btn-action mt-2"><i class="bi bi-clock-history"></i> Lihat Riwayat Upload</a>
                 </div>
-            <?php endif; ?>
+                
+                <div class="d-flex flex-column align-items-end gap-2">
+                    <span class="badge-status badge-belum" style="font-size: 0.7rem; padding: 4px 10px;">Belum Upload</span>
+                    <a href="../../Role/Fotografer/upload_hasil.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action shadow-sm" style="padding: 8px 16px;">
+                        <i class="bi bi-cloud-upload me-1"></i> Upload
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+<?php endwhile; endif; ?>
         </div>
     </div>
 

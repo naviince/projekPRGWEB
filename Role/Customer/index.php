@@ -1905,6 +1905,98 @@ function fmtTgl($d) {
             }
         }
 
+        /* Styling Khusus Barang Cetak Modern */
+.barang-cetak-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 5px;
+}
+
+.barang-card-mini {
+    background: #ffffff;
+    border: 1px solid #f1f5f9;
+    border-radius: 16px;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    color: inherit;
+    position: relative;
+    overflow: hidden;
+}
+
+.barang-card-mini:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 20px rgba(216, 63, 103, 0.1);
+    border-color: var(--light-pink);
+}
+
+.barang-img-box {
+    width: 65px;
+    height: 65px;
+    border-radius: 12px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: #f8fafc;
+    border: 1px solid #f1f5f9;
+}
+
+.barang-img-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.barang-info-box {
+    flex: 1;
+    min-width: 0;
+}
+
+.barang-name-text {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    margin-bottom: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.barang-price-text {
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: var(--p-pink);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.barang-badge-top {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background: var(--s-pink);
+    color: var(--p-pink);
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 0 0 0 12px;
+    text-transform: uppercase;
+}
+
+/* Scrollbar halus untuk container */
+.barang-cetak-scroll-container {
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--light-pink) transparent;
+}
+
     </style>
 </head>
 <body>
@@ -2222,41 +2314,67 @@ function fmtTgl($d) {
             </div>
 
             <!-- Barang Cetak -->
-            <div class="info-card">
-                <div class="info-card-title">
-                    <i class="bi bi-bag-heart-fill"></i>
-                    Barang Cetak Populer
-                </div>
-                <div class="barang-cetak-scroll-container">
-                    <?php
-                    $ada_barang = false;
-                    if ($q_barang):
-                        while ($row = sqlsrv_fetch_array($q_barang, SQLSRV_FETCH_ASSOC)):
-                            $ada_barang = true;
-                            $harga_barang = number_format($row['Harga_Barang'], 0, ',', '.');
-                    ?>
-                        <div class="info-item">
-                            <div class="info-item-left">
-                                <div class="info-icon" style="background: #dbeafe; color: #2563eb;"><i class="bi bi-printer-fill"></i></div>
-                                <div>
-                                    <div class="info-text"><?= htmlspecialchars($row['Nama_Barang']) ?></div>
-                                    <div class="info-sub">Rp<?= $harga_barang ?></div>
-                                </div>
-                            </div>
-                        </div>
-                    <?php 
-                        endwhile; 
-                    endif;
-                    if (!$ada_barang):
-                    ?>
-                        <div class="text-center py-4">
-                            <i class="bi bi-inbox fs-2 mb-2" style="color: #cbd5e1; display: block;"></i>
-                            <p class="text-muted small">Belum ada barang cetak tersedia.</p>
-                        </div>
+            <!-- Barang Cetak -->
+<!-- Barang Cetak Modern Design -->
+<div class="info-card shadow-sm border-0">
+    <div class="info-card-title d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-stars text-warning me-2"></i>Produk Cetak Populer</span>
+        <span class="badge rounded-pill bg-light text-dark fw-bold" style="font-size: 0.7rem;">TERLARIS</span>
+    </div>
+    
+    <div class="barang-cetak-scroll-container">
+        <div class="barang-cetak-wrapper">
+            <?php
+            $ada_barang = false;
+            // Gunakan query yang sudah ada di atas
+            if ($q_barang):
+                $rank = 1;
+                while ($row = sqlsrv_fetch_array($q_barang, SQLSRV_FETCH_ASSOC)):
+                    $ada_barang = true;
+                    $harga_barang = number_format($row['Harga_Barang'], 0, ',', '.');
+                    
+                    // Path Gambar: Pastikan folder 'uploads/barang' benar letaknya
+                    $path_foto = "../../uploads/barang/" . ($row['Foto_Barang'] ?? '');
+                    $img_src = (!empty($row['Foto_Barang']) && file_exists($path_foto)) 
+                               ? $path_foto 
+                               : "../../assets/img/default_barang.jpg"; // Ganti ke path default image Anda
+            ?>
+                <div class="barang-card-mini">
+                    <?php if($rank <= 3): ?>
+                        <div class="barang-badge-top">#<?= $rank ?> Top</div>
                     <?php endif; ?>
+                    
+                    <div class="barang-img-box">
+                        <img src="<?= $img_src ?>" alt="<?= htmlspecialchars($row['Nama_Barang']) ?>" onerror="this.src='https://placehold.co/100x100?text=Produk'">
+                    </div>
+                    
+                    <div class="barang-info-box">
+                        <div class="barang-name-text"><?= htmlspecialchars($row['Nama_Barang']) ?></div>
+                        <div class="barang-price-text">
+                            <i class="bi bi-tag-fill small"></i>
+                            Rp<?= $harga_barang ?>
+                        </div>
+                    </div>
+                    
+                    <div class="text-end">
+                        <i class="bi bi-chevron-right text-muted small"></i>
+                    </div>
                 </div>
-            </div>
+            <?php 
+                $rank++;
+                endwhile; 
+            endif;
+
+            if (!$ada_barang):
+            ?>
+                <div class="text-center py-5">
+                    <img src="https://illustrations.popsy.co/pink/box.svg" alt="Empty" style="width: 80px; opacity: 0.5;">
+                    <p class="text-muted small mt-2">Belum ada produk tersedia</p>
+                </div>
+            <?php endif; ?>
         </div>
+    </div>
+</div>
 
     </main>
 
