@@ -262,7 +262,8 @@ if (isset($_POST['simpan'])) {
                 }
             }
 
-            if ($error == "") {
+         if ($error == "") {
+                // Ambil data order aktif untuk validasi relasi
                 $cek_order_aktif = safe_sqlsrv_fetch($conn,
                     "SELECT COUNT(*) AS total FROM [Order] 
                      WHERE ID_Tema = ? AND Status = 1 AND Status_Order <> 4",
@@ -273,6 +274,7 @@ if (isset($_POST['simpan'])) {
                 sqlsrv_begin_transaction($conn);
 
                 try {
+                    // 1. Update data utama Tema
                     $sql_update = "EXEC sp_UpdateTemaFoto ?, ?, ?, ?, ?, ?, ?";
                     $params_update = [
                         $id_tema,
@@ -283,48 +285,48 @@ if (isset($_POST['simpan'])) {
                         $status,
                         $nama_admin
                     ];
-                    $stmt_update   = sqlsrv_query($conn, $sql_update, $params_update);
-                    if ($stmt_update === false) {
-                        throw new Exception("Gagal memperbarui data tema foto.");
-                    }
+                    $stmt_update = sqlsrv_query($conn, $sql_update, $params_update);
+                    if ($stmt_update === false) throw new Exception("Gagal memperbarui data tema.");
                     sqlsrv_free_stmt($stmt_update);
 
+                    // 2. Validasi & Update Relasi Ruangan (Smart Update)
+                    // Pastikan input POST menjadi integer agar sinkron dengan tipe data DB
+                    $ruangan_terpilih = array_map('intval', $ruangan_terpilih);
+
                     if ($ada_order_aktif) {
-                        $ruangan_order_aktif_raw = safe_sqlsrv_fetch_all($conn,
+                        $q_aktif = safe_sqlsrv_fetch_all($conn,
                             "SELECT DISTINCT ID_Ruangan FROM [Order] 
                              WHERE ID_Tema = ? AND Status = 1 AND Status_Order <> 4",
                             [$id_tema]
                         );
-                        $ruangan_order_aktif = array_column($ruangan_order_aktif_raw, 'ID_Ruangan');
+                        $ruangan_wajib_ada = array_column($q_aktif, 'ID_Ruangan');
 
-                        foreach ($ruangan_order_aktif as $r_aktif) {
-                            if (!in_array($r_aktif, $ruangan_terpilih)) {
-                                throw new Exception("Ruangan yang digunakan oleh order aktif tidak boleh dihapus dari tema ini.");
+                        foreach ($ruangan_wajib_ada as $r_wajib) {
+                            if (!in_array((int)$r_wajib, $ruangan_terpilih)) {
+                                throw new Exception("Ruangan yang sedang digunakan order aktif tidak boleh dihapus!");
                             }
                         }
                     }
 
-                    $stmt_del = sqlsrv_query($conn, "DELETE FROM Ruangan_Tema WHERE ID_Tema = ?", [$id_tema]);
-                    if ($stmt_del === false) throw new Exception("Gagal memperbarui relasi ruangan.");
-                    sqlsrv_free_stmt($stmt_del);
+                    // Hapus relasi yang TIDAK terpilih (Hanya yang tidak terpakai)
+                    // Ini lebih aman daripada DELETE ALL untuk menjaga integritas data
+                    $sql_del_relasi = "DELETE FROM Ruangan_Tema WHERE ID_Tema = ? AND ID_Ruangan NOT IN (" . implode(',', array_merge([0], $ruangan_terpilih)) . ")";
+                    $stmt_del = sqlsrv_query($conn, $sql_del_relasi, [$id_tema]);
+                    if ($stmt_del === false) throw new Exception("Gagal membersihkan relasi ruangan lama.");
 
-                    // --- PERBAIKAN BUG UTAMA ---
-                    // Mengubah 'EXEC sp_InsertRuanganTema' menjadi direct SQL INSERT karena prosedur tersebut tidak ada di DB
+                    // Tambahkan relasi baru yang belum ada
                     foreach ($ruangan_terpilih as $id_ruangan) {
-                        $id_ruangan    = (int)$id_ruangan;
-                        $stmt_junction = sqlsrv_query($conn,
-                            "INSERT INTO Ruangan_Tema (ID_Ruangan, ID_Tema) VALUES (?, ?)",
-                            [$id_ruangan, $id_tema]
-                        );
-                        if ($stmt_junction === false) {
-                            throw new Exception("Gagal menghubungkan ke ruangan ID {$id_ruangan}.");
+                        $cek_ada = safe_sqlsrv_fetch($conn, "SELECT COUNT(*) as total FROM Ruangan_Tema WHERE ID_Tema = ? AND ID_Ruangan = ?", [$id_tema, $id_ruangan]);
+                        if (($cek_ada['total'] ?? 0) == 0) {
+                            $stmt_ins = sqlsrv_query($conn, "INSERT INTO Ruangan_Tema (ID_Ruangan, ID_Tema) VALUES (?, ?)", [$id_ruangan, $id_tema]);
+                            if ($stmt_ins === false) throw new Exception("Gagal menambah relasi ruangan baru.");
                         }
-                        sqlsrv_free_stmt($stmt_junction);
                     }
 
-                    if (!empty($upload_path) && !empty($foto_lama) && $foto_lama !== 'default_tema.jpg') {
+                    // 3. Proses hapus foto lama jika berhasil ganti foto
+                    if ($new_filename !== $foto_lama && $foto_lama !== 'default_tema.jpg') {
                         $old_path = "../../assets/img/tema/" . $foto_lama;
-                        if (file_exists($old_path)) unlink($old_path);
+                        if (file_exists($old_path)) @unlink($old_path);
                     }
 
                     sqlsrv_commit($conn);
@@ -332,7 +334,10 @@ if (isset($_POST['simpan'])) {
 
                 } catch (Exception $e) {
                     sqlsrv_rollback($conn);
-                    if (!empty($upload_path) && file_exists($upload_path)) unlink($upload_path);
+                    // Hapus foto baru jika transaksi gagal
+                    if ($new_filename !== $foto_lama && !empty($upload_path) && file_exists($upload_path)) {
+                        @unlink($upload_path);
+                    }
                     $error = $e->getMessage();
                 }
             }
