@@ -207,9 +207,11 @@ SELECT
 
     r.ID_Ruangan,
     r.Nama_Ruangan,
+    r.Foto_Ruangan,
 
     t.ID_Tema,
     t.Nama_Tema,
+    t.Foto_Tema,
 
     k.ID_Karyawan as ID_Fotografer,
     k.Nama_Karyawan as Nama_Fotografer,
@@ -2938,12 +2940,22 @@ function bukaModalPembayaran(id_order, tipe, jumlah, total_harga) {
 
     // Update ruangan
     document.getElementById('modalRuanganNama').textContent = data.nama_ruangan || '-';
-    document.getElementById('modalRuanganImg').src = '../../../assets/img/ruangan/' + (data.foto_ruangan || 'default_ruangan.jpg');
+    const imgRuangan = document.getElementById('modalRuanganImg');
+    imgRuangan.src = '../../../assets/img/ruangan/' + (data.foto_ruangan || 'default_ruangan.jpg');
+    imgRuangan.onerror = function() {
+        this.onerror = null;
+        this.src = '../../../assets/img/ruangan/default_ruangan.jpg';
+    };
 
     // Update tema
     document.getElementById('modalTemaNama').textContent = data.nama_tema || '-';
-    document.getElementById('modalTemaImg').src = '../../../assets/img/tema/' + (data.foto_tema || 'default_tema.jpg');
-
+    const imgTema = document.getElementById('modalTemaImg');
+    imgTema.src = '../../../assets/img/tema/' + (data.foto_tema || 'default_tema.jpg');
+    imgTema.onerror = function() {
+        this.onerror = null;
+        this.src = '../../../assets/img/tema/default_tema.jpg';
+    };
+    
     // Update jadwal
     const jadwalContainer = document.getElementById('modalJadwalContainer');
     jadwalContainer.innerHTML = '';

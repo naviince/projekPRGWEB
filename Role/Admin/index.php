@@ -10,10 +10,27 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 $id_admin = $_SESSION['id_user'];
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
-// Filter tahun global untuk kebutuhan laporan (saat ini menggerakkan chart Tren Booking Bulanan)
+// --- FILTER TAHUN DINAMIS BERDASARKAN DATA RIIL DI DATABASE ---
 $tahun_sekarang = (int) date('Y');
-$tahun_filter = (isset($_GET['tahun']) && ctype_digit($_GET['tahun'])) ? (int) $_GET['tahun'] : $tahun_sekarang;
-$tahun_options = range($tahun_sekarang, $tahun_sekarang - 4);
+$tahun_options = [];
+
+// Mengambil tahun unik yang hanya memiliki data booking aktif di database
+$q_tahun_db = sqlsrv_query($conn, "SELECT DISTINCT YEAR(Tanggal_Booking) AS tahun FROM [Order] WHERE Status = 1 ORDER BY tahun DESC");
+if ($q_tahun_db) {
+    while ($row_th = sqlsrv_fetch_array($q_tahun_db, SQLSRV_FETCH_ASSOC)) {
+        if ($row_th['tahun'] !== null) {
+            $tahun_options[] = (int) $row_th['tahun'];
+        }
+    }
+}
+
+// Fallback keamanan: jika database masih benar-benar kosong, gunakan tahun sekarang sebagai pilihan tunggal
+if (empty($tahun_options)) {
+    $tahun_options[] = $tahun_sekarang;
+}
+
+// Menentukan tahun filter aktif: default otomatis ke tahun terbaru yang memiliki data transaksi
+$tahun_filter = (isset($_GET['tahun']) && ctype_digit($_GET['tahun'])) ? (int) $_GET['tahun'] : $tahun_options[0];
 
 $q_profile = sqlsrv_query($conn, "SELECT * FROM Karyawan WHERE ID_Karyawan = ?", array($id_admin));
 $d_profile = sqlsrv_fetch_array($q_profile, SQLSRV_FETCH_ASSOC);
