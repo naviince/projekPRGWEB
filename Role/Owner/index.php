@@ -13,6 +13,27 @@ $id_owner = $_SESSION['id_user'];
 // --- FILTER TAHUN DINAMIS BERDASARKAN DATA RIIL DI DATABASE ---
 $tahun_sekarang = (int) date('Y');
 $tahun_options = [];
+<<<<<<< Updated upstream
+=======
+
+// Mengambil tahun unik yang hanya memiliki data booking aktif di database
+$q_tahun_db = sqlsrv_query($conn, "SELECT DISTINCT YEAR(Tanggal_Booking) AS tahun FROM [Order] WHERE Status = 1 ORDER BY tahun DESC");
+if ($q_tahun_db) {
+    while ($row_th = sqlsrv_fetch_array($q_tahun_db, SQLSRV_FETCH_ASSOC)) {
+        if ($row_th['tahun'] !== null) {
+            $tahun_options[] = (int) $row_th['tahun'];
+        }
+    }
+}
+
+// Fallback keamanan: jika database masih benar-benar kosong, gunakan tahun sekarang sebagai pilihan tunggal
+if (empty($tahun_options)) {
+    $tahun_options[] = $tahun_sekarang;
+}
+
+// Menentukan tahun filter aktif: default otomatis ke tahun terbaru yang memiliki data transaksi
+$tahun_filter = (isset($_GET['tahun']) && ctype_digit($_GET['tahun'])) ? (int) $_GET['tahun'] : $tahun_options[0];
+>>>>>>> Stashed changes
 
 // Mengambil tahun unik yang hanya memiliki data booking aktif di database
 $q_tahun_db = sqlsrv_query($conn, "SELECT DISTINCT YEAR(Tanggal_Booking) AS tahun FROM [Order] WHERE Status = 1 ORDER BY tahun DESC");
