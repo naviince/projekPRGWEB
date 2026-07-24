@@ -632,6 +632,33 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
       text-shadow: 0px 4px 15px rgba(216, 63, 103, 0.35);
       color: var(--primary-pink);
     }
+
+    /* CSS UNTUK SLIDER TESTIMONI */
+.testi-slider-container {
+  display: flex;
+  overflow-x: auto;
+  gap: 25px;
+  padding: 20px 10px 40px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none; /* Hilangkan scrollbar Firefox */
+  -ms-overflow-style: none; /* Hilangkan scrollbar IE/Edge */
+  scroll-behavior: smooth;
+}
+
+.testi-slider-container::-webkit-scrollbar {
+  display: none; /* Hilangkan scrollbar Chrome/Safari */
+}
+
+.testi-item {
+  flex: 0 0 380px; /* Lebar setiap kartu testimoni */
+  scroll-snap-align: start;
+}
+
+@media (max-width: 768px) {
+  .testi-item {
+    flex: 0 0 85%; /* Lebih lebar di HP agar nyaman dibaca */
+  }
+}
   </style>
 </head>
 
@@ -866,13 +893,14 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
         <a href="#pricing" class="btn border px-4 py-2" style="border-radius: 12px; color: var(--primary-pink); border-color: var(--primary-pink) !important; font-weight: 700;">Lihat Semua Paket</a>
       </div>
 
-      <div class="package-section-wrapper" data-aos="fade-up">
-        <button class="slider-arrow prev" id="sliderPrev" aria-label="Previous Package">
-          <i class="bi bi-chevron-left"></i>
-        </button>
-        <button class="slider-arrow next" id="sliderNext" aria-label="Next Package">
-          <i class="bi bi-chevron-right"></i>
-        </button>
+    <div class="package-section-wrapper" data-aos="fade-up">
+    <!-- ID khusus Paket -->
+    <button class="slider-arrow prev" id="packagePrev" style="left: -25px; display: none;">
+        <i class="bi bi-chevron-left"></i>
+    </button>
+    <button class="slider-arrow next" id="packageNext" style="right: -25px;">
+        <i class="bi bi-chevron-right"></i>
+    </button>
 
         <div class="package-slider-container" id="packageSlider">
           <?php
@@ -986,60 +1014,69 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
     </section>
 
     <!-- TESTIMONI -->
-    <section id="testimonials" class="py-5" style="background: linear-gradient(180deg, #ffffff 0%, var(--light-pink) 100%);">
-      <div class="container py-4">
-        <div class="text-center mb-5" data-aos="fade-up">
-          <span class="badge px-3 py-2 mb-2 text-uppercase" style="background: #ffffff; color: var(--primary-pink); font-weight: 800; border-radius: 50px; box-shadow: 0 2px 10px rgba(216,63,103,0.1);">Testimoni</span>
-          <h2 class="fw-bold section-heading">Kata Mereka ♡</h2>
-          <p class="section-subtitle">Ulasan kepuasan dari pelanggan setia SpotLight Studio</p>
-        </div>
-        <div class="row g-4 justify-content-center" data-aos="fade-up">
-          <?php
-// UPDATE QUERY: Tambahkan P.Foto_Profil
-$sql_testi = "SELECT TOP 3 O.Rating, O.Review, P.Nama_Pelanggan, P.Jenis_Kelamin, P.Foto_Profil 
-              FROM [Order] O 
-              JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan 
-              WHERE O.Rating IS NOT NULL AND O.Review IS NOT NULL 
-              ORDER BY O.Tanggal_Booking DESC";
-$query_testi = sqlsrv_query($conn, $sql_testi);
-
-if ($query_testi):
-    while($testi = sqlsrv_fetch_array($query_testi, SQLSRV_FETCH_ASSOC)):
-        $rating = $testi['Rating'];
-        
-        // LOGIKA FOTO PROFIL
-        $foto_name = $testi['Foto_Profil'] ?? 'default.jpg';
-        $path_foto = "assets/img/pelanggan/" . $foto_name;
-        
-        // Cek apakah file ada di folder, jika tidak pakai SVG Pink
-        $final_foto = ($foto_name != 'default.jpg' && file_exists($path_foto)) 
-                      ? $path_foto 
-                      : $default_svg_avatar;
-?>
-<div class="col-lg-4 col-md-6">
-  <div class="testimonial-card">
-    <div>
-      <div class="testi-stars">
-        <?php for($i=1; $i<=$rating; $i++): ?><i class="bi bi-star-fill"></i><?php endfor; ?>
-      </div>
-      <p class="testi-text">"<?= htmlspecialchars($testi['Review']); ?>"</p>
+   <!-- TESTIMONI -->
+<!-- TESTIMONI -->
+<section id="testimonials" class="py-5" style="background: linear-gradient(180deg, #ffffff 0%, var(--light-pink) 100%); overflow: hidden;">
+  <div class="container py-4">
+    <div class="text-center mb-5" data-aos="fade-up">
+      <span class="badge px-3 py-2 mb-2 text-uppercase" style="background: #ffffff; color: var(--primary-pink); font-weight: 800; border-radius: 50px; box-shadow: 0 2px 10px rgba(216,63,103,0.1);">Testimoni</span>
+      <h2 class="fw-bold section-heading">Kata Mereka ♡</h2>
+      <p class="section-subtitle">Ulasan kepuasan dari pelanggan setia SpotLight Studio</p>
     </div>
-    <div class="d-flex align-items-center mt-4 pt-3 border-top">
-      <!-- SEKARANG MENGGUNAKAN FOTO ASLI -->
-      <div class="testi-avatar-wrapper me-3">
-        <img src="<?= $final_foto ?>" alt="<?= htmlspecialchars($testi['Nama_Pelanggan']); ?>">
-      </div>
-      <div>
-        <h6 class="fw-bold mb-0" style="font-size: 0.95rem;"><?= htmlspecialchars($testi['Nama_Pelanggan']); ?></h6>
-        <small class="text-muted" style="font-size: 0.8rem;">Pelanggan Terverifikasi</small>
+
+    <!-- WRAPPER UNTUK SLIDER & ARROW -->
+    <div class="testi-section-wrapper position-relative" data-aos="fade-up">
+    <!-- ID khusus Testimoni -->
+    <button class="slider-arrow prev" id="testiPrev" style="left: -25px; display: none;">
+        <i class="bi bi-chevron-left"></i>
+    </button>
+    <button class="slider-arrow next" id="testiNext" style="right: -25px;">
+        <i class="bi bi-chevron-right"></i>
+    </button>
+
+      <!-- CONTAINER SLIDER -->
+       <div class="testi-slider-container" id="testiSlider">
+        <?php
+        // Query testimoni Anda tetap sama ...
+        $sql_testi = "SELECT TOP 10 O.Rating, O.Review, P.Nama_Pelanggan, P.Jenis_Kelamin, P.Foto_Profil 
+                      FROM [Order] O 
+                      JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan 
+                      WHERE O.Rating IS NOT NULL AND O.Review IS NOT NULL 
+                      ORDER BY O.Tanggal_Booking DESC";
+        
+        $query_testi = sqlsrv_query($conn, $sql_testi);
+
+        if ($query_testi):
+            while($testi = sqlsrv_fetch_array($query_testi, SQLSRV_FETCH_ASSOC)):
+                $rating = $testi['Rating'];
+                $foto_name = $testi['Foto_Profil'] ?? 'default.jpg';
+                $path_foto = "assets/img/pelanggan/" . $foto_name;
+                $final_foto = ($foto_name != 'default.jpg' && file_exists($path_foto)) ? $path_foto : $default_svg_avatar;
+        ?>
+        <div class="testi-item">
+          <div class="testimonial-card">
+            <div>
+              <div class="testi-stars">
+                <?php for($i=1; $i<=$rating; $i++): ?><i class="bi bi-star-fill"></i><?php endfor; ?>
+              </div>
+              <p class="testi-text">"<?= htmlspecialchars($testi['Review']); ?>"</p>
+            </div>
+            <div class="d-flex align-items-center mt-4 pt-3 border-top">
+              <div class="testi-avatar-wrapper me-3">
+                <img src="<?= $final_foto ?>" alt="<?= htmlspecialchars($testi['Nama_Pelanggan']); ?>">
+              </div>
+              <div>
+                <h6 class="fw-bold mb-0" style="font-size: 0.95rem;"><?= htmlspecialchars($testi['Nama_Pelanggan']); ?></h6>
+                <small class="text-muted" style="font-size: 0.8rem;">Pelanggan Terverifikasi</small>
+              </div>
+            </div>
+          </div>
+        </div>
+        <?php endwhile; endif; ?>
       </div>
     </div>
   </div>
-</div>
-<?php endwhile; endif; ?>
-        </div>
-      </div>
-    </section>
+</section>
 
     <!-- CTA -->
     <section class="container py-5">
@@ -1106,6 +1143,44 @@ if ($query_testi):
   <script src="assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
   <script src="assets/vendor/aos/aos.js"></script>
   <script>
+
+
+function createSliderLogic(sliderId, prevId, nextId) {
+    const slider = document.getElementById(sliderId);
+    const prevBtn = document.getElementById(prevId);
+    const nextBtn = document.getElementById(nextId);
+
+    if (!slider || !prevBtn || !nextBtn) return;
+
+    const updateArrows = () => {
+        // Menggunakan Math.round untuk menghindari masalah angka desimal di browser tertentu
+        const scrollLeft = Math.round(slider.scrollLeft);
+        const maxScroll = slider.scrollWidth - slider.clientWidth;
+
+        // Sembunyikan kiri jika mentok kiri (toleransi 2px)
+        prevBtn.style.display = (scrollLeft <= 2) ? 'none' : 'flex';
+
+        // Sembunyikan kanan jika mentok kanan (toleransi 2px)
+        nextBtn.style.display = (scrollLeft >= maxScroll - 2) ? 'none' : 'flex';
+    };
+
+    nextBtn.onclick = () => slider.scrollBy({ left: 400, behavior: 'smooth' });
+    prevBtn.onclick = () => slider.scrollBy({ left: -400, behavior: 'smooth' });
+
+    slider.addEventListener('scroll', updateArrows);
+    window.addEventListener('resize', updateArrows);
+    
+    // Jalankan pengecekan segera setelah halaman dimuat
+    updateArrows();
+    // Jalankan sekali lagi setelah jeda singkat untuk memastikan elemen sudah ter-render sempurna
+    setTimeout(updateArrows, 500);
+}
+
+// Inisialisasi masing-masing slider dengan ID yang berbeda
+document.addEventListener('DOMContentLoaded', () => {
+    createSliderLogic('packageSlider', 'packagePrev', 'packageNext');
+    createSliderLogic('testiSlider', 'testiPrev', 'testiNext');
+});
     AOS.init({ duration: 1000, once: true });
 
     // ========== MOBILE NAV TOGGLE ==========

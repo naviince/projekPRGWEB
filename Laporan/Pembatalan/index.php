@@ -28,7 +28,7 @@ if (!isset($conn) || $conn === false) {
 $id_owner = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 
 // =====================================================
-// AMBIL DATA PROFIL OWNER
+// AMBIL DATA PROFIL OWNER (SINKRON CHECK DUA FOLDER)
 // =====================================================
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23d83f67'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
@@ -41,9 +41,17 @@ if ($q_profile !== false) {
         $d_profile = array_change_key_case($d_profile, CASE_LOWER);
         $nama_owner = $d_profile['nama_karyawan'] ?? 'Pemilik';
         $foto_owner = $d_profile['foto_profil'] ?? 'default.jpg';
-        $foto_owner_src = ($foto_owner != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_owner))
-            ? "../../assets/img/karyawan/" . $foto_owner
-            : $default_svg_avatar;
+        
+        // Memeriksa ketersediaan berkas di folder /karyawan/ dan fallback ke /pelanggan/ secara teliti
+        if ($foto_owner != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_owner)) {
+            $foto_owner_src = "../../assets/img/karyawan/" . $foto_owner;
+        } elseif ($foto_owner != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_owner)) {
+            $foto_owner_src = "../../assets/img/pelanggan/" . $foto_owner;
+        } else {
+            $foto_owner_src = $default_svg_avatar;
+        }
+        $username_owner = $d_profile['username_karyawan'] ?? 'owner';
+        $email_owner = $d_profile['email_karyawan'] ?? 'owner@spotlight.com';
     }
 }
 
@@ -122,14 +130,16 @@ if ($halaman < 1) $halaman = 1;
 $offset = ($halaman - 1) * $limit;
 
 // =====================================================
-// SUMMARY (via SP)
+// SUMMARY (via SP - PERBAIKAN STRUKTUR MULTIPLE RESULT SETS)
 // =====================================================
 $q_summary = sqlsrv_query($conn, "{CALL sp_LaporanPembatalanSummary (?, ?)}", array($tgl_mulai, $tgl_selesai));
 $summary = [];
 if ($q_summary) {
-    while ($r = sqlsrv_fetch_array($q_summary, SQLSRV_FETCH_ASSOC)) {
-        $summary[] = $r;
-    }
+    do {
+        while ($r = sqlsrv_fetch_array($q_summary, SQLSRV_FETCH_ASSOC)) {
+            $summary[] = $r;
+        }
+    } while (sqlsrv_next_result($q_summary)); // Berpindah ke Result Set berikutnya secara berurutan
 }
 
 $total_batal            = $summary[0]['Total_Batal'] ?? 0;
@@ -243,7 +253,6 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 .card-3d::before{display:none;}
 .stat-card{display:flex;align-items:center;gap:14px;}
 .stat-icon{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;transition:all 0.4s;flex-shrink:0;}
-.card-3d:hover .stat-icon{transform:none;}
 .stat-icon-pink{background:linear-gradient(135deg,#fff5f6,#ffe4e9);color:var(--p-pink);}
 .stat-icon-red{background:linear-gradient(135deg,#fef2f2,#fee2e2);color:#dc2626;}
 .stat-icon-orange{background:linear-gradient(135deg,#fffbeb,#fef3c7);color:#d97706;}
@@ -511,8 +520,8 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
         <button type="button" class="btn-preview" onclick="bukaPreviewLaporan()"><i class="bi bi-eye-fill"></i> Lihat Laporan</button>
-        <a href="export_pdf.php?tgl_mulai=<?= $tgl_mulai ?>&tgl_selesai=<?= $tgl_selesai ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $alasan_filter ? '&alasan='.$alasan_filter : '' ?>&sort=<?= $sort ?>" class="btn-export-pdf"><i class="bi bi-file-earmark-pdf-fill"></i> Export PDF</a>
-        <a href="export_excel.php?tgl_mulai=<?= $tgl_mulai ?>&tgl_selesai=<?= $tgl_selesai ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $alasan_filter ? '&alasan='.$alasan_filter : '' ?>&sort=<?= $sort ?>" class="btn-export-excel"><i class="bi bi-file-earmark-excel-fill"></i> Export Excel</a>
+        <a href="export_pdf.php?tgl_mulai=<?= $tgl_mulai ?>&tgl_selesai=<?= $tgl_selesai ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $alasan_filter ? '&alasan='.urlencode($alasan_filter) : '' ?>&sort=<?= $sort ?>" class="btn-export-pdf"><i class="bi bi-file-earmark-pdf-fill"></i> Export PDF</a>
+        <a href="export_excel.php?tgl_mulai=<?= $tgl_mulai ?>&tgl_selesai=<?= $tgl_selesai ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $alasan_filter ? '&alasan='.urlencode($alasan_filter) : '' ?>&sort=<?= $sort ?>" class="btn-export-excel"><i class="bi bi-file-earmark-excel-fill"></i> Export Excel</a>
     </div>
     <?php if ($mode == 'bulanan'): ?>
     <div class="period-navigator">
@@ -724,6 +733,62 @@ if($end_page < $total_halaman) { if($end_page < $total_halaman - 1) echo '<span 
     <p class="text-muted mt-2 mb-0" style="font-size:0.75rem;">Total <?= count($preview_rows) ?> booking batal pada periode ini.</p>
 </div>
 
+<!-- MODAL LIHAT BIODATA OWNER (SINKRON CHECK DUA FOLDER - EDIT DIHAPUS) -->
+<div class="modal fade" id="modalLihatBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); background: #ffffff;">
+      <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
+        <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-vcard-fill text-danger me-2"></i>Biodata Pemilik</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body px-4 pb-4 pt-3">
+        <div class="text-center mb-4">
+          <!-- AVATAR SINKRON DENGAN HEADER DAN MASTER -->
+          <div class="profile-preview-box mx-auto" style="width: 100px; height: 100px; border: 3px solid var(--s-pink); border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            <img src="<?= $foto_owner_src ?>" alt="Foto Profil" style="width: 100%; height: 100%; object-fit: cover;">
+          </div>
+          <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_owner) ?></h5>
+          <span class="badge bg-danger px-3 py-1 text-white text-uppercase" style="font-size: 0.72rem; border-radius: 50px; font-weight: 700;">Owner (Pemilik)</span>
+        </div>
+        <div class="card-3d p-3 border-0 mb-4" style="border-radius: 20px; background-color: #f8fafc; box-shadow: none;">
+          <div class="row g-3">
+            <div class="col-6">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">NIK</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['nik'] ?? '-') ?></span>
+            </div>
+            <div class="col-6">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Nama Pengguna</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;">@<?= htmlspecialchars($username_owner) ?></span>
+            </div>
+            <div class="col-12 border-top pt-2">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Alamat Email</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($email_owner) ?></span>
+            </div>
+            <div class="col-6 border-top pt-2">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Jenis Kelamin</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['jenis_kelamin'] ?? '-') ?></span>
+            </div>
+            <div class="col-6 border-top pt-2">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Tanggal Lahir</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;">
+                <?= (isset($d_profile['tanggal_lahir']) && $d_profile['tanggal_lahir'] instanceof DateTime) ? $d_profile['tanggal_lahir']->format('d M Y') : ($d_profile['tanggal_lahir'] ?? '-') ?>
+              </span>
+            </div>
+            <div class="col-12 border-top pt-2">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Nomor Telepon</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['no_hp'] ?? '-') ?></span>
+            </div>
+            <div class="col-12 border-top pt-2">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Alamat Lengkap</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_profile['alamat'] ?? '-') ?></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script>
 function toggleSidebar() {
@@ -765,11 +830,15 @@ function confirmLogout(e) {
 }
 function confirmLandingPage(e) {
     e.preventDefault();
-    Swal.fire({ title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama publik.', icon: 'info', showCancelButton: true, confirmButtonColor: '#d83f67', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal' }).then((result) => { if(result.isConfirmed) window.location.href = '../../index.php'; });
+    Swal.fire({ title: 'Kembali ke Beranda? ✦', text: 'Anda akan dialihkan ke halaman utama publik.', icon: 'info', showCancelButton: true, confirmButtonColor: '#d83f67', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal' }).then((result) => { if(result.isConfirmed) window.location.href = '../../index.php'; });
 }
+
+// Menampilkan Biodata Lengkap Owner secara Mewah (Akses Edit Dihapus)
 function bukaModalBiodata() {
-    Swal.fire({ title: '<?= htmlspecialchars($nama_owner) ?>', text: 'Owner - SpotLight Studio', icon: 'info', confirmButtonColor: '#d83f67' });
+    var modalBiodata = new bootstrap.Modal(document.getElementById('modalLihatBiodata'));
+    modalBiodata.show();
 }
+
 function updateLiveClock() {
     const now = new Date();
     const days = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
