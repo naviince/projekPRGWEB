@@ -2,6 +2,8 @@
 session_start();
 include 'koneksi.php';
 
+$default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
+
 // Ambil Nama Pengguna & Tentukan Jalur Dashboard Secara Dinamis Sesuai Peran (Role)
 $nama_user_nav = "";
 $dashboard_link = "Role/Customer/index.php";
@@ -53,6 +55,22 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
   <link href="assets/vendor/glightbox/css/glightbox.min.css" rel="stylesheet">
 
   <style>
+
+    .testi-avatar-wrapper {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid var(--peach-pink);
+  flex-shrink: 0;
+  background: #f8fafc;
+}
+.testi-avatar-wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
     :root {
       --primary-pink: #d83f67;
       --light-pink: #fff5f6;
@@ -977,36 +995,48 @@ $jam_operasional = "Senin - Minggu | " . $jam_buka . " - " . $jam_tutup . " WIB"
         </div>
         <div class="row g-4 justify-content-center" data-aos="fade-up">
           <?php
-          $sql_testi = "SELECT TOP 3 O.Rating, O.Review, P.Nama_Pelanggan, P.Jenis_Kelamin 
-                        FROM [Order] O 
-                        JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan 
-                        WHERE O.Rating IS NOT NULL AND O.Review IS NOT NULL 
-                        ORDER BY O.Tanggal_Booking DESC";
-          $query_testi = sqlsrv_query($conn, $sql_testi);
-          if ($query_testi):
-              while($testi = sqlsrv_fetch_array($query_testi, SQLSRV_FETCH_ASSOC)):
-                  $rating = $testi['Rating'];
-          ?>
-          <div class="col-lg-4 col-md-6">
-            <div class="testimonial-card">
-              <div>
-                <div class="testi-stars">
-                  <?php for($i=1; $i<=$rating; $i++): ?><i class="bi bi-star-fill"></i><?php endfor; ?>
-                </div>
-                <p class="testi-text">"<?= htmlspecialchars($testi['Review']); ?>"</p>
-              </div>
-              <div class="d-flex align-items-center mt-4 pt-3 border-top">
-                <div class="me-3 fs-3 text-secondary">
-                  <?php if($testi['Jenis_Kelamin'] == 'Laki-laki'): ?><i class="bi bi-person-fill text-primary"></i><?php else: ?><i class="bi bi-person-fill text-danger"></i><?php endif; ?>
-                </div>
-                <div>
-                  <h6 class="fw-bold mb-0" style="font-size: 0.95rem;"><?= htmlspecialchars($testi['Nama_Pelanggan']); ?></h6>
-                  <small class="text-muted" style="font-size: 0.8rem;">Pelanggan Terverifikasi</small>
-                </div>
-              </div>
-            </div>
-          </div>
-          <?php endwhile; endif; ?>
+// UPDATE QUERY: Tambahkan P.Foto_Profil
+$sql_testi = "SELECT TOP 3 O.Rating, O.Review, P.Nama_Pelanggan, P.Jenis_Kelamin, P.Foto_Profil 
+              FROM [Order] O 
+              JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan 
+              WHERE O.Rating IS NOT NULL AND O.Review IS NOT NULL 
+              ORDER BY O.Tanggal_Booking DESC";
+$query_testi = sqlsrv_query($conn, $sql_testi);
+
+if ($query_testi):
+    while($testi = sqlsrv_fetch_array($query_testi, SQLSRV_FETCH_ASSOC)):
+        $rating = $testi['Rating'];
+        
+        // LOGIKA FOTO PROFIL
+        $foto_name = $testi['Foto_Profil'] ?? 'default.jpg';
+        $path_foto = "assets/img/pelanggan/" . $foto_name;
+        
+        // Cek apakah file ada di folder, jika tidak pakai SVG Pink
+        $final_foto = ($foto_name != 'default.jpg' && file_exists($path_foto)) 
+                      ? $path_foto 
+                      : $default_svg_avatar;
+?>
+<div class="col-lg-4 col-md-6">
+  <div class="testimonial-card">
+    <div>
+      <div class="testi-stars">
+        <?php for($i=1; $i<=$rating; $i++): ?><i class="bi bi-star-fill"></i><?php endfor; ?>
+      </div>
+      <p class="testi-text">"<?= htmlspecialchars($testi['Review']); ?>"</p>
+    </div>
+    <div class="d-flex align-items-center mt-4 pt-3 border-top">
+      <!-- SEKARANG MENGGUNAKAN FOTO ASLI -->
+      <div class="testi-avatar-wrapper me-3">
+        <img src="<?= $final_foto ?>" alt="<?= htmlspecialchars($testi['Nama_Pelanggan']); ?>">
+      </div>
+      <div>
+        <h6 class="fw-bold mb-0" style="font-size: 0.95rem;"><?= htmlspecialchars($testi['Nama_Pelanggan']); ?></h6>
+        <small class="text-muted" style="font-size: 0.8rem;">Pelanggan Terverifikasi</small>
+      </div>
+    </div>
+  </div>
+</div>
+<?php endwhile; endif; ?>
         </div>
       </div>
     </section>

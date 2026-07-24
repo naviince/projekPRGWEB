@@ -309,68 +309,93 @@ function getStatusIcon($status) {
                         <span class="date-header-text"><i class="bi bi-calendar-event me-2"></i><?= formatTanggal(new DateTime($tgl)) ?></span>
                         <span class="float-end" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;"><?= count($sesi_list) ?> Sesi</span>
                     </div>
-                    <?php foreach ($sesi_list as $row): ?>
-                        <div class="sesi-item" 
-                             data-id="<?= $row['ID_Sesi_Foto'] ?>"
-                             data-pelanggan="<?= htmlspecialchars($row['Nama_Pelanggan']) ?>"
-                             data-paket="<?= htmlspecialchars($row['Nama_Paket']) ?>"
-                             data-ruangan="<?= htmlspecialchars($row['Nama_Ruangan']) ?>"
-                             data-tanggal="<?= formatTanggal(new DateTime($tgl)) ?>"
-                             data-jam-mulai="<?= formatWaktu($row['Jam_Mulai']) ?>"
-                             data-jam-selesai="<?= formatWaktu($row['Jam_Selesai']) ?>"
-                             data-durasi="<?= $row['Durasi_Waktu'] ?>"
-                             data-status="<?= $row['Status_Sesi'] ?>"
-                             data-terlewat="<?= $row['is_terlewat'] ? '1' : '0' ?>"
-                             data-keterangan="<?= htmlspecialchars($row['Keterangan'] ?? '') ?>"
-                             data-file-hasil="<?= !empty($row['File_Hasil']) ? '1' : '0' ?>"
-                             data-id-order="<?= $row['ID_Order'] ?>">
-                            <div class="sesi-icon" style="<?= $row['is_terlewat'] ? 'background: linear-gradient(135deg, #fffbeb, #fef3c7); color: #b45309;' : getStatusIcon($row['Status_Sesi']) ?>">
-                                <i class="bi <?= $row['is_terlewat'] ? 'bi-exclamation-triangle-fill' : 'bi-camera-fill' ?>"></i>
-                            </div>
-                            <div class="flex-grow-1">
-                                <div class="d-flex justify-content-between align-items-start">
-                                    <div>
-                                        <div class="sesi-time">
-                                            <i class="bi bi-clock-fill me-1"></i><?= formatWaktu($row['Jam_Mulai']) ?> - <?= formatWaktu($row['Jam_Selesai']) ?>
-                                            <span class="ms-2">(<?= $row['Durasi_Waktu'] ?> menit)</span>
-                                        </div>
-                                        <div class="sesi-title"><?= htmlspecialchars($row['Nama_Pelanggan']) ?></div>
-                                        <div class="sesi-info">
-                                            <?= htmlspecialchars($row['Nama_Paket']) ?> • <?= htmlspecialchars($row['Nama_Ruangan']) ?>
-                                        </div>
-                                        <?php if ($row['is_terlewat']): ?>
-                                            <div class="sesi-info mt-1" style="color:#b45309;font-weight:700;"><i class="bi bi-clock-history me-1"></i>Waktu sesi sudah lewat dan belum dimulai. Segera update status atau hubungi admin.</div>
-                                        <?php endif; ?>
-                                        <?php if (!empty($row['Keterangan'])): ?>
-                                            <div class="sesi-info mt-1"><i class="bi bi-info-circle me-1"></i><?= htmlspecialchars($row['Keterangan']) ?></div>
-                                        <?php endif; ?>
-                                    </div>
-                                    <div class="text-end">
-                                        <?= getStatusBadge($row['Status_Sesi'], $row['is_terlewat']) ?>
-                                        <div class="mt-2">
-                                            <button type="button" class="btn btn-sm btn-detail-modal" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; border-radius: 8px; font-size: 0.75rem; text-decoration: none; border: none;"
-                                                    onclick="event.stopPropagation(); openDetailModal(this);">
-                                                <i class="bi bi-eye"></i> Detail
-                                            </button>
-                                            <?php if ($row['Status_Sesi'] == 0 && $row['is_terlewat']): ?>
-                                                <a href="../Proses/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-sm" style="padding: 5px 10px; font-size: 0.75rem; background:#fef3c7;color:#b45309;border:1px solid #fde68a;">
-                                                    <i class="bi bi-exclamation-triangle"></i> Mulai (Terlambat)
-                                                </a>
-                                            <?php elseif ($row['Status_Sesi'] == 0): ?>
-                                                <a href="../Proses/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-action-success btn-sm" style="padding: 5px 10px; font-size: 0.75rem;">
-                                                    <i class="bi bi-play-fill"></i> Mulai
-                                                </a>
-                                            <?php elseif ($row['Status_Sesi'] == 1 && empty($row['File_Hasil'])): ?>
-                                                <a href="../Upload/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-sm" style="padding: 5px 10px; font-size: 0.75rem;">
-                                                    <i class="bi bi-cloud-upload"></i> Upload
-                                                </a>
-                                            <?php endif; ?>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
+                  <?php foreach ($sesi_list as $row): ?>
+    <?php 
+        // --- PROSES PENGAMBILAN FOTO CUSTOMER (TANPA UBAH SQL UTAMA) ---
+        $id_order_p = $row['ID_Order'];
+        $foto_db = 'default.jpg';
+
+        // Query manual singkat untuk mencari foto berdasarkan ID_Order
+        $sql_f = "SELECT p.Foto_Profil FROM Pelanggan p 
+                  JOIN [Order] o ON p.ID_Pelanggan = o.ID_Pelanggan 
+                  WHERE o.ID_Order = ?";
+        $stmt_f = sqlsrv_query($conn, $sql_f, array($id_order_p));
+        
+        if($stmt_f && $res_f = sqlsrv_fetch_array($stmt_f, SQLSRV_FETCH_ASSOC)) {
+            $foto_db = !empty($res_f['Foto_Profil']) ? $res_f['Foto_Profil'] : 'default.jpg';
+        }
+
+        // Tentukan path gambar
+        $path_f = "../../assets/img/pelanggan/" . $foto_db;
+        // Jika file ada di folder, pakai fotonya. Jika tidak, pakai avatar pink.
+        $final_f = ($foto_db != 'default.jpg' && file_exists($path_f)) ? $path_f : $default_svg_avatar;
+    ?>
+    
+    <div class="sesi-item" 
+         data-id="<?= $row['ID_Sesi_Foto'] ?>"
+         data-foto-pelanggan="<?= $final_f ?>" 
+         data-pelanggan="<?= htmlspecialchars($row['Nama_Pelanggan']) ?>"
+         data-paket="<?= htmlspecialchars($row['Nama_Paket']) ?>"
+         data-ruangan="<?= htmlspecialchars($row['Nama_Ruangan']) ?>"
+         data-tanggal="<?= formatTanggal(new DateTime($tgl)) ?>"
+         data-jam-mulai="<?= formatWaktu($row['Jam_Mulai']) ?>"
+         data-jam-selesai="<?= formatWaktu($row['Jam_Selesai']) ?>"
+         data-durasi="<?= $row['Durasi_Waktu'] ?>"
+         data-status="<?= $row['Status_Sesi'] ?>"
+         data-terlewat="<?= $row['is_terlewat'] ? '1' : '0' ?>"
+         data-keterangan="<?= htmlspecialchars($row['Keterangan'] ?? '') ?>"
+         data-file-hasil="<?= !empty($row['File_Hasil']) ? '1' : '0' ?>"
+         data-id-order="<?= $row['ID_Order'] ?>">
+        
+        <!-- BAGIAN FOTO PROFIL CUSTOMER -->
+        <div class="sesi-icon" style="overflow: hidden; border: 2.5px solid <?= $row['is_terlewat'] ? '#fde68a' : 'var(--light-pink)' ?>; background: #fff; width: 50px; height: 50px; flex-shrink: 0;">
+            <img src="<?= $final_f ?>" alt="Customer" style="width: 100%; height: 100%; object-fit: cover;">
+        </div>
+
+        <div class="flex-grow-1">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="sesi-time">
+                        <i class="bi bi-clock-fill me-1"></i><?= formatWaktu($row['Jam_Mulai']) ?> - <?= formatWaktu($row['Jam_Selesai']) ?>
+                        <span class="ms-2">(<?= $row['Durasi_Waktu'] ?> menit)</span>
+                    </div>
+                    <div class="sesi-title"><?= htmlspecialchars($row['Nama_Pelanggan']) ?></div>
+                    <div class="sesi-info">
+                        <?= htmlspecialchars($row['Nama_Paket']) ?> • <?= htmlspecialchars($row['Nama_Ruangan']) ?>
+                    </div>
+                    <?php if ($row['is_terlewat']): ?>
+                        <div class="sesi-info mt-1" style="color:#b45309;font-weight:700;"><i class="bi bi-clock-history me-1"></i>Waktu sesi sudah lewat dan belum dimulai.</div>
+                    <?php endif; ?>
+                    <?php if (!empty($row['Keterangan'])): ?>
+                        <div class="sesi-info mt-1"><i class="bi bi-info-circle me-1"></i><?= htmlspecialchars($row['Keterangan']) ?></div>
+                    <?php endif; ?>
+                </div>
+                <div class="text-end">
+                    <?= getStatusBadge($row['Status_Sesi'], $row['is_terlewat']) ?>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-sm btn-detail-modal" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; border-radius: 8px; font-size: 0.75rem; text-decoration: none; border: none;"
+                                onclick="event.stopPropagation(); openDetailModal(this);">
+                            <i class="bi bi-eye"></i> Detail
+                        </button>
+                        <?php if ($row['Status_Sesi'] == 0 && $row['is_terlewat']): ?>
+                            <a href="../Proses/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-sm" style="padding: 5px 10px; font-size: 0.75rem; background:#fef3c7;color:#b45309;border:1px solid #fde68a;">
+                                <i class="bi bi-exclamation-triangle"></i> Mulai
+                            </a>
+                        <?php elseif ($row['Status_Sesi'] == 0): ?>
+                            <a href="../Proses/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-action-success btn-sm" style="padding: 5px 10px; font-size: 0.75rem;">
+                                <i class="bi bi-play-fill"></i> Mulai
+                            </a>
+                        <?php elseif ($row['Status_Sesi'] == 1 && empty($row['File_Hasil'])): ?>
+                            <a href="../Upload/index.php?id=<?= $row['ID_Sesi_Foto'] ?>" class="btn-action btn-sm" style="padding: 5px 10px; font-size: 0.75rem;">
+                                <i class="bi bi-cloud-upload"></i> Upload
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+<?php endforeach; ?>
                 <?php endforeach; ?>
             <?php else: ?>
                 <div class="text-center py-5">
