@@ -29,6 +29,14 @@ $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
 // =====================================================
+// CSRF TOKEN HANDLING
+// =====================================================
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
+
+// =====================================================
 // PROFIL ADMIN (Sinkron penuh dengan index.php)
 // =====================================================
 $q_profile = sqlsrv_query($conn, "SELECT * FROM Karyawan WHERE ID_Karyawan = ?", array($id_admin));
@@ -153,73 +161,83 @@ if (!$data) {
 $errors = [];
 $old_values = $_POST ?? $data;
 $success = false;
-$error = ""; // Alert umum (disamakan dengan pola Tema Foto)
+$error = "";
 
 // =====================================================
 // PROSES UPDATE PAKET
 // =====================================================
 if (isset($_POST['update'])) {
-    $nama      = trim($_POST['nama'] ?? '');
-    $durasi    = trim($_POST['durasi'] ?? '');
-    $harga     = trim($_POST['harga'] ?? '');
-    $kapasitas = trim($_POST['kapasitas'] ?? '');
-    $deskripsi = trim($_POST['deskripsi'] ?? '');
-
-    if (empty($nama)) {
-        $errors['nama'] = "Nama paket wajib diisi!";
-    } elseif (strlen($nama) < 3) {
-        $errors['nama'] = "Nama paket minimal 3 karakter!";
-    } elseif (strlen($nama) > 100) {
-        $errors['nama'] = "Nama paket maksimal 100 karakter!";
-    } elseif (!preg_match('/^[a-zA-Z0-9\s\-&]+$/', $nama)) {
-        $errors['nama'] = "Nama paket hanya boleh huruf, angka, spasi, -, &!";
+    // === VALIDASI CSRF ===
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        $errors['general'] = "Token keamanan tidak valid. Silakan refresh halaman.";
     } else {
-        // Cek duplikasi case-insensitive (LOWER) demi mencegah kecurangan input kembar
-        $sql_cek = "SELECT COUNT(*) AS Total FROM Paket_Foto WHERE LOWER(Nama_Paket) = LOWER(?) AND ID_Paket <> ? AND Is_Deleted = 0";
-        $stmt_cek = safe_sqlsrv_query($conn, $sql_cek, [$nama, $id]);
-        $row_cek = safe_sqlsrv_fetch($stmt_cek);
-        if ($row_cek && ($row_cek['Total'] ?? 0) > 0) {
-            $errors['nama'] = "Nama paket sudah digunakan! Silakan pilih nama lain.";
+        // Regenerate token setelah digunakan (one-time use)
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+
+    // Hanya proses jika tidak ada error CSRF
+    if (empty($errors)) {
+        $nama      = trim($_POST['nama'] ?? '');
+        $durasi    = trim($_POST['durasi'] ?? '');
+        $harga     = trim($_POST['harga'] ?? '');
+        $kapasitas = trim($_POST['kapasitas'] ?? '');
+        $deskripsi = trim($_POST['deskripsi'] ?? '');
+
+        if (empty($nama)) {
+            $errors['nama'] = "Nama paket wajib diisi!";
+        } elseif (strlen($nama) < 3) {
+            $errors['nama'] = "Nama paket minimal 3 karakter!";
+        } elseif (strlen($nama) > 100) {
+            $errors['nama'] = "Nama paket maksimal 100 karakter!";
+        } elseif (!preg_match('/^[a-zA-Z0-9\s\-&]+$/', $nama)) {
+            $errors['nama'] = "Nama paket hanya boleh huruf, angka, spasi, -, &!";
+        } else {
+            $sql_cek = "SELECT COUNT(*) AS Total FROM Paket_Foto WHERE LOWER(Nama_Paket) = LOWER(?) AND ID_Paket <> ? AND Is_Deleted = 0";
+            $stmt_cek = safe_sqlsrv_query($conn, $sql_cek, [$nama, $id]);
+            $row_cek = safe_sqlsrv_fetch($stmt_cek);
+            if ($row_cek && ($row_cek['Total'] ?? 0) > 0) {
+                $errors['nama'] = "Nama paket sudah digunakan! Silakan pilih nama lain.";
+            }
         }
-    }
 
-    if (empty($durasi)) {
-        $errors['durasi'] = "Durasi wajib diisi!";
-    } elseif (!ctype_digit($durasi)) {
-        $errors['durasi'] = "Durasi hanya boleh angka!";
-    } elseif ((int)$durasi < 15) {
-        $errors['durasi'] = "Durasi minimal 15 menit!";
-    } elseif ((int)$durasi > 300) {
-        $errors['durasi'] = "Durasi maksimal 300 menit!";
-    }
+        if (empty($durasi)) {
+            $errors['durasi'] = "Durasi wajib diisi!";
+        } elseif (!ctype_digit($durasi)) {
+            $errors['durasi'] = "Durasi hanya boleh angka!";
+        } elseif ((int)$durasi < 15) {
+            $errors['durasi'] = "Durasi minimal 15 menit!";
+        } elseif ((int)$durasi > 300) {
+            $errors['durasi'] = "Durasi maksimal 300 menit!";
+        }
 
-    if (empty($harga)) {
-        $errors['harga'] = "Harga wajib diisi!";
-    } elseif (!is_numeric($harga)) {
-        $errors['harga'] = "Harga hanya boleh angka!";
-    } elseif ((float)$harga < 10000) {
-        $errors['harga'] = "Harga minimal Rp 10.000!";
-    } elseif ((float)$harga > 99999999) {
-        $errors['harga'] = "Harga maksimal Rp 99.999.999!";
-    }
+        if (empty($harga)) {
+            $errors['harga'] = "Harga wajib diisi!";
+        } elseif (!is_numeric($harga)) {
+            $errors['harga'] = "Harga hanya boleh angka!";
+        } elseif ((float)$harga < 10000) {
+            $errors['harga'] = "Harga minimal Rp 10.000!";
+        } elseif ((float)$harga > 99999999) {
+            $errors['harga'] = "Harga maksimal Rp 99.999.999!";
+        }
 
-    if (empty($kapasitas)) {
-        $errors['kapasitas'] = "Kapasitas wajib diisi!";
-    } elseif (!ctype_digit($kapasitas)) {
-        $errors['kapasitas'] = "Kapasitas hanya boleh angka!";
-    } elseif ((int)$kapasitas < 1) {
-        $errors['kapasitas'] = "Kapasitas minimal 1 orang!";
-    } elseif ((int)$kapasitas > 50) {
-        $errors['kapasitas'] = "Kapasitas maksimal 50 orang!";
-    }
+        if (empty($kapasitas)) {
+            $errors['kapasitas'] = "Kapasitas wajib diisi!";
+        } elseif (!ctype_digit($kapasitas)) {
+            $errors['kapasitas'] = "Kapasitas hanya boleh angka!";
+        } elseif ((int)$kapasitas < 1) {
+            $errors['kapasitas'] = "Kapasitas minimal 1 orang!";
+        } elseif ((int)$kapasitas > 50) {
+            $errors['kapasitas'] = "Kapasitas maksimal 50 orang!";
+        }
 
-    if (empty($deskripsi)) {
-        $errors['deskripsi'] = "Deskripsi wajib diisi!";
-    } elseif (strlen($deskripsi) < 20) {
-        $errors['deskripsi'] = "Deskripsi minimal 20 karakter!";
-    } elseif (strlen($deskripsi) > 255) {
-        $errors['deskripsi'] = "Deskripsi maksimal 255 karakter!";
-    }
+        if (empty($deskripsi)) {
+            $errors['deskripsi'] = "Deskripsi wajib diisi!";
+        } elseif (strlen($deskripsi) < 20) {
+            $errors['deskripsi'] = "Deskripsi minimal 20 karakter!";
+        } elseif (strlen($deskripsi) > 255) {
+            $errors['deskripsi'] = "Deskripsi maksimal 255 karakter!";
+        }
+    } // Tutup if (empty($errors)) dari validasi CSRF
 
     if (empty($errors)) {
         $new_filename = $data['Foto_Paket'] ?? 'default_paket.jpg';
@@ -234,7 +252,7 @@ if (isset($_POST['update'])) {
 
             if ($foto_error == 0) {
                 $ext = strtolower(pathinfo($foto_name, PATHINFO_EXTENSION));
-                $allowed = ['jpg', 'jpeg', 'png', 'webp']; // Ditambahkan dukungan modern webp
+                $allowed = ['jpg', 'jpeg', 'png', 'webp'];
 
                 if (in_array($ext, $allowed) && $foto_size <= 2097152) {
                     $upload_dir = "../../assets/img/paket/";
@@ -256,12 +274,6 @@ if (isset($_POST['update'])) {
             }
         }
 
-        // =====================================================
-        // CATATAN INTEGRITAS: Proses update paket ini 
-        // JANGAN PERNAH menghubungkan paket ke ruangan secara otomatis.
-        // Relasi harus selalu diatur secara manual oleh user lewat edit terpisah
-        // demi menghindari kebingungan alur & gangguan validasi transaksi.
-        // =====================================================
         if (empty($errors)) {
             $sql_update = "{CALL sp_UpdatePaketFoto(?, ?, ?, ?, ?, ?, ?, ?, ?)}";
             $params_update = [
@@ -279,13 +291,9 @@ if (isset($_POST['update'])) {
             $stmt_update = safe_sqlsrv_query($conn, $sql_update, $params_update);
 
             if ($stmt_update) {
-                $success = true;
-                $data['Nama_Paket'] = $nama;
-                $data['Durasi_Waktu'] = $durasi;
-                $data['Harga_Paket'] = $harga;
-                $data['Deskripsi'] = $deskripsi;
-                $data['Kapasitas_Orang'] = $kapasitas;
-                $data['Foto_Paket'] = $new_filename;
+                // === PRG PATTERN: Redirect ke list dengan flag sukses ===
+                header("Location: list.php?status_sukses=edit");
+                exit();
             } else {
                 $errors['general'] = "Gagal memperbarui data. Silakan coba lagi!";
                 if ($foto_changed && $upload_path && file_exists($upload_path)) {
@@ -1094,6 +1102,7 @@ $ada_foto_existing = !empty($foto_existing_name) && $foto_existing_name !== 'def
             <?php endif; ?>
 
             <form method="POST" enctype="multipart/form-data" id="formPaket">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
 
                 <div class="mb-4">
                     <label class="form-label">Nama Paket <span class="required">*</span></label>
@@ -1474,19 +1483,6 @@ $ada_foto_existing = !empty($foto_existing_name) && $foto_existing_name !== 'def
     setInterval(updateLiveClock, 1000);
 </script>
 
-<?php if($success): ?>
-<script>
-    Swal.fire({
-        icon: 'success',
-        title: 'Berhasil!',
-        text: 'Data paket foto berhasil diperbarui.',
-        confirmButtonColor: '#D53D66',
-        confirmButtonText: 'Oke'
-    }).then(() => {
-        window.location.href = 'list.php?status_sukses=edit';
-    });
-</script>
-<?php endif; ?>
 
 <?php if(isset($success_profile) && $success_profile === true): ?>
 <script>Swal.fire({icon:'success',title:'Profil Diperbarui!',text:'Informasi profil Anda berhasil disinkronkan.',confirmButtonColor:'#D53D66',confirmButtonText:'Selesai'});</script>

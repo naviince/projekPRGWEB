@@ -196,7 +196,9 @@ if (isset($_POST['simpan'])) {
 
                     // COMMIT
                     sqlsrv_commit($conn);
-                    $success = true;
+                    // Langsung pindah ke list agar pop-up cuma muncul sekali di sana
+                    header("Location: list.php?status_sukses=tambah");
+                    exit();
 
                 } catch (Exception $e) {
                     // ROLLBACK
@@ -869,14 +871,13 @@ if (isset($_POST['simpan'])) {
                                         $is_checked = (isset($_POST['ruangan']) && in_array($ruangan['ID_Ruangan'], $_POST['ruangan'])) ? 'checked' : '';
                                         $is_selected = $is_checked ? 'selected' : '';
                                     ?>
-                                        <div class="ruangan-checkbox-item <?= $is_selected ?>" onclick="toggleRuangan(this)">
+                                        <div class="ruangan-checkbox-item <?= $is_selected ?>" onclick="toggleRuangan(this, event)">
                                             <input type="checkbox" name="ruangan[]" value="<?= $ruangan['ID_Ruangan'] ?>" 
                                                    <?= $is_checked ?> onchange="updateRuanganCount()">
                                             <div class="ruangan-info">
                                                 <div class="ruangan-nama"><?= htmlspecialchars($ruangan['Nama_Ruangan']) ?></div>
                                                 <div class="ruangan-kapasitas"><?= htmlspecialchars($ruangan['Deskripsi'] ?? 'Tidak ada deskripsi ruangan') ?></div>
                                             </div>
-                                            <i class="bi bi-check-circle-fill ruangan-check-icon"></i>
                                         </div>
                                     <?php endforeach; ?>
                                 </div>
@@ -978,83 +979,74 @@ if (isset($_POST['simpan'])) {
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
     <script>
-        // =====================================================
-        // MOBILE SIDEBAR TOGGLE
-        // =====================================================
-        function toggleSidebar() {
-            const sidebar = document.querySelector('.sidebar');
-            const overlay = document.querySelector('.sidebar-overlay');
-            const isOpen = sidebar.classList.toggle('mobile-open');
-            overlay.classList.toggle('show', isOpen);
-            document.body.style.overflow = isOpen ? 'hidden' : '';
-        }
+    // =====================================================
+    // MOBILE SIDEBAR TOGGLE
+    // =====================================================
+    function toggleSidebar() {
+        const sidebar = document.querySelector('.sidebar');
+        const overlay = document.querySelector('.sidebar-overlay');
+        const isOpen = sidebar.classList.toggle('mobile-open');
+        overlay.classList.toggle('show', isOpen);
+        document.body.style.overflow = isOpen ? 'hidden' : '';
+    }
 
-        // Auto-close sidebar when clicking nav links on mobile
-        document.querySelectorAll('.sidebar .nav-link-custom, .sidebar .submenu-link, .sidebar .btn-logout').forEach(el => {
-            el.addEventListener('click', function() {
-                if (window.innerWidth <= 992) {
-                    const sidebar = document.querySelector('.sidebar');
-                    if (sidebar.classList.contains('mobile-open')) {
-                        toggleSidebar();
-                    }
-                }
-            });
-        });
-
-        // Handle resize: if going back to desktop, reset mobile sidebar state
-        window.addEventListener('resize', function() {
-            if (window.innerWidth > 992) {
+    // Auto-close sidebar on mobile
+    document.querySelectorAll('.sidebar .nav-link-custom, .sidebar .submenu-link, .sidebar .btn-logout').forEach(el => {
+        el.addEventListener('click', function() {
+            if (window.innerWidth <= 992) {
                 const sidebar = document.querySelector('.sidebar');
-                const overlay = document.querySelector('.sidebar-overlay');
-                sidebar.classList.remove('mobile-open');
-                overlay.classList.remove('show');
-                document.body.style.overflow = '';
+                if (sidebar.classList.contains('mobile-open')) toggleSidebar();
             }
         });
+    });
 
-        // Toggle Submenu
-        document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
-            button.addEventListener('click', function(e) {
-                e.preventDefault();
-                const targetId = this.getAttribute('data-target');
-                const targetEl = document.querySelector(targetId);
-                const chevron = this.querySelector('.icon-chevron');
-                if (targetEl) {
-                    const isShown = targetEl.classList.contains('show');
-                    document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
-                    document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
-                    if (!isShown) {
-                        targetEl.classList.add('show');
-                        if (chevron) chevron.style.transform = 'rotate(180deg)';
-                    }
+    // Toggle Submenu
+    document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            const targetId = this.getAttribute('data-target');
+            const targetEl = document.querySelector(targetId);
+            const chevron = this.querySelector('.icon-chevron');
+            if (targetEl) {
+                const isShown = targetEl.classList.contains('show');
+                document.querySelectorAll('.submenu').forEach(el => el.classList.remove('show'));
+                document.querySelectorAll('.icon-chevron').forEach(icon => icon.style.transform = 'rotate(0deg)');
+                if (!isShown) {
+                    targetEl.classList.add('show');
+                    if (chevron) chevron.style.transform = 'rotate(180deg)';
                 }
-            });
-        });
-
-        // Status Toggle
-        function selectStatus(el, val) {
-            document.querySelectorAll('.status-option').forEach(opt => opt.classList.remove('active'));
-            el.classList.add('active');
-            el.querySelector('input').checked = true;
-        }
-
-        // Ruangan Checkbox Toggle
-        function toggleRuangan(el) {
-            const checkbox = el.querySelector('input[type="checkbox"]');
-            checkbox.checked = !checkbox.checked;
-            if (checkbox.checked) {
-                el.classList.add('selected');
-            } else {
-                el.classList.remove('selected');
             }
-            updateRuanganCount();
+        });
+    });
+
+    // =====================================================
+    // FIX PILIH RUANGAN (SOLUSI BUG GAK BISA DIKLIK)
+    // =====================================================
+    function toggleRuangan(el, event) {
+        const checkbox = el.querySelector('input[type="checkbox"]');
+        
+        // Mencegah konflik jika yang diklik adalah checkbox-nya langsung
+        if (event.target !== checkbox) {
+            checkbox.checked = !checkbox.checked;
         }
 
-        // Hitung Ruangan Terpilih
-        function updateRuanganCount() {
-            const checked = document.querySelectorAll('input[name="ruangan[]"]:checked').length;
-            document.getElementById('ruangan-count').textContent = checked;
-            const hint = document.getElementById('ruangan-count-hint');
+        // Update tampilan visual kartu
+        if (checkbox.checked) {
+            el.classList.add('selected');
+        } else {
+            el.classList.remove('selected');
+        }
+        updateRuanganCount();
+    }
+
+    function updateRuanganCount() {
+        const checked = document.querySelectorAll('input[name="ruangan[]"]:checked').length;
+        const countDisplay = document.getElementById('ruangan-count');
+        const hint = document.getElementById('ruangan-count-hint');
+        
+        if(countDisplay) countDisplay.textContent = checked;
+        
+        if (hint) {
             if (checked === 0) {
                 hint.style.color = '#dc2626';
                 hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Pilih minimal 1 ruangan!';
@@ -1063,125 +1055,56 @@ if (isset($_POST['simpan'])) {
                 hint.innerHTML = '<i class="bi bi-check-circle-fill"></i> ' + checked + ' ruangan terpilih';
             }
         }
+    }
 
-        // File Upload & Preview
-        function handleFileSelect(event) {
-            const file = event.target.files[0];
-            const previewContainer = document.getElementById('preview-container');
-            const previewImg = document.getElementById('preview-img');
-            const uploadIcon = document.getElementById('upload-icon');
-            const uploadText = document.getElementById('upload-text');
+    // =====================================================
+    // UPLOAD FOTO & PREVIEW
+    // =====================================================
+    function handleFileSelect(event) {
+        const file = event.target.files[0];
+        const previewContainer = document.getElementById('preview-container');
+        const previewImg = document.getElementById('preview-img');
+        const uploadIcon = document.getElementById('upload-icon');
+        const uploadText = document.getElementById('upload-text');
 
-            if (file) {
-                if (file.size > 2097152) {
-                    Swal.fire({
-                        icon: 'error', title: 'Ukuran Terlalu Besar',
-                        text: 'Ukuran gambar maksimal 2MB.', confirmButtonColor: '#D53D66'
-                    });
-                    event.target.value = ''; return;
-                }
-                const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-                if (!allowed.includes(file.type)) {
-                    Swal.fire({
-                        icon: 'error', title: 'Format Tidak Valid',
-                        text: 'Format gambar harus JPG, JPEG, PNG, atau WEBP.', confirmButtonColor: '#D53D66'
-                    });
-                    event.target.value = ''; return;
-                }
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    previewImg.src = e.target.result;
-                    previewContainer.style.display = 'block';
-                    uploadIcon.style.display = 'none';
-                    uploadText.textContent = file.name;
-                };
-                reader.readAsDataURL(file);
+        if (file) {
+            if (file.size > 2097152) {
+                Swal.fire({ icon: 'error', title: 'Ukuran Terlalu Besar', text: 'Maksimal 2MB.', confirmButtonColor: '#D53D66' });
+                event.target.value = ''; return;
             }
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                previewImg.src = e.target.result;
+                previewContainer.style.display = 'block';
+                uploadIcon.style.display = 'none';
+                uploadText.textContent = file.name;
+            };
+            reader.readAsDataURL(file);
         }
+    }
 
-        function removePreview(e) {
-            e.stopPropagation();
-            const input = document.getElementById('foto-input');
-            const previewContainer = document.getElementById('preview-container');
-            const uploadIcon = document.getElementById('upload-icon');
-            const uploadText = document.getElementById('upload-text');
-            input.value = '';
-            previewContainer.style.display = 'none';
-            uploadIcon.style.display = 'block';
-            uploadText.textContent = 'Klik atau seret foto ke sini (opsional)';
-        }
+    function removePreview(e) {
+        e.stopPropagation();
+        const input = document.getElementById('foto-input');
+        input.value = '';
+        document.getElementById('preview-container').style.display = 'none';
+        document.getElementById('upload-icon').style.display = 'block';
+        document.getElementById('upload-text').textContent = 'Klik atau seret foto ke sini (opsional)';
+    }
 
-        // Drag & Drop
-        const dropzone = document.getElementById('dropzone');
-        dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
-        dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-        dropzone.addEventListener('drop', (e) => {
-            e.preventDefault(); dropzone.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                document.getElementById('foto-input').files = files;
-                handleFileSelect({ target: { files: files } });
-            }
-        });
+    // Jam Real-Time
+    function updateLiveClock() {
+        const now = new Date();
+        const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+        const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+        const timeStr = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()} - ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')} WIB`;
+        const el = document.getElementById('live-clock');
+        if(el) el.innerText = timeStr;
+    }
+    setInterval(updateLiveClock, 1000); updateLiveClock();
 
-        // Konfirmasi Logout
-        function confirmLogout(e) {
-            e.preventDefault();
-            Swal.fire({
-                title: 'Keluar Sistem?', text: 'Apakah Anda yakin ingin keluar?',
-                icon: 'warning', showCancelButton: true,
-                confirmButtonColor: '#D53D66', cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Keluar', cancelButtonText: 'Batal'
-            }).then((result) => { if (result.isConfirmed) window.location.href = '../../logout.php'; });
-        }
-
-        // Konfirmasi Beranda
-        function confirmLandingPage(e) {
-            e.preventDefault();
-            Swal.fire({
-                title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama publik.',
-                icon: 'info', showCancelButton: true,
-                confirmButtonColor: '#D53D66', cancelButtonColor: '#718096',
-                confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal'
-            }).then((result) => { if (result.isConfirmed) window.location.href = '../../index.php'; });
-        }
-
-        // Jam Real-Time
-        function updateLiveClock() {
-            const now = new Date();
-            const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
-            const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-            document.getElementById('live-clock').innerText = 
-                `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()} - ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')} WIB`;
-        }
-        setInterval(updateLiveClock, 1000); updateLiveClock();
-
-        // Form validation
-        document.getElementById('formTema').addEventListener('submit', function(e) {
-            const ruanganChecked = document.querySelectorAll('input[name="ruangan[]"]:checked').length;
-            if (ruanganChecked === 0) {
-                e.preventDefault();
-                Swal.fire({
-                    icon: 'warning', title: 'Ruangan Belum Dipilih',
-                    text: 'Pilih minimal 1 ruangan yang bisa menggunakan tema ini!',
-                    confirmButtonColor: '#D53D66'
-                });
-                return false;
-            }
-        });
-
-        // Init ruangan count
-        updateRuanganCount();
-    </script>
-
-    <?php if ($success): ?>
-    <script>
-        Swal.fire({
-            icon: 'success', title: 'Berhasil!',
-            text: 'Tema foto baru telah ditambahkan dan terhubung ke ruangan.',
-            confirmButtonColor: '#D53D66'
-        }).then(() => window.location = 'list.php?status_sukses=tambah');
-    </script>
-    <?php endif; ?>
+    // Init count saat halaman dimuat
+    document.addEventListener('DOMContentLoaded', updateRuanganCount);
+</script>
 </body>
 </html>

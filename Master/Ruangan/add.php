@@ -3,6 +3,14 @@ ob_start();
 session_start();
 include '../../koneksi.php';
 
+// =====================================================
+// CSRF TOKEN HANDLING
+// =====================================================
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
+
 define('STATUS_DATA_AKTIF', 1);
 define('STATUS_DATA_NONAKTIF', 0);
 
@@ -79,8 +87,17 @@ $success = false;
 $field_errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
+    // === VALIDASI CSRF ===
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        $error = "Token keamanan tidak valid. Silakan refresh halaman.";
+    } else {
+        // Regenerate token setelah digunakan (one-time use)
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
 
-    $nama           = trim($_POST['nama_ruangan'] ?? '');
+    // Hanya proses jika tidak ada error CSRF
+    if (empty($error)) {
+        $nama           = trim($_POST['nama_ruangan'] ?? '');
     $deskripsi      = trim($_POST['deskripsi'] ?? '');
     $paket_terpilih = $_POST['paket'] ?? [];
 
@@ -151,6 +168,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
         }
     }
 
+    } // Tutup if (empty($error)) dari validasi CSRF
+
     if (!empty($field_errors)) {
         $error = "Mohon lengkapi semua field yang bertanda merah (*) di bawah!";
     } else {
@@ -207,7 +226,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                 if (sqlsrv_commit($conn) === false) {
                     throw new Exception("Gagal melakukan commit transaksi database.");
                 }
-                $success = true;
+                // === PRG PATTERN: Redirect ke list dengan flag sukses ===
+                header("Location: list.php?status_sukses=tambah");
+                exit();
 
             } catch (Exception $e) {
                 sqlsrv_rollback($conn);
@@ -603,6 +624,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                 </div>
 
                 <form method="POST" enctype="multipart/form-data" id="formRuangan" action="">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
                     <div class="row">
                         <div class="col-md-12 mb-4">
                             <label class="form-label"><i class="bi bi-type"></i> Nama Ruangan <span class="required">*</span><span class="badge-wajib">Wajib</span></label>
@@ -1023,16 +1045,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             });
         <?php endif; ?>
 
-        <?php if ($success): ?>
-            Swal.fire({
-                icon: 'success',
-                title: 'Berhasil!',
-                text: 'Ruangan studio baru telah ditambahkan dan terhubung ke paket foto.',
-                confirmButtonColor: '#D53D66'
-            }).then(() => {
-                window.location.href = 'list.php?status_sukses=tambah';
-            });
-        <?php endif; ?>
+
     </script>
 </body>
 </html>

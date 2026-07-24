@@ -113,9 +113,8 @@ if (isset($_POST['update'])) {
         ];
         $stmt_update = sqlsrv_query($conn, $sql_update, $params_update);
         if ($stmt_update) {
-            $success = true;
-            $data['Keterangan'] = $keterangan;
-            $data['Status'] = $status;
+            header("Location: list.php?status_sukses=edit");
+            exit();
         } else {
             $sql_errors = sqlsrv_errors();
             $error_msg = "Gagal memperbarui keterangan jadwal.";
@@ -237,7 +236,8 @@ if (isset($_POST['update'])) {
             $stmt_update = sqlsrv_query($conn, $sql_update, $params_update);
 
             if ($stmt_update) {
-                $success = true;
+                header("Location: list.php?status_sukses=edit");
+                exit();
                 $data['ID_Ruangan'] = $id_ruangan;
                 $data['Tanggal_Jadwal'] = $tanggal_jadwal;
                 $data['Jam_Mulai'] = $jam_mulai_24h;
@@ -1341,16 +1341,6 @@ if (isset($data['Jam_Mulai'])) {
         calculateEndTime();
     });
 </script>
-
-<?php if($success): ?>
-<script>
-    Swal.fire({
-        icon: 'success', title: 'Berhasil!',
-        text: 'Data jadwal studio berhasil diperbarui.',
-        confirmButtonColor: '#D53D66', confirmButtonText: 'Oke'
-    }).then(() => { window.location.href = 'list.php?status_sukses=edit'; });
-</script>
-<?php endif; ?>
 
 </body>
 </html>

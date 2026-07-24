@@ -171,7 +171,9 @@ if (isset($_POST['simpan'])) {
                         $error = "Gagal menyimpan data properti: " . print_r(sqlsrv_errors(), true);
                     } else {
                         sqlsrv_free_stmt($stmt_properti);
-                        $success = true;
+                        // Langsung pindah ke list.php agar pop-up cukup muncul sekali di sana
+                        header("Location: list.php?status_sukses=tambah");
+                        exit();
                     }
                 }
             }
@@ -1006,15 +1008,5 @@ if (isset($_POST['simpan'])) {
         // Init: tampilkan info ruangan jika sudah ada value (validasi gagal)
         updateRuanganInfo();
     </script>
-
-    <?php if ($success): ?>
-    <script>
-        Swal.fire({
-            icon: 'success', title: 'Berhasil!',
-            text: 'Properti baru telah ditambahkan dan terhubung ke ruangan.',
-            confirmButtonColor: '#D53D66'
-        }).then(() => window.location = 'list.php?status_sukses=tambah');
-    </script>
-    <?php endif; ?>
 </body>
 </html>
