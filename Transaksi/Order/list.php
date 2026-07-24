@@ -20,9 +20,14 @@ if ($d_admin) { $d_admin = array_change_key_case($d_admin, CASE_LOWER); }
 $nama_admin = $d_admin['nama_karyawan'] ?? 'Administrator';
 $foto_admin = $d_admin['foto_profil'] ?? 'default.jpg';
 $default_svg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
-$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
-    ? "../../assets/img/karyawan/" . $foto_admin 
-    : $default_svg;
+
+if ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) {
+    $foto_admin_src = "../../assets/img/karyawan/" . $foto_admin;
+} elseif ($foto_admin != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_admin)) {
+    $foto_admin_src = "../../assets/img/pelanggan/" . $foto_admin;
+} else {
+    $foto_admin_src = $default_svg;
+}
     
 $limit = 10;
 $halaman = isset($_GET['halaman']) ? (int)$_GET['halaman'] : 1;
@@ -37,14 +42,11 @@ $urut = isset($_GET['urut']) ? trim($_GET['urut']) : "terbaru";
 // =====================================================
 // STATISTIK ORDER
 // =====================================================
-// Kondisi dasar: order aktif (Status=1) dan sudah diverifikasi (Status_Order >= 1)
-// Tapi UNTUK LIST BOOKING CUSTOMER, kita hanya peduli yang BELUM punya sesi foto
-
 $q_stats = "
     SELECT 
         COUNT(*) as total,
-        -- DP Terverifikasi: semua yang Status_Order=1 (termasuk yang sudah assign & belum)
-        SUM(CASE WHEN o.Status_Order = 1 THEN 1 ELSE 0 END) as dp_terverifikasi,
+        -- DP Terverifikasi: o.Status_Order = 1 dan BELUM ada pelunasan valid di awal
+        SUM(CASE WHEN o.Status_Order = 1 AND NOT EXISTS (SELECT 1 FROM Pembayaran pay WHERE pay.ID_Order = o.ID_Order AND pay.Tipe_Pembayaran = 'Pelunasan' AND pay.Status_Pembayaran = 1 AND pay.Status = 1) THEN 1 ELSE 0 END) as dp_terverifikasi,
         -- Menunggu Assign: Status_Order IN (1,3) tapi BELUM punya sesi foto aktif
         SUM(CASE WHEN o.Status_Order IN (1, 3) 
             AND NOT EXISTS (
@@ -54,9 +56,9 @@ $q_stats = "
                   AND sf.Status_Sesi IN (0, 1)
             ) THEN 1 ELSE 0 END) as menunggu_assign,
         SUM(CASE WHEN o.Status_Order = 2 THEN 1 ELSE 0 END) as selesai,
-        SUM(CASE WHEN o.Status_Order = 3 THEN 1 ELSE 0 END) as lunas,
+        -- Lunas: o.Status_Order = 3 ATAU (o.Status_Order = 1 yang sudah ada pelunasan valid di awal)
+        SUM(CASE WHEN o.Status_Order = 3 OR (o.Status_Order = 1 AND EXISTS (SELECT 1 FROM Pembayaran pay WHERE pay.ID_Order = o.ID_Order AND pay.Tipe_Pembayaran = 'Pelunasan' AND pay.Status_Pembayaran = 1 AND pay.Status = 1)) THEN 1 ELSE 0 END) as lunas,
         SUM(CASE WHEN o.Status_Order = 4 THEN 1 ELSE 0 END) as dibatalkan,
-        -- Expired: DP terverifikasi ATAU Lunas, belum assign, tapi jadwal sudah lewat
         SUM(CASE WHEN o.Status_Order IN (1, 3)
             AND NOT EXISTS (
                 SELECT 1 FROM Sesi_Foto sf 
@@ -88,9 +90,9 @@ $conditions = ["o.Status = 1 AND o.Status_Order >= 1"];
 $params = [];
 
 if ($tab_filter === 'dp_terverifikasi') {
-    $conditions[] = "o.Status_Order = 1";
+    // Hanya yang baru bayar DP (tidak lunas di awal)
+    $conditions[] = "o.Status_Order = 1 AND NOT EXISTS (SELECT 1 FROM Pembayaran pay WHERE pay.ID_Order = o.ID_Order AND pay.Tipe_Pembayaran = 'Pelunasan' AND pay.Status_Pembayaran = 1 AND pay.Status = 1)";
 } elseif ($tab_filter === 'menunggu_assign') {
-    // Status_Order IN (1,3) DAN belum punya sesi foto aktif
     $conditions[] = "o.Status_Order IN (1, 3) AND NOT EXISTS (
         SELECT 1 FROM Sesi_Foto sf 
         WHERE sf.ID_Order = o.ID_Order 
@@ -100,7 +102,8 @@ if ($tab_filter === 'dp_terverifikasi') {
 } elseif ($tab_filter === 'selesai') {
     $conditions[] = "o.Status_Order = 2";
 } elseif ($tab_filter === 'lunas') {
-    $conditions[] = "o.Status_Order = 3";
+    // Status_Order = 3 ATAU lunas di awal
+    $conditions[] = "(o.Status_Order = 3 OR (o.Status_Order = 1 AND EXISTS (SELECT 1 FROM Pembayaran pay WHERE pay.ID_Order = o.ID_Order AND pay.Tipe_Pembayaran = 'Pelunasan' AND pay.Status_Pembayaran = 1 AND pay.Status = 1)))";
 } elseif ($tab_filter === 'dibatalkan') {
     $conditions[] = "o.Status_Order = 4";
 } elseif ($tab_filter === 'terlewat') {
@@ -164,11 +167,7 @@ $order_map = [
 $order_by = $order_map[$urut] ?? $order_map['terbaru'];
 
 // =====================================================
-// QUERY UTAMA LIST ORDER
-// PERUBAHAN KRUSIAL:
-// 1. Base query hanya ambil Status_Order IN (1, 3) — DP OK atau Lunas
-// 2. LEFT JOIN Sesi_Foto dengan kondisi Status_Sesi IN (0, 1) untuk cek assign
-// 3. Tombol assign muncul kalau belum ada fotografer (ID_Fotografer IS NULL)
+// QUERY UTAMA LIST ORDER DENGAN SUBQUERY DETEKSI PELUNASAN AKTIF
 // =====================================================
 $sql_list = "SELECT o.ID_Order, o.Tanggal_Booking, o.Total_Paket, o.Total_Barang_Cetak, o.Total_Harga, o.Status_Order, o.Rating, o.Review, o.Keterangan, 
                     p.Nama_Pelanggan, p.No_Hp, p.Email_Pelanggan, 
@@ -176,7 +175,9 @@ $sql_list = "SELECT o.ID_Order, o.Tanggal_Booking, o.Total_Paket, o.Total_Barang
                     r.Nama_Ruangan, r.Foto_Ruangan,
                     t.Nama_Tema, t.Foto_Tema,
                     sf.ID_Karyawan as ID_Fotografer, sf.Status_Sesi, 
-                    k.Nama_Karyawan as Nama_Fotografer 
+                    k.Nama_Karyawan as Nama_Fotografer,
+                    -- SUBQUERY DINAMIS: Deteksi apakah customer bayar langsung lunas di awal
+                    (SELECT COUNT(*) FROM Pembayaran pay WHERE pay.ID_Order = o.ID_Order AND pay.Tipe_Pembayaran = 'Pelunasan' AND pay.Status_Pembayaran = 1 AND pay.Status = 1) AS Ada_Pelunasan_Valid
              FROM [Order] o 
              INNER JOIN Pelanggan p ON o.ID_Pelanggan = p.ID_Pelanggan 
              INNER JOIN Paket_Foto pk ON o.ID_Paket = pk.ID_Paket 
@@ -193,9 +194,6 @@ $sql_list = "SELECT o.ID_Order, o.Tanggal_Booking, o.Total_Paket, o.Total_Barang
 $p_list = $params; $p_list[] = $offset; $p_list[] = $limit;
 $query = sqlsrv_query($conn, $sql_list, $p_list);
 
-// =====================================================
-// PENAMPUNGAN DATA ORDER
-// =====================================================
 $orders_list = [];
 $order_ids = [];
 if ($query !== false) {
@@ -244,7 +242,7 @@ if (!empty($order_ids)) {
                 'jam' => $jam_mulai_str . ' - ' . $jam_selesai_str,
                 'ts_selesai' => $ts_selesai
             ];
-        }
+        } 
     }
 }
 
@@ -269,12 +267,14 @@ $fotografer_list = [];
 if ($q_fg !== false) { while ($f = sqlsrv_fetch_array($q_fg, SQLSRV_FETCH_ASSOC)) $fotografer_list[] = $f; }
 
 // =====================================================
-// OBJEK JSON UNTUK MODAL DETAIL
+// OBJEK JSON UNTUK MODAL DETAIL & BADGE STATUS DINAMIS
 // =====================================================
 $order_data_js = [];
 foreach ($orders_list as $row) {
     $oid = (int)$row['ID_Order'];
-    $s_info = getStatusLabel((int)$row['Status_Order']);
+    
+    // PERBAIKAN LOGIKA: Jika Status_Order=1 tapi sudah ada Pelunasan Valid, setel label status menjadi Lunas!
+    $s_info = getStatusLabelDynamic((int)$row['Status_Order'], (int)$row['Ada_Pelunasan_Valid']);
     
     $schedules = $jadwal_per_order[$oid] ?? [];
     $jadwal_str = [];
@@ -305,15 +305,21 @@ foreach ($orders_list as $row) {
     ];
 }
 
-function getStatusLabel($s) {
+// FUNGSI LOGIKA PERBANDINGAN SATUS SINKRON (Bebas Ambigu)
+function getStatusLabelDynamic($status_order, $ada_pelunasan_valid) {
+    if ($status_order == 1 && $ada_pelunasan_valid > 0) {
+        return ['Lunas (Menunggu Sesi)', '#7c3aed', '#ede9fe', 'bi-cash-stack'];
+    }
+    
     $l = [
         1 => ['DP Terverifikasi','#059669','#d1fae5','bi-check-circle-fill'],
         2 => ['Selesai Foto','#2563eb','#dbeafe','bi-camera-fill'],
         3 => ['Lunas','#7c3aed','#ede9fe','bi-cash-stack'],
         4 => ['Dibatalkan','#dc2626','#fee2e2','bi-x-circle-fill']
     ];
-    return $l[$s] ?? ['Unknown','#718096','#f1f5f9','bi-question-circle'];
+    return $l[$status_order] ?? ['Unknown','#718096','#f1f5f9','bi-question-circle'];
 }
+
 function fmtTgl($d) { 
     return (is_object($d) && method_exists($d, 'format')) 
         ? $d->format('d M Y H:i') 
@@ -393,7 +399,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 .btn-search-icon{background:#fff;border:2px solid #e2e8f0;border-radius:14px;padding:12px 16px;color:#94a3b8;cursor:pointer;transition:var(--transition-3d);display:flex;align-items:center;justify-content:center;}
 .btn-search-icon:hover{border-color:var(--p-pink);color:var(--p-pink);transform:translateY(-2px);}
 
-/* Tombol Filter: gaya outline ringan (BUKAN solid sama seperti tombol aksi utama) */
+/* Tombol Filter kustom */
 .btn-filter-toggle{
     position:relative;display:inline-flex;align-items:center;gap:8px;
     background:var(--s-pink);color:var(--p-pink);
@@ -467,13 +473,34 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 .filter-modal-close:hover{color:var(--p-pink);}
 .filter-modal-body label{display:block;font-size:0.75rem;font-weight:700;color:#94a3b8;letter-spacing:.5px;margin:16px 0 6px;}
 .filter-modal-body label:first-child{margin-top:0;}
-.filter-select{width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid #e2e8f0;font-size:0.9rem;color:var(--text-dark);background:#fff;}
+.filter-select{width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid #e2e2f0;font-size:0.9rem;color:var(--text-dark);background:#fff;}
 .filter-select:focus{outline:none;border-color:var(--p-pink);}
 .filter-modal-footer{display:flex;gap:12px;margin-top:24px;}
 .btn-filter-reset{flex:1;background:#f1f5f9;color:#64748b;border:none;padding:13px;border-radius:12px;font-weight:700;cursor:pointer;}
 .btn-filter-reset:hover{background:#e2e8f0;}
 .btn-filter-terapkan{flex:1.4;background:var(--p-pink);color:#fff;border:none;padding:13px;border-radius:12px;font-weight:700;cursor:pointer;}
 .btn-filter-terapkan:hover{background:var(--d-pink);}
+
+/* Dropdown arrow custom */
+select.filter-select {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    background: #ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23D53D66'%3E%3Cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E") no-repeat right 16px center !important;
+    background-size: 14px !important;
+    padding-right: 44px !important;
+}
+
+/* BIODATA SINKRON */
+.profile-preview-box {
+    width: 90px; height: 90px; border-radius: 50%; overflow: hidden;
+    border: 2.5px solid #eef2f6; background: #f8fafc; display: flex;
+    align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+    transition: var(--transition-3d);
+}
+.profile-preview-box img {
+    width: 100%; height: 100%; object-fit: cover;
+}
 
 /* =====================================================
    RESPONSIVE ENHANCEMENTS
@@ -654,7 +681,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 </form>
 </div>
 
-<!-- MODAL FILTER -->
+<!-- MODAL FILTER (SINKRON DENGAN BOOKING CUSTOMER) -->
 <div id="modalFilterData" class="filter-modal-overlay" onclick="if(event.target===this) tutupModalFilter()">
   <div class="filter-modal-box">
     <div class="filter-modal-header">
@@ -694,15 +721,9 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 $no=$offset+1;
 if(!empty($orders_list)):
 foreach($orders_list as $row):
-$statusInfo=getStatusLabel((int)$row['Status_Order']);
+$statusInfo=getStatusLabelDynamic((int)$row['Status_Order'], (int)$row['Ada_Pelunasan_Valid']);
 $has_fotografer=!empty($row['ID_Fotografer']);
 $nama_fotografer=$row['Nama_Fotografer']??null;
-// =====================================================
-// TOMBOL ASSIGN MUNCUL KALAU:
-// 1. Status_Order = 1 (DP Terverifikasi) ATAU Status_Order = 3 (Lunas)
-// 2. BELUM punya fotografer (ID_Fotografer IS NULL)
-// 3. Jadwal sesinya BELUM expired (jam selesai terakhir belum lewat)
-// =====================================================
 $is_expired = !empty($order_terlewat[(int)$row['ID_Order']]);
 $bisa_assign = ((int)$row['Status_Order'] === STATUS_ORDER_DP_TERVERIFIKASI || (int)$row['Status_Order'] === STATUS_ORDER_LUNAS) && !$has_fotografer && !$is_expired;
 ?>
@@ -727,12 +748,12 @@ $bisa_assign = ((int)$row['Status_Order'] === STATUS_ORDER_DP_TERVERIFIKASI || (
     <?php endif; ?>
 </td>
 <td><div class="td-harga">Rp <?= number_format((float)$row['Total_Harga'],0,',','.') ?></div></td>
-<td><span class="badge-status" style="background:<?= $statusInfo[2] ?>;color:<?= $statusInfo[1] ?>"><span class="badge-dot" style="background:<?= $statusInfo[1] ?>"></span><?= $statusInfo[0] ?></span><?php if(in_array((int)$row['Status_Order'],[STATUS_ORDER_DP_TERVERIFIKASI,STATUS_ORDER_LUNAS]) && !$has_fotografer && $is_expired):?><div class="badge-expired" title="Jadwal sesi sudah lewat waktu dan belum punya fotografer. Assign tidak bisa dilakukan, order harus di-reschedule dulu."><i class="bi bi-clock-history"></i> Expired</div><?php endif;?></td>
+<td><span class="badge-status" style="background:<?= $statusInfo[2] ?>;color:<?= $statusInfo[1] ?>"><span class="badge-dot" style="background:<?= $statusInfo[1] ?>"></span><?= $statusInfo[0] ?></span><?php if(in_array((int)$row['Status_Order'],[STATUS_ORDER_DP_TERVERIFIKASI,STATUS_ORDER_LUNAS]) && !$has_fotografer && $is_expired):?><div class="badge-expired" title="Jadwal sesi sudah lewat waktu."><i class="bi bi-clock-history"></i> Expired</div><?php endif;?></td>
 <td><?php if($has_fotografer):?><span class="fotografer-badge"><i class="bi bi-person-fill"></i><?= htmlspecialchars($nama_fotografer) ?></span><?php else:?><span class="td-detail" style="color:#94a3b8"><i class="bi bi-person-x me-1"></i>Belum diassign</span><?php endif;?></td>
 <td><button class="btn-action-circle btn-action-view" onclick="bukaDetail(<?= (int)$row['ID_Order'] ?>)" title="Lihat Detail"><i class="bi bi-eye"></i></button><?php if($bisa_assign):?><button class="btn-action-circle btn-action-assign" onclick="konfirmasiAssign(<?= (int)$row['ID_Order'] ?>)" title="Assign Fotografer"><i class="bi bi-person-plus"></i></button><?php endif;?></td>
 </tr>
 <?php endforeach;else:?>
-<tr><td colspan="9" class="text-center text-muted py-5"><i class="bi bi-inbox fs-1 mb-3 d-block" style="color:#cbd5e1"></i><p class="fw-bold">Tidak ada order yang sesuai.</p><p class="small">Belum ada order yang sudah dikonfirmasi dan siap di-assign fotografer.</p></td></tr>
+<tr><td colspan="9" class="text-center text-muted py-5"><i class="bi bi-inbox fs-1 mb-3 d-block" style="color:#cbd5e1"></i><p class="fw-bold">Tidak ada order yang sesuai.</p><p class="small">Belum ada order yang sudah dikonfirmasi.</p></td></tr>
 <?php endif;?>
 </tbody>
 </table>
@@ -756,6 +777,61 @@ $bisa_assign = ((int)$row['Status_Order'] === STATUS_ORDER_DP_TERVERIFIKASI || (
 <div class="modal-overlay" id="modalDetail"><div class="modal-content-custom"><div class="modal-header-custom"><div class="modal-title-custom"><i class="bi bi-receipt" style="color:var(--p-pink);margin-right:8px"></i> Detail Order</div><button class="modal-close-custom" onclick="tutupModal('modalDetail')">&times;</button></div><div class="modal-body-custom" id="detailContent"></div><div class="modal-footer" style="border-top:1px solid #f1f5f9;padding:20px 24px;display:flex;justify-content:flex-end;gap:12px"><button class="btn-search-icon" style="padding:12px 24px;font-weight:700;color:#4a5568" onclick="tutupModal('modalDetail')">Tutup</button></div></div></div>
 
 <div class="modal-overlay" id="modalAssign"><div class="modal-content-custom" style="max-width:450px"><div class="modal-header-custom"><div class="modal-title-custom"><i class="bi bi-person-plus" style="color:var(--p-pink);margin-right:8px"></i> Assign Fotografer</div><button class="modal-close-custom" onclick="tutupModal('modalAssign')">&times;</button></div><div class="modal-body-custom"><p style="font-size:0.9rem;color:var(--text-muted);margin-bottom:20px">Pilih fotografer untuk menangani sesi foto order ini:</p><form id="formAssign" method="POST" action="assign_fotografer.php"><input type="hidden" name="id_order" id="assignOrderId"><div style="margin-bottom:20px"><label style="display:block;font-size:0.9rem;font-weight:700;color:var(--text-dark);margin-bottom:10px">Fotografer</label><select name="id_fotografer" style="width:100%;padding:14px 16px;border:2px solid #e2e8f0;border-radius:14px;font-family:inherit;font-weight:600;font-size:0.9rem;cursor:pointer" required><option value="">-- Pilih Fotografer --</option><?php foreach($fotografer_list as $fg):?><option value="<?= (int)$fg['ID_Karyawan'] ?>"><?= htmlspecialchars($fg['Nama_Karyawan']) ?></option><?php endforeach;?></select></div></form></div><div class="modal-footer" style="border-top:1px solid #f1f5f9;padding:20px 24px;display:flex;justify-content:flex-end;gap:12px"><button class="btn-search-icon" style="padding:12px 24px;font-weight:700;color:#4a5568" onclick="tutupModal('modalAssign')">Batal</button><button class="btn-search-icon" style="background:linear-gradient(135deg,var(--p-pink),var(--d-pink));color:#fff;border-color:var(--p-pink);padding:12px 24px;font-weight:800" onclick="document.getElementById('formAssign').submit()"><i class="bi bi-check-lg me-1"></i> Simpan</button></div></div></div>
+
+<!-- MODAL BIODATA ADMINISTRATOR (SINKRON DENGAN MENU UTAMA) -->
+<div class="modal fade" id="modalLihatBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); background: #ffffff;">
+      <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
+        <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-vcard-fill text-danger me-2"></i>Biodata Administrator</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body px-4 pb-4 pt-3">
+        <div class="text-center mb-4">
+          <div class="profile-preview-box mx-auto" style="width: 100px; height: 100px; border: 3px solid var(--s-pink); border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            <img src="<?= $foto_admin_src ?>" alt="Foto Profil" style="width: 100%; height: 100%; object-fit: cover;">
+          </div>
+          <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_admin) ?></h5>
+          <span class="badge bg-danger px-3 py-1 text-white text-uppercase" style="font-size: 0.72rem; border-radius: 50px; font-weight: 700;">Administrator (Admin)</span>
+        </div>
+        <div class="card-3d p-3 border-0 mb-4" style="border-radius: 20px; background-color: #f8fafc; box-shadow: none;">
+          <div class="row g-3">
+            <div class="col-6">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">NIK</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_admin['nik'] ?? '-') ?></span>
+            </div>
+            <div class="col-6">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Nama Pengguna</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;">@<?= htmlspecialchars($d_admin['username_karyawan'] ?? '-') ?></span>
+            </div>
+            <div class="col-12 border-top pt-2">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Alamat Email</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_admin['email_karyawan'] ?? '-') ?></span>
+            </div>
+            <div class="col-6 border-top pt-2">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Jenis Kelamin</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_admin['jenis_kelamin'] ?? '-') ?></span>
+            </div>
+            <div class="col-6 border-top pt-2">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Tanggal Lahir</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;">
+                <?= (isset($d_admin['tanggal_lahir']) && $d_admin['tanggal_lahir'] instanceof DateTime) ? $d_admin['tanggal_lahir']->format('d M Y') : ($d_admin['tanggal_lahir'] ?? '-') ?>
+              </span>
+            </div>
+            <div class="col-12 border-top pt-2">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Nomor Telepon</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_admin['no_hp'] ?? '-') ?></span>
+            </div>
+            <div class="col-12 border-top pt-2">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Alamat Lengkap</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_admin['alamat'] ?? '-') ?></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script>
@@ -852,7 +928,13 @@ function bukaDetail(idOrder) {
 function konfirmasiAssign(idOrder){Swal.fire({title:'Assign Fotografer?',text:'Pilih fotografer yang akan menangani sesi foto ini.',icon:'question',showCancelButton:true,confirmButtonColor:'#D53D66',cancelButtonColor:'#718096',confirmButtonText:'Lanjutkan',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){document.getElementById('assignOrderId').value=idOrder;bukaModal('modalAssign');}});}
 function confirmLogout(e){e.preventDefault();Swal.fire({title:'Keluar Sistem?',text:'Apakah Anda yakin ingin keluar dari sistem SpotLight Studio?',icon:'warning',showCancelButton:true,confirmButtonColor:'#D53D66',cancelButtonColor:'#718096',confirmButtonText:'Ya, Keluar',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){window.location.href='../../logout.php';}});}
 function confirmLandingPage(e){e.preventDefault();Swal.fire({title:'Kembali ke Beranda?',text:'Anda akan dialihkan ke halaman utama publik.',icon:'info',showCancelButton:true,confirmButtonColor:'#D53D66',cancelButtonColor:'#718096',confirmButtonText:'Ya, Kembali',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){window.location.href='../../index.php';}});}
-function bukaModalBiodata(){Swal.fire({title:'<?= htmlspecialchars($nama_admin) ?>',text:'Administrator - SpotLight Studio',icon:'info',confirmButtonColor:'#D53D66'});}
+
+// Buka Modal Biodata Administrator (Akses Edit Dihapus)
+function bukaModalBiodata(){
+    var modalBiodata = new bootstrap.Modal(document.getElementById('modalLihatBiodata'));
+    modalBiodata.show();
+}
+
 function updateLiveClock(){const now=new Date();const days=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];const months=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];document.getElementById('live-clock').innerText=`${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()} - ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')} WIB`;}
 setInterval(updateLiveClock,1000);updateLiveClock();
 
