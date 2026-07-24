@@ -18,8 +18,10 @@ if ($d_admin) { $d_admin = array_change_key_case($d_admin, CASE_LOWER); }
 $nama_admin = $d_admin['nama_karyawan'] ?? 'Administrator';
 $foto_admin = $d_admin['foto_profil'] ?? 'default.jpg';
 $default_svg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
-$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/pelanggan/" . $foto_admin)) ? "../../assets/img/pelanggan/" . $foto_admin : $default_svg;
-
+$foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_admin)) 
+    ? "../../assets/img/karyawan/" . $foto_admin 
+    : $default_svg;
+    
 $limit = 10;
 $halaman = isset($_GET['halaman']) ? (int)$_GET['halaman'] : 1;
 if ($halaman < 1) $halaman = 1;
@@ -31,23 +33,11 @@ $tgl_sampai = isset($_GET['tgl_sampai']) ? trim($_GET['tgl_sampai']) : "";
 $urut = isset($_GET['urut']) ? trim($_GET['urut']) : "terbaru";
 
 // =====================================================
-// AUTO-EXPIRE: PEMBAYARAN DP MENUNGGU YANG:
-// (a) jadwal sesinya sudah lewat semua, ATAU
-// (b) bukti sudah diupload tapi tidak diverifikasi admin
-//     lebih dari BATAS_JAM_VERIFIKASI jam -> dianggap expired
-//     juga, supaya antrian verifikasi tidak numpuk.
-// - Order otomatis dibatalkan (Status_Order = 4)
-// - Bukti pembayaran DP yang menunggu otomatis "dihapus"
-//   dari daftar (soft delete: Status = 0).
+// AUTO-EXPIRE: PEMBAYARAN DP MENUNGGU
 // =====================================================
-define('BATAS_JAM_VERIFIKASI', 24); // batas waktu admin verifikasi sejak bukti diupload
+define('BATAS_JAM_VERIFIKASI', 24); 
 
-// -----------------------------------------------------
-// BERSIHKAN PEMBAYARAN "NYANGKUT": kalau order-nya sudah
-// Dibatalkan (lewat jalur mana pun -- customer batal sendiri,
-// auto-expire riwayat.php, dsb) tapi masih ada Pembayaran DP
-// berstatus Menunggu, itu sampah -- soft delete sekarang juga.
-// -----------------------------------------------------
+// Soft delete pembayaran DP nyangkut pada order yang dibatalkan
 sqlsrv_query($conn, "
     UPDATE Pembayaran SET Status = 0, Modified_By = 'system_auto', Modified_Date = GETDATE()
     WHERE Status = 1 AND Status_Pembayaran = 0
@@ -99,7 +89,7 @@ if (!empty($pending_order_ids)) {
             else { $jam = substr((string)$jam, 0, 8); }
 
             if (strtotime($tgl . ' ' . $jam) >= time()) {
-                $semua_lewat[$oid] = false; // masih ada jadwal yang belum lewat
+                $semua_lewat[$oid] = false; 
             }
         }
     }
@@ -142,7 +132,7 @@ if (!empty($pending_order_ids)) {
 }
 
 // Statistik
-$q_stats = "SELECT COUNT(*) as total, SUM(CASE WHEN Status_Pembayaran = 0 THEN 1 ELSE 0 END) as menunggu, SUM(CASE WHEN Status_Pembayaran = 1 THEN 1 ELSE 0 END) as valid, SUM(CASE WHEN Status_Pembayaran = 2 THEN 1 ELSE 0 END) as ditolak FROM Pembayaran WHERE Status = 1 AND Tipe_Pembayaran = 'DP'";
+$q_stats = "SELECT COUNT(*) as total, SUM(CASE WHEN Status_Pembayaran = 0 THEN 1 ELSE 0 END) as menunggu, SUM(CASE WHEN Status_Pembayaran = 1 THEN 1 ELSE 0 END) as valid, SUM(CASE WHEN Status_Pembayaran = 2 THEN 1 ELSE 0 END) as ditolak FROM Pembayaran p INNER JOIN [Order] o ON p.ID_Order = o.ID_Order WHERE p.Status = 1 AND p.Tipe_Pembayaran = 'DP' AND o.Status_Order != 3";
 $stmt_stats = sqlsrv_query($conn, $q_stats);
 $stats = ['total'=>0,'menunggu'=>0,'valid'=>0,'ditolak'=>0];
 if ($stmt_stats !== false) {
@@ -151,7 +141,7 @@ if ($stmt_stats !== false) {
 }
 
 // Query list
-$conditions = ["p.Status = 1", "p.Tipe_Pembayaran = 'DP'"];
+$conditions = ["p.Status = 1", "p.Tipe_Pembayaran = 'DP'", "o.Status_Order != 3"]; // PERBAIKAN SINKRON: Menyembunyikan Order yang sudah Lunas (Status_Order = 3)
 $params = [];
 if ($tab_filter === 'menunggu') {
     $conditions[] = "p.Status_Pembayaran = 0";
@@ -247,8 +237,6 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 .stats-row{display:flex;gap:16px;min-width:max-content;}
 .stat-card-item{min-width:220px;max-width:280px;flex:0 0 auto;}
 
-/* card-3d = struktur visual dasar (statistik & info non-klik, TIDAK ada hover).
-   card-3d-clickable = modifier opt-in untuk elemen yang benar-benar bisa diklik. */
 .card-3d{background:#fff;border-radius:22px;border:1px solid rgba(255,228,233,0.8);box-shadow:0 8px 24px rgba(213,61,102,0.03);padding:20px;height:100%;position:relative;overflow:hidden;}
 .card-3d-clickable{transition:var(--transition-3d);cursor:pointer;}
 .card-3d-clickable:hover{transform:translateY(-8px) scale(1.01);box-shadow:0 22px 45px rgba(213,61,102,0.14);border-color:var(--p-pink);}
@@ -274,10 +262,10 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 .search-icon{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:1rem;z-index:2;}
 .search-input-main{width:100%;border:2px solid #e2e8f0;border-radius:14px;padding:12px 18px 12px 44px;font-weight:600;font-size:0.9rem;color:#1e293b;transition:var(--transition-3d);background:#fff;}
 .search-input-main:focus{outline:none;border-color:var(--p-pink);box-shadow:0 0 0 4px rgba(213,61,102,0.08);}
+.search-input-main::placeholder { color:#a0aec0 !important; font-weight:500 !important; }
 .btn-search-icon{background:#fff;border:2px solid #e2e8f0;border-radius:14px;padding:12px 16px;color:#94a3b8;cursor:pointer;transition:var(--transition-3d);display:flex;align-items:center;justify-content:center;}
 .btn-search-icon:hover{border-color:var(--p-pink);color:var(--p-pink);transform:translateY(-2px);}
 
-/* Tombol Filter: gaya outline ringan (BUKAN solid sama seperti tombol aksi utama) */
 .btn-filter-toggle{
     position:relative;display:inline-flex;align-items:center;gap:8px;
     background:var(--s-pink);color:var(--p-pink);
@@ -328,9 +316,20 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 .page-link-pag.disabled{opacity:0.5;cursor:not-allowed;pointer-events:none;}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-10px);}to{opacity:1;transform:translateY(0);}}
 .fade-in-up{animation:fadeIn 0.5s ease-out;}
-.bukti-thumb{width:60px;height:60px;border-radius:10px;object-fit:cover;border:2px solid #e2e8f0;cursor:pointer;transition:all 0.3s;}
-.bukti-thumb:hover{transform:scale(1.05);border-color:var(--p-pink);}
-.bukti-thumb-pdf{display:flex;align-items:center;justify-content:center;background:#fef2f2;color:#dc2626;font-size:1.4rem;}
+
+/* GAYA THUMBNAIL BUKTI TRANSFER UNIFIED SINKRON */
+.bukti-thumb {
+    width: 60px; height: 60px; border-radius: 12px; object-fit: cover;
+    border: 2px solid var(--light-pink); cursor: pointer; transition: var(--transition-3d);
+}
+.bukti-thumb:hover { transform: scale(1.05); border-color: var(--p-pink); box-shadow:0 8px 20px rgba(213,61,102,0.15); }
+.bukti-thumb-fallback {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 60px; height: 60px; border-radius: 12px;
+    background: var(--s-pink); color: var(--p-pink); border: 2px solid var(--light-pink);
+    font-size: 1.4rem; cursor: pointer; transition: var(--transition-3d);
+}
+.bukti-thumb-fallback:hover { transform: scale(1.05); border-color: var(--p-pink); box-shadow:0 8px 20px rgba(213,61,102,0.15); }
 
 /* ===== FILTER MODAL ===== */
 .filter-modal-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:2000;align-items:center;justify-content:center;padding:16px;}
@@ -341,13 +340,35 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 .filter-modal-close:hover{color:var(--p-pink);}
 .filter-modal-body label{display:block;font-size:0.75rem;font-weight:700;color:#94a3b8;letter-spacing:.5px;margin:16px 0 6px;}
 .filter-modal-body label:first-child{margin-top:0;}
+
 .filter-select{width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid #e2e8f0;font-size:0.9rem;color:var(--text-dark);background:#fff;}
 .filter-select:focus{outline:none;border-color:var(--p-pink);}
-.filter-modal-footer{display:flex;gap:12px;margin-top:24px;}
+
+/* Dropdown arrow custom untuk modal filter */
+select.filter-select {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    background: #ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23D53D66'%3E%3Cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E") no-repeat right 16px center !important;
+    background-size: 14px !important;
+    padding-right: 44px !important;
+}
+
 .btn-filter-reset{flex:1;background:#f1f5f9;color:#64748b;border:none;padding:13px;border-radius:12px;font-weight:700;cursor:pointer;}
 .btn-filter-reset:hover{background:#e2e8f0;}
 .btn-filter-terapkan{flex:1.4;background:var(--p-pink);color:#fff;border:none;padding:13px;border-radius:12px;font-weight:700;cursor:pointer;}
 .btn-filter-terapkan:hover{background:var(--d-pink);}
+
+/* BIODATA SINKRON */
+.profile-preview-box {
+    width: 90px; height: 90px; border-radius: 50%; overflow: hidden;
+    border: 2.5px solid #eef2f6; background: #f8fafc; display: flex;
+    align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+    transition: var(--transition-3d);
+}
+.profile-preview-box img {
+    width: 100%; height: 100%; object-fit: cover;
+}
 
 /* =====================================================
    RESPONSIVE ENHANCEMENTS
@@ -459,7 +480,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 </div>
 </li>
 
-<!-- TRANSAKSI - URUTAN BERURUTAN -->
+<!-- TRANSAKSI -->
 <li class="nav-item">
 <a href="#" class="nav-link-custom btn-toggle-submenu active" data-target="#submenuTransaksi"><span><i class="bi bi-cart-fill me-2"></i> Transaksi</span><i class="bi bi-chevron-up small icon-chevron" style="transform:rotate(180deg);"></i></a>
 <div class="submenu show" id="submenuTransaksi">
@@ -471,7 +492,6 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 </ul>
 </div>
 </li>
-
 
 <li class="nav-item"><a href="../../index.php" class="nav-link-custom" onclick="confirmLandingPage(event)"><span><i class="bi bi-house-door-fill me-2"></i>Beranda</span></a></li>
 </ul>
@@ -559,7 +579,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--body-bg);color:
 <div class="card-3d mb-4" style="padding:24px;">
 <div class="table-scroll-wrapper">
 <table class="data-table">
-<thead><tr><th>No.</th><th>Customer</th><th>No. Order</th><th>Metode</th><th>Jumlah DP</th><th>Bukti</th><th>Tanggal Upload</th><th>Status</th><th class="text-center">Aksi</th></tr></thead>
+<thead><tr><th>No.</th><th>Customer</th><th>No. Order</th><th>Metode</th><th>Jumlah DP</th><th style="width:100px;">Bukti</th><th>Tanggal Upload</th><th>Status</th><th class="text-center">Aksi</th></tr></thead>
 <tbody>
 <?php
 $no_urut = $offset + 1;
@@ -569,22 +589,27 @@ $statusInfo=getStatusPembayaranLabel((int)$row['Status_Pembayaran']);
 $orderStatusInfo=getStatusOrderLabel((int)$row['Status_Order']);
 ?>
 <tr class="fade-in-up">
-<!-- PENYELARASAN NOMOR URUT: Kolom 1 menampilkan nomor urutan angka sekuensial yang rapi -->
 <td><div class="td-pembayaran-id"><?= $no_urut++ ?></div></td>
 <td><div class="td-customer"><?= htmlspecialchars($row['Nama_Pelanggan']) ?></div><div class="td-customer-contact"><?= htmlspecialchars($row['No_Hp']) ?></div></td>
 <td><div class="td-order">#<?= str_pad((int)$row['ID_Order'],5,'0',STR_PAD_LEFT) ?></div><div class="td-detail" style="color:<?= $orderStatusInfo[1] ?>"><span class="badge-dot" style="background:<?= $orderStatusInfo[1] ?>"></span><?= $orderStatusInfo[0] ?></div></td>
 <td><div class="td-detail"><?= htmlspecialchars($row['Metode_Pembayaran']) ?></div></td>
 <td><div class="td-jumlah">Rp <?= number_format((float)$row['Jumlah_Bayar'],0,',','.') ?></div></td>
-<td><?php if(!empty($row['Bukti_Transfer'])):
+<td>
+<?php if(!empty($row['Bukti_Transfer'])):
     $bukti_url = "../../assets/img/bukti/" . htmlspecialchars($row['Bukti_Transfer'], ENT_QUOTES);
     $bukti_ext = strtolower(pathinfo($row['Bukti_Transfer'], PATHINFO_EXTENSION));
     ?>
+    <!-- WRAPPER CERDAS MULTI-FOLDER SINKRON (Jika gambar fisik rusak, tampilkan icon default) -->
     <?php if($bukti_ext === 'pdf'): ?>
-    <button type="button" class="bukti-thumb bukti-thumb-pdf" onclick="lihatBukti('<?= $bukti_url ?>', true)" title="Klik untuk melihat bukti"><i class="bi bi-file-earmark-pdf"></i></button>
+    <button type="button" class="bukti-thumb-fallback" onclick="lihatBukti('<?= $bukti_url ?>', true)" title="Klik untuk melihat bukti"><i class="bi bi-file-earmark-pdf"></i></button>
     <?php else: ?>
-    <img src="<?= $bukti_url ?>" class="bukti-thumb" onclick="lihatBukti('<?= $bukti_url ?>', false)" title="Klik untuk memperbesar">
+    <div class="position-relative d-inline-block">
+        <img src="<?= $bukti_url ?>" class="bukti-thumb" onclick="lihatBukti('<?= $bukti_url ?>', false)" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';" title="Klik untuk memperbesar">
+        <button type="button" class="bukti-thumb-fallback" style="display:none;" onclick="lihatBukti('<?= $bukti_url ?>', false)" title="Klik untuk melihat bukti"><i class="bi bi-image"></i></button>
+    </div>
     <?php endif; ?>
-<?php else:?><span class="td-detail" style="color:#94a3b8">Tidak ada</span><?php endif;?></td>
+<?php else:?><span class="td-detail" style="color:#94a3b8">Tidak ada</span><?php endif;?>
+</td>
 <td><div class="td-detail"><?= (is_object($row['Tanggal_Upload'])&&method_exists($row['Tanggal_Upload'],'format'))?$row['Tanggal_Upload']->format('d M Y H:i'):date('d M Y H:i',strtotime($row['Tanggal_Upload'])) ?></div></td>
 <td><span class="badge-status" style="background:<?= $statusInfo[2] ?>;color:<?= $statusInfo[1] ?>"><span class="badge-dot" style="background:<?= $statusInfo[1] ?>"></span><?= $statusInfo[0] ?></span></td>
 <td>
@@ -610,7 +635,7 @@ $orderStatusInfo=getStatusOrderLabel((int)$row['Status_Order']);
 <nav class="pagination-nav">
 <?php $extra_qs = (!empty($tgl_dari)?'&tgl_dari='.urlencode($tgl_dari):'').(!empty($tgl_sampai)?'&tgl_sampai='.urlencode($tgl_sampai):''); ?>
 <?php if($halaman>1):?><a class="page-link-pag" href="list.php?halaman=<?= $halaman-1 ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?><?= $extra_qs ?>" title="Sebelumnya"><i class="bi bi-chevron-left"></i></a><?php else:?><span class="page-link-pag disabled"><i class="bi bi-chevron-left"></i></span><?php endif;?>
-<?php $start_page=max(1,$halaman-2);$end_page=min($total_halaman,$halaman+2);if($start_page>1){echo'<a class="page-link-pag" href="list.php?halaman=1&tab='.$tab_filter.'&cari='.urlencode($cari).$extra_qs.'">1</a>';if($start_page>2)echo'<span class="page-link-pag disabled">...</span>';}for($i=$start_page;$i<=$end_page;$i++):?><a class="page-link-pag <?= ($halaman==$i)?'active-pag':'' ?>" href="list.php?halaman=<?= $i ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?><?= $extra_qs ?>"><?= $i ?></a><?php endfor;if($end_page<$total_halaman){if($end_page<$total_halaman-1)echo'<span class="page-link-pag disabled">...</span>';echo'<a class="page-link-pag" href="list.php?halaman='.$total_halaman.'&tab='.$tab_filter.'&cari='.urlencode($cari).$extra_qs.'">'.$total_halaman.'</a>';}?>
+<?php $start_page=max(1,$halaman-2);$end_page=min($total_halaman,$halaman+2);if($start_page>1){echo'<a class="page-link-pag" href="list.php?halaman=1&tab='.$tab_filter.'&cari='.urlencode($cari).$extra_qs.'">1</a>';if($start_page>2)echo'<span class="page-link-pag disabled">...</span>';}for($i=$start_page;$i<=$end_page;$i++):?><a class="page-link-pag <?= ($halaman==$i)?'active-pag' :'' ?>" href="list.php?halaman=<?= $i ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?><?= $extra_qs ?>"><?= $i ?></a><?php endfor;if($end_page<$total_halaman){if($end_page<$total_halaman-1)echo'<span class="page-link-pag disabled">...</span>';echo'<a class="page-link-pag" href="list.php?halaman='.$total_halaman.'&tab='.$tab_filter.'&cari='.urlencode($cari).$extra_qs.'">'.$total_halaman.'</a>';}?>
 <?php if($halaman<$total_halaman):?><a class="page-link-pag" href="list.php?halaman=<?= $halaman+1 ?>&tab=<?= $tab_filter ?>&cari=<?= urlencode($cari) ?><?= $extra_qs ?>" title="Selanjutnya"><i class="bi bi-chevron-right"></i></a><?php else:?><span class="page-link-pag disabled"><i class="bi bi-chevron-right"></i></span><?php endif;?>
 </nav>
 </div>
@@ -618,6 +643,61 @@ $orderStatusInfo=getStatusOrderLabel((int)$row['Status_Order']);
 <div class="pagination-wrapper"><div class="pagination-info">Menampilkan <span>1</span> - <span><?= $total_records ?></span> dari <span><?= $total_records ?></span> pembayaran</div></div>
 <?php endif;?>
 </div>
+</div>
+
+<!-- MODAL BIODATA ADMINISTRATOR (SINKRON DENGAN MENU UTAMA) -->
+<div class="modal fade" id="modalLihatBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(8px);">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0" style="border-radius: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); background: #ffffff;">
+      <div class="modal-header border-0 pb-0 px-4 pt-4 d-flex justify-content-between align-items-center">
+        <h5 class="fw-bold text-dark mb-0"><i class="bi bi-person-vcard-fill text-danger me-2"></i>Biodata Administrator</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body px-4 pb-4 pt-3">
+        <div class="text-center mb-4">
+          <div class="profile-preview-box mx-auto" style="width: 100px; height: 100px; border: 3px solid var(--s-pink); border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            <img src="<?= $foto_admin_src ?>" alt="Foto Profil" style="width: 100%; height: 100%; object-fit: cover;">
+          </div>
+          <h5 class="fw-bold text-dark mt-3 mb-1"><?= htmlspecialchars($nama_admin) ?></h5>
+          <span class="badge bg-danger px-3 py-1 text-white text-uppercase" style="font-size: 0.72rem; border-radius: 50px; font-weight: 700;">Administrator (Admin)</span>
+        </div>
+        <div class="card-3d p-3 border-0 mb-4" style="border-radius: 20px; background-color: #f8fafc; box-shadow: none;">
+          <div class="row g-3">
+            <div class="col-6">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">NIK</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_admin['nik'] ?? '-') ?></span>
+            </div>
+            <div class="col-6">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Nama Pengguna</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;">@<?= htmlspecialchars($d_admin['username_karyawan'] ?? '-') ?></span>
+            </div>
+            <div class="col-12 border-top pt-2">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Alamat Email</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_admin['email_karyawan'] ?? '-') ?></span>
+            </div>
+            <div class="col-6 border-top pt-2">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Jenis Kelamin</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_admin['jenis_kelamin'] ?? '-') ?></span>
+            </div>
+            <div class="col-6 border-top pt-2">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Tanggal Lahir</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;">
+                <?= (isset($d_admin['tanggal_lahir']) && $d_admin['tanggal_lahir'] instanceof DateTime) ? $d_admin['tanggal_lahir']->format('d M Y') : ($d_admin['tanggal_lahir'] ?? '-') ?>
+              </span>
+            </div>
+            <div class="col-12 border-top pt-2">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Nomor Telepon</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_admin['no_hp'] ?? '-') ?></span>
+            </div>
+            <div class="col-12 border-top pt-2">
+              <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Alamat Lengkap</small>
+              <span class="fw-bold text-dark" style="font-size: 0.85rem;"><?= htmlspecialchars($d_admin['alamat'] ?? '-') ?></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
@@ -700,8 +780,14 @@ function lihatBukti(url, isPdf){
 function konfirmasiTerima(idPembayaran){Swal.fire({title:'Terima Pembayaran?',text:'Apakah Anda yakin ingin MENERIMA pembayaran DP ini? Order akan masuk ke Booking Customer.',icon:'question',showCancelButton:true,confirmButtonColor:'#059669',cancelButtonColor:'#718096',confirmButtonText:'Ya, Terima',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){window.location.href='verifikasi.php?id='+idPembayaran+'&aksi=terima';}});}
 function konfirmasiTolak(idPembayaran){Swal.fire({title:'Tolak Pembayaran?',text:'Apakah Anda yakin ingin MENOLAK pembayaran DP ini? Customer harus upload ulang.',icon:'warning',showCancelButton:true,confirmButtonColor:'#dc2626',cancelButtonColor:'#718096',confirmButtonText:'Ya, Tolak',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){window.location.href='verifikasi.php?id='+idPembayaran+'&aksi=tolak';}});}
 function confirmLogout(e){e.preventDefault();Swal.fire({title:'Keluar Sistem?',text:'Apakah Anda yakin ingin keluar dari sistem SpotLight Studio?',icon:'warning',showCancelButton:true,confirmButtonColor:'#D53D66',cancelButtonColor:'#718096',confirmButtonText:'Ya, Keluar',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){window.location.href='../../logout.php';}});}
-function confirmLandingPage(e){e.preventDefault();Swal.fire({title:'Kembali ke Beranda?',text:'Anda akan dialihkan ke halaman utama publik.',icon:'info',showCancelButton:true,confirmButtonColor:'#D53D66',cancelButtonColor:'#718096',confirmButtonText:'Ya, Kembali',cancelButtonText:'Batal'}).then((result)=>{if(result.isConfirmed){window.location.href='../../index.php';}});}
-function bukaModalBiodata(){Swal.fire({title:'<?= htmlspecialchars($nama_admin) ?>',text:'Administrator - SpotLight Studio',icon:'info',confirmButtonColor:'#D53D66'});}
+function confirmLandingPage(e) { e.preventDefault(); Swal.fire({ title: 'Kembali ke Beranda?', text: 'Anda akan dialihkan ke halaman utama publik.', icon: 'info', showCancelButton: true, confirmButtonColor: '#D53D66', cancelButtonColor: '#718096', confirmButtonText: 'Ya, Kembali', cancelButtonText: 'Batal' }).then((result) => { if(result.isConfirmed) { window.location.href='../../index.php'; } }); }
+
+// Buka Modal Biodata Administrator yang Baru & Sinkron (Akses Edit Dihapus)
+function bukaModalBiodata(){
+    var modalBiodata = new bootstrap.Modal(document.getElementById('modalLihatBiodata'));
+    modalBiodata.show();
+}
+
 function updateLiveClock(){const now=new Date();const days=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];const months=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];document.getElementById('live-clock').innerText=`${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()} - ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')} WIB`;}
 setInterval(updateLiveClock,1000);updateLiveClock();
 <?php if(isset($_GET['status'])):?><?php if($_GET['status']=='sukses'):?>Swal.fire({icon:'success',title:'Berhasil!',text:'<?= htmlspecialchars($_GET['msg']??'Operasi berhasil.') ?>',confirmButtonColor:'#D53D66'});<?php elseif($_GET['status']=='error'):?>Swal.fire({icon:'error',title:'Gagal!',text:'<?= htmlspecialchars($_GET['msg']??'Terjadi kesalahan.') ?>',confirmButtonColor:'#D53D66'});<?php endif;?><?php endif;?>

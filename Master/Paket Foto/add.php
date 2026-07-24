@@ -13,6 +13,14 @@ $id_admin = $_SESSION['id_user'] ?? $_SESSION['id_karyawan'] ?? null;
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23D53D66'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
 // =====================================================
+// CSRF TOKEN HANDLING
+// =====================================================
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
+
+// =====================================================
 // PROFIL ADMIN (Sinkron penuh dengan index.php)
 // =====================================================
 $q_profile = sqlsrv_query($conn, "SELECT * FROM Karyawan WHERE ID_Karyawan = ?", array($id_admin));
@@ -137,94 +145,105 @@ function safe_sqlsrv_fetch($conn, $sql, $params = []) {
 $errors = [];
 $old_values = $_POST ?? [];
 $success = false;
-$error = ""; // Alert umum (disamakan dengan pola Tema Foto)
+$error = "";
 
 if (isset($_POST['simpan'])) {
-    $nama_paket = isset($_POST['nama_paket']) ? trim($_POST['nama_paket']) : '';
-    $durasi_waktu = isset($_POST['durasi_waktu']) ? (int)$_POST['durasi_waktu'] : 0;
-    $harga_paket = isset($_POST['harga_paket']) ? (float)$_POST['harga_paket'] : 0;
-    $deskripsi = isset($_POST['deskripsi']) ? trim($_POST['deskripsi']) : '';
-    $kapasitas_orang = isset($_POST['kapasitas_orang']) ? (int)$_POST['kapasitas_orang'] : 0;
-
-    // Sinkronisasi validasi dengan edit.php demi integritas data
-    if (empty($nama_paket)) {
-        $errors['nama_paket'] = "Nama paket wajib diisi!";
-    } elseif (strlen($nama_paket) < 3) {
-        $errors['nama_paket'] = "Nama paket minimal 3 karakter!";
-    } elseif (strlen($nama_paket) > 100) {
-        $errors['nama_paket'] = "Nama paket maksimal 100 karakter!";
-    } elseif (!preg_match('/^[a-zA-Z0-9\s\-&]+$/', $nama_paket)) {
-        $errors['nama_paket'] = "Nama paket hanya boleh huruf, angka, spasi, -, &!";
+    // === VALIDASI CSRF ===
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        $errors['general'] = "Token keamanan tidak valid. Silakan refresh halaman.";
     } else {
-        // Cek duplikasi case-insensitive (LOWER) demi mencegah kecurangan input kembar
-        $sql_dup = "SELECT COUNT(*) AS Total FROM Paket_Foto WHERE LOWER(Nama_Paket) = LOWER(?) AND Is_Deleted = 0";
-        $stmt_dup = sqlsrv_query($conn, $sql_dup, array($nama_paket));
-        if ($stmt_dup !== false) {
-            $row_dup = sqlsrv_fetch_array($stmt_dup, SQLSRV_FETCH_ASSOC);
-            if ($row_dup && ($row_dup['Total'] ?? 0) > 0) {
-                $errors['nama_paket'] = "Nama paket sudah digunakan! Silakan pilih nama lain.";
-            }
-            sqlsrv_free_stmt($stmt_dup);
-        }
+        // Regenerate token setelah digunakan (one-time use)
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     }
 
-    if (empty($_POST['durasi_waktu']) && $_POST['durasi_waktu'] !== '0') {
-        $errors['durasi_waktu'] = "Durasi wajib diisi!";
-    } elseif ($durasi_waktu < 15) {
-        $errors['durasi_waktu'] = "Durasi minimal 15 menit!";
-    } elseif ($durasi_waktu > 300) {
-        $errors['durasi_waktu'] = "Durasi maksimal 300 menit!";
-    }
+    // Hanya proses jika tidak ada error CSRF
+    if (empty($errors)) {
+        $nama_paket = isset($_POST['nama_paket']) ? trim($_POST['nama_paket']) : '';
+        $durasi_waktu = isset($_POST['durasi_waktu']) ? (int)$_POST['durasi_waktu'] : 0;
+        $harga_paket = isset($_POST['harga_paket']) ? (float)$_POST['harga_paket'] : 0;
+        $deskripsi = isset($_POST['deskripsi']) ? trim($_POST['deskripsi']) : '';
+        $kapasitas_orang = isset($_POST['kapasitas_orang']) ? (int)$_POST['kapasitas_orang'] : 0;
 
-    if (empty($_POST['harga_paket']) && $_POST['harga_paket'] !== '0') {
-        $errors['harga_paket'] = "Harga wajib diisi!";
-    } elseif ($harga_paket < 10000) {
-        $errors['harga_paket'] = "Harga minimal Rp 10.000!";
-    } elseif ($harga_paket > 99999999) {
-        $errors['harga_paket'] = "Harga maksimal Rp 99.999.999!";
-    }
-
-    if (empty($_POST['kapasitas_orang']) && $_POST['kapasitas_orang'] !== '0') {
-        $errors['kapasitas_orang'] = "Kapasitas wajib diisi!";
-    } elseif ($kapasitas_orang < 1) {
-        $errors['kapasitas_orang'] = "Kapasitas minimal 1 orang!";
-    } elseif ($kapasitas_orang > 50) {
-        $errors['kapasitas_orang'] = "Kapasitas maksimal 50 orang!";
-    }
-
-    if (!empty($deskripsi)) {
-        if (strlen($deskripsi) < 20) {
-            $errors['deskripsi'] = "Deskripsi minimal 20 karakter jika diisi!";
-        } elseif (strlen($deskripsi) > 255) {
-            $errors['deskripsi'] = "Deskripsi maksimal 255 karakter!";
-        }
-    }
-
-    $foto_paket = 'default_paket.jpg';
-    if (empty($errors) && isset($_FILES['foto_paket']) && $_FILES['foto_paket']['error'] === UPLOAD_ERR_OK) {
-        $file = $_FILES['foto_paket'];
-        $allowed_ext = ['jpg', 'jpeg', 'png', 'webp']; // Ditambahkan dukungan format modern webp
-        $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-
-        if (!in_array($file_ext, $allowed_ext)) {
-            $errors['foto_paket'] = "Format file harus JPG, JPEG, PNG, atau WEBP!";
-        } elseif ($file['size'] > 2 * 1024 * 1024) {
-            $errors['foto_paket'] = "Ukuran file maksimal 2MB!";
+        // Sinkronisasi validasi dengan edit.php demi integritas data
+        if (empty($nama_paket)) {
+            $errors['nama_paket'] = "Nama paket wajib diisi!";
+        } elseif (strlen($nama_paket) < 3) {
+            $errors['nama_paket'] = "Nama paket minimal 3 karakter!";
+        } elseif (strlen($nama_paket) > 100) {
+            $errors['nama_paket'] = "Nama paket maksimal 100 karakter!";
+        } elseif (!preg_match('/^[a-zA-Z0-9\s\-&]+$/', $nama_paket)) {
+            $errors['nama_paket'] = "Nama paket hanya boleh huruf, angka, spasi, -, &!";
         } else {
-            $upload_dir = '../../assets/img/paket/';
-            if (!is_dir($upload_dir)) {
-                mkdir($upload_dir, 0755, true);
-            }
-            $new_filename = 'paket_' . time() . '_' . uniqid() . '.' . $file_ext;
-            $upload_path = $upload_dir . $new_filename;
-
-            if (move_uploaded_file($file['tmp_name'], $upload_path)) {
-                $foto_paket = $new_filename;
-            } else {
-                $errors['foto_paket'] = "Gagal mengupload foto paket!";
+            // Cek duplikasi case-insensitive (LOWER) demi mencegah kecurangan input kembar
+            $sql_dup = "SELECT COUNT(*) AS Total FROM Paket_Foto WHERE LOWER(Nama_Paket) = LOWER(?) AND Is_Deleted = 0";
+            $stmt_dup = sqlsrv_query($conn, $sql_dup, array($nama_paket));
+            if ($stmt_dup !== false) {
+                $row_dup = sqlsrv_fetch_array($stmt_dup, SQLSRV_FETCH_ASSOC);
+                if ($row_dup && ($row_dup['Total'] ?? 0) > 0) {
+                    $errors['nama_paket'] = "Nama paket sudah digunakan! Silakan pilih nama lain.";
+                }
+                sqlsrv_free_stmt($stmt_dup);
             }
         }
-    }
+
+        if (empty($_POST['durasi_waktu']) && $_POST['durasi_waktu'] !== '0') {
+            $errors['durasi_waktu'] = "Durasi wajib diisi!";
+        } elseif ($durasi_waktu < 15) {
+            $errors['durasi_waktu'] = "Durasi minimal 15 menit!";
+        } elseif ($durasi_waktu > 300) {
+            $errors['durasi_waktu'] = "Durasi maksimal 300 menit!";
+        }
+
+        if (empty($_POST['harga_paket']) && $_POST['harga_paket'] !== '0') {
+            $errors['harga_paket'] = "Harga wajib diisi!";
+        } elseif ($harga_paket < 10000) {
+            $errors['harga_paket'] = "Harga minimal Rp 10.000!";
+        } elseif ($harga_paket > 99999999) {
+            $errors['harga_paket'] = "Harga maksimal Rp 99.999.999!";
+        }
+
+        if (empty($_POST['kapasitas_orang']) && $_POST['kapasitas_orang'] !== '0') {
+            $errors['kapasitas_orang'] = "Kapasitas wajib diisi!";
+        } elseif ($kapasitas_orang < 1) {
+            $errors['kapasitas_orang'] = "Kapasitas minimal 1 orang!";
+        } elseif ($kapasitas_orang > 50) {
+            $errors['kapasitas_orang'] = "Kapasitas maksimal 50 orang!";
+        }
+
+        if (!empty($deskripsi)) {
+            if (strlen($deskripsi) < 20) {
+                $errors['deskripsi'] = "Deskripsi minimal 20 karakter jika diisi!";
+            } elseif (strlen($deskripsi) > 255) {
+                $errors['deskripsi'] = "Deskripsi maksimal 255 karakter!";
+            }
+        }
+
+        $foto_paket = 'default_paket.jpg';
+        if (empty($errors) && isset($_FILES['foto_paket']) && $_FILES['foto_paket']['error'] === UPLOAD_ERR_OK) {
+            $file = $_FILES['foto_paket'];
+            $allowed_ext = ['jpg', 'jpeg', 'png', 'webp'];
+            $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+
+            if (!in_array($file_ext, $allowed_ext)) {
+                $errors['foto_paket'] = "Format file harus JPG, JPEG, PNG, atau WEBP!";
+            } elseif ($file['size'] > 2 * 1024 * 1024) {
+                $errors['foto_paket'] = "Ukuran file maksimal 2MB!";
+            } else {
+                $upload_dir = '../../assets/img/paket/';
+                if (!is_dir($upload_dir)) {
+                    mkdir($upload_dir, 0755, true);
+                }
+                $new_filename = 'paket_' . time() . '_' . uniqid() . '.' . $file_ext;
+                $upload_path = $upload_dir . $new_filename;
+
+                if (move_uploaded_file($file['tmp_name'], $upload_path)) {
+                    $foto_paket = $new_filename;
+                } else {
+                    $errors['foto_paket'] = "Gagal mengupload foto paket!";
+                }
+            }
+        }
+    } // Tutup if (empty($errors)) dari validasi CSRF
 
     // =====================================================
     // CATATAN INTEGRITAS: Proses insert paket ini 
@@ -257,8 +276,9 @@ if (isset($_POST['simpan'])) {
 
                 if ($new_paket_id) {
                     sqlsrv_commit($conn);
-                    $success = true;
-                    $old_values = [];
+                    // === PRG PATTERN: Redirect ke list dengan flag sukses ===
+                    header("Location: list.php?status_sukses=tambah");
+                    exit();
                 } else {
                     sqlsrv_rollback($conn);
                     $errors['general'] = "Sistem gagal mengidentifikasi ID paket baru!";
@@ -282,8 +302,6 @@ if (isset($_POST['simpan'])) {
         $error = reset($errors);
     }
 }
-$csrf_token = bin2hex(random_bytes(32));
-$_SESSION['csrf_token'] = $csrf_token;
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -435,7 +453,6 @@ $_SESSION['csrf_token'] = $csrf_token;
         }
         .error-text { color: #ef4444; font-size: 0.8rem; font-weight: 700; margin-top: 6px; display: flex; align-items: center; gap: 5px; }
 
-        /* INPUT DENGAN PREFIX (Rp) */
         .input-group-custom { display: flex; align-items: center; gap: 10px; }
         .input-group-custom .input-prefix {
             background: linear-gradient(135deg, var(--s-pink), var(--light-pink)); color: var(--p-pink);
@@ -443,7 +460,6 @@ $_SESSION['csrf_token'] = $csrf_token;
         }
         .input-group-custom .form-control-custom { flex: 1; }
 
-        /* FILE UPLOAD (drag & drop, disamakan dengan Tema Foto) */
         .file-upload-zone {
             border: 2px dashed #e2e8f0; border-radius: 16px;
             padding: 30px; text-align: center;
@@ -475,7 +491,6 @@ $_SESSION['csrf_token'] = $csrf_token;
         }
         #preview-container .remove-preview:hover { background: #dc2626; transform: scale(1.1); }
 
-        /* BUTTONS */
         .btn-submit {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
             color: #ffffff; border: none; border-radius: 14px;
@@ -500,7 +515,6 @@ $_SESSION['csrf_token'] = $csrf_token;
             transform: translateY(-3px);
         }
 
-        /* ALERT */
         .alert-custom {
             background: #fef2f2; border: none;
             border-left: 4px solid #dc2626; border-radius: 12px;
@@ -509,7 +523,6 @@ $_SESSION['csrf_token'] = $csrf_token;
         }
         .alert-custom i { font-size: 1.1rem; }
 
-        /* INFO BADGE */
         .info-badge { 
             background: #eff6ff; 
             border-radius: 12px; 
@@ -533,10 +546,8 @@ $_SESSION['csrf_token'] = $csrf_token;
         }
         .fade-in-up { animation: fadeIn 0.5s ease-out; }
 
-        /* card-3d hanya dipakai di dalam modal biodata (elemen non-klik -> tetap datar) */
         .card-3d { background: #ffffff; border-radius: 22px; border: 1px solid rgba(255, 228, 233, 0.8); box-shadow: 0 8px 24px rgba(213, 61, 102, 0.03); }
 
-        /* Modal profil (sinkron index.php) */
         .required-star { color: #ef4444; font-weight: bold; margin-left: 2px; }
         .form-control, .form-select {
             border-radius: 14px; padding: 12px 18px; border: 2px solid #eef2f6;
@@ -571,7 +582,6 @@ $_SESSION['csrf_token'] = $csrf_token;
         .toggle-password { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #94a3b8; font-size: 18px; z-index: 10; transition: 0.3s; }
         .toggle-password:hover { color: var(--p-pink); }
 
-        /* Mobile Menu Button */
         .mobile-menu-btn {
             display: none;
             width: 44px;
@@ -593,7 +603,6 @@ $_SESSION['csrf_token'] = $csrf_token;
             transform: scale(1.05);
         }
 
-        /* Sidebar Overlay */
         .sidebar-overlay {
             display: none;
             position: fixed;
@@ -613,9 +622,6 @@ $_SESSION['csrf_token'] = $csrf_token;
             opacity: 1;
         }
 
-        /* =====================================================
-           RESPONSIVE ENHANCEMENTS
-           ===================================================== */
         @media (max-width: 1199px) {
             .form-card-body { padding: 35px; }
         }
@@ -752,10 +758,8 @@ $_SESSION['csrf_token'] = $csrf_token;
 </head>
 <body>
 
-    <!-- Sidebar Overlay (Mobile) -->
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 
-    <!-- SIDEBAR -->
     <div class="sidebar" id="sidebar">
         <div class="sidebar-menu-wrapper">
             <a href="../../index.php" class="sidebar-brand">
@@ -812,10 +816,8 @@ $_SESSION['csrf_token'] = $csrf_token;
         </div>
     </div>
 
-    <!-- MAIN CONTENT -->
     <div class="main-content">
 
-        <!-- HEADER -->
         <div class="dashboard-header fade-in-up">
             <div class="d-flex align-items-center gap-3">
                 <button class="mobile-menu-btn" onclick="toggleSidebar()" title="Menu" aria-label="Toggle Menu">
@@ -836,7 +838,6 @@ $_SESSION['csrf_token'] = $csrf_token;
             </div>
         </div>
 
-        <!-- BREADCRUMB -->
         <div class="breadcrumb-custom">
             <a href="../../Role/Admin/index.php"><i class="bi bi-house-door-fill me-1"></i>Dashboard</a>
             <i class="bi bi-chevron-right"></i>
@@ -847,7 +848,6 @@ $_SESSION['csrf_token'] = $csrf_token;
             <span class="active">Tambah Paket Foto</span>
         </div>
 
-        <!-- FORM CARD -->
         <div class="form-card fade-in-up">
             <div class="form-card-header">
                 <h4><i class="bi bi-camera-fill me-2"></i>Form Paket Foto Baru</h4>
@@ -855,7 +855,6 @@ $_SESSION['csrf_token'] = $csrf_token;
             </div>
             <div class="form-card-body">
 
-                <!-- Info Badge penyelarasan master jadwal studio -->
                 <div class="info-badge">
                     <i class="bi bi-info-circle-fill mt-1"></i>
                     <div>
@@ -872,6 +871,7 @@ $_SESSION['csrf_token'] = $csrf_token;
                 <?php endif; ?>
 
                 <form method="POST" id="formPaket" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
 
                     <div class="mb-4">
                         <label class="form-label">Nama Paket <span class="required">*</span></label>
@@ -985,7 +985,6 @@ $_SESSION['csrf_token'] = $csrf_token;
         </div>
     </div>
 
-    <!-- MODAL LIHAT BIODATA -->
     <div class="modal fade" id="modalLihatBiodata" tabindex="-1" aria-hidden="true" style="backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0" style="border-radius:28px;box-shadow:0 20px 50px rgba(0,0,0,0.15);background:#ffffff;">
@@ -1017,7 +1016,6 @@ $_SESSION['csrf_token'] = $csrf_token;
         </div>
     </div>
 
-    <!-- MODAL GANTI PROFIL -->
     <div class="modal fade" id="modalGantiProfil" tabindex="-1" aria-hidden="true" style="backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0" style="border-radius:28px;box-shadow:0 20px 50px rgba(213,61,102,0.25);background:rgba(255,255,255,0.95);">
@@ -1054,7 +1052,6 @@ $_SESSION['csrf_token'] = $csrf_token;
     <script src="../../assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
     <script>
-        // ===== SIDEBAR TOGGLE (MOBILE) =====
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             const overlay = document.getElementById('sidebarOverlay');
@@ -1080,7 +1077,6 @@ $_SESSION['csrf_token'] = $csrf_token;
             }
         });
 
-        // ===== TOGGLE SUBMENU =====
         document.querySelectorAll('.btn-toggle-submenu').forEach(button => {
             button.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -1099,7 +1095,6 @@ $_SESSION['csrf_token'] = $csrf_token;
             });
         });
 
-        // ===== FILE UPLOAD & PREVIEW (drag & drop) =====
         function handleFileSelect(event) {
             const file = event.target.files[0];
             const previewContainer = document.getElementById('preview-container');
@@ -1146,7 +1141,6 @@ $_SESSION['csrf_token'] = $csrf_token;
             uploadText.textContent = 'Klik atau seret foto ke sini (opsional)';
         }
 
-        // Drag & Drop
         const dropzone = document.getElementById('dropzone');
         dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
         dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
@@ -1159,8 +1153,6 @@ $_SESSION['csrf_token'] = $csrf_token;
             }
         });
 
-        // ===== VALIDASI FORM SEBELUM SUBMIT =====
-        // Disamakan dengan aturan ketat di edit.php & dilarang division by zero
         document.getElementById('formPaket').addEventListener('submit', function(e) {
             const nama = document.querySelector('input[name="nama_paket"]').value.trim();
             const durasi = parseInt(document.querySelector('input[name="durasi_waktu"]').value);
@@ -1195,7 +1187,6 @@ $_SESSION['csrf_token'] = $csrf_token;
             }
         });
 
-        // ===== LIVE COUNTER DESKRIPSI =====
         const inputDeskripsi = document.getElementById('inputDeskripsi');
         const countDeskripsi = document.getElementById('countDeskripsi');
         if (inputDeskripsi && countDeskripsi) {
@@ -1203,7 +1194,6 @@ $_SESSION['csrf_token'] = $csrf_token;
             countDeskripsi.textContent = inputDeskripsi.value.length;
         }
 
-        // ===== MODAL PROFIL (Biodata + Edit) =====
         function bukaModalProfil() {
             var modalProfil = new bootstrap.Modal(document.getElementById('modalGantiProfil'));
             modalProfil.show();
@@ -1264,7 +1254,6 @@ $_SESSION['csrf_token'] = $csrf_token;
             });
         }
 
-        // ===== KONFIRMASI LOGOUT / LANDING =====
         function confirmLogout(e) {
             e.preventDefault();
             Swal.fire({
@@ -1293,7 +1282,6 @@ $_SESSION['csrf_token'] = $csrf_token;
             }).then((result) => { if (result.isConfirmed) window.location.href = '../../index.php'; });
         }
 
-        // ===== JAM REAL-TIME =====
         function updateLiveClock() {
             var clockEl = document.getElementById('live-clock');
             if (!clockEl) return;
@@ -1308,20 +1296,6 @@ $_SESSION['csrf_token'] = $csrf_token;
         updateLiveClock();
         setInterval(updateLiveClock, 1000);
     </script>
-
-    <?php if($success): ?>
-    <script>
-        Swal.fire({
-            icon: 'success',
-            title: 'Berhasil!',
-            text: 'Paket foto baru berhasil ditambahkan.',
-            confirmButtonColor: '#D53D66',
-            confirmButtonText: 'Oke'
-        }).then(() => {
-            window.location.href = 'list.php?status_sukses=tambah';
-        });
-    </script>
-    <?php endif; ?>
 
     <?php if(isset($success_profile) && $success_profile === true): ?>
     <script>Swal.fire({icon:'success',title:'Profil Diperbarui!',text:'Informasi profil Anda berhasil disinkronkan.',confirmButtonColor:'#D53D66',confirmButtonText:'Selesai'});</script>

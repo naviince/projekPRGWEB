@@ -3,6 +3,14 @@ ob_start();
 session_start();
 include '../../koneksi.php';
 
+// =====================================================
+// CSRF TOKEN HANDLING
+// =====================================================
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
+
 define('STATUS_DATA_AKTIF', 1);
 define('STATUS_DATA_NONAKTIF', 0);
 
@@ -115,8 +123,17 @@ $paket_terpilih = $paket_terhubung_ids;
 // PROSES UPDATE
 // =====================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
+    // === VALIDASI CSRF ===
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        $error = "Token keamanan tidak valid. Silakan refresh halaman.";
+    } else {
+        // Regenerate token setelah digunakan (one-time use)
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
 
-    $nama           = trim($_POST['nama_ruangan'] ?? '');
+    // Hanya proses jika tidak ada error CSRF
+    if (empty($error)) {
+        $nama           = trim($_POST['nama_ruangan'] ?? '');
     $deskripsi      = trim($_POST['deskripsi'] ?? '');
     $paket_terpilih = $_POST['paket'] ?? [];
 
@@ -212,6 +229,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
         }
     }
 
+    } // Tutup if (empty($error)) dari validasi CSRF
+
     if (!empty($field_errors)) {
         $error = "Mohon lengkapi semua field yang bertanda merah (*) di bawah!";
     } else {
@@ -270,7 +289,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
                     if (file_exists($old_path)) @unlink($old_path);
                 }
 
-                $success = true;
+                // === PRG PATTERN: Redirect ke list dengan flag sukses ===
+                header("Location: list.php?status_sukses=edit");
+                exit();
 
                 $ruangan = safe_sqlsrv_fetch(sqlsrv_query($conn, "SELECT * FROM Ruangan WHERE ID_Ruangan = ?", [$id]));
                 $paket_terhubung_ids = [];
@@ -744,6 +765,7 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
                 </div>
 
                 <form method="POST" enctype="multipart/form-data" id="formRuangan" action="">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
                     <div class="row">
                         <div class="col-12 col-md-12 mb-4">
                             <label class="form-label"><i class="bi bi-type"></i> Nama Ruangan <span class="required">*</span><span class="badge-wajib">Wajib</span></label>
@@ -978,7 +1000,7 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
 
         updatePaketCount();
         <?php if (!empty($error)): ?> Swal.fire({ icon: 'error', title: 'Gagal Menyimpan!', html: '<?= addslashes($error) ?>', confirmButtonColor: '#D53D66' }); <?php endif; ?>
-        <?php if ($success): ?> Swal.fire({ icon: 'success', title: 'Berhasil!', text: 'Data ruangan dan relasi paket foto telah diperbarui.', confirmButtonColor: '#D53D66' }).then(() => { window.location.href = 'list.php?status_sukses=edit'; }); <?php endif; ?>
+
     </script>
 </body>
 </html>

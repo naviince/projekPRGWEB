@@ -201,8 +201,9 @@ if (isset($_POST['update'])) {
                             $old_path = "../../assets/img/properti/" . $foto_lama;
                             if (file_exists($old_path)) unlink($old_path);
                         }
-                        $success = true;
-                        $properti = safe_sqlsrv_fetch($conn, "SELECT * FROM Properti WHERE ID_Properti = ?", [$id]);
+                        // Langsung pindah ke list.php
+                        header("Location: list.php?status_sukses=edit");
+                        exit();
                     }
                 }
             }
@@ -1120,15 +1121,5 @@ if (isset($_POST['update'])) {
         // Init: tampilkan info ruangan saat halaman dimuat
         updateRuanganInfo();
     </script>
-
-    <?php if ($success): ?>
-    <script>
-        Swal.fire({
-            icon: 'success', title: 'Berhasil!',
-            text: 'Data properti telah diperbarui.',
-            confirmButtonColor: '#D53D66'
-        }).then(() => window.location = 'list.php?status_sukses=edit');
-    </script>
-    <?php endif; ?>
 </body>
 </html>

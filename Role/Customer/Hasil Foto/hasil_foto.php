@@ -762,6 +762,176 @@ function formatWaktu($time) {
             to { opacity: 1; transform: translateY(0); }
         }
 
+        /* ===== MOBILE SIDEBAR ===== */
+        .mobile-sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            background: #ffffff;
+            z-index: 1050;
+            transform: translateX(-100%);
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 4px 0 24px rgba(0,0,0,0.08);
+            border-right: 1px solid rgba(255, 228, 233, 0.8);
+        }
+        .mobile-sidebar.open { transform: translateX(0); }
+        .mobile-sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1045;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .mobile-sidebar-overlay.show { display: block; opacity: 1; }
+        .mobile-sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .mobile-sidebar-brand {
+            font-weight: 800;
+            font-size: 1.3rem;
+            color: var(--p-pink);
+            text-decoration: none;
+            letter-spacing: -1px;
+        }
+        .mobile-sidebar-brand span {
+            color: var(--text-dark);
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: block;
+            margin-top: 2px;
+        }
+        .mobile-sidebar-close {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            border: none;
+            background: var(--s-pink);
+            color: var(--p-pink);
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+        }
+        .mobile-sidebar-close:hover {
+            background: var(--p-pink);
+            color: #fff;
+        }
+        .mobile-sidebar-menu {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            scrollbar-width: none;
+        }
+        .mobile-sidebar-menu::-webkit-scrollbar { display: none; }
+        .mobile-sidebar-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            color: #475569;
+            font-weight: 700;
+            font-size: 0.9rem;
+            text-decoration: none;
+            transition: var(--transition-smooth);
+            margin-bottom: 6px;
+            border: none;
+            background: none;
+            width: 100%;
+            cursor: pointer;
+            text-align: left;
+        }
+        .mobile-sidebar-link:hover,
+        .mobile-sidebar-link.active {
+            background: var(--s-pink);
+            color: var(--p-pink);
+        }
+        .mobile-sidebar-link i {
+            font-size: 1.1rem;
+            width: 22px;
+            text-align: center;
+        }
+        .mobile-sidebar-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+            margin: 12px 0;
+        }
+        .mobile-sidebar-footer {
+            padding: 16px;
+            border-top: 1px solid #f1f5f9;
+        }
+        .mobile-sidebar-user {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--s-pink);
+            border-radius: 14px;
+        }
+        .mobile-sidebar-user img {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--light-pink);
+        }
+        .mobile-sidebar-user-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .mobile-sidebar-user-name {
+            font-weight: 800;
+            font-size: 0.9rem;
+            color: var(--text-dark);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .mobile-sidebar-user-role {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+        .mobile-menu-toggle {
+            display: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            border: none;
+            background: var(--s-pink);
+            color: var(--p-pink);
+            font-size: 1.3rem;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+        .mobile-menu-toggle:hover {
+            background: var(--p-pink);
+            color: #fff;
+        }
+
+        /* ===== ANIMATIONS ===== */
+        @keyframes fadeSlideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         /* ===== RESPONSIVE ===== */
         @media (max-width: 992px) {
             .top-navbar { padding: 14px 20px; }
@@ -779,15 +949,163 @@ function formatWaktu($time) {
             .paket-section { flex-direction: column; }
             .btn-aksi { width: 100%; justify-content: center; }
         }
+
+        /* ========== MOBILE SIDEBAR RESPONSIVE ========== */
+        @media (max-width: 991.98px) {
+            .mobile-menu-toggle { display: flex; }
+            .top-navbar { padding: 12px 16px; }
+            .nav-logo { font-size: 1.4rem; }
+            .nav-logo span { font-size: 0.75rem; }
+            .nav-menu-center { display: none; }
+            .nav-btn-booking { padding: 8px 16px; font-size: 0.8rem; }
+            .nav-avatar { width: 36px; height: 36px; }
+            .nav-dropdown { right: -10px; min-width: 200px; border-radius: 12px; padding: 8px; }
+            .dropdown-header { font-size: 0.9rem; padding: 6px 12px; }
+            .dropdown-item { padding: 10px 12px; font-size: 0.85rem; }
+            .main-container { padding: 20px; }
+            .breadcrumb-bar { padding: 14px 20px; }
+            .modal-content-popup { max-width: 100%; }
+            .order-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 767.98px) {
+            .top-navbar { padding: 10px 12px; }
+            .nav-logo { font-size: 1.2rem; }
+            .nav-logo span { display: none; }
+            .nav-right { gap: 10px; }
+            .nav-btn-booking { padding: 8px 12px; font-size: 0.75rem; }
+            .nav-btn-booking i { display: none; }
+            .breadcrumb-bar { padding: 10px 16px; }
+            .breadcrumb-inner { font-size: 0.8rem; }
+            .main-container { padding: 16px 12px; }
+            .page-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+            .page-title h1 { font-size: 1.4rem; }
+            .waiting-card { flex-direction: column; text-align: center; padding: 20px; }
+            .info-alert { flex-direction: column; text-align: center; padding: 16px; }
+            .order-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+            .order-body { padding: 16px; }
+            .order-grid { grid-template-columns: 1fr; gap: 20px; }
+            .paket-section { flex-direction: column; }
+            .paket-img-container { width: 80px; height: 80px; }
+            .paket-price { font-size: 1.1rem; }
+            .detail-item { padding: 10px 12px; }
+            .order-aksi { flex-direction: column; }
+            .btn-aksi { width: 100%; justify-content: center; padding: 10px 16px; }
+            .modal-content-popup { max-width: 100%; border-radius: var(--radius-lg); }
+            .modal-body-popup { padding: 20px; }
+            .modal-header-popup { padding: 16px 20px; }
+            .modal-header-popup h3 { font-size: 1rem; }
+            .lightbox-main { gap: 10px; }
+            .lightbox-nav-btn { width: 38px; height: 38px; font-size: 1rem; }
+            .lightbox-img-container { max-height: 45vh; }
+            .lightbox-img-container img { max-height: 45vh; }
+        }
+        @media (max-width: 575.98px) {
+            .top-navbar { padding: 8px 10px; }
+            .nav-logo { font-size: 1.1rem; }
+            .nav-btn-booking { padding: 6px 10px; font-size: 0.7rem; border-radius: 8px; }
+            .nav-avatar { width: 32px; height: 32px; }
+            .breadcrumb-bar { padding: 8px 12px; }
+            .main-container { padding: 12px 10px; }
+            .page-title h1 { font-size: 1.2rem; }
+            .page-title h1 i { font-size: 1.2rem; }
+            .order-card { border-radius: var(--radius-md); }
+            .order-header { padding: 14px 16px; }
+            .order-body { padding: 14px; }
+            .paket-img-container { width: 70px; height: 70px; border-radius: 10px; }
+            .paket-info h3 { font-size: 1rem; }
+            .paket-meta span { padding: 4px 10px; font-size: 0.7rem; }
+            .detail-item i { width: 32px; height: 32px; font-size: 0.8rem; }
+            .detail-item .detail-value { font-size: 0.85rem; }
+            .empty-state { padding: 40px 16px; }
+            .empty-state i { font-size: 3rem; }
+            .modal-body-popup { padding: 16px; }
+            .lightbox-details { margin-top: 10px; }
+            .lightbox-caption { font-size: 0.85rem; }
+            .btn-download-single { padding: 7px 14px; font-size: 0.72rem; }
+        }
+        @media (max-width: 359.98px) {
+            .nav-logo { font-size: 1rem; }
+            .nav-btn-booking { padding: 5px 8px; font-size: 0.65rem; }
+            .mobile-sidebar { width: 260px; }
+            .page-title h1 { font-size: 1.1rem; }
+        }
+
+        /* ========== TOUCH DEVICE: DISABLE HOVER ========== */
+        @media (hover: none) and (pointer: coarse) {
+            .order-card:hover { transform: none; box-shadow: var(--shadow-soft); border-color: var(--glass-border); }
+            .btn-aksi:hover { transform: none; }
+            .nav-avatar:hover { transform: none; border-color: var(--light-pink); box-shadow: 0 2px 8px rgba(216, 63, 103, 0.15); }
+            .nav-btn-booking:hover { transform: none; box-shadow: 0 4px 16px rgba(216, 63, 103, 0.3); }
+            .nav-link-item:hover::after { width: 0; }
+            .nav-link-item.active::after { width: 100%; }
+            .paket-section:hover .paket-img-container { transform: none; }
+            .detail-item:hover { transform: none; border-color: transparent; box-shadow: none; }
+            .detail-item:hover i { background: var(--s-pink); color: var(--p-pink); transform: none; }
+        }
+
+        /* ========== REDUCED MOTION ========== */
+        @media (prefers-reduced-motion: reduce) {
+            * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+            html { scroll-behavior: auto; }
+            .mobile-sidebar { transition: none; }
+        }
     </style>
 </head>
 <body>
 
+    <!-- MOBILE SIDEBAR OVERLAY -->
+    <div class="mobile-sidebar-overlay" id="mobileSidebarOverlay" onclick="toggleMobileSidebar()"></div>
+
+    <!-- MOBILE SIDEBAR -->
+    <div class="mobile-sidebar" id="mobileSidebar">
+        <div class="mobile-sidebar-header">
+            <a href="../index.php" class="mobile-sidebar-brand">SpotLight.<span>StudioFoto</span></a>
+            <button class="mobile-sidebar-close" onclick="toggleMobileSidebar()" aria-label="Tutup menu">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+        <div class="mobile-sidebar-menu">
+            <a href="../index.php" class="mobile-sidebar-link" onclick="toggleMobileSidebar()">
+                <i class="bi bi-grid-1x2-fill"></i> Dashboard
+            </a>
+            <a href="../Layanan/Paket/pilih_paket.php" class="mobile-sidebar-link" onclick="toggleMobileSidebar()">
+                <i class="bi bi-calendar-plus-fill"></i> Booking Baru
+            </a>
+            <a href="../Riwayat/riwayat.php" class="mobile-sidebar-link" onclick="toggleMobileSidebar()">
+                <i class="bi bi-clock-history"></i> Riwayat
+            </a>
+            <a href="hasil_foto.php" class="mobile-sidebar-link active" onclick="toggleMobileSidebar()">
+                <i class="bi bi-images"></i> Hasil Foto
+            </a>
+            <div class="mobile-sidebar-divider"></div>
+            <a href="../../../index.php" class="mobile-sidebar-link" onclick="return confirmLandingPage(event)">
+                <i class="bi bi-house-door"></i> Beranda
+            </a>
+            <button class="mobile-sidebar-link text-danger" onclick="confirmLogout(); toggleMobileSidebar();">
+                <i class="bi bi-box-arrow-right"></i> Keluar
+            </button>
+        </div>
+        <div class="mobile-sidebar-footer">
+            <div class="mobile-sidebar-user">
+                <img src="<?= $foto_customer_src ?>" alt="Profil">
+                <div class="mobile-sidebar-user-info">
+                    <div class="mobile-sidebar-user-name"><?= htmlspecialchars($nama_customer, ENT_QUOTES, 'UTF-8') ?></div>
+                    <div class="mobile-sidebar-user-role">Pelanggan</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- NAVBAR ATAS SINKRON -->
     <nav class="top-navbar">
-        <a href="../../../index.php" class="nav-logo">
-            SpotLight.<span>StudioFoto</span>
-        </a>
+        <div class="d-flex align-items-center">
+            <button class="mobile-menu-toggle d-lg-none" onclick="toggleMobileSidebar()" aria-label="Menu">
+                <i class="bi bi-list"></i>
+            </button>
+            <a href="../../../index.php" class="nav-logo">
+                SpotLight.<span>StudioFoto</span>
+            </a>
+        </div>
         <div class="nav-menu-center">
             <a href="../index.php" class="nav-link-item">Dashboard</a>
             <a href="../Layanan/Paket/pilih_paket.php" class="nav-link-item">Booking Baru</a>
@@ -1020,6 +1338,15 @@ function formatWaktu($time) {
         // Global variables untuk menyimpan array file gambar yang sedang aktif dibuka
         let activeGallery = [];
         let currentIndex = 0;
+
+        // FUNGSI TOGGLE MOBILE SIDEBAR
+        function toggleMobileSidebar() {
+            const sidebar = document.getElementById('mobileSidebar');
+            const overlay = document.getElementById('mobileSidebarOverlay');
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('show');
+            document.body.style.overflow = sidebar.classList.contains('open') ? 'hidden' : '';
+        }
 
         // Toggle dropdown menu profile
         function toggleDropdown() {

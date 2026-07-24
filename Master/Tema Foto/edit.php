@@ -330,7 +330,9 @@ if (isset($_POST['simpan'])) {
                     }
 
                     sqlsrv_commit($conn);
-                    $success = true;
+                    // Langsung pindah ke list.php
+                    header("Location: list.php?status_sukses=edit");
+                    exit();
 
                 } catch (Exception $e) {
                     sqlsrv_rollback($conn);
@@ -1675,16 +1677,6 @@ if (isset($_POST['simpan'])) {
     // Init count
     updateRuanganCount();
 </script>
-
-<?php if ($success): ?>
-<script>
-    Swal.fire({
-        icon: 'success', title: 'Berhasil Diperbarui!',
-        text: 'Data tema foto telah berhasil disimpan.',
-        confirmButtonColor: '#D53D66'
-    }).then(() => window.location = 'list.php?status_sukses=edit');
-</script>
-<?php endif; ?>
 
 </body>
 </html>

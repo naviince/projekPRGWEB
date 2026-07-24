@@ -199,7 +199,8 @@ if (isset($_POST['simpan'])) {
             }
 
             sqlsrv_commit($conn);
-            $success = true;
+            header("Location: list.php?status_sukses=tambah");
+            exit();
 
         } catch (Exception $e) {
             sqlsrv_rollback($conn);
@@ -837,16 +838,6 @@ function bukaModalBiodata() {
     });
 }
 
-<?php if ($success): ?>
-Swal.fire({
-    icon: 'success',
-    title: 'Berhasil!',
-    text: 'Barang cetak baru telah ditambahkan.',
-    confirmButtonColor: '#D53D66'
-}).then(() => {
-    window.location = 'list.php?status_sukses=tambah';
-});
-<?php endif; ?>
 </script>
 
 </body>

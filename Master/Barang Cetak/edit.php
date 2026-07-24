@@ -211,7 +211,8 @@ if (isset($_POST['simpan'])) {
             sqlsrv_free_stmt($stmt_update);
 
             sqlsrv_commit($conn);
-            $success = true;
+            header("Location: list.php?status_sukses=edit");
+            exit();
 
             if (!empty($old_file_to_delete) && file_exists($old_file_to_delete)) {
                 unlink($old_file_to_delete);
@@ -989,17 +990,6 @@ function confirmLandingPage(e) {
         }
     });
 }
-
-<?php if ($success): ?>
-Swal.fire({
-    icon: 'success',
-    title: 'Berhasil!',
-    text: 'Data barang cetak telah diperbarui.',
-    confirmButtonColor: '#D53D66'
-}).then(() => {
-    window.location = 'list.php?status_sukses=edit';
-});
-<?php endif; ?>
 </script>
 
 </body>

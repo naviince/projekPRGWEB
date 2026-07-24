@@ -216,8 +216,9 @@ if (isset($_POST['simpan'])) {
                 sqlsrv_query($conn, "UPDATE Jadwal_Studio SET Status_Jadwal = 0 WHERE ID_Jadwal = ?", [$id_jadwal_baru]);
             }
 
-            $success = true;
-            $old_values = [];
+            // Langsung pindah ke list.php agar pop-up cuma muncul sekali di sana
+            header("Location: list.php?status_sukses=tambah");
+            exit();
         } else {
             $sql_errors = sqlsrv_errors();
             $error_msg = "Gagal menyimpan jadwal.";
@@ -777,10 +778,6 @@ window.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
-
-<?php if($success): ?>
-<script>Swal.fire({ icon: 'success', title: 'Berhasil!', text: 'Jadwal studio baru berhasil ditambahkan.', confirmButtonColor: '#D53D66', confirmButtonText: 'Oke' }).then(() => { window.location.href = 'list.php?status_sukses=tambah'; });</script>
-<?php endif; ?>
 
 </body>
 </html>

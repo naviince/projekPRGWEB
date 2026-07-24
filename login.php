@@ -133,7 +133,7 @@ if (isset($_POST['login'])) {
 }
 
 // =====================================================
-// REGISTER PELANGGAN
+// REGISTER PELANGGAN (FIX TOTAL: VALIDASI UTUH + FOTO AWET)
 // =====================================================
 if (isset($_POST['register'])) {
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
@@ -150,11 +150,10 @@ if (isset($_POST['register'])) {
         $confirm_pass = $_POST['confirm_password'] ?? '';
         $panel_aktif = "ke-daftar";
 
-        // VALIDASI NAMA
+        // --- SEMUA VALIDASI ASLI ANDA ---
         if (empty($nama) || strlen($nama) < 3) $error_nama = "Nama min 3 karakter!";
         elseif (!preg_match("/^[a-zA-Z\s]+$/", $nama)) $error_nama = "Hanya huruf dan spasi!";
 
-        // VALIDASI USERNAME
         if (empty($username) || strlen($username) < 5) $error_username = "Username min 5 karakter!";
         elseif (!preg_match("/^[a-zA-Z0-9_]+$/", $username)) $error_username = "Hanya huruf, angka, underscore!";
         elseif (strlen($username) > 50) $error_username = "Max 50 karakter!";
@@ -163,7 +162,6 @@ if (isset($_POST['register'])) {
             if ($cek && sqlsrv_has_rows($cek)) $error_username = "Username sudah digunakan!";
         }
 
-        // VALIDASI EMAIL (Sesuai CHK_Pelanggan_Email)
         if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) $error_email_reg = "Email tidak valid!";
         elseif (strlen($email) > 100) $error_email_reg = "Email max 100 karakter!";
         else {
@@ -171,7 +169,6 @@ if (isset($_POST['register'])) {
             if ($cek && sqlsrv_has_rows($cek)) $error_email_reg = "Email sudah terdaftar!";
         }
 
-        // VALIDASI NO HP (Sesuai CHK_Pelanggan_NoHp: +62 + 9-13 digit)
         $hp_digits = preg_replace('/[^0-9]/', '', $hp_raw);
         $hp_clean = '+62' . $hp_digits;
         if (empty($hp_raw)) $error_hp = "No HP wajib diisi!";
@@ -183,10 +180,8 @@ if (isset($_POST['register'])) {
             if ($cek && sqlsrv_has_rows($cek)) $error_hp = "No HP sudah terdaftar!";
         }
 
-        // VALIDASI JENIS KELAMIN (Sesuai CHK_Pelanggan_JK)
         if (empty($jk) || !in_array($jk, ['Laki-laki', 'Perempuan'])) $error_jk = "Pilih jenis kelamin!";
 
-        // VALIDASI TANGGAL LAHIR
         if (empty($dob)) $error_dob = "Tanggal lahir wajib diisi!";
         else {
             $dob_date = DateTime::createFromFormat('Y-m-d', $dob);
@@ -199,22 +194,27 @@ if (isset($_POST['register'])) {
             }
         }
 
-        // VALIDASI ALAMAT
         if (empty($alamat) || strlen($alamat) < 10) $error_alamat = "Alamat min 10 karakter!";
         elseif (strlen($alamat) > 255) $error_alamat = "Alamat max 255 karakter!";
 
-        // VALIDASI KATA SANDI (Sesuai CHK_Pelanggan_Password)
         if (strlen($pass) < 8 || !preg_match("/[A-Za-z]/", $pass) || !preg_match("/[0-9]/", $pass) || !preg_match("/[^A-Za-z0-9]/", $pass))
             $error_pass = "Min 8: huruf+angka+simbol!";
         if ($pass !== $confirm_pass) $error_confirm_pass = "Kata sandi tidak cocok!";
 
-        // VALIDASI & UNGGAH FOTO PROFIL
+        // --- LOGIKA FOTO PROFIL (BIAR TIDAK RESET) ---
+        // Ambil nama foto dari hidden input jika sebelumnya sudah upload tapi form error
         $foto_name = isset($_POST['existing_foto_profil']) ? trim($_POST['existing_foto_profil']) : 'default.jpg';
+        
         if (isset($_FILES['foto_profil']) && $_FILES['foto_profil']['error'] === UPLOAD_ERR_OK) {
             $ext = strtolower(pathinfo($_FILES['foto_profil']['name'], PATHINFO_EXTENSION));
             if (!in_array($ext, ['jpg','jpeg','png'])) $error_foto = "Format: JPG/JPEG/PNG!";
             elseif ($_FILES['foto_profil']['size'] > 2*1024*1024) $error_foto = "Max 2MB!";
             else {
+                // Hapus foto sementara yang lama jika user upload ulang foto baru
+                if ($foto_name != 'default.jpg' && file_exists("assets/img/pelanggan/" . $foto_name)) {
+                    unlink("assets/img/pelanggan/" . $foto_name);
+                }
+                
                 $foto_name = "pelanggan_" . time() . "_" . uniqid() . "." . $ext;
                 $dir = "assets/img/pelanggan/";
                 if (!is_dir($dir)) mkdir($dir, 0777, true);
@@ -229,56 +229,32 @@ if (isset($_POST['register'])) {
                 } else {
                     move_uploaded_file($_FILES['foto_profil']['tmp_name'], $dir . $foto_name);
                 }
-                $foto_profil = $foto_name;
             }
         }
+        // Pastikan variabel global $foto_profil terisi agar preview di HTML muncul kembali
+        $foto_profil = $foto_name;
 
-        // INSERT KE DATABASE MENGGUNAKAN STORED PROCEDURE (sp_InsertPelanggan)
+        // --- INSERT DATABASE (Asli Anda) ---
         if (empty($error_nama) && empty($error_username) && empty($error_email_reg) && empty($error_hp) &&
             empty($error_jk) && empty($error_dob) && empty($error_alamat) && empty($error_pass) &&
             empty($error_confirm_pass) && empty($error_foto)) {
 
-            // Enkripsi kata sandi (Akan menghasilkan hash 60 karakter yang memenuhi CHK_Pelanggan_Password)
             $pass_hash = password_hash($pass, PASSWORD_BCRYPT);
-            
-            // Format panggilan Stored Procedure SQL Server
             $sql = "{CALL sp_InsertPelanggan(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)}";
             $params = [$nama, $username, $email, $pass_hash, $jk, $dob, $hp_clean, $alamat, $foto_name, 'system'];
             $stmt = sqlsrv_query($conn, $sql, $params);
 
             if ($stmt) {
                 $success_register = true;
-                $registered_email = $email;
-                $registered_password = $pass;
-
-                // === AUTO-LOGIN SETELAH REGISTER + REDIRECT ===
                 $sql_new = "SELECT * FROM Pelanggan WHERE Email_Pelanggan = ? AND Is_Deleted = 0 AND Status = 1";
                 $stmt_new = sqlsrv_query($conn, $sql_new, [$email]);
                 $user_new = ($stmt_new !== false) ? sqlsrv_fetch_array($stmt_new, SQLSRV_FETCH_ASSOC) : null;
 
                 if ($user_new) {
-                    $_SESSION = array_merge($_SESSION, [
-                        'status' => 'login',
-                        'id_user' => $user_new['ID_Pelanggan'],
-                        'email' => $user_new['Email_Pelanggan'],
-                        'role' => 'Customer',
-                        'nama' => $user_new['Nama_Pelanggan']
-                    ]);
-
+                    $_SESSION = array_merge($_SESSION, ['status' => 'login', 'id_user' => $user_new['ID_Pelanggan'], 'email' => $user_new['Email_Pelanggan'], 'role' => 'Customer', 'nama' => $user_new['Nama_Pelanggan']]);
                     $redirect_reg = $_GET['redirect'] ?? '';
                     $id_paket_reg = $_GET['id_paket'] ?? '';
-
-                    // =====================================================
-                    // TARGET REDIRECT SETELAH REGISTER BERHASIL
-                    // User SUDAH auto-login (session di atas), jadi TIDAK
-                    // perlu disuruh login manual lagi -- popup sukses lalu
-                    // langsung diarahkan ke dashboard/booking sungguhan.
-                    // =====================================================
-                    if ($redirect_reg == 'booking' && !empty($id_paket_reg) && is_numeric($id_paket_reg)) {
-                        $target_redirect_sukses = "Transaksi/booking.php?id_paket=" . (int)$id_paket_reg;
-                    } else {
-                        $target_redirect_sukses = "Role/Customer/index.php";
-                    }
+                    $target_redirect_sukses = ($redirect_reg == 'booking' && !empty($id_paket_reg) && is_numeric($id_paket_reg)) ? "Transaksi/booking.php?id_paket=" . (int)$id_paket_reg : "Role/Customer/index.php";
                 }
             } else {
                 $err = sqlsrv_errors();
@@ -1013,21 +989,25 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
 
                     <div class="row">
                         <div class="col-md-12">
-                            <div class="input-group-custom">
-                                <label class="input-label">Foto Profil (Opsional)</label>
-                                <div class="upload-area" onclick="document.getElementById('inputFoto').click()">
-                                    <?php
-                                    $default_svg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23cbd5e1'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
-                                    ?>
-                                    <img id="previewFoto" src="<?= (isset($foto_profil) && $foto_profil != 'default.jpg') ? 'assets/img/pelanggan/' . htmlspecialchars($foto_profil) : $default_svg ?>" class="upload-preview" alt="Preview" onerror="this.src='<?= $default_svg ?>'">
-                                    <div class="upload-text">
-                                        <span>Klik untuk upload</span><br>
-                                        JPG, JPEG, PNG (Max 2MB)
-                                    </div>
-                                </div>
-                                <input type="file" name="foto_profil" id="inputFoto" class="d-none" accept=".jpg,.jpeg,.png" onchange="previewImage(this)">
-                                <?php if($error_foto): ?><div class="error-msg"><i class="bi bi-x-circle-fill"></i> <?= $error_foto ?></div><?php endif; ?>
-                            </div>
+                          <div class="input-group-custom">
+    <label class="input-label">Foto Profil (Opsional)</label>
+    <div class="upload-area" onclick="document.getElementById('inputFoto').click()">
+        <?php
+        $default_svg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23cbd5e1'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
+        // Jika form error, variabel $foto_profil akan berisi nama file yang tadi diupload
+        $preview_path = ($foto_profil != 'default.jpg') ? 'assets/img/pelanggan/' . htmlspecialchars($foto_profil) : $default_svg;
+        ?>
+        <img id="previewFoto" src="<?= $preview_path ?>" class="upload-preview" alt="Preview" onerror="this.src='<?= $default_svg ?>'">
+        <div class="upload-text">
+            <span><?= ($foto_profil != 'default.jpg') ? 'Foto Tersimpan ✨' : 'Klik untuk upload' ?></span><br>
+            JPG, JPEG, PNG (Max 2MB)
+        </div>
+    </div>
+    <!-- Hidden input ini yang "menangkap" nama file agar tidak hilang saat reload -->
+    <input type="hidden" name="existing_foto_profil" id="existingFoto" value="<?= htmlspecialchars($foto_profil) ?>">
+    <input type="file" name="foto_profil" id="inputFoto" class="d-none" accept=".jpg,.jpeg,.png" onchange="previewImage(this)">
+    <?php if($error_foto): ?><div class="error-msg"><i class="bi bi-x-circle-fill"></i> <?= $error_foto ?></div><?php endif; ?>
+</div>
                         </div>
                     </div>
 
@@ -1040,6 +1020,32 @@ foreach (['nama'=>$error_nama, 'username'=>$error_username, 'email'=>$error_emai
     </div>
 <script src="assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
+
+        document.addEventListener("DOMContentLoaded", function() {
+    // Cari input atau pesan error pertama yang muncul
+    const firstError = document.querySelector('.is-invalid, .error-msg, .has-radio-error');
+    if (firstError) {
+        setTimeout(() => {
+            // Scroll ke arah error agar user tahu apa yang salah
+            firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Fokuskan kursor ke input yang salah
+            const input = firstError.parentElement.querySelector('input');
+            if (input) input.focus();
+        }, 600);
+    }
+});
+
+// Update fungsi previewImage agar teks berubah saat foto dipilih
+function previewImage(input) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('previewFoto').src = e.target.result;
+            document.querySelector('.upload-text span').textContent = "Foto Terpilih ✅";
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
         // Create particles
         const particlesContainer = document.getElementById('particles');
         for (let i = 0; i < 20; i++) {
