@@ -126,7 +126,7 @@ $offset = ($halaman - 1) * $limit;
 
 $cari = isset($_GET['cari']) ? trim($_GET['cari']) : "";
 $status_filter = isset($_GET['status']) ? trim($_GET['status']) : "";
-$sort = isset($_GET['sort']) ? trim($_GET['sort']) : "nama_asc";
+$sort = isset($_GET['sort']) ? trim($_GET['sort']) : "terbaru"; 
 
 // =====================================================
 // QUERY STATISTIK
@@ -171,13 +171,22 @@ if ($status_filter !== "") {
     $params[] = (int)$status_filter;
 }
 
-$order_clause = "Nama_Paket ASC";
-if ($sort == "nama_desc") { $order_clause = "Nama_Paket DESC"; }
-elseif ($sort == "harga_asc") { $order_clause = "Harga_Paket ASC"; }
-elseif ($sort == "harga_desc") { $order_clause = "Harga_Paket DESC"; }
-elseif ($sort == "durasi_asc") { $order_clause = "Durasi_Waktu ASC"; }
-elseif ($sort == "durasi_desc") { $order_clause = "Durasi_Waktu DESC"; }
-
+$order_clause = "ID_Paket DESC";
+if ($sort == "nama_asc") { 
+    $order_clause = "Nama_Paket ASC"; 
+} elseif ($sort == "nama_desc") { 
+    $order_clause = "Nama_Paket DESC"; 
+} elseif ($sort == "harga_asc") { 
+    $order_clause = "Harga_Paket ASC"; 
+} elseif ($sort == "harga_desc") { 
+    $order_clause = "Harga_Paket DESC"; 
+} elseif ($sort == "durasi_asc") { 
+    $order_clause = "Durasi_Waktu ASC"; 
+} elseif ($sort == "durasi_desc") { 
+    $order_clause = "Durasi_Waktu DESC"; 
+} elseif ($sort == "terbaru") {
+    $order_clause = "ID_Paket DESC"; // Tambahkan ini eksplisit jika perlu
+}
 // Hitung total untuk pagination
 $sql_count = "SELECT COUNT(*) AS total FROM Paket_Foto WHERE " . implode(" AND ", $conditions);
 $query_count = sqlsrv_query($conn, $sql_count, $params);
@@ -452,10 +461,20 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             width: 100%; min-width: 950px; border-collapse: separate; border-spacing: 0 8px;
         }
         .data-table thead th {
-            background: transparent; padding: 12px 20px;
-            font-size: 0.72rem; font-weight: 800; text-transform: uppercase;
-            letter-spacing: 1px; color: #94a3b8; white-space: nowrap;
-            border: none; text-align: left;
+            background: transparent;
+            padding: 12px 20px;
+            font-size: 0.72rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            
+            /* Ganti ke warna ini untuk Hitam Modern */
+            color: #1e1e24 !important; 
+            
+            /* Tambahkan ini jika ingin teks header di tengah */
+            text-align: center !important; 
+            
+            border: none;
         }
         .data-table thead th:first-child { padding-left: 24px; }
         .data-table thead th:last-child { padding-right: 24px; text-align: center; }
@@ -687,6 +706,44 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
         @media (max-width: 375px) {
             .dashboard-header h3 { font-size: 0.95rem; }
         }
+
+        .data-table thead th {
+        text-align: center !important; /* Header Center */
+    }
+
+    .text-end-custom {
+        text-align: right !important; /* Angka Rata Kanan */
+    }
+
+    .text-center-custom {
+        text-align: center !important;
+    }
+
+    /* Warna Toggle Baru */
+    .btn-toggle-active {
+        color: #059669 !important; /* Hijau */
+        border-color: #d1fae5 !important;
+    }
+    .btn-toggle-active:hover {
+        background: #ecfdf5 !important;
+        transform: translateY(-2px) scale(1.08);
+    }
+
+    .btn-toggle-inactive {
+        color: #718096 !important; /* Abu-abu */
+        border-color: #e2e8f0 !important;
+    }
+    .btn-toggle-inactive:hover {
+        background: #f8fafc !important;
+        transform: translateY(-2px) scale(1.08);
+    }
+
+    /* Agar No urut rapi */
+    .td-no {
+        font-weight: 700;
+        color: #94a3b8;
+        font-size: 0.85rem;
+    }
     </style>
 </head>
 <body>
@@ -856,18 +913,19 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
             <table class="data-table">
                 <thead>
                     <tr>
+                        <th width="50">No.</th>
                         <th>Preview</th>
                         <th>Katalog Layanan</th>
-                        <th>Harga</th>
-                        <th>Durasi Sesi</th>
-                        <th>Kapasitas</th>
+                        <th class="text-end-custom">Harga</th>
+                        <th class="text-end-custom">Durasi Sesi</th>
+                        <th class="text-end-custom">Kapasitas</th>
                         <th>Status</th>
-                        <th class="text-center">Aksi</th>
+                        <th>Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php
-                    $no = $offset + 1;
+                    $no = $offset + 1; // Inisialisasi nomor urut berdasarkan pagination
                     if ($query && sqlsrv_has_rows($query)):
                         while($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
                             $path_img = "../../assets/img/paket/" . ($row['Foto_Paket'] ?? '');
@@ -877,47 +935,57 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
 
                             $badge_status = ($row['Status'] == 1) ? "badge-aktif" : "badge-nonaktif";
                             $text_status = ($row['Status'] == 1) ? "Aktif" : "Nonaktif";
+                            
+                            // Logika warna tombol toggle
+                            $toggle_class = ($row['Status'] == 1) ? 'btn-toggle-active' : 'btn-toggle-inactive';
 
-                            // Default pengaman durasi sesi agar tidak bernilai 0
                             $durasi = (int)($row['Durasi_Waktu'] ?? 30);
                             if ($durasi <= 0) $durasi = 30; 
                     ?>
                         <tr class="fade-in-up">
-                            <td>
+                            <td class="text-center-custom td-no"><?= $no++ ?>.</td>
+                            <td class="text-center-custom">
                                 <img src="<?= $img_src ?>" class="paket-img" alt="<?= htmlspecialchars($row['Nama_Paket']) ?>">
                             </td>
                             <td>
                                 <div class="td-nama"><?= htmlspecialchars($row['Nama_Paket']) ?></div>
                                 <div class="td-deskripsi mb-2"><?= htmlspecialchars($row['Deskripsi'] ?? '-') ?></div>
-                                
-                            <td>
+                            </td>
+                            <td class="text-end-custom">
                                 <div class="td-harga">Rp <?= number_format($row['Harga_Paket'] ?? 0, 0, ',', '.') ?></div>
                             </td>
-                            <td>
+                            <td class="text-end-custom">
                                 <span class="slot-badge">
                                     <i class="bi bi-clock-fill text-danger me-1"></i>
                                     <?= $durasi ?> Menit
                                 </span>
                             </td>
-                            <td class="td-kapasitas">
+                            <td class="text-end-custom td-kapasitas">
                                 <i class="bi bi-people-fill me-1 text-danger"></i><?= $row['Kapasitas_Orang'] ?? 0 ?> orang
                             </td>
-                            <td>
+                            <td class="text-center-custom">
                                 <span class="badge-status <?= $badge_status ?>">
                                     <span class="badge-dot"></span>
                                     <?= $text_status ?>
                                 </span>
                             </td>
-                            <td style="text-align: center;">
-                                <a href="edit.php?id=<?= $row['ID_Paket'] ?>" class="btn-action-circle btn-action-edit" title="Edit Paket">
-                                    <i class="bi bi-pencil"></i>
-                                </a>
-                                <button class="btn-action-circle btn-action-toggle" onclick="toggleStatus(<?= $row['ID_Paket'] ?>, <?= $row['Status'] ?>, '<?= htmlspecialchars($row['Nama_Paket']) ?>')" title="Toggle Status">
-                                    <i class="bi bi-toggle-<?= $row['Status'] == 1 ? 'on' : 'off' ?>"></i>
-                                </button>
-                                <button class="btn-action-circle btn-action-delete" onclick="hardDelete(<?= $row['ID_Paket'] ?>, '<?= htmlspecialchars($row['Nama_Paket']) ?>')" title="Hapus Permanen">
-                                    <i class="bi bi-trash"></i>
-                                </button>
+                            <td class="text-center-custom">
+                                <div class="d-flex justify-content-center">
+                                    <a href="edit.php?id=<?= $row['ID_Paket'] ?>" class="btn-action-circle btn-action-edit" title="Edit Paket">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <!-- Toggle Button dengan warna dinamis -->
+                                    <button class="btn-action-circle btn-action-toggle <?= $toggle_class ?>" 
+                                            onclick="toggleStatus(<?= $row['ID_Paket'] ?>, <?= $row['Status'] ?>, '<?= htmlspecialchars($row['Nama_Paket']) ?>')" 
+                                            title="<?= $row['Status'] == 1 ? 'Nonaktifkan' : 'Aktifkan' ?>">
+                                        <i class="bi bi-toggle-<?= $row['Status'] == 1 ? 'on' : 'off' ?>"></i>
+                                    </button>
+                                    <button class="btn-action-circle btn-action-delete" 
+                                            onclick="hardDelete(<?= $row['ID_Paket'] ?>, '<?= htmlspecialchars($row['Nama_Paket']) ?>')" 
+                                            title="Hapus Permanen">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     <?php 
@@ -925,7 +993,7 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                     else:
                     ?>
                         <tr>
-                            <td colspan="7" class="text-center text-muted py-5" style="border-radius: 12px; background: #ffffff;">
+                            <td colspan="8" class="text-center text-muted py-5" style="border-radius: 12px; background: #ffffff;">
                                 <i class="bi bi-inbox fs-1 mb-3 d-block" style="color: #cbd5e1;"></i>
                                 <p class="fw-bold">Tidak ada data paket foto yang sesuai.</p>
                             </td>
@@ -1003,6 +1071,10 @@ $query = sqlsrv_query($conn, $sql_list, $params_list);
                     <div class="mb-3">
                         <label style="display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-dark); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">URUT BERDASARKAN</label>
                         <select class="form-select" id="modalSort" style="border: 2px solid #e2e8f0; border-radius: 14px; padding: 14px 18px; font-weight: 600;">
+                        <option value="terbaru" <?= $sort == 'terbaru' ? 'selected' : '' ?>>Data Terbaru</option>    
+                        <option value="nama_asc" <?= $sort == 'nama_asc' ? 'selected' : '' ?>>Nama A - Z</option>
+                            <option value="nama_desc" <?= $sort == 'nama_desc' ? 'selected' : '' ?>>Nama Z - A</option>
+                            <option value="harga_asc" <?= $sort == 'harga_asc' ? 'selected' : '' ?>>Harga Termurah</option>
                             <option value="nama_asc" <?= $sort == 'nama_asc' ? 'selected' : '' ?>>Nama A - Z</option>
                             <option value="nama_desc" <?= $sort == 'nama_desc' ? 'selected' : '' ?>>Nama Z - A</option>
                             <option value="harga_asc" <?= $sort == 'harga_asc' ? 'selected' : '' ?>>Harga Termurah</option>

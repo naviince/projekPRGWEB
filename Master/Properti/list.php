@@ -391,11 +391,50 @@ $properti_list = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
         .data-table {
             width: 100%; min-width: 1000px; border-collapse: separate; border-spacing: 0;
         }
+        /* --- UPDATE CSS --- */
+
+        /* 1. Header Tabel: Warna Hitam Pekat & Rata Tengah */
         .data-table thead th {
-            background: #ffffff; padding: 16px 20px;
-            font-size: 0.75rem; font-weight: 800; text-transform: uppercase;
-            letter-spacing: 1px; color: #94a3b8; white-space: nowrap;
-            border: none; border-bottom: 2px solid #f1f5f9; text-align: left;
+            background: transparent;
+            padding: 12px 20px;
+            font-size: 0.72rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #1e1e24 !important; /* Hitam Modern */
+            text-align: center !important; /* Rata Tengah */
+            border: none;
+        }
+
+        /* 2. Warna Toggle Aktif (Hijau) */
+        .btn-toggle-active {
+            color: #059669 !important; 
+            border-color: #d1fae5 !important;
+        }
+        .btn-toggle-active:hover {
+            background: #ecfdf5 !important;
+            transform: translateY(-2px) scale(1.08);
+        }
+
+        /* 3. Warna Toggle Nonaktif (Abu-abu) */
+        .btn-toggle-inactive {
+            color: #718096 !important; 
+            border-color: #e2e8f0 !important;
+        }
+        .btn-toggle-inactive:hover {
+            background: #f8fafc !important;
+            transform: translateY(-2px) scale(1.08);
+        }
+
+        /* 4. Helper Alignment */
+        .text-end-custom { text-align: right !important; }
+        .text-center-custom { text-align: center !important; }
+
+        /* Styling Nomor Urut */
+        .td-no {
+            font-weight: 700;
+            color: #94a3b8;
+            font-size: 0.85rem;
         }
         .data-table thead th:first-child { padding-left: 24px; }
         .data-table thead th:last-child { padding-right: 24px; text-align: center; }
@@ -740,81 +779,96 @@ $properti_list = safe_sqlsrv_fetch_all($conn, $list_sql, $params_list);
         </div>
 
         <!-- TABEL DATA -->
-        <div class="card-3d mb-4" style="padding: 24px;">
-            <div class="table-scroll-wrapper">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Properti</th>
-                            <th>Ruangan</th>
-                            <th>Kategori</th>
-                            <th>Status</th>
-                            <th class="text-center">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php
-                        if (!empty($properti_list)):
-                            foreach($properti_list as $row):
-                                $path_img = "../../assets/img/properti/" . ($row['Foto_Properti'] ?? '');
-                                $img_src = (!empty($row['Foto_Properti']) && file_exists($path_img))
-                                    ? $path_img 
-                                    : $default_svg_avatar;
+        <div class="table-scroll-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th width="50">No.</th>
+                        <th>Properti</th>
+                        <th>Ruangan</th>
+                        <th>Kategori</th>
+                        <th>Status</th>
+                        <th class="text-center">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php
+                    $no = $offset + 1; // Inisialisasi nomor urut
+                    if (!empty($properti_list)):
+                        foreach($properti_list as $row):
+                            $path_img = "../../assets/img/properti/" . ($row['Foto_Properti'] ?? '');
+                            $img_src = (!empty($row['Foto_Properti']) && file_exists($path_img))
+                                ? $path_img 
+                                : $default_svg_avatar;
 
-                                $badge_status = ($row['Status'] == 1) ? "badge-aktif" : "badge-nonaktif";
-                                $text_status = ($row['Status'] == 1) ? "Aktif" : "Nonaktif";
-                        ?>
-                            <tr class="fade-in-up">
-                                <td>
-                                    <div class="d-flex align-items-center gap-3">
-                                        <img src="<?= $img_src ?>" class="properti-preview" alt="<?= htmlspecialchars($row['Nama_Properti']) ?>">
-                                        <div>
-                                            <div class="td-nama"><?= htmlspecialchars($row['Nama_Properti']) ?></div>
-                                            <div class="td-deskripsi"><?= htmlspecialchars($row['Deskripsi'] ?? '-') ?></div>
-                                        </div>
+                            $badge_status = ($row['Status'] == 1) ? "badge-aktif" : "badge-nonaktif";
+                            $text_status = ($row['Status'] == 1) ? "Aktif" : "Nonaktif";
+                            
+                            // Menentukan class warna toggle berdasarkan status
+                            $toggle_class = ($row['Status'] == 1) ? 'btn-toggle-active' : 'btn-toggle-inactive';
+                    ?>
+                        <tr class="fade-in-up">
+                            <!-- Kolom No. -->
+                            <td class="text-center-custom td-no"><?= $no++ ?>.</td>
+
+                            <td>
+                                <div class="d-flex align-items-center gap-3">
+                                    <img src="<?= $img_src ?>" class="properti-preview" alt="<?= htmlspecialchars($row['Nama_Properti']) ?>">
+                                    <div>
+                                        <div class="td-nama"><?= htmlspecialchars($row['Nama_Properti']) ?></div>
+                                        <div class="td-deskripsi"><?= htmlspecialchars($row['Deskripsi'] ?? '-') ?></div>
                                     </div>
-                                </td>
-                                <td class="td-ruangan">
-                                    <i class="bi bi-door-open-fill me-1 text-danger"></i><?= htmlspecialchars($row['Nama_Ruangan'] ?? '-') ?>
-                                </td>
-                                <td>
-                                    <span class="badge-kategori">
-                                        <i class="bi bi-tag-fill"></i> <?= htmlspecialchars($row['Kategori_Properti'] ?? '-') ?>
-                                    </span>
-                                </td>
-                                <td>
-                                    <span class="badge-status <?= $badge_status ?>">
-                                        <span class="badge-dot"></span>
-                                        <?= $text_status ?>
-                                    </span>
-                                </td>
-                                <td>
+                                </div>
+                            </td>
+                            <td class="td-ruangan">
+                                <i class="bi bi-door-open-fill me-1 text-danger"></i><?= htmlspecialchars($row['Nama_Ruangan'] ?? '-') ?>
+                            </td>
+                            <td class="text-center-custom">
+                                <span class="badge-kategori">
+                                    <i class="bi bi-tag-fill"></i> <?= htmlspecialchars($row['Kategori_Properti'] ?? '-') ?>
+                                </span>
+                            </td>
+                            <td class="text-center-custom">
+                                <span class="badge-status <?= $badge_status ?>">
+                                    <span class="badge-dot"></span>
+                                    <?= $text_status ?>
+                                </span>
+                            </td>
+                            <td class="text-center-custom">
+                                <div class="d-flex justify-content-center">
                                     <a href="edit.php?id=<?= $row['ID_Properti'] ?>" class="btn-action-circle btn-action-edit" title="Edit Properti">
                                         <i class="bi bi-pencil"></i>
                                     </a>
-                                    <button class="btn-action-circle btn-action-delete" onclick="toggleStatus(<?= $row['ID_Properti'] ?>, <?= $row['Status'] ?>, '<?= htmlspecialchars($row['Nama_Properti']) ?>')" title="Toggle Status">
+                                    
+                                    <!-- Tombol Toggle Status dengan Warna Dinamis -->
+                                    <button class="btn-action-circle <?= $toggle_class ?>" 
+                                            onclick="toggleStatus(<?= $row['ID_Properti'] ?>, <?= $row['Status'] ?>, '<?= htmlspecialchars($row['Nama_Properti']) ?>')" 
+                                            title="<?= $row['Status'] == 1 ? 'Nonaktifkan' : 'Aktifkan' ?>">
                                         <i class="bi bi-toggle-<?= $row['Status'] == 1 ? 'on' : 'off' ?>"></i>
                                     </button>
-                                    <button class="btn-action-circle btn-action-delete" onclick="hardDelete(<?= $row['ID_Properti'] ?>, '<?= htmlspecialchars($row['Nama_Properti']) ?>')" title="Hapus Permanen">
+
+                                    <button class="btn-action-circle btn-action-delete" 
+                                            onclick="hardDelete(<?= $row['ID_Properti'] ?>, '<?= htmlspecialchars($row['Nama_Properti']) ?>')" 
+                                            title="Hapus Permanen">
                                         <i class="bi bi-trash"></i>
                                     </button>
-                                </td>
-                            </tr>
-                        <?php 
-                            endforeach; 
-                        else:
-                        ?>
-                            <tr>
-                                <td colspan="5" class="text-center text-muted py-5">
-                                    <i class="bi bi-inbox fs-1 mb-3 d-block" style="color: #cbd5e1;"></i>
-                                    <p class="fw-bold">Tidak ada data properti yang sesuai.</p>
-                                    <p class="small">Coba ubah filter atau tambah properti baru.</p>
-                                </td>
-                            </tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php 
+                        endforeach; 
+                    else:
+                    ?>
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-5">
+                                <i class="bi bi-inbox fs-1 mb-3 d-block" style="color: #cbd5e1;"></i>
+                                <p class="fw-bold">Tidak ada data properti yang sesuai.</p>
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
 
             <!-- PAGINATION -->
             <?php if ($total_halaman > 1): ?>

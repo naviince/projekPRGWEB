@@ -1297,6 +1297,31 @@ body {
     .dashboard-header h3 { font-size: 0.95rem; }
     .stat-card-item { min-width: 150px; }
 }
+
+/* Warna Toggle Aktif (Hijau) */
+.btn-toggle-active {
+    color: #059669 !important; /* Hijau Emerald */
+    border-color: #d1fae5 !important;
+}
+.btn-toggle-active:hover {
+    background: #ecfdf5 !important;
+    transform: translateY(-2px) scale(1.08);
+}
+
+/* Warna Toggle Nonaktif (Abu-abu) */
+.btn-toggle-inactive {
+    color: #718096 !important; /* Abu-abu Slate */
+    border-color: #e2e8f0 !important;
+}
+.btn-toggle-inactive:hover {
+    background: #f8fafc !important;
+    transform: translateY(-2px) scale(1.08);
+}
+
+/* Perataan teks */
+.data-table thead th { text-align: center !important; color: #1e1e24 !important; } /* Header Center & Hitam */
+.text-end-custom { text-align: right !important; }
+.text-center-custom { text-align: center !important; }
 </style>
 </head>
 <body>
@@ -1402,55 +1427,82 @@ body {
         <div class="card-3d mb-4" style="padding:24px">
             <div class="table-scroll-wrapper">
                 <table class="data-table">
-                    <thead><tr><th>Ruangan</th><th>Paket Tersedia</th><th>Properti</th><th>Tema</th><th>Status</th><th class="text-center">Aksi</th></tr></thead>
+                    <thead><tr><th width="50">No.</th><th>Ruangan</th><th>Paket Tersedia</th><th>Properti</th><th>Tema</th><th>Status</th><th class="text-center">Aksi</th></tr></thead>
                     <tbody>
-                        <?php if (!empty($ruangan_list)): foreach($ruangan_list as $row):
-                            $path_img = "../../assets/img/ruangan/" . ($row['Foto_Ruangan'] ?? '');
-                            $img_src = (!empty($row['Foto_Ruangan']) && file_exists($path_img)) ? $path_img : $default_svg_avatar;
-                            $is_deleted = ($row['Is_Deleted'] ?? 0) == 1;
-                            $paket_ruangan = $paket_per_ruangan[$row['ID_Ruangan']] ?? [];
+                        <?php 
+                        $no = $offset + 1; // Nomor urut
+                        if (!empty($ruangan_list)): 
+                            foreach($ruangan_list as $row):
+                                $path_img = "../../assets/img/ruangan/" . ($row['Foto_Ruangan'] ?? '');
+                                $img_src = (!empty($row['Foto_Ruangan']) && file_exists($path_img)) ? $path_img : $default_svg_avatar;
+                                $is_deleted = ($row['Is_Deleted'] ?? 0) == 1;
+                                $paket_ruangan = $paket_per_ruangan[$row['ID_Ruangan']] ?? [];
                         ?>
                         <tr class="fade-in-up <?= $is_deleted ? 'row-deleted' : '' ?>">
-                            <td><div class="d-flex align-items-center gap-3"><img src="<?= $img_src ?>" class="ruangan-preview" alt="<?= htmlspecialchars($row['Nama_Ruangan']) ?>"><div><div class="td-nama"><?= htmlspecialchars($row['Nama_Ruangan']) ?></div><div class="td-deskripsi"><?= htmlspecialchars($row['Deskripsi'] ?? '-') ?></div></div></div></td>
+                            <!-- 1. Nomor Urut -->
+                            <td class="text-center-custom" style="font-weight:700; color:#94a3b8;"><?= $no++ ?>.</td>
+                            
+                            <!-- 2. Detail Ruangan -->
                             <td>
-                                <?php if (!empty($paket_ruangan)): ?>
-                                    <?php foreach (array_slice($paket_ruangan, 0, 2) as $p): ?>
-                                        <span class="badge-paket"><?= htmlspecialchars($p['Nama_Paket']) ?></span>
-                                    <?php endforeach; ?>
-                                    <?php if (count($paket_ruangan) > 2): ?>
-                                        <span class="badge-paket">+<?= count($paket_ruangan) - 2 ?></span>
-                                    <?php endif; ?>
+                                <div class="d-flex align-items-center gap-3">
+                                    <img src="<?= $img_src ?>" class="ruangan-preview" alt="<?= htmlspecialchars($row['Nama_Ruangan']) ?>">
+                                    <div>
+                                        <div class="td-nama"><?= htmlspecialchars($row['Nama_Ruangan']) ?></div>
+                                        <div class="td-deskripsi"><?= htmlspecialchars($row['Deskripsi'] ?? '-') ?></div>
+                                    </div>
+                                </div>
+                            </td>
+
+                            <!-- 3. Angka-angka (Rata Kanan) -->
+                            <td class="text-end-custom">
+                                <span class="fw-bold text-dark"><?= count($paket_ruangan) ?></span> <small class="text-muted">Paket</small>
+                            </td>
+                            <td class="text-end-custom td-relasi">
+                                <span class="fw-bold"><?= $row['total_properti'] ?? 0 ?></span> <i class="bi bi-box-seam ms-1 text-warning"></i>
+                            </td>
+                            <td class="text-end-custom td-relasi">
+                                <span class="fw-bold"><?= $row['total_tema'] ?? 0 ?></span> <i class="bi bi-palette ms-1 text-info"></i>
+                            </td>
+
+                            <!-- 4. Status Badge -->
+                            <td class="text-center-custom">
+                                <?php if ($is_deleted): ?>
+                                    <span class="badge-status badge-terhapus"><span class="badge-dot"></span>Nonaktif</span>
                                 <?php else: ?>
-                                    <span class="text-muted small">Belum terhubung</span>
+                                    <span class="badge-status badge-aktif"><span class="badge-dot"></span>Aktif</span>
                                 <?php endif; ?>
                             </td>
-                            <td class="td-relasi"><i class="bi bi-box-seam me-1 text-warning"></i><?= $row['total_properti'] ?? 0 ?> properti</td>
-                            <td class="td-relasi"><i class="bi bi-palette me-1 text-info"></i><?= $row['total_tema'] ?? 0 ?> tema</td>
-                            <td><?php if ($is_deleted): ?><span class="badge-status badge-terhapus"><span class="badge-dot"></span>Terhapus</span><?php else: ?><span class="badge-status badge-aktif"><span class="badge-dot"></span>Aktif</span><?php endif; ?></td>
-                            <td class="text-center">
-                                <?php if (!$is_deleted): ?>
-                                    <button class="btn-action-circle btn-action-detail" onclick="bukaDetailModal(<?= $row['ID_Ruangan'] ?>)" title="Lihat Detail Ruangan">
-                                        <i class="bi bi-eye"></i>
-                                    </button>
-                                    <a href="edit.php?id=<?= $row['ID_Ruangan'] ?>" class="btn-action-circle btn-action-edit" title="Edit Ruangan">
-                                        <i class="bi bi-pencil"></i>
-                                    </a>
-                                    <button class="btn-action-circle btn-action-soft-delete" onclick="softDeleteConfirm(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" title="Arsipkan Ruangan">
-                                        <i class="bi bi-archive"></i>
-                                    </button>
-                                <?php else: ?>
-                                    <button class="btn-action-circle btn-action-detail" style="opacity: 0.35; cursor: not-allowed;" disabled title="Data diarsipkan (Pulihkan dahulu untuk melihat detail)"><i class="bi bi-eye"></i></button>
-                                    <button class="btn-action-circle btn-action-restore" onclick="restoreConfirm(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" title="Pulihkan Ruangan">
-                                        <i class="bi bi-arrow-counterclockwise"></i>
-                                    </button>
-                                    <button class="btn-action-circle btn-action-hard-delete" onclick="hardDeleteConfirm(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" title="Hapus Permanen">
-                                        <i class="bi bi-trash-fill"></i>
-                                    </button>
-                                <?php endif; ?>
+
+                            <!-- 5. Kolom Aksi (Toggle ada di sini) -->
+                            <td class="text-center-custom">
+                                <div class="d-flex justify-content-center">
+                                    <?php if (!$is_deleted): ?>
+                                        <!-- KONDISI AKTIF -->
+                                        <button class="btn-action-circle btn-action-detail" onclick="bukaDetailModal(<?= $row['ID_Ruangan'] ?>)" title="Lihat Detail">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <a href="edit.php?id=<?= $row['ID_Ruangan'] ?>" class="btn-action-circle btn-action-edit" title="Edit">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <!-- TOGGLE ON (HIJAU) -> Jika diklik akan menjalankan fungsi soft delete (arsip) -->
+                                        <button class="btn-action-circle btn-toggle-active" onclick="softDeleteConfirm(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" title="Nonaktifkan Ruangan">
+                                            <i class="bi bi-toggle-on"></i>
+                                        </button>
+                                    <?php else: ?>
+                                        <!-- KONDISI TERHAPUS/NONAKTIF -->
+                                        <!-- TOGGLE OFF (ABU-ABU) -> Jika diklik akan menjalankan fungsi restore (pulihkan) -->
+                                        <button class="btn-action-circle btn-toggle-inactive" onclick="restoreConfirm(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" title="Aktifkan Kembali">
+                                            <i class="bi bi-toggle-off"></i>
+                                        </button>
+                                        <button class="btn-action-circle btn-action-hard-delete" onclick="hardDeleteConfirm(<?= $row['ID_Ruangan'] ?>, '<?= htmlspecialchars($row['Nama_Ruangan']) ?>')" title="Hapus Permanen">
+                                            <i class="bi bi-trash-fill"></i>
+                                        </button>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                         </tr>
                         <?php endforeach; else: ?>
-                        <tr><td colspan="6" class="text-center text-muted py-5"><i class="bi bi-inbox fs-1 mb-3 d-block" style="color:#cbd5e1"></i><p class="fw-bold">Tidak ada data ruangan yang sesuai.</p></td></tr>
+                            <!-- ... (Tampilan jika kosong) ... -->
                         <?php endif; ?>
                     </tbody>
                 </table>
