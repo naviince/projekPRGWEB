@@ -312,7 +312,8 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--bod
 select.form-select-custom { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 18px center; padding-right: 44px; }
 .input-hint { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; margin-top: 6px; display: flex; align-items: center; gap: 4px; }
 .input-hint i { color: var(--p-pink); }
-.error-text { color: #ef4444; font-size: 0.8rem; font-weight: 700; margin-top: 6px; display: flex; align-items: center; gap: 5px; }
+.error-text { color: #ef4444; font-size: 0.8rem; font-weight: 700; margin-top: 6px; display: none; align-items: center; gap: 5px; }
+.error-text.show { display: flex; }
 .alert-custom { background: #fef2f2; border: none; border-left: 4px solid #dc2626; border-radius: 12px; color: #991b1b; font-size: 0.85rem; padding: 14px 18px; margin-bottom: 24px; display: flex; align-items: center; gap: 10px; }
 .alert-custom i { font-size: 1.1rem; }
 
@@ -515,12 +516,12 @@ select.form-select-custom { cursor: pointer; appearance: none; background-image:
                 </div>
             <?php endif; ?>
 
-            <form method="POST" id="formJadwal">
+            <form method="POST" id="formJadwal" novalidate>
                 <div class="row">
                     <!-- Paket Foto -->
                     <div class="col-md-6 mb-4">
                         <label class="form-label">Paket Foto <span class="required">*</span></label>
-                        <select name="id_paket" id="idPaket" class="form-select-custom <?= isset($errors['id_paket']) ? 'is-invalid' : '' ?>" required>
+                        <select name="id_paket" id="idPaket" class="form-select-custom <?= isset($errors['id_paket']) ? 'is-invalid' : '' ?>" >
                             <option value="">-- Pilih Paket Foto --</option>
                             <?php 
                             sqlsrv_free_stmt($q_paket);
@@ -530,14 +531,14 @@ select.form-select-custom { cursor: pointer; appearance: none; background-image:
                                 <option value="<?= $p['ID_Paket'] ?>" data-durasi="<?= $p['Durasi_Waktu'] ?>" <?= (isset($old_values['id_paket']) && $old_values['id_paket'] == $p['ID_Paket']) ? 'selected' : '' ?>><?= htmlspecialchars($p['Nama_Paket']) ?> (<?= $p['Durasi_Waktu'] ?> menit)</option>
                             <?php endwhile; ?>
                         </select>
-                        <?php if(isset($errors['id_paket'])): ?><span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['id_paket'] ?></span><?php endif; ?>
-                        <div class="input-hint"><i class="bi bi-info-circle"></i>Pilih paket foto terlebih dahulu.</div>
+                        <span class="error-text <?= isset($errors['id_paket']) ? 'show' : '' ?>" id="error-idPaket"><i class="bi bi-exclamation-circle-fill"></i><span><?= $errors['id_paket'] ?? '' ?></span></span>
+<div class="input-hint" id="hint-idPaket"><i class="bi bi-info-circle"></i>Pilih paket foto terlebih dahulu.</div>
                     </div>
 
                     <!-- Ruangan -->
                     <div class="col-md-6 mb-4">
                         <label class="form-label">Ruangan <span class="required">*</span></label>
-                        <select name="id_ruangan" id="idRuangan" class="form-select-custom <?= isset($errors['id_ruangan']) ? 'is-invalid' : '' ?>" required>
+                        <select name="id_ruangan" id="idRuangan" class="form-select-custom <?= isset($errors['id_ruangan']) ? 'is-invalid' : '' ?>" >
                             <?php if (!empty($old_ruangan_list)): ?>
                                 <option value="">-- Pilih Ruangan --</option>
                                 <?php foreach ($old_ruangan_list as $r_old): ?>
@@ -549,8 +550,8 @@ select.form-select-custom { cursor: pointer; appearance: none; background-image:
                                 <option value="">-- Pilih Paket Dulu --</option>
                             <?php endif; ?>
                         </select>
-                        <?php if(isset($errors['id_ruangan'])): ?><span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['id_ruangan'] ?></span><?php endif; ?>
-                        <div class="input-hint"><i class="bi bi-info-circle"></i>Ruangan akan muncul sesuai paket yang dipilih.</div>
+                        <span class="error-text <?= isset($errors['id_ruangan']) ? 'show' : '' ?>" id="error-idRuangan"><i class="bi bi-exclamation-circle-fill"></i><span><?= $errors['id_ruangan'] ?? '' ?></span></span>
+                        <div class="input-hint" id="hint-idRuangan"><i class="bi bi-info-circle"></i>Ruangan akan muncul sesuai paket yang dipilih.</div>
                     </div>
                 </div>
 
@@ -567,17 +568,17 @@ select.form-select-custom { cursor: pointer; appearance: none; background-image:
                     <!-- Tanggal -->
                     <div class="col-md-6 mb-4">
                         <label class="form-label">Tanggal Jadwal <span class="required">*</span></label>
-                        <input type="date" name="tanggal_jadwal" id="tanggalJadwal" class="form-control-custom <?= isset($errors['tanggal_jadwal']) ? 'is-invalid' : '' ?>" value="<?= htmlspecialchars($old_values['tanggal_jadwal'] ?? '') ?>" min="<?= date('Y-m-d') ?>" required>
-                        <?php if(isset($errors['tanggal_jadwal'])): ?><span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['tanggal_jadwal'] ?></span><?php endif; ?>
-                        <div class="input-hint"><i class="bi bi-info-circle"></i>Tidak boleh di masa lalu.</div>
+                        <input type="date" name="tanggal_jadwal" id="tanggalJadwal" class="form-control-custom <?= isset($errors['tanggal_jadwal']) ? 'is-invalid' : '' ?>" value="<?= htmlspecialchars($old_values['tanggal_jadwal'] ?? '') ?>" min="<?= date('Y-m-d') ?>">
+<span class="error-text <?= isset($errors['tanggal_jadwal']) ? 'show' : '' ?>" id="error-tanggalJadwal"><i class="bi bi-exclamation-circle-fill"></i><span><?= $errors['tanggal_jadwal'] ?? '' ?></span></span>
+<div class="input-hint" id="hint-tanggalJadwal"><i class="bi bi-info-circle"></i>Tidak boleh di masa lalu.</div>
                     </div>
 
                     <!-- Jam Mulai -->
                     <div class="col-md-6 mb-4">
                         <label class="form-label">Jam Mulai <span class="required">*</span></label>
-                        <input type="time" name="jam_mulai" id="jamMulai" class="form-control-custom <?= isset($errors['jam_mulai']) ? 'is-invalid' : '' ?>" value="<?= htmlspecialchars($old_values['jam_mulai'] ?? '08:00') ?>" step="60" required>
-                        <?php if(isset($errors['jam_mulai'])): ?><span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['jam_mulai'] ?></span><?php endif; ?>
-                        <div class="input-hint"><i class="bi bi-info-circle"></i>Jam operasional: 08:00 - 20:00 WIB.</div>
+                        <input type="time" name="jam_mulai" id="jamMulai" class="form-control-custom <?= isset($errors['jam_mulai']) ? 'is-invalid' : '' ?>" value="<?= htmlspecialchars($old_values['jam_mulai'] ?? '08:00') ?>" step="60">
+<span class="error-text <?= isset($errors['jam_mulai']) ? 'show' : '' ?>" id="error-jamMulai"><i class="bi bi-exclamation-circle-fill"></i><span><?= $errors['jam_mulai'] ?? '' ?></span></span>
+<div class="input-hint" id="hint-jamMulai"><i class="bi bi-info-circle"></i>Jam operasional: 08:00 - 20:00 WIB.</div>
                     </div>
                 </div>
 
@@ -717,17 +718,68 @@ document.getElementById('idPaket').addEventListener('change', function() {
 // Listener interaktif untuk perubahan input Jam Mulai
 document.getElementById('jamMulai').addEventListener('input', calculateEndTime);
 
-// Form Validation
+function setFieldError(fieldId, message) {
+    const field = document.getElementById(fieldId);
+    const errorMsg = document.getElementById('error-' + fieldId);
+    const hint = document.getElementById('hint-' + fieldId);
+    if (field) field.classList.add('is-invalid');
+    if (errorMsg) {
+        errorMsg.querySelector('span').textContent = message;
+        errorMsg.classList.add('show');
+    }
+    if (hint) hint.style.display = 'none';
+}
+
+function clearFieldError(fieldId) {
+    const field = document.getElementById(fieldId);
+    const errorMsg = document.getElementById('error-' + fieldId);
+    const hint = document.getElementById('hint-' + fieldId);
+    if (field) field.classList.remove('is-invalid');
+    if (errorMsg) errorMsg.classList.remove('show');
+    if (hint) hint.style.display = '';
+}
+
+// Hapus error saat user mulai mengisi/mengubah
+['idPaket', 'idRuangan', 'tanggalJadwal', 'jamMulai'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+        el.addEventListener('input', () => clearFieldError(id));
+        el.addEventListener('change', () => clearFieldError(id));
+    }
+});
+
+// Validasi semua field sekaligus sebelum submit
 document.getElementById('formJadwal').addEventListener('submit', function(e) {
     const paket = document.getElementById('idPaket').value;
     const ruangan = document.getElementById('idRuangan').value;
     const tanggal = document.getElementById('tanggalJadwal').value;
     const jam = document.getElementById('jamMulai').value;
 
-    if (!paket) { e.preventDefault(); Swal.fire({ icon: 'warning', title: 'Paket Belum Dipilih', text: 'Silakan pilih paket foto.', confirmButtonColor: '#D53D66' }); return false; }
-    if (!ruangan) { e.preventDefault(); Swal.fire({ icon: 'warning', title: 'Ruangan Belum Dipilih', text: 'Silakan pilih ruangan.', confirmButtonColor: '#D53D66' }); return false; }
-    if (!tanggal) { e.preventDefault(); Swal.fire({ icon: 'warning', title: 'Tanggal Kosong', text: 'Silakan pilih tanggal jadwal.', confirmButtonColor: '#D53D66' }); return false; }
-    if (!jam) { e.preventDefault(); Swal.fire({ icon: 'warning', title: 'Jam Mulai Kosong', text: 'Silakan pilih jam mulai.', confirmButtonColor: '#D53D66' }); return false; }
+    ['idPaket', 'idRuangan', 'tanggalJadwal', 'jamMulai'].forEach(clearFieldError);
+
+    let ada_error = false;
+
+    if (!paket) {
+        setFieldError('idPaket', 'Paket foto wajib dipilih!');
+        ada_error = true;
+    }
+    if (!ruangan) {
+        setFieldError('idRuangan', 'Ruangan wajib dipilih!');
+        ada_error = true;
+    }
+    if (!tanggal) {
+        setFieldError('tanggalJadwal', 'Tanggal jadwal wajib diisi!');
+        ada_error = true;
+    }
+    if (!jam) {
+        setFieldError('jamMulai', 'Jam mulai wajib diisi!');
+        ada_error = true;
+    }
+
+    if (ada_error) {
+        e.preventDefault();
+        return false;
+    }
 });
 
 // Jam Real-Time 24-Jam WIB

@@ -324,6 +324,20 @@ if (isset($_POST['simpan'])) {
         .form-control-custom::placeholder { color: #a0aec0; font-weight: 500; }
         textarea.form-control-custom { min-height: 120px; resize: vertical; }
 
+        .form-control-custom.is-error, .form-select-custom.is-error {
+    border-color: #dc2626 !important;
+    background-color: #fef2f2 !important;
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.08) !important;
+}
+.file-upload-zone.is-error {
+    border-color: #dc2626 !important;
+    background-color: #fef2f2 !important;
+}
+.field-error-msg {
+    display: none; font-size: 0.8rem; color: #dc2626; font-weight: 700;
+    margin-top: 6px; align-items: center; gap: 4px;
+}
+.field-error-msg.show { display: flex; }
         .input-hint {
             font-size: 0.75rem; color: var(--text-muted); font-weight: 600;
             margin-top: 6px; display: flex; align-items: center; gap: 4px;
@@ -717,13 +731,6 @@ if (isset($_POST['simpan'])) {
             </div>
             <div class="form-card-body">
 
-                <?php if ($error != ""): ?>
-                    <div class="alert-custom">
-                        <i class="bi bi-exclamation-triangle-fill"></i>
-                        <span><?= htmlspecialchars($error) ?></span>
-                    </div>
-                <?php endif; ?>
-
                 <?php if (empty($daftar_ruangan)): ?>
                     <div class="text-center py-4">
                         <i class="bi bi-exclamation-circle fs-1 mb-2 d-block" style="color: #cbd5e1;"></i>
@@ -736,7 +743,7 @@ if (isset($_POST['simpan'])) {
                         <!-- Pilih Ruangan -->
                         <div class="col-md-12 mb-4">
                             <label class="form-label">Ruangan <span class="required">*</span></label>
-                            <select name="id_ruangan" id="id_ruangan" class="form-select-custom" required onchange="updateRuanganInfo()">
+                            <select name="id_ruangan" id="id_ruangan" class="form-select-custom"  onchange="updateRuanganInfo()">
                                 <option value="">-- Pilih Ruangan --</option>
                                 <?php foreach ($daftar_ruangan as $r): 
                                     $sel = (isset($_POST['id_ruangan']) && $_POST['id_ruangan'] == $r['ID_Ruangan']) ? 'selected' : '';
@@ -746,6 +753,7 @@ if (isset($_POST['simpan'])) {
                                     </option>
                                 <?php endforeach; ?>
                             </select>
+                            <div class="field-error-msg" id="error-id_ruangan"><i class="bi bi-exclamation-circle-fill"></i><span></span></div>
                             <div class="input-hint">
                                 <i class="bi bi-info-circle"></i> Properti akan ditampilkan kepada pelanggan saat memilih ruangan ini
                             </div>
@@ -763,9 +771,10 @@ if (isset($_POST['simpan'])) {
                         <!-- Nama Properti -->
                         <div class="col-md-8 mb-4">
                             <label class="form-label">Nama Properti <span class="required">*</span></label>
-                            <input type="text" name="nama_properti" class="form-control-custom" required 
-                                   maxlength="100" placeholder="Contoh: Sofa Beludru Pink"
-                                   value="<?= htmlspecialchars($_POST['nama_properti'] ?? '') ?>">
+                            <input type="text" name="nama_properti" id="nama_properti" class="form-control-custom" 
+       maxlength="100" placeholder="Contoh: Sofa Beludru Pink"
+       value="<?= htmlspecialchars($_POST['nama_properti'] ?? '') ?>">
+                            <div class="field-error-msg" id="error-nama_properti"><i class="bi bi-exclamation-circle-fill"></i><span></span></div>
                             <div class="input-hint">
                                 <i class="bi bi-info-circle"></i> Maksimal 100 karakter, nama harus unik dalam satu ruangan
                             </div>
@@ -774,7 +783,7 @@ if (isset($_POST['simpan'])) {
                         <!-- Kategori -->
                         <div class="col-md-4 mb-4">
                             <label class="form-label">Kategori <span class="required">*</span></label>
-                            <select name="kategori" class="form-select-custom" required>
+                            <select name="kategori" id="kategori" class="form-select-custom">
                                 <option value="">-- Pilih Kategori --</option>
                                 <?php foreach ($daftar_kategori as $kat): 
                                     $sel = (isset($_POST['kategori']) && $_POST['kategori'] == $kat) ? 'selected' : '';
@@ -782,14 +791,16 @@ if (isset($_POST['simpan'])) {
                                     <option value="<?= $kat ?>" <?= $sel ?>><?= $kat ?></option>
                                 <?php endforeach; ?>
                             </select>
+                            <div class="field-error-msg" id="error-kategori"><i class="bi bi-exclamation-circle-fill"></i><span></span></div>
                         </div>
                     </div>
 
                     <!-- Deskripsi -->
                     <div class="mb-4">
                         <label class="form-label">Deskripsi Properti</label>
-                        <textarea name="deskripsi" class="form-control-custom" 
-                                  maxlength="255" placeholder="Deskripsikan properti ini (opsional)..."><?= htmlspecialchars($_POST['deskripsi'] ?? '') ?></textarea>
+                        <textarea name="deskripsi" id="deskripsi" class="form-control-custom" 
+          maxlength="255" placeholder="Deskripsikan properti ini (opsional)..."><?= htmlspecialchars($_POST['deskripsi'] ?? '') ?></textarea>
+                                  <div class="field-error-msg" id="error-deskripsi"><i class="bi bi-exclamation-circle-fill"></i><span></span></div>    
                         <div class="input-hint">
                             <i class="bi bi-info-circle"></i> Maksimal 255 karakter, akan ditampilkan ke pelanggan
                         </div>
@@ -1007,6 +1018,85 @@ if (isset($_POST['simpan'])) {
 
         // Init: tampilkan info ruangan jika sudah ada value (validasi gagal)
         updateRuanganInfo();
+        function setFieldError(fieldName, message) {
+    const field = document.getElementById(fieldName);
+    const errorMsg = document.getElementById('error-' + fieldName);
+    if (field) field.classList.add('is-error');
+    if (errorMsg) {
+        errorMsg.querySelector('span').textContent = message;
+        errorMsg.classList.add('show');
+        // Sembunyikan hint kecil di bawahnya saat error muncul
+        const hintEl = errorMsg.nextElementSibling;
+        if (hintEl && hintEl.classList.contains('input-hint')) {
+            hintEl.style.display = 'none';
+        }
+    }
+    if (fieldName === 'foto') {
+        document.getElementById('dropzone').classList.add('is-error');
+    }
+}
+
+function clearFieldError(fieldName) {
+    const field = document.getElementById(fieldName);
+    const errorMsg = document.getElementById('error-' + fieldName);
+    if (field) field.classList.remove('is-error');
+    if (errorMsg) {
+        errorMsg.classList.remove('show');
+        // Munculkan lagi hint kecil saat error hilang
+        const hintEl = errorMsg.nextElementSibling;
+        if (hintEl && hintEl.classList.contains('input-hint')) {
+            hintEl.style.display = '';
+        }
+    }
+    if (fieldName === 'foto') {
+        document.getElementById('dropzone').classList.remove('is-error');
+    }
+}
+
+// Hapus error saat user mulai mengisi
+['id_ruangan', 'nama_properti', 'kategori', 'deskripsi'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', () => clearFieldError(id));
+    if (el) el.addEventListener('change', () => clearFieldError(id));
+});
+
+// Validasi semua field sekaligus sebelum submit
+document.getElementById('formProperti').addEventListener('submit', function(e) {
+    const idRuangan = document.getElementById('id_ruangan').value;
+    const nama = document.getElementById('nama_properti').value.trim();
+    const kategori = document.getElementById('kategori').value;
+    const deskripsi = document.getElementById('deskripsi').value.trim();
+
+    ['id_ruangan', 'nama_properti', 'kategori', 'deskripsi'].forEach(clearFieldError);
+
+    let ada_error = false;
+
+    if (!idRuangan) {
+        setFieldError('id_ruangan', 'Ruangan wajib dipilih!');
+        ada_error = true;
+    }
+    if (!nama) {
+        setFieldError('nama_properti', 'Nama properti wajib diisi!');
+        ada_error = true;
+    } else if (nama.length > 100) {
+        setFieldError('nama_properti', 'Maksimal 100 karakter!');
+        ada_error = true;
+    }
+    if (!kategori) {
+        setFieldError('kategori', 'Kategori wajib dipilih!');
+        ada_error = true;
+    }
+    if (deskripsi.length > 255) {
+        setFieldError('deskripsi', 'Maksimal 255 karakter!');
+        ada_error = true;
+    }
+
+    if (ada_error) {
+        e.preventDefault();
+        return false;
+    }
+    return true;
+});
     </script>
 </body>
 </html>

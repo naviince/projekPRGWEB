@@ -292,7 +292,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
         .info-card .info-text strong { color: var(--p-pink); }
         .form-label { font-weight: 700; font-size: 0.75rem; color: var(--text-dark); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
         .form-label .required { color: var(--error-red); margin-left: 2px; font-size: 0.9rem; }
-        .form-label .badge-wajib { background: var(--error-red); color: #fff; font-size: 0.6rem; padding: 2px 8px; border-radius: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
         .form-control-custom { width: 100%; border: 2px solid #e2e8f0; border-radius: 14px; padding: 14px 18px; font-weight: 600; font-size: 0.9rem; color: #1e293b; transition: var(--transition-3d); background: #ffffff; }
         .form-control-custom:focus { outline: none; border-color: var(--p-pink); box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); }
         .form-control-custom::placeholder { color: #a0aec0; font-weight: 500; }
@@ -329,8 +328,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
         .paket-checkbox-item .paket-harga { font-size: 0.75rem; color: var(--p-pink); font-weight: 700; }
         .paket-checkbox-item .paket-kapasitas { font-size: 0.7rem; color: var(--text-muted); }
         .paket-checkbox-item .paket-durasi { font-size: 0.7rem; color: #94a3b8; font-weight: 600; }
-        .paket-checkbox-item .paket-check-icon { display: none; color: var(--p-pink); font-size: 1.2rem; }
-        .paket-checkbox-item.selected .paket-check-icon { display: block; }
         .paket-empty { text-align: center; padding: 30px; color: var(--text-muted); font-size: 0.85rem; }
         .paket-section-error { display: none; font-size: 0.8rem; color: var(--error-red); font-weight: 700; margin-top: 8px; align-items: center; gap: 4px; }
         .paket-section-error.show { display: flex; }
@@ -627,24 +624,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
                     <div class="row">
                         <div class="col-md-12 mb-4">
-                            <label class="form-label"><i class="bi bi-type"></i> Nama Ruangan <span class="required">*</span><span class="badge-wajib">Wajib</span></label>
-                            <input type="text" name="nama_ruangan" id="nama_ruangan" class="form-control-custom <?= isset($field_errors['nama_ruangan']) ? 'is-error' : '' ?>" required maxlength="100" placeholder="Contoh: Studio A Minimalis" value="<?= htmlspecialchars($_POST['nama_ruangan'] ?? '') ?>">
+                            <label class="form-label"><i class="bi bi-type"></i> Nama Ruangan <span class="required">*</span></label>
+                            <input type="text" name="nama_ruangan" id="nama_ruangan" class="form-control-custom <?= isset($field_errors['nama_ruangan']) ? 'is-error' : '' ?>"  maxlength="100" placeholder="Contoh: Studio A Minimalis" value="<?= htmlspecialchars($_POST['nama_ruangan'] ?? '') ?>">
                             <div class="input-hint"><i class="bi bi-info-circle"></i> Maksimal 100 karakter, nama harus unik</div>
                             <div class="field-error-msg <?= isset($field_errors['nama_ruangan']) ? 'show' : '' ?>" id="error-nama_ruangan"><i class="bi bi-exclamation-circle-fill"></i><span><?= $field_errors['nama_ruangan'] ?? '' ?></span></div>
                         </div>
                     </div>
 
                     <div class="mb-4">
-                        <label class="form-label"><i class="bi bi-card-text"></i> Deskripsi Ruangan <span class="required">*</span><span class="badge-wajib">Wajib</span></label>
-                        <textarea name="deskripsi" id="deskripsi" class="form-control-custom <?= isset($field_errors['deskripsi']) ? 'is-error' : '' ?>" required maxlength="255" placeholder="Deskripsikan suasana, konsep, dan keunggulan ruangan ini..."><?= htmlspecialchars($_POST['deskripsi'] ?? '') ?></textarea>
+                        <label class="form-label"><i class="bi bi-card-text"></i> Deskripsi Ruangan <span class="required">*</span></label>
+                        <textarea name="deskripsi" id="deskripsi" class="form-control-custom <?= isset($field_errors['deskripsi']) ? 'is-error' : '' ?>"  maxlength="255" placeholder="Deskripsikan suasana, konsep, dan keunggulan ruangan ini..."><?= htmlspecialchars($_POST['deskripsi'] ?? '') ?></textarea>
                         <div class="input-hint"><i class="bi bi-info-circle"></i> Maksimal 255 karakter, akan ditampilkan ke pelanggan</div>
                         <div class="field-error-msg <?= isset($field_errors['deskripsi']) ? 'show' : '' ?>" id="error-deskripsi"><i class="bi bi-exclamation-circle-fill"></i><span><?= $field_errors['deskripsi'] ?? '' ?></span></div>
                     </div>
 
                     <div class="mb-4">
-                        <label class="form-label"><i class="bi bi-image"></i> Foto Ruangan <span class="required">*</span><span class="badge-wajib">Wajib</span></label>
+                        <label class="form-label"><i class="bi bi-image"></i> Foto Ruangan <span class="required">*</span></label>
                         <div class="file-upload-zone <?= isset($field_errors['foto']) ? 'is-error' : '' ?>" id="uploadArea" onclick="document.getElementById('foto-input').click()">
-                            <input type="file" name="foto" id="foto-input" required accept="image/jpeg,image/jpg,image/png,image/webp" onchange="handleFileSelect(event)">
+                            <input type="file" name="foto" id="foto-input"  accept="image/jpeg,image/jpg,image/png,image/webp" onchange="handleFileSelect(event)">
                             <i class="bi bi-camera-fill" id="upload-icon"></i>
                             <p id="upload-text">Klik atau seret foto ke sini</p>
                             <small>JPG, JPEG, PNG, WEBP — Maksimal 2MB</small>
@@ -656,42 +653,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                         <div class="field-error-msg <?= isset($field_errors['foto']) ? 'show' : '' ?>" id="error-foto"><i class="bi bi-exclamation-circle-fill"></i><span><?= $field_errors['foto'] ?? '' ?></span></div>
                     </div>
 
-                    <div class="mb-4">
-                        <label class="form-label"><i class="bi bi-camera"></i> Pilih Paket Foto <span class="required">*</span><span class="badge-wajib">Wajib</span></label>
-                        <div class="input-hint mb-3"><i class="bi bi-info-circle"></i> Pilih paket-paket foto yang bisa menggunakan ruangan ini</div>
-                        <div class="paket-section <?= isset($field_errors['paket']) ? 'is-error' : '' ?>" id="paket-section">
-                            <div class="paket-section-title">
-                                <i class="bi bi-stars"></i> Daftar Paket Foto Aktif
+                    <!-- Bagian Pilih Paket Foto yang sudah diperbaiki -->
+<div class="mb-4">
+    <label class="form-label"><i class="bi bi-camera"></i> Pilih Paket Foto <span class="required">*</span></label>
+    <div class="input-hint mb-3" id="hint-paket"><i class="bi bi-info-circle"></i> Pilih paket-paket foto yang bisa menggunakan ruangan ini</div>
+    
+    <div class="paket-section <?= isset($field_errors['paket']) ? 'is-error' : '' ?>" id="paket-section">
+        <div class="paket-section-title">
+            <i class="bi bi-stars"></i> Daftar Paket Foto Aktif
+        </div>
+        
+        <div style="max-height: 250px; overflow-y: auto; padding: 5px;">
+            <div class="paket-grid">
+                <?php if (!empty($daftar_paket)): foreach ($daftar_paket as $pkt): 
+                    $foto_p = $pkt['Foto_Paket'] ?? 'default_paket.jpg';
+                    $foto_p_src = ($foto_p != 'default_paket.jpg' && file_exists("../../assets/img/paket/" . $foto_p)) ? "../../assets/img/paket/" . $foto_p : $default_svg_avatar;
+                    $is_checked = in_array($pkt['ID_Paket'], $paket_terpilih) ? 'checked' : '';
+                    $is_selected = $is_checked ? 'selected' : '';
+                ?>
+                    <div class="paket-checkbox-item <?= $is_selected ?>">
+                        <input type="checkbox" name="paket[]" value="<?= $pkt['ID_Paket'] ?>" <?= $is_checked ?> onchange="updatePaketCount()">
+                        <div class="d-flex align-items-center gap-3 w-100">
+                            <img src="<?= $foto_p_src ?>" style="width: 45px; height: 45px; object-fit: cover; border-radius: 8px; flex-shrink: 0;">
+                            <div class="paket-info flex-grow-1" style="min-width: 0;">
+                                <div class="paket-nama fw-bold text-dark" style="font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><?= htmlspecialchars($pkt['Nama_Paket']) ?></div>
+                                <div class="d-flex gap-2 align-items-center flex-wrap" style="font-size: 0.75rem; margin-top: 2px;">
+                                    <span class="text-muted"><i class="bi bi-clock me-1"></i><?= htmlspecialchars($pkt['Durasi_Waktu']) ?> Menit</span>
+                                    <span class="text-muted">•</span>
+                                    <span class="text-muted"><i class="bi bi-people me-1"></i><?= htmlspecialchars($pkt['Kapasitas_Orang']) ?> Orang</span>
+                                </div>
+                                <div class="paket-harga fw-bold mt-1" style="font-size: 0.85rem; color: var(--p-pink) !important;">Rp <?= number_format($pkt['Harga_Paket'], 0, ',', '.') ?></div>
                             </div>
-                            
-                            <!-- INTERACTIVE CARD-BASED SELECTION GRID -->
-                            <div style="max-height: 250px; overflow-y: auto; padding: 5px;">
-                                <div class="paket-grid">
-                                    <?php if (!empty($daftar_paket)): foreach ($daftar_paket as $pkt): 
-                                        $foto_p = $pkt['Foto_Paket'] ?? 'default_paket.jpg';
-                                        $foto_p_src = ($foto_p != 'default_paket.jpg' && file_exists("../../assets/img/paket/" . $foto_p)) ? "../../assets/img/paket/" . $foto_p : $default_svg_avatar;
-                                        $is_checked = in_array($pkt['ID_Paket'], $paket_terpilih) ? 'checked' : '';
-                                        $is_selected = $is_checked ? 'selected' : '';
-                                    ?>
-                                        <div class="paket-checkbox-item <?= $is_selected ?>">
-                                            <input type="checkbox" name="paket[]" value="<?= $pkt['ID_Paket'] ?>" <?= $is_checked ?> onchange="updatePaketCount()">
-                                            <div class="d-flex align-items-center gap-3 w-100">
-                                                <img src="<?= $foto_p_src ?>" style="width: 45px; height: 45px; object-fit: cover; border-radius: 8px; flex-shrink: 0;">
-                                                <div class="paket-info flex-grow-1" style="min-width: 0;">
-                                                    <div class="paket-nama fw-bold text-dark" style="font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><?= htmlspecialchars($pkt['Nama_Paket']) ?></div>
-                                                    <div class="d-flex gap-2 align-items-center flex-wrap" style="font-size: 0.75rem; margin-top: 2px;">
-                                                        <span class="text-muted"><i class="bi bi-clock me-1"></i><?= htmlspecialchars($pkt['Durasi_Waktu']) ?> Menit</span>
-                                                        <span class="text-muted">•</span>
-                                                        <span class="text-muted"><i class="bi bi-people me-1"></i><?= htmlspecialchars($pkt['Kapasitas_Orang']) ?> Orang</span>
-                                                    </div>
-                                                    <div class="paket-harga fw-bold text-danger mt-1" style="font-size: 0.85rem; color: var(--p-pink) !important;">Rp <?= number_format($pkt['Harga_Paket'], 0, ',', '.') ?></div>
-                                                </div>
-                                                <i class="bi bi-check-circle-fill paket-check-icon fs-4 text-danger ms-auto"></i>
-                                            </div>
-                                        </div>
-                                    <?php endforeach; else: ?>
+                            <!-- Ikon centang bulat (bi-check-circle-fill) SUDAH DIHAPUS agar lebih simpel -->
+                        </div>
+                    </div>
+                <?php endforeach; else: ?>
+                    <div class="paket-empty w-100 py-4"><p>Belum ada paket foto aktif.</p></div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Pesan error (Hanya muncul jika ada kesalahan divalidasi) -->
+    <div class="field-error-msg <?= isset($field_errors['paket']) ? 'show' : '' ?>" id="error-paket">
+        <i class="bi bi-exclamation-circle-fill"></i><span><?= $field_errors['paket'] ?? '' ?></span>
+    </div>
+    
+    <!-- Info jumlah terpilih (Warna default netral) -->
+    <div class="input-hint mt-2" id="paket-count-hint" style="color: #64748b;">
+        <i class="bi bi-check-circle"></i> <span id="paket-count">0</span> paket terpilih
+    </div>
+</div>
                                         <div class="paket-empty w-100 py-4"><i class="bi bi-exclamation-circle fs-1 mb-2 d-block" style="color: #cbd5e1;"></i><p>Belum ada paket foto aktif. <a href="../Paket Foto/add.php" style="color: var(--p-pink);">Tambah paket foto dulu</a>.</p></div>
-                                    <?php endif; ?>
+                                    
                                 </div>
                             </div>
                         </div>
@@ -819,17 +833,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
         });
 
         function updatePaketCount() {
-            const checked = document.querySelectorAll('input[name="paket[]"]:checked').length;
-            document.getElementById('paket-count').textContent = checked;
-            const hint = document.getElementById('paket-count-hint');
-            if (checked === 0) {
-                hint.style.color = '#dc2626';
-                hint.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Pilih minimal 1 paket foto!';
-            } else {
-                hint.style.color = '#059669';
-                hint.innerHTML = '<i class="bi bi-check-circle-fill"></i> ' + checked + ' paket terpilih';
-            }
+    const checked = document.querySelectorAll('input[name="paket[]"]:checked').length;
+    document.getElementById('paket-count').textContent = checked;
+    
+    // Update tampilan card yang terpilih
+    document.querySelectorAll('.paket-checkbox-item').forEach(item => {
+        const cb = item.querySelector('input[type="checkbox"]');
+        if (cb.checked) {
+            item.classList.add('selected');
+        } else {
+            item.classList.remove('selected');
         }
+    });
+
+    // Jika user mulai memilih, hapus status error (agar konsisten dengan input teks)
+    if (checked > 0) {
+        clearFieldError('paket');
+        document.getElementById('paket-count-hint').style.color = '#059669'; // Jadi hijau jika ada yang dipilih
+    } else {
+        document.getElementById('paket-count-hint').style.color = '#64748b'; // Kembali netral jika kosong
+    }
+}
 
         // Preview Foto
         function handleFileSelect(event) {
@@ -929,23 +953,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             }
         }
 
-        // Clear Errors
+        // Clear error
         function clearFieldError(fieldName) {
-            const field = document.getElementById(fieldName);
-            const errorMsg = document.getElementById('error-' + fieldName);
-            if (field) field.classList.remove('is-error');
-            if (errorMsg) errorMsg.classList.remove('show');
-            if (fieldName === 'paket') {
-                const section = document.getElementById('paket-section');
-                if (section) section.classList.remove('is-error');
-                const errSec = document.getElementById('error-paket');
-                if (errSec) errSec.classList.remove('show');
-            }
-            if (fieldName === 'foto') {
-                const zone = document.getElementById('uploadArea');
-                if (zone) zone.classList.remove('is-error');
-            }
-        }
+    const field = document.getElementById(fieldName);
+    const errorMsg = document.getElementById('error-' + fieldName);
+    if (field) field.classList.remove('is-error');
+    if (errorMsg) {
+        errorMsg.classList.remove('show');
+        const hintEl = errorMsg.previousElementSibling;
+        if (hintEl && hintEl.classList.contains('input-hint')) hintEl.style.display = '';
+    }
+    if (fieldName === 'paket') {
+        const section = document.getElementById('paket-section');
+        if (section) section.classList.remove('is-error');
+        const errSec = document.getElementById('error-paket');
+        if (errSec) errSec.classList.remove('show');
+    }
+    if (fieldName === 'foto') {
+        const zone = document.getElementById('uploadArea');
+        if (zone) zone.classList.remove('is-error');
+    }
+}
 
         document.getElementById('nama_ruangan').addEventListener('input', function() {
             if (this.value.trim()) clearFieldError('nama_ruangan');
@@ -954,22 +982,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             if (this.value.trim()) clearFieldError('deskripsi');
         });
 
-        // Form Submit (VALIDATION REVISED FOR MANY-TO-MANY MODE)
-        document.getElementById('formRuangan').addEventListener('submit', function(e) {
-            const paketChecked = document.querySelectorAll('input[name="paket[]"]:checked').length;
-            if (paketChecked === 0) {
-                e.preventDefault();
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'Paket Belum Dipilih',
-                    text: 'Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini!',
-                    confirmButtonColor: '#D53D66'
-                });
-                return false;
-            }
-            document.getElementById('loadingOverlay').classList.add('active');
-            return true;
-        });
+        function setFieldError(fieldName, message) {
+    const field = document.getElementById(fieldName);
+    const errorMsg = document.getElementById('error-' + fieldName);
+    if (field) field.classList.add('is-error');
+    if (errorMsg) {
+    errorMsg.querySelector('span').textContent = message;
+    errorMsg.classList.add('show');
+    const hintEl = errorMsg.previousElementSibling;
+    if (hintEl && hintEl.classList.contains('input-hint')) hintEl.style.display = 'none';
+}
+    if (fieldName === 'paket') {
+        const section = document.getElementById('paket-section');
+        if (section) section.classList.add('is-error');
+    }
+    if (fieldName === 'foto') {
+        const zone = document.getElementById('uploadArea');
+        if (zone) zone.classList.add('is-error');
+    }
+}
+
+document.getElementById('formRuangan').addEventListener('submit', function(e) {
+    const nama = document.getElementById('nama_ruangan').value.trim();
+    const deskripsi = document.getElementById('deskripsi').value.trim();
+    const fotoFiles = document.getElementById('foto-input').files;
+    const paketChecked = document.querySelectorAll('input[name="paket[]"]:checked').length;
+
+    ['nama_ruangan', 'deskripsi', 'foto', 'paket'].forEach(clearFieldError);
+
+    let ada_error = false;
+
+    if (!nama) {
+        setFieldError('nama_ruangan', 'Nama ruangan wajib diisi!');
+        ada_error = true;
+    } else if (nama.length > 100) {
+        setFieldError('nama_ruangan', 'Maksimal 100 karakter!');
+        ada_error = true;
+    }
+
+    if (!deskripsi) {
+        setFieldError('deskripsi', 'Deskripsi wajib diisi!');
+        ada_error = true;
+    } else if (deskripsi.length > 255) {
+        setFieldError('deskripsi', 'Maksimal 255 karakter!');
+        ada_error = true;
+    }
+
+    if (fotoFiles.length === 0) {
+        setFieldError('foto', 'Foto ruangan wajib diupload!');
+        ada_error = true;
+    }
+
+    if (paketChecked === 0) {
+        setFieldError('paket', 'Pilih minimal 1 paket foto!');
+        ada_error = true;
+    }
+
+    if (ada_error) {
+        e.preventDefault();
+        return false;
+    }
+
+    document.getElementById('loadingOverlay').classList.add('active');
+    return true;
+});
 
         // Modal Biodata
         function bukaModalBiodata() {
@@ -1035,17 +1111,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
         updateLiveClock();
 
         updatePaketCount();
-
-        <?php if (!empty($error)): ?>
-            Swal.fire({
-                icon: 'error',
-                title: 'Gagal Menyimpan!',
-                html: '<?= addslashes($error) ?>',
-                confirmButtonColor: '#D53D66'
-            });
-        <?php endif; ?>
-
-
     </script>
 </body>
 </html>

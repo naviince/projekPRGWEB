@@ -24,28 +24,23 @@ $foto_fotografer = $d_profile['foto_profil'] ?? 'default.jpg';
 $foto_fotografer_src = ($foto_fotografer != 'default.jpg' && file_exists("../../assets/img/karyawan/" . $foto_fotografer)) 
     ? "../../assets/img/karyawan/" . $foto_fotografer : $default_svg_avatar;
 
-// --- FILTER TAHUN DINAMIS BERDASARKAN DATA RIIL DI DATABASE ---
-$tahun_sekarang = (int) date('Y');
-$tahun_options = [];
+// --- FILTER RENTANG TANGGAL (MULAI - SELESAI) UNTUK STATISTIK SESI ---
+$default_mulai = date('Y-01-01');
+$default_selesai = date('Y-m-d');
 
-// Mengambil tahun unik yang hanya memiliki data booking aktif di database
-$q_tahun_db = sqlsrv_query($conn, "SELECT DISTINCT YEAR(Tanggal_Booking) AS tahun FROM [Order] WHERE Status = 1 ORDER BY tahun DESC");
-if ($q_tahun_db) {
-    while ($row_th = sqlsrv_fetch_array($q_tahun_db, SQLSRV_FETCH_ASSOC)) {
-        if ($row_th['tahun'] !== null) {
-            $tahun_options[] = (int) $row_th['tahun'];
-        }
-    }
+$tanggal_mulai = (isset($_GET['tanggal_mulai']) && strtotime($_GET['tanggal_mulai'])) ? $_GET['tanggal_mulai'] : $default_mulai;
+$tanggal_selesai = (isset($_GET['tanggal_selesai']) && strtotime($_GET['tanggal_selesai'])) ? $_GET['tanggal_selesai'] : $default_selesai;
+
+if (strtotime($tanggal_mulai) > strtotime($tanggal_selesai)) {
+    [$tanggal_mulai, $tanggal_selesai] = [$tanggal_selesai, $tanggal_mulai];
 }
 
-// Fallback keamanan: jika database masih benar-benar kosong, gunakan tahun sekarang sebagai pilihan tunggal
-if (empty($tahun_options)) {
-    $tahun_options[] = $tahun_sekarang;
+function fmtTglSingkat($date_str) {
+    $ts = strtotime($date_str);
+    $bulan = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+    return date('d', $ts) . ' ' . $bulan[(int)date('n', $ts) - 1] . ' ' . date('Y', $ts);
 }
-
-// Menentukan tahun filter aktif: default otomatis ke tahun terbaru yang memiliki data transaksi
-$tahun_filter = (isset($_GET['tahun']) && ctype_digit($_GET['tahun'])) ? (int) $_GET['tahun'] : $tahun_options[0];
-
+$label_periode = fmtTglSingkat($tanggal_mulai) . ' - ' . fmtTglSingkat($tanggal_selesai);
 $error_profile = "";
 $success_profile = false;
 
@@ -227,14 +222,32 @@ $rs_top = (!empty($rs_cari) || !empty($rs_dari) || !empty($rs_sampai)) ? 20 : 5;
 
 $q_riwayat_selesai = sqlsrv_query($conn, "SELECT TOP $rs_top S.ID_Sesi_Foto, P.Nama_Pelanggan, PK.Nama_Paket, S.Waktu_Mulai, S.Waktu_Selesai, S.File_Hasil, S.Tanggal_Upload_Hasil FROM Sesi_Foto S JOIN [Order] O ON S.ID_Order = O.ID_Order JOIN Pelanggan P ON O.ID_Pelanggan = P.ID_Pelanggan JOIN Paket_Foto PK ON O.ID_Paket = PK.ID_Paket WHERE $rs_where AND S.Status = 1 AND O.Status = 1 ORDER BY S.Waktu_Selesai DESC", $rs_params);
 
-// CHART STATISTIK SESI PER BULAN (FILTER TAHUN)
-$q_sesi_bulan = sqlsrv_query($conn, "SELECT MONTH(S.Waktu_Selesai) AS bulan, COUNT(*) AS total FROM Sesi_Foto S WHERE S.ID_Karyawan = ? AND S.Status = 1 AND S.Status_Sesi = 1 AND YEAR(S.Waktu_Selesai) = ? GROUP BY MONTH(S.Waktu_Selesai) ORDER BY MONTH(S.Waktu_Selesai)", array($id_fotografer, $tahun_filter));
-$sesi_bulan_data = array_fill(0, 12, 0);
+// CHART STATISTIK SESI PER BULAN (FILTER RENTANG TANGGAL)
+$periode_bulan = new DatePeriod(
+    new DateTime(date('Y-m-01', strtotime($tanggal_mulai))),
+    new DateInterval('P1M'),
+    (new DateTime($tanggal_selesai))->modify('first day of next month')
+);
+$peta_bulan = [];
+foreach ($periode_bulan as $dt) {
+    $peta_bulan[$dt->format('Y-m')] = 0;
+}
+$sesi_bulan_labels = array_map(function($key) {
+    $bulan = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+    [$y, $m] = explode('-', $key);
+    return $bulan[(int)$m - 1] . ' ' . $y;
+}, array_keys($peta_bulan));
+
+$sesi_bulan_data = $peta_bulan;
+$q_sesi_bulan = sqlsrv_query($conn, "SELECT FORMAT(S.Waktu_Selesai,'yyyy-MM') AS periode, COUNT(*) AS total FROM Sesi_Foto S WHERE S.ID_Karyawan = ? AND S.Status = 1 AND S.Status_Sesi = 1 AND S.Waktu_Selesai BETWEEN ? AND ? GROUP BY FORMAT(S.Waktu_Selesai,'yyyy-MM')", array($id_fotografer, $tanggal_mulai, $tanggal_selesai));
 if ($q_sesi_bulan !== false) {
     while ($row = sqlsrv_fetch_array($q_sesi_bulan, SQLSRV_FETCH_ASSOC)) {
-        $sesi_bulan_data[$row['bulan'] - 1] = $row['total'];
+        if (isset($sesi_bulan_data[$row['periode']])) {
+            $sesi_bulan_data[$row['periode']] = $row['total'];
+        }
     }
 }
+$sesi_bulan_data = array_values($sesi_bulan_data);
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -347,29 +360,82 @@ if ($q_sesi_bulan !== false) {
             border-radius: 16px; padding: 12px 18px;
             box-shadow: 0 4px 14px rgba(213,61,102,0.04); margin-bottom: 20px;
         }
+        .date-filter-group{
+    display:flex;
+    align-items:flex-end;
+    gap:10px;
+    flex-wrap:wrap;
+}
+.date-filter-field{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+}
+.date-filter-field label{
+    font-size:0.68rem;
+    font-weight:800;
+    color:var(--text-muted);
+    text-transform:uppercase;
+    letter-spacing:0.6px;
+    margin:0;
+    display:flex;
+    align-items:center;
+    gap:5px;
+}
+.date-filter-field label i{color:var(--p-pink);}
+.date-filter-input{
+    border:1.5px solid rgba(213,61,102,0.2);
+    background:var(--s-pink);
+    color:var(--text-dark);
+    font-weight:700;
+    font-size:0.85rem;
+    padding:9px 12px;
+    border-radius:10px;
+    transition:var(--transition-3d);
+    min-width:150px;
+}
+.date-filter-input:hover{
+    border-color:var(--p-pink);
+    background:#ffffff;
+}
+.date-filter-input:focus{
+    outline:none;
+    border-color:var(--p-pink);
+    background:#ffffff;
+    box-shadow:0 4px 12px rgba(213,61,102,0.15);
+}
+.date-filter-separator{
+    color:var(--text-muted);
+    font-weight:700;
+    font-size:0.8rem;
+    padding-bottom:9px;
+}
+.btn-terapkan-filter{
+    background:linear-gradient(135deg,var(--p-pink),var(--d-pink));
+    color:#ffffff;
+    border:none;
+    font-weight:800;
+    font-size:0.82rem;
+    padding:10px 20px;
+    border-radius:10px;
+    display:flex;
+    align-items:center;
+    gap:6px;
+    transition:var(--transition-3d);
+    box-shadow:0 4px 12px rgba(213,61,102,0.25);
+    height:fit-content;
+}
+.btn-terapkan-filter:hover{
+    transform:translateY(-2px);
+    box-shadow:0 8px 18px rgba(213,61,102,0.35);
+}
         .live-clock-chip {
             display: inline-flex; align-items: center; gap: 6px;
             background: var(--light-pink); color: var(--text-dark);
             font-weight: 700; font-size: 0.8rem; padding: 8px 14px; border-radius: 10px;
         }
         .live-clock-chip i { color: var(--p-pink); }
-        .year-filter-form { margin: 0; }
-        .year-filter-label {
-            display: inline-flex; align-items: center; gap: 6px;
-            font-size: 0.78rem; font-weight: 800; color: var(--text-muted);
-            text-transform: uppercase; letter-spacing: 0.5px; margin: 0;
-        }
-        .year-filter-label i { color: var(--p-pink); }
-        .year-filter-select {
-            appearance: none; -webkit-appearance: none; -moz-appearance: none;
-            background: #ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23D53D66'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 12px center;
-            background-size: 14px; border: 1.5px solid rgba(213,61,102,0.25);
-            color: var(--p-pink); font-weight: 800; font-size: 0.85rem;
-            padding: 8px 34px 8px 16px; border-radius: 10px; cursor: pointer;
-            transition: var(--transition-3d);
-        }
-        .year-filter-select:hover, .year-filter-select:focus { border-color: var(--p-pink); box-shadow: 0 6px 15px rgba(213,61,102,0.15); outline: none; }
-
+    
         /* STATS */
         .stats-scroll-wrapper { width: 100%; overflow-x: auto; overflow-y: hidden; padding-bottom: 12px; margin-bottom: 16px; scrollbar-width: thin; scrollbar-color: var(--p-pink) #f1f5f9; -webkit-overflow-scrolling: touch; }
         .stats-scroll-wrapper::-webkit-scrollbar { height: 6px; }
@@ -530,8 +596,6 @@ if ($q_sesi_bulan !== false) {
             .content-header { margin-bottom: 14px; }
             .dashboard-toolbar { padding: 10px 14px; border-radius: 14px; }
             .live-clock-chip { font-size: 0.72rem; padding: 7px 12px; }
-            .year-filter-label { font-size: 0.7rem; }
-            .year-filter-select { font-size: 0.78rem; padding: 7px 30px 7px 12px; }
             .timeline { padding-left: 22px; }
             .timeline::before { left: 6px; }
             .timeline-item::before { left: -20px; width: 8px; height: 8px; }
@@ -636,20 +700,26 @@ if ($q_sesi_bulan !== false) {
             <span class="live-clock-chip">
                 <i class="bi bi-clock-history"></i> <span id="live-clock">Memuat waktu...</span>
             </span>
-            <form method="GET" class="year-filter-form d-flex align-items-center gap-2 flex-wrap">
-                <input type="hidden" name="jm_cari" value="<?= htmlspecialchars($jm_cari) ?>">
-                <input type="hidden" name="jm_dari" value="<?= htmlspecialchars($jm_dari) ?>">
-                <input type="hidden" name="jm_sampai" value="<?= htmlspecialchars($jm_sampai) ?>">
-                <input type="hidden" name="rs_cari" value="<?= htmlspecialchars($rs_cari) ?>">
-                <input type="hidden" name="rs_dari" value="<?= htmlspecialchars($rs_dari) ?>">
-                <input type="hidden" name="rs_sampai" value="<?= htmlspecialchars($rs_sampai) ?>">
-                <label for="filterTahun" class="year-filter-label"><i class="bi bi-funnel-fill"></i> Filter Laporan Tahun</label>
-                <select name="tahun" id="filterTahun" class="year-filter-select" onchange="this.form.submit()">
-                    <?php foreach ($tahun_options as $th): ?>
-                    <option value="<?= $th ?>" <?= $th == $tahun_filter ? 'selected' : '' ?>><?= $th ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </form>
+            <form method="GET" class="date-filter-group">
+    <input type="hidden" name="jm_cari" value="<?= htmlspecialchars($jm_cari) ?>">
+    <input type="hidden" name="jm_dari" value="<?= htmlspecialchars($jm_dari) ?>">
+    <input type="hidden" name="jm_sampai" value="<?= htmlspecialchars($jm_sampai) ?>">
+    <input type="hidden" name="rs_cari" value="<?= htmlspecialchars($rs_cari) ?>">
+    <input type="hidden" name="rs_dari" value="<?= htmlspecialchars($rs_dari) ?>">
+    <input type="hidden" name="rs_sampai" value="<?= htmlspecialchars($rs_sampai) ?>">
+    <div class="date-filter-field">
+        <label><i class="bi bi-calendar-event-fill"></i> Tanggal Mulai</label>
+        <input type="date" name="tanggal_mulai" class="date-filter-input" value="<?= $tanggal_mulai ?>">
+    </div>
+    <span class="date-filter-separator">s/d</span>
+    <div class="date-filter-field">
+        <label><i class="bi bi-calendar-check-fill"></i> Tanggal Selesai</label>
+        <input type="date" name="tanggal_selesai" class="date-filter-input" value="<?= $tanggal_selesai ?>">
+    </div>
+    <button type="submit" class="btn-terapkan-filter">
+        <i class="bi bi-funnel-fill"></i> Terapkan
+    </button>
+</form>
         </div>
 
         <!-- STAT CARDS -->
@@ -715,7 +785,7 @@ if ($q_sesi_bulan !== false) {
                 <div class="content-card">
                     <div class="content-header">
                         <h5 class="content-title"><i class="bi bi-graph-up-arrow text-danger me-2"></i>Statistik Sesi</h5>
-                        <span class="content-badge"><?= $tahun_filter ?></span>
+                        <span class="content-badge"><?= htmlspecialchars($label_periode) ?></span>
                     </div>
                     <div style="height: 280px; width: 100%;"><canvas id="chartSesiBulan"></canvas></div>
                 </div>
@@ -731,7 +801,8 @@ if ($q_sesi_bulan !== false) {
                         <a href="../../Sesi/Terjadwal/index.php" class="btn btn-sm" style="background: var(--s-pink); color: var(--p-pink); font-weight: 700; border-radius: 8px; font-size: 0.75rem; text-decoration: none;">Lihat Semua</a>
                     </div>
                     <form method="GET" class="filter-toolbar">
-                        <input type="hidden" name="tahun" value="<?= $tahun_filter ?>">
+                        <input type="hidden" name="tanggal_mulai" value="<?= $tanggal_mulai ?>">
+<input type="hidden" name="tanggal_selesai" value="<?= $tanggal_selesai ?>">
                         <input type="hidden" name="rs_cari" value="<?= htmlspecialchars($rs_cari) ?>">
                         <input type="hidden" name="rs_dari" value="<?= htmlspecialchars($rs_dari) ?>">
                         <input type="hidden" name="rs_sampai" value="<?= htmlspecialchars($rs_sampai) ?>">
@@ -740,7 +811,7 @@ if ($q_sesi_bulan !== false) {
                         <input type="date" name="jm_sampai" value="<?= htmlspecialchars($jm_sampai) ?>" class="filter-date">
                         <button type="submit" class="btn-filter"><i class="bi bi-funnel-fill"></i> Filter</button>
                         <?php if (!empty($jm_cari) || !empty($jm_dari) || !empty($jm_sampai)): ?>
-                        <a href="?tahun=<?= $tahun_filter ?>&<?= http_build_query(['rs_cari'=>$rs_cari,'rs_dari'=>$rs_dari,'rs_sampai'=>$rs_sampai]) ?>" class="btn-reset"><i class="bi bi-x-lg"></i></a>
+                        <a href="?tanggal_mulai=<?= $tanggal_mulai ?>&tanggal_selesai=<?= $tanggal_selesai ?>&<?= http_build_query(['rs_cari'=>$rs_cari,'rs_dari'=>$rs_dari,'rs_sampai'=>$rs_sampai]) ?>" class="btn-reset">
                         <?php endif; ?>
                     </form>
                     <div class="timeline">
@@ -780,7 +851,7 @@ if ($q_sesi_bulan !== false) {
                         <input type="date" name="rs_sampai" value="<?= htmlspecialchars($rs_sampai) ?>" class="filter-date">
                         <button type="submit" class="btn-filter"><i class="bi bi-funnel-fill"></i> Filter</button>
                         <?php if (!empty($rs_cari) || !empty($rs_dari) || !empty($rs_sampai)): ?>
-                        <a href="?tahun=<?= $tahun_filter ?>&<?= http_build_query(['jm_cari'=>$jm_cari,'jm_dari'=>$jm_dari,'jm_sampai'=>$jm_sampai]) ?>" class="btn-reset"><i class="bi bi-x-lg"></i></a>
+                        <a href="?tanggal_mulai=<?= $tanggal_mulai ?>&tanggal_selesai=<?= $tanggal_selesai ?>&<?= http_build_query(['rs_cari'=>$rs_cari,'rs_dari'=>$rs_dari,'rs_sampai'=>$rs_sampai]) ?>" class="btn-reset">
                         <?php endif; ?>
                     </form>
                     <?php if ($q_riwayat_selesai && sqlsrv_has_rows($q_riwayat_selesai)): while ($row = sqlsrv_fetch_array($q_riwayat_selesai, SQLSRV_FETCH_ASSOC)):
@@ -1062,7 +1133,7 @@ if ($q_sesi_bulan !== false) {
             new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'],
+                    labels: <?= json_encode($sesi_bulan_labels) ?>,
                     datasets: [{
                         label: 'Sesi Selesai',
                         data: <?= json_encode($sesi_bulan_data) ?>,

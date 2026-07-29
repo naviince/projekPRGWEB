@@ -457,7 +457,6 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
         .info-card .info-text strong { color: var(--p-pink); }
         .form-label { font-weight: 700; font-size: 0.75rem; color: var(--text-dark); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
         .form-label .required { color: var(--error-red); margin-left: 2px; font-size: 0.9rem; }
-        .form-label .badge-wajib { background: var(--error-red); color: #fff; font-size: 0.6rem; padding: 2px 8px; border-radius: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
         .form-control-custom { width: 100%; border: 2px solid #e2e8f0; border-radius: 14px; padding: 14px 18px; font-weight: 600; font-size: 0.9rem; color: #1e293b; transition: var(--transition-3d); background: #ffffff; }
         .form-control-custom:focus { outline: none; border-color: var(--p-pink); box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); }
         .form-control-custom::placeholder { color: #a0aec0; font-weight: 500; }
@@ -768,7 +767,7 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
                     <div class="row">
                         <div class="col-12 col-md-12 mb-4">
-                            <label class="form-label"><i class="bi bi-type"></i> Nama Ruangan <span class="required">*</span><span class="badge-wajib">Wajib</span></label>
+                            <label class="form-label"><i class="bi bi-type"></i> Nama Ruangan <span class="required">*</span></label>
                             <input type="text" name="nama_ruangan" id="nama_ruangan" class="form-control-custom <?= isset($field_errors['nama_ruangan']) ? 'is-error' : '' ?>" required maxlength="100" placeholder="Contoh: Studio A Minimalis" value="<?= htmlspecialchars($ruangan['Nama_Ruangan']) ?>">
                             <div class="input-hint"><i class="bi bi-info-circle"></i>  Maksimal 100 karakter, nama harus unik</div>
                             <div class="field-error-msg <?= isset($field_errors['nama_ruangan']) ? 'show' : '' ?>" id="error-nama_ruangan"><i class="bi bi-exclamation-circle-fill"></i><span><?= $field_errors['nama_ruangan'] ?? '' ?></span></div>
@@ -776,14 +775,14 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
                     </div>
 
                     <div class="mb-4">
-                        <label class="form-label"><i class="bi bi-card-text"></i> Deskripsi Ruangan <span class="required">*</span><span class="badge-wajib">Wajib</span></label>
+                        <label class="form-label"><i class="bi bi-card-text"></i> Deskripsi Ruangan <span class="required">*</span></label>
                         <textarea name="deskripsi" id="deskripsi" class="form-control-custom <?= isset($field_errors['deskripsi']) ? 'is-error' : '' ?>" required maxlength="255" placeholder="Deskripsikan suasana, konsep, dan keunggulan ruangan ini..."><?= htmlspecialchars($ruangan['Deskripsi'] ?? '') ?></textarea>
                         <div class="input-hint"><i class="bi bi-info-circle"></i> Maksimal 255 karakter, akan ditampilkan ke pelanggan</div>
                         <div class="field-error-msg <?= isset($field_errors['deskripsi']) ? 'show' : '' ?>" id="error-deskripsi"><i class="bi bi-exclamation-circle-fill"></i><span><?= $field_errors['deskripsi'] ?? '' ?></span></div>
                     </div>
 
                     <div class="mb-4">
-                        <label class="form-label"><i class="bi bi-image"></i> Foto Ruangan <span class="badge-wajib" style="background: #718096;">Opsional</span></label>
+                        <label class="form-label"><i class="bi bi-image"></i> Foto Ruangan</label>
                         <?php if (file_exists($foto_existing) && $ruangan['Foto_Ruangan'] != 'default_ruangan.jpg'): ?>
                             <div class="current-foto-box">
                                 <img src="<?= $foto_existing_src ?>" alt="Foto Saat Ini">
@@ -806,7 +805,7 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
                     </div>
 
                     <div class="mb-4">
-                        <label class="form-label"><i class="bi bi-camera"></i> Pilih Paket Foto <span class="required">*</span><span class="badge-wajib">Wajib</span></label>
+                        <label class="form-label"><i class="bi bi-camera"></i> Pilih Paket Foto <span class="required">*</span></label>
                         <div class="input-hint mb-3"><i class="bi bi-info-circle"></i> Pilih minimal 1 paket foto yang bisa menggunakan ruangan ini</div>
                         <div class="paket-section <?= isset($field_errors['paket']) ? 'is-error' : '' ?>" id="paket-section">
                             <div class="paket-section-title"><i class="bi bi-camera-fill text-danger"></i> Paket Foto Tersedia</div>

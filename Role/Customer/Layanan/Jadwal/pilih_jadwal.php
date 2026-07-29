@@ -2016,14 +2016,16 @@ $selected_jadwal_ids = array_map(function($item) {
             <!-- SESUDAH (FIXED): -->
             <?php 
             $prev_date_str = $prev_date->format('Y-m-d');
-            $is_prev_disabled = ($prev_date_str < $today);
+            $prev_target = ($prev_date_str < $today) ? $today : $prev_date_str; // clamp, jangan biarkan minus dari hari ini
+            $next_target = ($next_date->format('Y-m-d') > $today) ? $next_date->format('Y-m-d') : $today; // clamp, jangan biarkan lebih dari hari ini
+            $is_prev_disabled = ($selected_date == $today); // disable HANYA kalau window sekarang memang sudah mulai dari hari ini
             ?>
             <?php if ($is_prev_disabled): ?>
                 <span class="date-nav-btn disabled" style="pointer-events:none;">
                     <i class="bi bi-chevron-left"></i>
                 </span>
             <?php else: ?>
-                <a href="?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&tanggal=<?= $prev_date_str ?>" 
+                <a href="?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&tanggal=<?= $prev_target ?>" 
                 class="date-nav-btn">
                     <i class="bi bi-chevron-left"></i>
                 </a>
@@ -2038,7 +2040,7 @@ $selected_jadwal_ids = array_map(function($item) {
                     </a>
                 <?php endforeach; ?>
             </div>
-            <a href="?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&tanggal=<?= $next_date->format('Y-m-d') ?>" 
+            <a href="?id_paket=<?= $id_paket ?>&id_ruangan=<?= $id_ruangan ?>&id_tema=<?= $id_tema ?>&tanggal=<?= $next_target ?>" 
                class="date-nav-btn">
                 <i class="bi bi-chevron-right"></i>
             </a>

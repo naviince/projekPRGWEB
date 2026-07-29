@@ -67,59 +67,46 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
 // =====================================================
 // PROSES SIMPAN DATA (SELF-POST)
 // =====================================================
-$errors = [];
-$success = false;
+$field_errors = []; 
+$error_umum = "";
 
 if (isset($_POST['simpan'])) {
-    $nama_barang = isset($_POST['nama_barang']) ? trim($_POST['nama_barang']) : '';
-    $harga_barang = isset($_POST['harga_barang']) ? $_POST['harga_barang'] : '';
-    $stok_barang = isset($_POST['stok_barang']) ? $_POST['stok_barang'] : '';
-    $stok_minimum = isset($_POST['stok_minimum']) ? $_POST['stok_minimum'] : '5';
-    $deskripsi = isset($_POST['deskripsi']) ? trim($_POST['deskripsi']) : '';
-    $status = isset($_POST['status']) ? (int)$_POST['status'] : 1;
+    $nama_barang = trim($_POST['nama_barang'] ?? '');
+    $harga_barang = $_POST['harga_barang'] ?? '';
+    $stok_barang = $_POST['stok_barang'] ?? '';
+    $stok_minimum = $_POST['stok_minimum'] ?? '5';
+    $deskripsi = trim($_POST['deskripsi'] ?? '');
+$status = isset($_POST['status']) ? (int)$_POST['status'] : 1;
 
-    // --- LAYER 1: Validasi Nama Barang (Wajib) ---
+    // Validasi Nama
     if (empty($nama_barang)) {
-        $errors[] = 'Nama barang wajib diisi!';
-    }
-    // --- LAYER 2: Validasi Max Length (100 karakter) ---
-    elseif (strlen($nama_barang) > 100) {
-        $errors[] = 'Nama barang maksimal 100 karakter!';
-    }
-    // --- LAYER 3: Cek Duplikat Nama (Unik) ---
-    else {
-        $count = safe_sqlsrv_count($conn, 
-            "SELECT COUNT(*) as total FROM Barang_Cetak WHERE Nama_Barang = ? AND Is_Deleted = 0", 
-            [$nama_barang]
-        );
-        if ($count > 0) {
-            $errors[] = 'Nama barang "'.htmlspecialchars($nama_barang).'" sudah ada! Gunakan nama lain.';
-        }
+        $field_errors['nama_barang'] = 'Nama barang wajib diisi!';
+    } elseif (strlen($nama_barang) > 100) {
+        $field_errors['nama_barang'] = 'Maksimal 100 karakter!';
+    } else {
+        $count = safe_sqlsrv_count($conn, "SELECT COUNT(*) as total FROM Barang_Cetak WHERE Nama_Barang = ? AND Is_Deleted = 0", [$nama_barang]);
+        if ($count > 0) $field_errors['nama_barang'] = 'Nama barang sudah terdaftar!';
     }
 
-    // --- LAYER 4: Validasi Harga (Wajib) ---
-    if ($harga_barang === '' || $harga_barang === null) {
-        $errors[] = 'Harga barang wajib diisi!';
-    }
-    // --- LAYER 5: Validasi Harga >= 0 ---
-    elseif (!is_numeric($harga_barang) || (float)$harga_barang < 0) {
-        $errors[] = 'Harga barang tidak boleh negatif!';
+    // Validasi Harga
+    if ($harga_barang === '') {
+        $field_errors['harga_barang'] = 'Harga wajib diisi!';
+    } elseif (!is_numeric($harga_barang) || $harga_barang < 0) {
+        $field_errors['harga_barang'] = 'Harga tidak valid!';
     }
 
-    // --- LAYER 6: Validasi Stok (Wajib) ---
-    if ($stok_barang === '' || $stok_barang === null) {
-        $errors[] = 'Stok barang wajib diisi!';
-    }
-    // --- LAYER 7: Validasi Stok >= 0 ---
-    elseif (!is_numeric($stok_barang) || (int)$stok_barang < 0) {
-        $errors[] = 'Stok barang tidak boleh negatif!';
+    // Validasi Stok
+    if ($stok_barang === '') {
+        $field_errors['stok_barang'] = 'Stok wajib diisi!';
+    } elseif (!is_numeric($stok_barang) || $stok_barang < 0) {
+        $field_errors['stok_barang'] = 'Stok tidak boleh negatif!';
     }
 
-    // --- LAYER 8: Validasi Stok Minimum <= Stok Saat Ini ---
-    if (!is_numeric($stok_minimum) || (int)$stok_minimum < 0) {
-        $errors[] = 'Stok minimum tidak boleh negatif!';
+    // Validasi Stok Minimum
+    if (!is_numeric($stok_minimum) || $stok_minimum < 0) {
+        $field_errors['stok_minimum'] = 'Stok min. tidak valid!';
     } elseif ((int)$stok_minimum > (int)$stok_barang) {
-        $errors[] = 'Stok minimum ('.$stok_minimum.') tidak boleh lebih besar dari stok saat ini ('.$stok_barang.')!';
+        $field_errors['stok_minimum'] = "Stok minimum ($stok_minimum) tidak boleh > stok saat ini!";
     }
 
     // --- LAYER 9: Validasi File Upload (Opsional) ---
@@ -147,7 +134,7 @@ if (isset($_POST['simpan'])) {
         }
 
         if (!empty($upload_error)) {
-            $errors[] = $upload_error;
+           $field_errors['foto_barang'] = $upload_error;
         } else {
             $upload_dir = '../../uploads/barang/';
             if (!is_dir($upload_dir)) {
@@ -159,14 +146,14 @@ if (isset($_POST['simpan'])) {
             $target_path = $upload_dir . $new_filename;
 
             if (!move_uploaded_file($file['tmp_name'], $target_path)) {
-                $errors[] = 'Gagal menyimpan file ke server!';
+                $field_errors['foto_barang'] = 'Gagal menyimpan file ke server!';
                 $new_filename = 'default_barang.jpg';
             }
         }
     }
 
     // --- LAYER 10: Insert ke Database (Transaction & Stored Procedure) ---
-    if (empty($errors)) {
+    if (empty($errors) && empty($field_errors)) {
         sqlsrv_begin_transaction($conn);
 
         try {
@@ -204,7 +191,8 @@ if (isset($_POST['simpan'])) {
 
         } catch (Exception $e) {
             sqlsrv_rollback($conn);
-            $errors[] = 'Gagal menyimpan ke database: '.$e->getMessage();
+            // SESUDAH
+            $field_errors['general'] = 'Gagal menyimpan ke database: '.$e->getMessage();
 
             // Hapus file yang sudah diupload kalau gagal
             if ($new_filename !== 'default_barang.jpg' && isset($target_path) && file_exists($target_path)) {
@@ -287,7 +275,24 @@ if (isset($_POST['simpan'])) {
         .form-control-custom:focus { outline: none; border-color: var(--p-pink); box-shadow: 0 0 0 4px rgba(213, 61, 102, 0.08); }
         .form-control-custom::placeholder { color: #a0aec0; font-weight: 500; }
         textarea.form-control-custom { min-height: 120px; resize: vertical; }
+        .form-control-custom.is-error {
+    border-color: #dc2626 !important;
+    background-color: #fef2f2 !important;
+}
 
+.field-error-msg {
+    display: none;
+    font-size: 0.8rem;
+    color: #dc2626;
+    font-weight: 700;
+    margin-top: 6px;
+    align-items: center;
+    gap: 4px;
+}
+
+.field-error-msg.show {
+    display: flex;
+}
         .input-hint { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; margin-top: 6px; display: flex; align-items: center; gap: 4px; }
 
         /* BUTTONS */
@@ -586,11 +591,13 @@ if (isset($_POST['simpan'])) {
                 Status Aktif = ditampilkan ke customer saat booking.
             </div>
 
-            <?php if (!empty($errors)): ?>
-            <div class="alert-custom-error">
-                <i class="bi bi-exclamation-triangle-fill"></i>
-                <div>
-                    <strong>Gagal menyimpan data!</strong>
+            <?php if (!empty($errors) || isset($field_errors['general'])): ?>
+            <?php if (isset($field_errors['general'])): ?>
+<div class="alert-custom-error">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    <div><strong>Gagal menyimpan data!</strong><br><?= htmlspecialchars($field_errors['general']) ?></div>
+</div>
+<?php endif; ?>
                     <ul class="mb-0 mt-1 ps-3">
                         <?php foreach ($errors as $error_item): ?>
                         <li><?= $error_item ?></li>
@@ -600,61 +607,55 @@ if (isset($_POST['simpan'])) {
             </div>
             <?php endif; ?>
 
-            <?php if ($success): ?>
-            <div class="alert-custom-success">
-                <i class="bi bi-check-circle-fill"></i>
-                <strong>Barang cetak berhasil ditambahkan!</strong>
-            </div>
-            <?php endif; ?>
-
             <form method="POST" action="" enctype="multipart/form-data" id="formBarang">
                 <div class="row">
                     <!-- Nama Barang -->
                     <div class="col-md-6 mb-4">
-                        <label class="form-label">Nama Barang <span class="required">*</span></label>
-                        <input type="text" name="nama_barang" class="form-control-custom" 
-                               placeholder="Contoh: Album Foto 4R, Frame Kayu 8x10" 
-                               maxlength="100"
-                               value="<?= isset($_POST['nama_barang']) ? htmlspecialchars($_POST['nama_barang']) : '' ?>"
-                               required>
-                        <div class="input-hint">
-                            <i class="bi bi-info-circle"></i> Maksimal 100 karakter. Harus unik, tidak boleh sama dengan barang lain.
-                        </div>
-                    </div>
+    <label class="form-label">Nama Barang <span class="required">*</span></label>
+    <input type="text" name="nama_barang" id="namaBarang" 
+       class="form-control-custom <?= isset($field_errors['nama_barang']) ? 'is-error' : '' ?>" 
+       placeholder="Contoh: Cetak Foto 4R Glossy"
+       value="<?= htmlspecialchars($nama_barang ?? '') ?>">
+                        <div class="field-error-msg <?= isset($field_errors['nama_barang']) ? 'show' : '' ?>" id="error-namaBarang">
+        <i class="bi bi-exclamation-circle-fill"></i><span><?= $field_errors['nama_barang'] ?? '' ?></span>
+    </div>
+</div>
                     <!-- Harga -->
                     <div class="col-md-6 mb-4">
-                        <label class="form-label">Harga (Rp) <span class="required">*</span></label>
-                        <input type="number" name="harga_barang" class="form-control-custom" 
-                               placeholder="Contoh: 50000" min="0" step="100"
-                               value="<?= isset($_POST['harga_barang']) ? htmlspecialchars($_POST['harga_barang']) : '' ?>"
-                               required>
-                        <div class="input-hint">
-                            <i class="bi bi-info-circle"></i> Harga dalam Rupiah. Tidak boleh negatif.
-                        </div>
-                    </div>
-                </div>
+    <label class="form-label">Harga (Rp) <span class="required">*</span></label>
+    <input type="number" name="harga_barang" id="hargaBarang" 
+       class="form-control-custom <?= isset($field_errors['harga_barang']) ? 'is-error' : '' ?>" 
+       placeholder="Contoh: 50000"
+       value="<?= htmlspecialchars($harga_barang ?? '') ?>">
+    
+    <div class="field-error-msg <?= isset($field_errors['harga_barang']) ? 'show' : '' ?>" id="error-hargaBarang">
+        <i class="bi bi-exclamation-circle-fill"></i><span><?= $field_errors['harga_barang'] ?? '' ?></span>
+    </div>
+</div>
 
                 <div class="row">
                     <!-- Stok -->
                     <div class="col-md-6 mb-4">
                         <label class="form-label">Stok Gudang<span class="required">*</span></label>
-                        <input type="number" name="stok_barang" class="form-control-custom" 
-                               placeholder="Contoh: 20" min="0"
-                               value="<?= isset($_POST['stok_barang']) ? htmlspecialchars($_POST['stok_barang']) : '' ?>"
-                               required>
-                        <div class="input-hint">
-                            <i class="bi bi-info-circle"></i> Stok real-time. Tidak boleh negatif.
+                        <input type="number" name="stok_barang" id="stokBarang" 
+       class="form-control-custom <?= isset($field_errors['stok_barang']) ? 'is-error' : '' ?>" 
+       placeholder="Contoh: 20" min="0"
+       value="<?= isset($_POST['stok_barang']) ? htmlspecialchars($_POST['stok_barang']) : '' ?>"
+       >
+                        <div class="field-error-msg <?= isset($field_errors['stok_barang']) ? 'show' : '' ?>" id="error-stokBarang">
+                            <i class="bi bi-exclamation-circle-fill"></i><span><?= $field_errors['stok_barang'] ?? '' ?></span>
                         </div>
                     </div>
                     <!-- Stok Minimum -->
                     <div class="col-md-6 mb-4">
                         <label class="form-label">Stok Minimum (Peringatan Jika Menipis)<span class="required">*</span></label>
-                        <input type="number" name="stok_minimum" class="form-control-custom" 
-                               placeholder="Contoh: 5" min="0"
-                               value="<?= isset($_POST['stok_minimum']) ? htmlspecialchars($_POST['stok_minimum']) : '5' ?>"
-                               required>
-                        <div class="input-hint">
-                            <i class="bi bi-info-circle"></i> Alert saat stok <= nilai ini. Harus <= Stok Gudang.
+                        <input type="number" name="stok_minimum" id="stokMinimum" 
+       class="form-control-custom <?= isset($field_errors['stok_minimum']) ? 'is-error' : '' ?>" 
+       placeholder="Contoh: 5" min="0"
+       value="<?= isset($_POST['stok_minimum']) ? htmlspecialchars($_POST['stok_minimum']) : '5' ?>"
+       >
+                        <div class="field-error-msg <?= isset($field_errors['stok_minimum']) ? 'show' : '' ?>" id="error-stokMinimum">
+                            <i class="bi bi-exclamation-circle-fill"></i><span><?= $field_errors['stok_minimum'] ?? '' ?></span>
                         </div>
                     </div>
                 </div>
@@ -662,11 +663,11 @@ if (isset($_POST['simpan'])) {
                 <!-- Deskripsi -->
                 <div class="mb-4">
                     <label class="form-label">Deskripsi</label>
-                    <textarea name="deskripsi" class="form-control-custom" rows="3" 
+                    <textarea name="deskripsi" id="deskripsi" class="form-control-custom" rows="3" 
                               placeholder="Jelaskan detail barang, ukuran, atau keterangan lain (opsional, max 255 karakter)"
                               maxlength="255"><?= isset($_POST['deskripsi']) ? htmlspecialchars($_POST['deskripsi']) : '' ?></textarea>
-                    <div class="input-hint">
-                        <i class="bi bi-info-circle"></i> Maksimal 255 karakter. Opsional.
+                    <div class="field-error-msg <?= isset($field_errors['deskripsi']) ? 'show' : '' ?>" id="error-deskripsi">
+                        <i class="bi bi-exclamation-circle-fill"></i><span><?= $field_errors['deskripsi'] ?? '' ?></span>
                     </div>
                 </div>
 
@@ -838,6 +839,97 @@ function bukaModalBiodata() {
     });
 }
 
+function setFieldError(fieldId, message) {
+    const field = document.getElementById(fieldId);
+    const errorMsg = document.getElementById('error-' + fieldId);
+    if (field) field.classList.add('is-error');
+    if (errorMsg) {
+        errorMsg.querySelector('span').textContent = message;
+        errorMsg.classList.add('show');
+    }
+}
+
+function clearFieldError(fieldId) {
+    const field = document.getElementById(fieldId);
+    const errorMsg = document.getElementById('error-' + fieldId);
+    if (field) field.classList.remove('is-error');
+    if (errorMsg) errorMsg.classList.remove('show');
+}
+
+// Tambahkan event listener input agar error hilang saat mengetik
+['namaBarang', 'hargaBarang', 'stokBarang', 'stokMinimum'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => clearFieldError(id));
+});
+
+document.getElementById('formBarang').addEventListener('submit', function(e) {
+    const nama = document.getElementById('namaBarang').value.trim();
+    const harga = document.getElementById('hargaBarang').value;
+    const stok = document.getElementById('stokBarang').value;
+    const stokMin = document.getElementById('stokMinimum').value;
+
+    let ada_error = false;
+
+    // Nama
+    if (!nama) { setFieldError('namaBarang', 'Nama wajib diisi!'); ada_error = true; }
+    // Harga
+    if (!harga || harga < 0) { setFieldError('hargaBarang', 'Harga tidak valid!'); ada_error = true; }
+    // Stok
+    if (!stok || stok < 0) { setFieldError('stokBarang', 'Stok wajib diisi!'); ada_error = true; }
+    // Stok Minimum vs Stok
+    if (parseInt(stokMin) > parseInt(stok)) {
+        setFieldError('stokMinimum', 'Stok minimum tidak boleh > stok gudang!');
+        ada_error = true;
+    }
+
+    if (ada_error) {
+        e.preventDefault();
+        return false;
+    }
+});
+
+// Validasi semua field sekaligus sebelum submit
+document.getElementById('formBarang').addEventListener('submit', function(e) {
+    const idBarang = document.getElementById('idBarang').value;
+    const namaBarang = document.getElementById('namaBarang').value;
+    const hargaBarang = document.getElementById('hargaBarang').value;
+    const stokBarang = document.getElementById('stokBarang').value;
+    const stokMinimum = document.getElementById('stokMinimum').value;
+
+    ['idBarang', 'namaBarang', 'hargaBarang', 'stokBarang'].forEach(clearFieldError);
+
+    let ada_error = false;
+
+    if (!idBarang) {
+        setFieldError('idBarang', 'ID barang wajib diisi!');
+        ada_error = true;
+    }
+    if (!namaBarang) {
+        setFieldError('namaBarang', 'Nama barang wajib diisi!');
+        ada_error = true;
+    }
+    if (!hargaBarang) {
+        setFieldError('hargaBarang', 'Harga barang wajib diisi!');
+        ada_error = true;
+    }
+    if (!stokBarang) {
+        setFieldError('stokBarang', 'Stok barang wajib diisi!');
+        ada_error = true;
+    }
+
+    // --- LAYER 7: Validasi Stok Minimum <= Stok Saat Ini ---
+    if (!is_numeric(stokMinimum) || (int)$stokMinimum < 0) {
+        setFieldError('stokMinimum', 'Stok minimum tidak boleh negatif!');
+        ada_error = true;
+    } elseif ((int)$stokMinimum > (int)$stokBarang) {
+        setFieldError('stokMinimum', 'Stok minimum ('.$stokMinimum.') tidak boleh lebih besar dari stok saat ini ('.$stokBarang.')!');
+        ada_error = true;
+    }
+
+    if (ada_error) {
+        e.preventDefault();
+        return false;
+    }
+});
 </script>
 
 </body>

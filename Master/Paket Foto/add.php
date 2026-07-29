@@ -876,13 +876,14 @@ if (isset($_POST['simpan'])) {
                     <div class="mb-4">
                         <label class="form-label">Nama Paket <span class="required">*</span></label>
                         <input type="text" name="nama_paket" 
-                               class="form-control-custom <?= isset($errors['nama_paket']) ? 'is-invalid' : '' ?>" 
-                               value="<?= htmlspecialchars($old_values['nama_paket'] ?? '') ?>" 
-                               placeholder="Contoh: Basic, Couple, Family, Wisuda, Corporate" 
-                               maxlength="100" required>
-                        <?php if(isset($errors['nama_paket'])): ?>
-                            <span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['nama_paket'] ?></span>
-                        <?php endif; ?>
+       class="form-control-custom <?= isset($errors['nama_paket']) ? 'is-invalid' : '' ?>" 
+       value="<?= htmlspecialchars($old_values['nama_paket'] ?? '') ?>" 
+       placeholder="Contoh: Basic, Couple, Family, Wisuda, Corporate" 
+       maxlength="100">
+<span class="error-text" id="err-nama_paket" style="<?= isset($errors['nama_paket']) ? '' : 'display:none;' ?>">
+    <i class="bi bi-exclamation-circle-fill"></i><span class="error-msg"><?= $errors['nama_paket'] ?? '' ?></span>
+</span>
+                        
                         <div class="input-hint">
                             <i class="bi bi-info-circle"></i> Nama paket harus unik dan maksimal 100 karakter
                         </div>
@@ -892,12 +893,13 @@ if (isset($_POST['simpan'])) {
                         <div>
                             <label class="form-label">Durasi Waktu (Menit) <span class="required">*</span></label>
                             <input type="number" name="durasi_waktu"
-                                   class="form-control-custom <?= isset($errors['durasi_waktu']) ? 'is-invalid' : '' ?>"
-                                   value="<?= htmlspecialchars($old_values['durasi_waktu'] ?? '') ?>"
-                                   placeholder="Contoh: 30, 60, 90, 120" min="15" max="300" required>
-                            <?php if(isset($errors['durasi_waktu'])): ?>
-                                <span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['durasi_waktu'] ?></span>
-                            <?php endif; ?>
+       class="form-control-custom <?= isset($errors['durasi_waktu']) ? 'is-invalid' : '' ?>"
+       value="<?= htmlspecialchars($old_values['durasi_waktu'] ?? '') ?>"
+       placeholder="Contoh: 30, 60, 90, 120" min="15" max="300">
+<span class="error-text" id="err-durasi_waktu" style="<?= isset($errors['durasi_waktu']) ? '' : 'display:none;' ?>">
+    <i class="bi bi-exclamation-circle-fill"></i><span class="error-msg"><?= $errors['durasi_waktu'] ?? '' ?></span>
+</span>
+                           
                             <div class="input-hint">
                                 <i class="bi bi-clock-history"></i> Minimal 15, maksimal 300 menit
                             </div>
@@ -906,15 +908,16 @@ if (isset($_POST['simpan'])) {
                         <div>
                             <label class="form-label">Harga Paket (Rp) <span class="required">*</span></label>
                             <div class="input-group-custom">
-                                <span class="input-prefix">Rp</span>
-                                <input type="number" name="harga_paket" 
-                                       class="form-control-custom <?= isset($errors['harga_paket']) ? 'is-invalid' : '' ?>" 
-                                       value="<?= htmlspecialchars($old_values['harga_paket'] ?? '') ?>" 
-                                       placeholder="250000" min="10000" required>
-                            </div>
-                            <?php if(isset($errors['harga_paket'])): ?>
-                                <span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['harga_paket'] ?></span>
-                            <?php endif; ?>
+    <span class="input-prefix">Rp</span>
+    <input type="number" name="harga_paket" 
+           class="form-control-custom <?= isset($errors['harga_paket']) ? 'is-invalid' : '' ?>" 
+           value="<?= htmlspecialchars($old_values['harga_paket'] ?? '') ?>" 
+           placeholder="250000" min="10000">
+</div>
+<span class="error-text" id="err-harga_paket" style="<?= isset($errors['harga_paket']) ? '' : 'display:none;' ?>">
+    <i class="bi bi-exclamation-circle-fill"></i><span class="error-msg"><?= $errors['harga_paket'] ?? '' ?></span>
+</span>
+                           
                             <div class="input-hint">
                                 <i class="bi bi-info-circle"></i> Minimal Rp 10.000
                             </div>
@@ -923,12 +926,13 @@ if (isset($_POST['simpan'])) {
                         <div>
                             <label class="form-label">Kapasitas Orang <span class="required">*</span></label>
                             <input type="number" name="kapasitas_orang" 
-                                   class="form-control-custom <?= isset($errors['kapasitas_orang']) ? 'is-invalid' : '' ?>" 
-                                   value="<?= htmlspecialchars($old_values['kapasitas_orang'] ?? '') ?>" 
-                                   placeholder="Contoh: 2, 5, 8, 20" min="1" max="50" required>
-                            <?php if(isset($errors['kapasitas_orang'])): ?>
-                                <span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['kapasitas_orang'] ?></span>
-                            <?php endif; ?>
+       class="form-control-custom <?= isset($errors['kapasitas_orang']) ? 'is-invalid' : '' ?>" 
+       value="<?= htmlspecialchars($old_values['kapasitas_orang'] ?? '') ?>" 
+       placeholder="Contoh: 2, 5, 8, 20" min="1" max="50">
+<span class="error-text" id="err-kapasitas_orang" style="<?= isset($errors['kapasitas_orang']) ? '' : 'display:none;' ?>">
+    <i class="bi bi-exclamation-circle-fill"></i><span class="error-msg"><?= $errors['kapasitas_orang'] ?? '' ?></span>
+</span>
+                            
                             <div class="input-hint">
                                 <i class="bi bi-info-circle"></i> Maksimal 50 orang
                             </div>
@@ -938,12 +942,13 @@ if (isset($_POST['simpan'])) {
                     <div class="mb-4">
                         <label class="form-label">Deskripsi <span style="color: #94a3b8; font-weight: 500; text-transform: none; letter-spacing: 0;">(opsional)</span></label>
                         <textarea name="deskripsi" id="inputDeskripsi"
-                                  class="form-control-custom <?= isset($errors['deskripsi']) ? 'is-invalid' : '' ?>" 
-                                  placeholder="Jelaskan detail paket, konsep, atau keunggulan layanan ini..." 
-                                  maxlength="255"><?= htmlspecialchars($old_values['deskripsi'] ?? '') ?></textarea>
-                        <?php if(isset($errors['deskripsi'])): ?>
-                            <span class="error-text"><i class="bi bi-exclamation-circle-fill"></i><?= $errors['deskripsi'] ?></span>
-                        <?php endif; ?>
+          class="form-control-custom <?= isset($errors['deskripsi']) ? 'is-invalid' : '' ?>" 
+          placeholder="Jelaskan detail paket, konsep, atau keunggulan layanan ini..." 
+          maxlength="255"><?= htmlspecialchars($old_values['deskripsi'] ?? '') ?></textarea>
+<span class="error-text" id="err-deskripsi" style="<?= isset($errors['deskripsi']) ? '' : 'display:none;' ?>">
+    <i class="bi bi-exclamation-circle-fill"></i><span class="error-msg"><?= $errors['deskripsi'] ?? '' ?></span>
+</span>
+                      
                         <div class="input-hint">
                             <i class="bi bi-info-circle"></i> Maksimal 255 karakter — <span id="countDeskripsi">0</span>/255
                         </div>
@@ -1153,46 +1158,79 @@ if (isset($_POST['simpan'])) {
             }
         });
 
-        document.getElementById('formPaket').addEventListener('submit', function(e) {
-            const nama = document.querySelector('input[name="nama_paket"]').value.trim();
-            const durasi = parseInt(document.querySelector('input[name="durasi_waktu"]').value);
-            const harga = parseFloat(document.querySelector('input[name="harga_paket"]').value);
-            const kapasitas = parseInt(document.querySelector('input[name="kapasitas_orang"]').value);
-            const deskripsi = document.getElementById('inputDeskripsi').value.trim();
+        function setFieldError(fieldName, message) {
+    const input = document.querySelector(`[name="${fieldName}"]`);
+    const errEl = document.getElementById('err-' + fieldName);
+    if (input) input.classList.add('is-invalid');
+    if (errEl) {
+        errEl.querySelector('.error-msg').textContent = message;
+        errEl.style.display = 'flex';
+        const hintEl = errEl.nextElementSibling;
+        if (hintEl && hintEl.classList.contains('input-hint')) hintEl.style.display = 'none';
+    }
+}
 
-            if (!nama || nama.length < 3) {
-                e.preventDefault();
-                Swal.fire({ icon: 'warning', title: 'Nama Paket Tidak Valid', text: 'Nama paket minimal harus 3 karakter.', confirmButtonColor: '#D53D66' });
-                return false;
-            }
-            if (!durasi || durasi < 15 || durasi > 300) {
-                e.preventDefault();
-                Swal.fire({ icon: 'warning', title: 'Durasi Tidak Valid', text: 'Durasi waktu minimal 15 menit dan maksimal 300 menit.', confirmButtonColor: '#D53D66' });
-                return false;
-            }
-            if (isNaN(harga) || harga < 10000 || harga > 99999999) {
-                e.preventDefault();
-                Swal.fire({ icon: 'warning', title: 'Harga Tidak Valid', text: 'Harga paket minimal Rp 10.000 dan maksimal Rp 99.999.999.', confirmButtonColor: '#D53D66' });
-                return false;
-            }
-            if (!kapasitas || kapasitas < 1 || kapasitas > 50) {
-                e.preventDefault();
-                Swal.fire({ icon: 'warning', title: 'Kapasitas Tidak Valid', text: 'Kapasitas orang minimal 1 dan maksimal 50 orang.', confirmButtonColor: '#D53D66' });
-                return false;
-            }
-            if (deskripsi !== "" && (deskripsi.length < 20 || deskripsi.length > 255)) {
-                e.preventDefault();
-                Swal.fire({ icon: 'warning', title: 'Deskripsi Tidak Valid', text: 'Deskripsi minimal 20 karakter dan maksimal 255 karakter.', confirmButtonColor: '#D53D66' });
-                return false;
-            }
-        });
+function clearFieldError(fieldName) {
+    const input = document.querySelector(`[name="${fieldName}"]`);
+    const errEl = document.getElementById('err-' + fieldName);
+    if (input) input.classList.remove('is-invalid');
+    if (errEl) {
+        errEl.style.display = 'none';
+        const hintEl = errEl.nextElementSibling;
+        if (hintEl && hintEl.classList.contains('input-hint')) hintEl.style.display = 'flex';
+    }
+}
 
-        const inputDeskripsi = document.getElementById('inputDeskripsi');
-        const countDeskripsi = document.getElementById('countDeskripsi');
-        if (inputDeskripsi && countDeskripsi) {
-            inputDeskripsi.addEventListener('input', function() { countDeskripsi.textContent = this.value.length; });
-            countDeskripsi.textContent = inputDeskripsi.value.length;
-        }
+document.getElementById('formPaket').addEventListener('submit', function(e) {
+    const nama = document.querySelector('input[name="nama_paket"]').value.trim();
+    const durasi = parseInt(document.querySelector('input[name="durasi_waktu"]').value);
+    const harga = parseFloat(document.querySelector('input[name="harga_paket"]').value);
+    const kapasitas = parseInt(document.querySelector('input[name="kapasitas_orang"]').value);
+    const deskripsi = document.getElementById('inputDeskripsi').value.trim();
+
+    ['nama_paket', 'durasi_waktu', 'harga_paket', 'kapasitas_orang', 'deskripsi'].forEach(clearFieldError);
+
+    let ada_error = false;
+
+    if (!nama || nama.length < 3) {
+        setFieldError('nama_paket', 'Nama paket minimal 3 karakter.');
+        ada_error = true;
+    }
+    if (!durasi || durasi < 15 || durasi > 300) {
+        setFieldError('durasi_waktu', 'Durasi waktu harus 15–300 menit.');
+        ada_error = true;
+    }
+    if (isNaN(harga) || harga < 10000 || harga > 99999999) {
+        setFieldError('harga_paket', 'Harga harus Rp 10.000–Rp 99.999.999.');
+        ada_error = true;
+    }
+    if (!kapasitas || kapasitas < 1 || kapasitas > 50) {
+        setFieldError('kapasitas_orang', 'Kapasitas harus 1–50 orang.');
+        ada_error = true;
+    }
+    if (deskripsi !== "" && (deskripsi.length < 20 || deskripsi.length > 255)) {
+        setFieldError('deskripsi', 'Deskripsi harus 20–255 karakter jika diisi.');
+        ada_error = true;
+    }
+
+    if (ada_error) {
+        e.preventDefault();
+        return false;
+    }
+});
+
+['nama_paket', 'durasi_waktu', 'harga_paket', 'kapasitas_orang'].forEach(name => {
+    const el = document.querySelector(`[name="${name}"]`);
+    if (el) el.addEventListener('input', () => clearFieldError(name));
+});
+
+const inputDeskripsi = document.getElementById('inputDeskripsi');
+const countDeskripsi = document.getElementById('countDeskripsi');
+if (inputDeskripsi && countDeskripsi) {
+    inputDeskripsi.addEventListener('input', function() { countDeskripsi.textContent = this.value.length; });
+    countDeskripsi.textContent = inputDeskripsi.value.length;
+}
+if (inputDeskripsi) inputDeskripsi.addEventListener('input', () => clearFieldError('deskripsi'));
 
         function bukaModalProfil() {
             var modalProfil = new bootstrap.Modal(document.getElementById('modalGantiProfil'));

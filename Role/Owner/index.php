@@ -10,48 +10,18 @@ if (!isset($_SESSION['status']) || $_SESSION['status'] != "login" || $_SESSION['
 
 $id_owner = $_SESSION['id_user'];
 
-// --- FILTER TAHUN DINAMIS BERDASARKAN DATA RIIL DI DATABASE ---
-$tahun_sekarang = (int) date('Y');
-$tahun_options = [];
-<<<<<<< Updated upstream
-=======
+// --- FILTER RENTANG TANGGAL (MULAI - SELESAI) ---
+$default_mulai = date('Y-01-01');
+$default_selesai = date('Y-m-d');
 
-// Mengambil tahun unik yang hanya memiliki data booking aktif di database
-$q_tahun_db = sqlsrv_query($conn, "SELECT DISTINCT YEAR(Tanggal_Booking) AS tahun FROM [Order] WHERE Status = 1 ORDER BY tahun DESC");
-if ($q_tahun_db) {
-    while ($row_th = sqlsrv_fetch_array($q_tahun_db, SQLSRV_FETCH_ASSOC)) {
-        if ($row_th['tahun'] !== null) {
-            $tahun_options[] = (int) $row_th['tahun'];
-        }
-    }
+$tanggal_mulai = (isset($_GET['tanggal_mulai']) && strtotime($_GET['tanggal_mulai'])) ? $_GET['tanggal_mulai'] : $default_mulai;
+$tanggal_selesai = (isset($_GET['tanggal_selesai']) && strtotime($_GET['tanggal_selesai'])) ? $_GET['tanggal_selesai'] : $default_selesai;
+
+if (strtotime($tanggal_mulai) > strtotime($tanggal_selesai)) {
+    [$tanggal_mulai, $tanggal_selesai] = [$tanggal_selesai, $tanggal_mulai];
 }
 
-// Fallback keamanan: jika database masih benar-benar kosong, gunakan tahun sekarang sebagai pilihan tunggal
-if (empty($tahun_options)) {
-    $tahun_options[] = $tahun_sekarang;
-}
-
-// Menentukan tahun filter aktif: default otomatis ke tahun terbaru yang memiliki data transaksi
-$tahun_filter = (isset($_GET['tahun']) && ctype_digit($_GET['tahun'])) ? (int) $_GET['tahun'] : $tahun_options[0];
->>>>>>> Stashed changes
-
-// Mengambil tahun unik yang hanya memiliki data booking aktif di database
-$q_tahun_db = sqlsrv_query($conn, "SELECT DISTINCT YEAR(Tanggal_Booking) AS tahun FROM [Order] WHERE Status = 1 ORDER BY tahun DESC");
-if ($q_tahun_db) {
-    while ($row_th = sqlsrv_fetch_array($q_tahun_db, SQLSRV_FETCH_ASSOC)) {
-        if ($row_th['tahun'] !== null) {
-            $tahun_options[] = (int) $row_th['tahun'];
-        }
-    }
-}
-
-// Fallback keamanan: jika database masih benar-benar kosong, gunakan tahun sekarang sebagai pilihan tunggal
-if (empty($tahun_options)) {
-    $tahun_options[] = $tahun_sekarang;
-}
-
-// Menentukan tahun filter aktif: default otomatis ke tahun terbaru yang memiliki data transaksi
-$tahun_filter = (isset($_GET['tahun']) && ctype_digit($_GET['tahun'])) ? (int) $_GET['tahun'] : $tahun_options[0];
+// --- DATA PELANGGAN (OWNER) ---
 $default_svg_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23d83f67'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3e";
 
 $q_profile = sqlsrv_query($conn, "SELECT * FROM Karyawan WHERE ID_Karyawan = ?", array($id_owner));
@@ -175,12 +145,18 @@ if (isset($_POST['update_profil'])) {
     }
 }
 
-$label_periode = "Tahun $tahun_filter";
+$label_periode = fmtTglSingkat($tanggal_mulai) . ' - ' . fmtTglSingkat($tanggal_selesai);
 
-// Helper: kondisi filter berdasarkan tahun yang dipilih
+// Helper: kondisi filter berdasarkan rentang tanggal yang dipilih
 function condTahun($kolom) {
-    global $tahun_filter;
-    return " AND YEAR($kolom) = $tahun_filter";
+    global $tanggal_mulai, $tanggal_selesai;
+    return " AND $kolom BETWEEN '$tanggal_mulai' AND '$tanggal_selesai'";
+}
+
+function fmtTglSingkat($date_str) {
+    $ts = strtotime($date_str);
+    $bulan = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+    return date('d', $ts) . ' ' . $bulan[(int)date('n', $ts) - 1] . ' ' . date('Y', $ts);
 }
 
 // 1. Total Pendapatan (Berdasarkan filter tahun aktif)
@@ -228,7 +204,7 @@ $q_status_booking = sqlsrv_query($conn, "SELECT SUM(CASE WHEN Status_Order = 0 T
 $d_status_booking = sqlsrv_fetch_array($q_status_booking, SQLSRV_FETCH_ASSOC);
 
 // 10. Top 5 Paket Terfavorit (Dinamis sesuai filter tahun)
-$q_top_paket = sqlsrv_query($conn, "SELECT TOP 5 p.Nama_Paket, COUNT(o.ID_Order) AS total_order FROM Paket_Foto p LEFT JOIN [Order] o ON p.ID_Paket = o.ID_Paket AND YEAR(o.Tanggal_Booking) = $tahun_filter AND o.Status = 1 WHERE p.Status = 1 AND p.Is_Deleted = 0 GROUP BY p.ID_Paket, p.Nama_Paket ORDER BY total_order DESC");
+$q_top_paket = sqlsrv_query($conn, "SELECT TOP 5 p.Nama_Paket, COUNT(o.ID_Order) AS total_order FROM Paket_Foto p LEFT JOIN [Order] o ON p.ID_Paket = o.ID_Paket AND o.Tanggal_Booking BETWEEN ? AND ? AND o.Status = 1 WHERE p.Status = 1 AND p.Is_Deleted = 0 GROUP BY p.ID_Paket, p.Nama_Paket ORDER BY total_order DESC", array($tanggal_mulai, $tanggal_selesai));
 $top_paket_labels = [];
 $top_paket_data = [];
 while ($row = sqlsrv_fetch_array($q_top_paket, SQLSRV_FETCH_ASSOC)) {
@@ -249,13 +225,29 @@ $q_pendapatan_barang = sqlsrv_query($conn, "SELECT SUM(Total_Penjualan) AS total
 $d_pendapatan_barang = sqlsrv_fetch_array($q_pendapatan_barang, SQLSRV_FETCH_ASSOC);
 $pendapatan_barang = $d_pendapatan_barang['total'] ?? 0;
 
-// 12. Tren Pelanggan Baru Bulanan (Dinamis sesuai filter tahun)
-$q_tren_pelanggan = sqlsrv_query($conn, "SELECT MONTH(Created_Date) AS bulan, COUNT(*) AS total FROM Pelanggan WHERE Status = 1 AND Is_Deleted = 0" . condTahun('Created_Date') . " GROUP BY MONTH(Created_Date) ORDER BY MONTH(Created_Date)");
-$tren_pelanggan_labels = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-$tren_pelanggan_data = array_fill(0, 12, 0);
-while ($row = sqlsrv_fetch_array($q_tren_pelanggan, SQLSRV_FETCH_ASSOC)) {
-    $tren_pelanggan_data[$row['bulan'] - 1] = $row['total'];
+$periode_bulan = new DatePeriod(
+    new DateTime(date('Y-m-01', strtotime($tanggal_mulai))),
+    new DateInterval('P1M'),
+    (new DateTime($tanggal_selesai))->modify('first day of next month')
+);
+$peta_bulan = [];
+foreach ($periode_bulan as $dt) {
+    $peta_bulan[$dt->format('Y-m')] = 0;
 }
+$tren_pelanggan_labels = array_map(function($key) {
+    $bulan = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+    [$y, $m] = explode('-', $key);
+    return $bulan[(int)$m - 1] . ' ' . $y;
+}, array_keys($peta_bulan));
+
+$tren_pelanggan_data = $peta_bulan;
+$q_tren_pelanggan = sqlsrv_query($conn, "SELECT FORMAT(Created_Date,'yyyy-MM') AS periode, COUNT(*) AS total FROM Pelanggan WHERE Status = 1 AND Is_Deleted = 0 AND Created_Date BETWEEN ? AND ? GROUP BY FORMAT(Created_Date,'yyyy-MM')", array($tanggal_mulai, $tanggal_selesai));
+while ($row = sqlsrv_fetch_array($q_tren_pelanggan, SQLSRV_FETCH_ASSOC)) {
+    if (isset($tren_pelanggan_data[$row['periode']])) {
+        $tren_pelanggan_data[$row['periode']] = $row['total'];
+    }
+}
+$tren_pelanggan_data = array_values($tren_pelanggan_data);
 
 $q_stok_alert = sqlsrv_query($conn, "SELECT TOP 3 Nama_Barang, Stok_Barang, Stok_Minimum FROM Barang_Cetak WHERE Stok_Barang <= Stok_Minimum AND Status = 1 AND Is_Deleted = 0 ORDER BY Stok_Barang ASC");
 
@@ -275,11 +267,14 @@ $q_role_owner = sqlsrv_query($conn, "SELECT COUNT(*) AS total FROM Karyawan WHER
 $d_role_owner = sqlsrv_fetch_array($q_role_owner, SQLSRV_FETCH_ASSOC);
 $count_owner = $d_role_owner['total'] ?? 0;
 
-$q_pendapatan_bulan = sqlsrv_query($conn, "SELECT MONTH(Tanggal_Upload) AS bulan, SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1 AND Status = 1" . condTahun('Tanggal_Upload') . " GROUP BY MONTH(Tanggal_Upload) ORDER BY MONTH(Tanggal_Upload)");
-$pendapatan_bulan_data = array_fill(0, 12, 0);
+$pendapatan_bulan_data = array_fill_keys(array_keys($peta_bulan), 0);
+$q_pendapatan_bulan = sqlsrv_query($conn, "SELECT FORMAT(Tanggal_Upload,'yyyy-MM') AS periode, SUM(Jumlah_Bayar) AS total FROM Pembayaran WHERE Status_Pembayaran = 1 AND Status = 1 AND Tanggal_Upload BETWEEN ? AND ? GROUP BY FORMAT(Tanggal_Upload,'yyyy-MM')", array($tanggal_mulai, $tanggal_selesai));
 while ($row = sqlsrv_fetch_array($q_pendapatan_bulan, SQLSRV_FETCH_ASSOC)) {
-    $pendapatan_bulan_data[$row['bulan'] - 1] = $row['total'];
+    if (isset($pendapatan_bulan_data[$row['periode']])) {
+        $pendapatan_bulan_data[$row['periode']] = $row['total'];
+    }
 }
+$pendapatan_bulan_data = array_values($pendapatan_bulan_data);
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -520,10 +515,85 @@ body {
 /* ========== TOOLBAR: LIVE CLOCK + FILTER LAPORAN ========== */
 .dashboard-toolbar{
     background:#ffffff;
-    border:1px solid rgba(255,236,239,0.8);
+    border:1px solid rgba(255,228,233,0.8);
     border-radius:16px;
-    padding:12px 18px;
-    box-shadow:0 4px 14px rgba(216,63,103,0.04);
+    padding:14px 20px;
+    box-shadow:0 4px 14px rgba(213,61,102,0.04);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:16px;
+}
+
+.date-filter-group{
+    display:flex;
+    align-items:flex-end;
+    gap:10px;
+    flex-wrap:wrap;
+}
+.date-filter-field{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+}
+.date-filter-field label{
+    font-size:0.68rem;
+    font-weight:800;
+    color:var(--text-muted);
+    text-transform:uppercase;
+    letter-spacing:0.6px;
+    margin:0;
+    display:flex;
+    align-items:center;
+    gap:5px;
+}
+.date-filter-field label i{color:var(--p-pink);}
+.date-filter-input{
+    border:1.5px solid rgba(213,61,102,0.2);
+    background:var(--s-pink);
+    color:var(--text-dark);
+    font-weight:700;
+    font-size:0.85rem;
+    padding:9px 12px;
+    border-radius:10px;
+    transition:var(--transition-3d);
+    min-width:150px;
+}
+.date-filter-input:hover{
+    border-color:var(--p-pink);
+    background:#ffffff;
+}
+.date-filter-input:focus{
+    outline:none;
+    border-color:var(--p-pink);
+    background:#ffffff;
+    box-shadow:0 4px 12px rgba(213,61,102,0.15);
+}
+.date-filter-separator{
+    color:var(--text-muted);
+    font-weight:700;
+    font-size:0.8rem;
+    padding-bottom:9px;
+}
+.btn-terapkan-filter{
+    background:linear-gradient(135deg,var(--p-pink),var(--d-pink));
+    color:#ffffff;
+    border:none;
+    font-weight:800;
+    font-size:0.82rem;
+    padding:10px 20px;
+    border-radius:10px;
+    display:flex;
+    align-items:center;
+    gap:6px;
+    transition:var(--transition-3d);
+    box-shadow:0 4px 12px rgba(213,61,102,0.25);
+    height:fit-content;
+}
+.btn-terapkan-filter:hover{
+    transform:translateY(-2px);
+    box-shadow:0 8px 18px rgba(213,61,102,0.35);
 }
 .live-clock-chip{
     display:inline-flex;
@@ -992,7 +1062,7 @@ body {
     .chart-header { margin-bottom: 14px; }
     .chart-title { font-size: 0.85rem; }
     .chart-badge { padding: 4px 10px; font-size: 0.68rem; }
-    .dashboard-toolbar { padding: 10px 14px; border-radius: 14px; }
+    
     .live-clock-chip { font-size: 0.72rem; padding: 7px 12px; }
     .year-filter-label { font-size: 0.7rem; }
     .year-filter-select { font-size: 0.78rem; padding: 7px 30px 7px 12px; }
@@ -1125,14 +1195,20 @@ body {
     <span class="live-clock-chip">
         <i class="bi bi-clock-history"></i> <span id="live-clock">Memuat waktu...</span>
     </span>
-    <form method="GET" class="year-filter-form d-flex align-items-center gap-2 flex-wrap">
-        <label for="filterTahun" class="year-filter-label"><i class="bi bi-funnel-fill"></i> Filter Laporan Tahun</label>
-        <select name="tahun" id="filterTahun" class="year-filter-select" onchange="this.form.submit()">
-            <?php foreach ($tahun_options as $th): ?>
-            <option value="<?= $th ?>" <?= $th == $tahun_filter ? 'selected' : '' ?>><?= $th ?></option>
-            <?php endforeach; ?>
-        </select>
-    </form>
+    <form method="GET" class="date-filter-group">
+    <div class="date-filter-field">
+        <label><i class="bi bi-calendar-event-fill"></i> Tanggal Mulai</label>
+        <input type="date" name="tanggal_mulai" class="date-filter-input" value="<?= $tanggal_mulai ?>">
+    </div>
+    <span class="date-filter-separator">s/d</span>
+    <div class="date-filter-field">
+        <label><i class="bi bi-calendar-check-fill"></i> Tanggal Selesai</label>
+        <input type="date" name="tanggal_selesai" class="date-filter-input" value="<?= $tanggal_selesai ?>">
+    </div>
+    <button type="submit" class="btn-terapkan-filter">
+        <i class="bi bi-funnel-fill"></i> Terapkan
+    </button>
+</form>
 </div>
 
 <!-- BARIS 1: STAT CARDS -->
@@ -1855,7 +1931,7 @@ if (ctxPendapatan) {
     new Chart(ctx, {
         type: 'line',
         data: {
-            labels: ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'],
+            labels: <?= json_encode($tren_pelanggan_labels) ?>,
             datasets: [{
                 label: 'Pendapatan (Rp)',
                 data: <?= json_encode($pendapatan_bulan_data) ?>,
