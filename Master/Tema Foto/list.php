@@ -214,7 +214,7 @@ if ($kategori_filter !== "") {
     $params[] = $kategori_filter;
 }
 
-$order_clause = "t.Nama_Tema ASC";
+$order_clause = "t.ID_Tema DESC";
 if ($sort == "nama_desc") { $order_clause = "t.Nama_Tema DESC"; }
 elseif ($sort == "kategori_asc") { $order_clause = "t.Kategori_Tema ASC"; }
 elseif ($sort == "kategori_desc") { $order_clause = "t.Kategori_Tema DESC"; }

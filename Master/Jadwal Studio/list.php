@@ -217,7 +217,7 @@ if (!empty($filter_tanggal)) {
 }
 
 // Kriteria urutan disesuaikan
-$order_clause = "j.Tanggal_Jadwal ASC, j.Jam_Mulai ASC, r.Nama_Ruangan ASC";
+$order_clause = "j.ID_Jadwal DESC";
 if ($sort == "tanggal_desc") { $order_clause = "j.Tanggal_Jadwal DESC, j.Jam_Mulai ASC"; }
 elseif ($sort == "ruangan_asc") { $order_clause = "r.Nama_Ruangan ASC, j.Tanggal_Jadwal ASC, j.Jam_Mulai ASC"; }
 elseif ($sort == "paket_asc") { 

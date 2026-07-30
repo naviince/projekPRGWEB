@@ -79,7 +79,7 @@ if ($status_filter !== "" && $tab !== 'dihapus') {
 
 $where_clause = !empty($conditions) ? "WHERE " . implode(" AND ", $conditions) : "";
 
-$order_clause = "Nama_Pelanggan ASC";
+$order_clause = "ID_Pelanggan DESC";
 if ($sort == "nama_desc") { $order_clause = "Nama_Pelanggan DESC"; }
 elseif ($sort == "baru") { $order_clause = "Created_Date DESC"; }
 elseif ($sort == "lama") { $order_clause = "Created_Date ASC"; }

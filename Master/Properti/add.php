@@ -74,8 +74,8 @@ $daftar_kategori = ['Furniture', 'Backdrop', 'Lighting', 'Dekorasi', 'Kostum', '
 
 // =====================================================
 // PROSES SIMPAN DATA
-// =====================================================
 $error = "";
+$error_field = "";
 $success = false;
 
 if (isset($_POST['simpan'])) {
@@ -87,34 +87,42 @@ if (isset($_POST['simpan'])) {
 
     // --- VALIDASI SERVER-SIDE (KUAT) ---
     if ($id_ruangan <= 0) {
-        $error = "Ruangan wajib dipilih!";
-    } elseif (empty($nama)) {
-        $error = "Nama properti wajib diisi!";
-    } elseif (strlen($nama) > 100) {
-        $error = "Nama properti maksimal 100 karakter!";
-    } elseif (empty($kategori)) {
-        $error = "Kategori properti wajib dipilih!";
-    } elseif (strlen($kategori) > 50) {
-        $error = "Kategori maksimal 50 karakter!";
-    } elseif (strlen($deskripsi) > 255) {
-        $error = "Deskripsi maksimal 255 karakter!";
-    } else {
+    $error = "Ruangan wajib dipilih!";
+    $error_field = "id_ruangan";
+} elseif (empty($nama)) {
+    $error = "Nama properti wajib diisi!";
+    $error_field = "nama_properti";
+} elseif (strlen($nama) > 100) {
+    $error = "Nama properti maksimal 100 karakter!";
+    $error_field = "nama_properti";
+} elseif (empty($kategori)) {
+    $error = "Kategori properti wajib dipilih!";
+    $error_field = "kategori";
+} elseif (strlen($kategori) > 50) {
+    $error = "Kategori maksimal 50 karakter!";
+    $error_field = "kategori";
+} elseif (strlen($deskripsi) > 255) {
+    $error = "Deskripsi maksimal 255 karakter!";
+    $error_field = "deskripsi";
+} else {
         // --- CEK RUANGAN VALID ---
         $cek_ruangan = safe_sqlsrv_fetch($conn,
             "SELECT COUNT(*) as total FROM Ruangan WHERE ID_Ruangan = ? AND Status = 1 AND Is_Deleted = 0",
             [$id_ruangan]
         );
         if (($cek_ruangan['total'] ?? 0) == 0) {
-            $error = "Ruangan yang dipilih tidak valid atau tidak aktif!";
-        } else {
+    $error = "Ruangan yang dipilih tidak valid atau tidak aktif!";
+    $error_field = "id_ruangan";
+} else {
             // --- CEK DUPLIKAT NAMA DALAM RUANGAN YANG SAMA ---
             $cek_dup = safe_sqlsrv_fetch($conn, 
                 "SELECT COUNT(*) as total FROM Properti WHERE Nama_Properti = ? AND ID_Ruangan = ? AND Is_Deleted = 0", 
                 [$nama, $id_ruangan]
             );
             if (($cek_dup['total'] ?? 0) > 0) {
-                $error = "Properti '{$nama}' sudah ada pada ruangan ini! Gunakan nama lain.";
-            } else {
+        $error = "Properti '{$nama}' sudah ada pada ruangan ini! Gunakan nama lain.";
+        $error_field = "nama_properti";
+    } else {
                 // --- PROSES UPLOAD GAMBAR (OPSIONAL) ---
                 $foto_name = $_FILES['foto']['name'] ?? '';
                 $foto_tmp  = $_FILES['foto']['tmp_name'] ?? '';
@@ -1097,6 +1105,16 @@ document.getElementById('formProperti').addEventListener('submit', function(e) {
     }
     return true;
 });
-    </script>
+</script>
+
+<?php if ($error_field !== ""): ?>
+<script>
+setFieldError('<?= $error_field ?>', '<?= addslashes($error) ?>');
+document.getElementById('<?= $error_field ?>').focus();
+<?php if ($error_field === 'foto'): ?>
+document.getElementById('dropzone').scrollIntoView({ behavior: 'smooth', block: 'center' });
+<?php endif; ?>
+</script>
+<?php endif; ?>
 </body>
 </html>

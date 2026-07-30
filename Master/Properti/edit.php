@@ -100,6 +100,7 @@ if (!empty($properti['Kategori_Properti']) && !in_array($properti['Kategori_Prop
 // PROSES UPDATE DATA
 // =====================================================
 $error = "";
+$error_field = "";
 $success = false;
 
 if (isset($_POST['update'])) {
@@ -110,101 +111,107 @@ if (isset($_POST['update'])) {
     $status     = isset($_POST['status']) ? (int)$_POST['status'] : (int)$properti['Status'];
 
     if ($id_ruangan <= 0) {
-        $error = "Ruangan wajib dipilih!";
-    } elseif (empty($nama)) {
-        $error = "Nama properti wajib diisi!";
-    } elseif (strlen($nama) > 100) {
-        $error = "Nama properti maksimal 100 karakter!";
-    } elseif (empty($kategori)) {
-        $error = "Kategori properti wajib dipilih!";
-    } elseif (strlen($kategori) > 50) {
-        $error = "Kategori maksimal 50 karakter!";
-    } elseif (strlen($deskripsi) > 255) {
-        $error = "Deskripsi maksimal 255 karakter!";
+    $error = "Ruangan wajib dipilih!";
+    $error_field = "id_ruangan";
+} elseif (empty($nama)) {
+    $error = "Nama properti wajib diisi!";
+    $error_field = "nama_properti";
+} elseif (strlen($nama) > 100) {
+    $error = "Nama properti maksimal 100 karakter!";
+    $error_field = "nama_properti";
+} elseif (empty($kategori)) {
+    $error = "Kategori properti wajib dipilih!";
+    $error_field = "kategori";
+} elseif (strlen($kategori) > 50) {
+    $error = "Kategori maksimal 50 karakter!";
+    $error_field = "kategori";
+} elseif (strlen($deskripsi) > 255) {
+    $error = "Deskripsi maksimal 255 karakter!";
+    $error_field = "deskripsi";
+} else {
+    $cek_ruangan = safe_sqlsrv_fetch($conn,
+        "SELECT COUNT(*) as total FROM Ruangan WHERE ID_Ruangan = ? AND Is_Deleted = 0",
+        [$id_ruangan]
+    );
+    if (($cek_ruangan['total'] ?? 0) == 0) {
+        $error = "Ruangan yang dipilih tidak valid!";
+        $error_field = "id_ruangan";
     } else {
-        $cek_ruangan = safe_sqlsrv_fetch($conn,
-            "SELECT COUNT(*) as total FROM Ruangan WHERE ID_Ruangan = ? AND Is_Deleted = 0",
-            [$id_ruangan]
+        $cek_dup = safe_sqlsrv_fetch($conn, 
+            "SELECT COUNT(*) as total FROM Properti WHERE Nama_Properti = ? AND ID_Ruangan = ? AND ID_Properti <> ? AND Is_Deleted = 0", 
+            [$nama, $id_ruangan, $id]
         );
-        if (($cek_ruangan['total'] ?? 0) == 0) {
-            $error = "Ruangan yang dipilih tidak valid!";
+        if (($cek_dup['total'] ?? 0) > 0) {
+            $error = "Properti '{$nama}' sudah digunakan pada ruangan tersebut!";
+            $error_field = "nama_properti";
         } else {
-            $cek_dup = safe_sqlsrv_fetch($conn, 
-                "SELECT COUNT(*) as total FROM Properti WHERE Nama_Properti = ? AND ID_Ruangan = ? AND ID_Properti <> ? AND Is_Deleted = 0", 
-                [$nama, $id_ruangan, $id]
-            );
-            if (($cek_dup['total'] ?? 0) > 0) {
-                $error = "Properti '{$nama}' sudah digunakan pada ruangan tersebut!";
-            } else {
-                $foto_lama = $properti['Foto_Properti'] ?? '';
-                $foto_baru = $foto_lama;
-                $upload_path = '';
-                $hapus_foto_lama = false;
+            $foto_lama = $properti['Foto_Properti'] ?? '';
+            $foto_baru = $foto_lama;
+            $upload_path = '';
+            $hapus_foto_lama = false;
 
-                if (isset($_FILES['foto']) && $_FILES['foto']['name'] != '') {
-                    $foto_name = $_FILES['foto']['name'];
-                    $foto_tmp  = $_FILES['foto']['tmp_name'];
-                    $foto_size = $_FILES['foto']['size'];
-                    $foto_error = $_FILES['foto']['error'];
+            if (isset($_FILES['foto']) && $_FILES['foto']['name'] != '') {
+                $foto_name = $_FILES['foto']['name'];
+                $foto_tmp  = $_FILES['foto']['tmp_name'];
+                $foto_size = $_FILES['foto']['size'];
+                $foto_error = $_FILES['foto']['error'];
 
-                    if ($foto_error != UPLOAD_ERR_OK) {
-                        $error = "Terjadi kesalahan saat upload foto.";
+                if ($foto_error != UPLOAD_ERR_OK) {
+                    $error = "Terjadi kesalahan saat upload foto.";
+                    $error_field = "foto";
+                } else {
+                    $ext = strtolower(pathinfo($foto_name, PATHINFO_EXTENSION));
+                    $allowed = ['jpg', 'jpeg', 'png', 'webp'];
+
+                    if (!in_array($ext, $allowed)) {
+                        $error = "Format gambar harus JPG, JPEG, PNG, atau WEBP!";
+                        $error_field = "foto";
+                    } elseif ($foto_size > 2097152) {
+                        $error = "Ukuran gambar maksimal 2MB!";
+                        $error_field = "foto";
                     } else {
-                        $ext = strtolower(pathinfo($foto_name, PATHINFO_EXTENSION));
-                        $allowed = ['jpg', 'jpeg', 'png', 'webp'];
-
-                        if (!in_array($ext, $allowed)) {
-                            $error = "Format gambar harus JPG, JPEG, PNG, atau WEBP!";
-                        } elseif ($foto_size > 2097152) {
-                            $error = "Ukuran gambar maksimal 2MB!";
+                        $check = getimagesize($foto_tmp);
+                        if ($check === false) {
+                            $error = "File yang diupload bukan gambar valid!";
+                            $error_field = "foto";
                         } else {
-                            $check = getimagesize($foto_tmp);
-                            if ($check === false) {
-                                $error = "File yang diupload bukan gambar valid!";
-                            } else {
-                                $new_filename = "properti_" . time() . "_" . bin2hex(random_bytes(4)) . "." . $ext;
-                                $upload_dir = "../../assets/img/properti/";
-                                if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
-                                $upload_path = $upload_dir . $new_filename;
+                            $new_filename = "properti_" . time() . "_" . bin2hex(random_bytes(4)) . "." . $ext;
+                            $upload_dir = "../../assets/img/properti/";
+                            if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
+                            $upload_path = $upload_dir . $new_filename;
 
-                                if (move_uploaded_file($foto_tmp, $upload_path)) {
-                                    $foto_baru = $new_filename;
-                                    $hapus_foto_lama = true;
-                                } else {
-                                    $error = "Gagal memindahkan file ke server.";
-                                }
+                            if (move_uploaded_file($foto_tmp, $upload_path)) {
+                                $foto_baru = $new_filename;
+                                $hapus_foto_lama = true;
+                            } else {
+                                $error = "Gagal memindahkan file ke server.";
+                                $error_field = "foto";
                             }
                         }
                     }
                 }
+            }
 
-                if ($error == "") {
-                    $sql_update = "EXEC sp_UpdateProperti ?, ?, ?, ?, ?, ?, ?, ?";
-                    $params_update = [
-                        $id,
-                        $id_ruangan, 
-                        $nama, 
-                        $kategori, 
-                        empty($deskripsi) ? null : $deskripsi, 
-                        $foto_baru, 
-                        $status, 
-                        $nama_admin
-                    ];
-                    $stmt_update = sqlsrv_query($conn, $sql_update, $params_update);
+            if ($error == "") {
+                $sql_update = "EXEC sp_UpdateProperti ?, ?, ?, ?, ?, ?, ?, ?";
+                $params_update = [
+                    $id, $id_ruangan, $nama, $kategori,
+                    empty($deskripsi) ? null : $deskripsi,
+                    $foto_baru, $status, $nama_admin
+                ];
+                $stmt_update = sqlsrv_query($conn, $sql_update, $params_update);
 
-                    if ($stmt_update === false) {
-                        if (!empty($upload_path) && file_exists($upload_path)) unlink($upload_path);
-                        $error = "Gagal update properti: " . print_r(sqlsrv_errors(), true);
-                    } else {
-                        sqlsrv_free_stmt($stmt_update);
-                        if ($hapus_foto_lama && !empty($foto_lama) && $foto_lama != 'default_properti.jpg') {
-                            $old_path = "../../assets/img/properti/" . $foto_lama;
-                            if (file_exists($old_path)) unlink($old_path);
-                        }
-                        // Langsung pindah ke list.php
-                        header("Location: list.php?status_sukses=edit");
-                        exit();
+                if ($stmt_update === false) {
+                    if (!empty($upload_path) && file_exists($upload_path)) unlink($upload_path);
+                    $error = "Gagal update properti: " . print_r(sqlsrv_errors(), true);
+                } else {
+                    sqlsrv_free_stmt($stmt_update);
+                    if ($hapus_foto_lama && !empty($foto_lama) && $foto_lama != 'default_properti.jpg') {
+                        $old_path = "../../assets/img/properti/" . $foto_lama;
+                        if (file_exists($old_path)) unlink($old_path);
                     }
+                    header("Location: list.php?status_sukses=edit");
+                    exit();
                 }
             }
         }
@@ -415,6 +422,21 @@ if (isset($_POST['update'])) {
             font-size: 0.75rem; color: var(--text-muted); font-weight: 600;
             margin-top: 6px; display: flex; align-items: center; gap: 4px;
         }
+
+        .form-control-custom.is-error, .form-select-custom.is-error {
+    border-color: #dc2626 !important;
+    background-color: #fef2f2 !important;
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.08) !important;
+}
+.file-upload-zone.is-error {
+    border-color: #dc2626 !important;
+    background-color: #fef2f2 !important;
+}
+.field-error-msg {
+    display: none; font-size: 0.8rem; color: #dc2626; font-weight: 700;
+    margin-top: 6px; align-items: center; gap: 4px;
+}
+.field-error-msg.show { display: flex; }
 
         /* CURRENT FOTO PREVIEW */
         .current-foto-box {
@@ -836,6 +858,7 @@ if (isset($_POST['update'])) {
                                     </option>
                                 <?php endforeach; ?>
                             </select>
+                            <div class="field-error-msg" id="error-deskripsi"><i class="bi bi-exclamation-circle-fill"></i><span></span></div>
                             <div class="input-hint">
                                 <i class="bi bi-info-circle"></i> Properti akan ditampilkan kepada pelanggan saat memilih ruangan ini
                             </div>
@@ -853,10 +876,11 @@ if (isset($_POST['update'])) {
                         <!-- Nama Properti -->
                         <div class="col-12 col-md-8 mb-4">
                             <label class="form-label">Nama Properti <span class="required">*</span></label>
-                            <input type="text" name="nama_properti" class="form-control-custom" required 
-                                   maxlength="100" placeholder="Contoh: Sofa Beludru Pink"
-                                   value="<?= htmlspecialchars($properti['Nama_Properti']) ?>">
-                            <div class="input-hint">
+                            <input type="text" name="nama_properti" id="nama_properti" class="form-control-custom" required 
+       maxlength="100" placeholder="Contoh: Sofa Beludru Pink"
+       value="<?= htmlspecialchars($properti['Nama_Properti']) ?>">
+<div class="field-error-msg" id="error-nama_properti"><i class="bi bi-exclamation-circle-fill"></i><span></span></div>
+<div class="input-hint">
                                 <i class="bi bi-info-circle"></i> Maksimal 100 karakter, nama harus unik dalam satu ruangan
                             </div>
                         </div>
@@ -864,7 +888,7 @@ if (isset($_POST['update'])) {
                         <!-- Kategori -->
                         <div class="col-12 col-md-4 mb-4">
                             <label class="form-label">Kategori <span class="required">*</span></label>
-                            <select name="kategori" class="form-select-custom" required>
+                            <select name="kategori" id="kategori" class="form-select-custom" required>
                                 <option value="">-- Pilih Kategori --</option>
                                 <?php foreach ($daftar_kategori as $kat): 
                                     $sel = ($properti['Kategori_Properti'] == $kat) ? 'selected' : '';
@@ -872,15 +896,17 @@ if (isset($_POST['update'])) {
                                     <option value="<?= $kat ?>" <?= $sel ?>><?= $kat ?></option>
                                 <?php endforeach; ?>
                             </select>
+                            <div class="field-error-msg" id="error-kategori"><i class="bi bi-exclamation-circle-fill"></i><span></span></div>
                         </div>
                     </div>
 
                     <!-- Deskripsi -->
                     <div class="mb-4">
                         <label class="form-label">Deskripsi Properti</label>
-                        <textarea name="deskripsi" class="form-control-custom" 
-                                  maxlength="255" placeholder="Deskripsikan properti ini (opsional)..."><?= htmlspecialchars($properti['Deskripsi'] ?? '') ?></textarea>
-                        <div class="input-hint">
+                        <textarea name="deskripsi" id="deskripsi" class="form-control-custom" 
+                                maxlength="255" placeholder="Deskripsikan properti ini (opsional)..."><?= htmlspecialchars($properti['Deskripsi'] ?? '') ?></textarea>
+                                <div class="field-error-msg" id="error-deskripsi"><i class="bi bi-exclamation-circle-fill"></i><span></span></div>
+                                <div class="input-hint">
                             <i class="bi bi-info-circle"></i> Maksimal 255 karakter, akan ditampilkan ke pelanggan
                         </div>
                     </div>
@@ -1118,8 +1144,47 @@ if (isset($_POST['update'])) {
         }
         setInterval(updateLiveClock, 1000); updateLiveClock();
 
+        function setFieldError(fieldName, message) {
+    const field = document.getElementById(fieldName);
+    const errorMsg = document.getElementById('error-' + fieldName);
+    if (field) field.classList.add('is-error');
+    if (errorMsg) {
+        errorMsg.querySelector('span').textContent = message;
+        errorMsg.classList.add('show');
+        const hintEl = errorMsg.nextElementSibling;
+        if (hintEl && hintEl.classList.contains('input-hint')) hintEl.style.display = 'none';
+    }
+    if (fieldName === 'foto') document.getElementById('dropzone').classList.add('is-error');
+}
+
+function clearFieldError(fieldName) {
+    const field = document.getElementById(fieldName);
+    const errorMsg = document.getElementById('error-' + fieldName);
+    if (field) field.classList.remove('is-error');
+    if (errorMsg) {
+        errorMsg.classList.remove('show');
+        const hintEl = errorMsg.nextElementSibling;
+        if (hintEl && hintEl.classList.contains('input-hint')) hintEl.style.display = '';
+    }
+    if (fieldName === 'foto') document.getElementById('dropzone').classList.remove('is-error');
+}
+
+['id_ruangan', 'nama_properti', 'kategori', 'deskripsi'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', () => clearFieldError(id));
+    if (el) el.addEventListener('change', () => clearFieldError(id));
+});
         // Init: tampilkan info ruangan saat halaman dimuat
         updateRuanganInfo();
     </script>
+    <?php if ($error_field !== ""): ?>
+    <script>
+    setFieldError('<?= $error_field ?>', '<?= addslashes($error) ?>');
+    document.getElementById('<?= $error_field ?>').focus();
+    <?php if ($error_field === 'foto'): ?>
+    document.getElementById('dropzone').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    <?php endif; ?>
+    </script>
+    <?php endif; ?>
 </body>
 </html>

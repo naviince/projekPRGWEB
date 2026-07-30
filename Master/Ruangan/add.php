@@ -1111,6 +1111,20 @@ document.getElementById('formRuangan').addEventListener('submit', function(e) {
         updateLiveClock();
 
         updatePaketCount();
+
+        <?php if (!empty($field_errors)): ?>
+<script>
+<?php if (isset($field_errors['nama_ruangan'])): ?>
+document.getElementById('nama_ruangan').focus();
+<?php elseif (isset($field_errors['deskripsi'])): ?>
+document.getElementById('deskripsi').focus();
+<?php elseif (isset($field_errors['foto'])): ?>
+document.getElementById('uploadArea').scrollIntoView({ behavior: 'smooth', block: 'center' });
+<?php elseif (isset($field_errors['paket'])): ?>
+document.getElementById('paket-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+<?php endif; ?>
+</script>
+<?php endif; ?>
     </script>
 </body>
 </html>

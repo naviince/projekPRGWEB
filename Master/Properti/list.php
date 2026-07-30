@@ -133,7 +133,7 @@ if ($kategori_filter !== "") {
     $params[] = $kategori_filter;
 }
 
-$order_clause = "p.Nama_Properti ASC";
+$order_clause = "p.ID_Properti DESC";
 if ($sort == "nama_desc") { $order_clause = "p.Nama_Properti DESC"; }
 elseif ($sort == "ruangan_asc") { $order_clause = "r.Nama_Ruangan ASC"; }
 elseif ($sort == "ruangan_desc") { $order_clause = "r.Nama_Ruangan DESC"; }

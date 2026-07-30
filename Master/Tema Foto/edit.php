@@ -1245,11 +1245,27 @@ if (isset($_POST['simpan'])) {
         <div class="form-card-body">
 
             <?php if ($error != ""): ?>
-            <div class="alert-custom">
-                <i class="bi bi-exclamation-triangle-fill"></i>
-                <span><?= htmlspecialchars($error) ?></span>
-            </div>
-            <?php endif; ?>
+<div class="alert-custom">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    <span><?= htmlspecialchars($error) ?></span>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const pesanError = <?= json_encode($error) ?>;
+    if (pesanError.includes('Nama tema') || pesanError.includes('nama tema')) {
+        document.getElementById('nama_tema').focus();
+    } else if (pesanError.includes('Kategori') || pesanError.includes('kategori')) {
+        document.getElementById('kategori').focus();
+    } else if (pesanError.includes('Deskripsi') || pesanError.includes('deskripsi')) {
+        document.getElementById('deskripsi').focus();
+    } else if (pesanError.includes('ruangan') || pesanError.includes('Ruangan')) {
+        document.querySelector('.ruangan-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (pesanError.includes('gambar') || pesanError.includes('foto')) {
+        document.getElementById('dropzone').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+});
+</script>
+<?php endif; ?>
 
             <!-- Info order aktif -->
             <?php
@@ -1275,7 +1291,7 @@ if (isset($_POST['simpan'])) {
                     <!-- Nama Tema -->
                     <div class="col-12 col-md-8 mb-4">
                         <label class="form-label">Nama Tema Foto <span class="required">*</span></label>
-                        <input type="text" name="nama_tema" class="form-control-custom" required
+                        <input type="text" name="nama_tema" id="nama_tema" class="form-control-custom" required
                                maxlength="100" placeholder="Contoh: Vintage Retro"
                                value="<?= htmlspecialchars($tema['Nama_Tema']) ?>">
                         <div class="input-hint"><i class="bi bi-info-circle"></i> Maksimal 100 karakter, nama harus unik</div>
@@ -1283,7 +1299,7 @@ if (isset($_POST['simpan'])) {
                     <!-- Kategori -->
                     <div class="col-12 col-md-4 mb-4">
                         <label class="form-label">Kategori <span class="required">*</span></label>
-                        <select name="kategori" class="form-select-custom" required>
+                        <select name="kategori" id="kategori" class="form-select-custom" required>
                             <option value="">-- Pilih Kategori --</option>
                             <?php foreach ($daftar_kategori as $kat): ?>
                                 <option value="<?= $kat ?>" <?= ($tema['Kategori_Tema'] == $kat) ? 'selected' : '' ?>><?= $kat ?></option>
@@ -1295,7 +1311,7 @@ if (isset($_POST['simpan'])) {
                 <!-- Deskripsi -->
                 <div class="mb-4">
                     <label class="form-label">Deskripsi Tema</label>
-                    <textarea name="deskripsi" class="form-control-custom"
+                    <textarea name="deskripsi" id="deskripsi" class="form-control-custom"
                               maxlength="255" placeholder="Deskripsikan konsep dan suasana tema ini (opsional)..."><?= htmlspecialchars($tema['Deskripsi'] ?? '') ?></textarea>
                     <div class="input-hint"><i class="bi bi-info-circle"></i> Maksimal 255 karakter</div>
                 </div>
@@ -1575,16 +1591,31 @@ if (isset($_POST['simpan'])) {
 
     // Form Validation
     document.getElementById('formEditTema').addEventListener('submit', function(e) {
-        const checked = document.querySelectorAll('input[name="ruangan[]"]:checked').length;
-        if (checked === 0) {
-            e.preventDefault();
-            Swal.fire({
-                icon: 'warning', title: 'Ruangan Belum Dipilih',
-                text: 'Pilih minimal 1 ruangan yang bisa menggunakan tema ini!',
-                confirmButtonColor: '#D53D66'
-            });
-        }
-    });
+    const nama = document.getElementById('nama_tema').value.trim();
+    const checked = document.querySelectorAll('input[name="ruangan[]"]:checked').length;
+
+    if (!nama) {
+        e.preventDefault();
+        document.getElementById('nama_tema').focus();
+        Swal.fire({
+            icon: 'warning', title: 'Nama Tema Kosong',
+            text: 'Nama tema foto wajib diisi!',
+            confirmButtonColor: '#D53D66'
+        });
+        return false;
+    }
+
+    if (checked === 0) {
+        e.preventDefault();
+        document.querySelector('.ruangan-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        Swal.fire({
+            icon: 'warning', title: 'Ruangan Belum Dipilih',
+            text: 'Pilih minimal 1 ruangan yang bisa menggunakan tema ini!',
+            confirmButtonColor: '#D53D66'
+        });
+        return false;
+    }
+});
 
     function confirmLogout(e) {
         e.preventDefault();

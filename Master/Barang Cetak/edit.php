@@ -773,6 +773,22 @@ if (!empty($data_lama['Foto_Barang'])) {
                     </ul>
                 </div>
             </div>
+            <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const pesanError = <?= json_encode(implode(' | ', $errors)) ?>;
+                if (pesanError.includes('Nama barang')) {
+                    document.getElementById('namaBarang').focus();
+                } else if (pesanError.includes('Harga barang')) {
+                    document.getElementById('hargaBarang').focus();
+                } else if (pesanError.includes('Stok minimum')) {
+                    document.getElementById('stokMinimum').focus();
+                } else if (pesanError.includes('Stok barang')) {
+                    document.getElementById('stokBarang').focus();
+                } else if (pesanError.includes('file') || pesanError.includes('gambar') || pesanError.includes('upload')) {
+                    document.getElementById('foto_barang').scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
+            </script>
             <?php endif; ?>
 
             <?php if ($success): ?>
@@ -789,7 +805,7 @@ if (!empty($data_lama['Foto_Barang'])) {
                     <!-- Nama Barang -->
                     <div class="col-md-6 mb-4">
                         <label class="form-label">Nama Barang <span class="required">*</span></label>
-                        <input type="text" name="nama_barang" class="form-control-custom" 
+                        <input type="text" name="nama_barang" id="namaBarang" class="form-control-custom"
                                placeholder="Contoh: Album Foto 4R, Frame Kayu 8x10" 
                                maxlength="100"
                                value="<?= isset($_POST['nama_barang']) ? htmlspecialchars($_POST['nama_barang']) : htmlspecialchars($data_lama['Nama_Barang']) ?>"
@@ -801,7 +817,7 @@ if (!empty($data_lama['Foto_Barang'])) {
                     <!-- Harga -->
                     <div class="col-md-6 mb-4">
                         <label class="form-label">Harga (Rp) <span class="required">*</span></label>
-                        <input type="number" name="harga_barang" class="form-control-custom" 
+                        <input type="number" name="harga_barang" id="hargaBarang" class="form-control-custom"
                                placeholder="Contoh: 50000" min="0" step="100"
                                value="<?= isset($_POST['harga_barang']) ? htmlspecialchars($_POST['harga_barang']) : htmlspecialchars($data_lama['Harga_Barang']) ?>"
                                required>
@@ -815,7 +831,7 @@ if (!empty($data_lama['Foto_Barang'])) {
                     <!-- Stok -->
                     <div class="col-md-6 mb-4">
                         <label class="form-label">Stok Saat Ini <span class="required">*</span></label>
-                        <input type="number" name="stok_barang" class="form-control-custom" 
+                        <input type="number" name="stok_barang" id="stokBarang" class="form-control-custom" 
                                placeholder="Contoh: 20" min="0"
                                value="<?= isset($_POST['stok_barang']) ? htmlspecialchars($_POST['stok_barang']) : htmlspecialchars($data_lama['Stok_Barang']) ?>"
                                required>
@@ -826,7 +842,7 @@ if (!empty($data_lama['Foto_Barang'])) {
                     <!-- Stok Minimum -->
                     <div class="col-md-6 mb-4">
                         <label class="form-label">Stok Minimum (Alert) <span class="required">*</span></label>
-                        <input type="number" name="stok_minimum" class="form-control-custom" 
+                        <input type="number" name="stok_minimum" id="stokMinimum" class="form-control-custom"
                                placeholder="Contoh: 5" min="0"
                                value="<?= isset($_POST['stok_minimum']) ? htmlspecialchars($_POST['stok_minimum']) : htmlspecialchars($data_lama['Stok_Minimum']) ?>"
                                required>

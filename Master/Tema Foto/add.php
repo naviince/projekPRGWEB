@@ -810,7 +810,7 @@ if (isset($_POST['simpan'])) {
                         <!-- Nama Tema -->
                         <div class="col-md-8 mb-4">
                             <label class="form-label">Nama Tema Foto <span class="required">*</span></label>
-                            <input type="text" name="nama_tema" id="nama_tema" class="form-control-custom" 
+                            <input type="text" name="nama_tema" id="nama_tema" class="form-control-custom" required
        maxlength="100" placeholder="Contoh: Vintage Retro"
        value="<?= htmlspecialchars($_POST['nama_tema'] ?? '') ?>">
 <div class="field-error-msg" id="error-nama_tema"><i class="bi bi-exclamation-circle-fill"></i><span></span></div>
@@ -822,7 +822,7 @@ if (isset($_POST['simpan'])) {
                         <!-- Kategori -->
                         <div class="col-md-4 mb-4">
                             <label class="form-label">Kategori <span class="required">*</span></label>
-                            <select name="kategori" id="kategori" class="form-select-custom">
+                            <select name="kategori" id="kategori" class="form-select-custom" required>
                                 <option value="">-- Pilih Kategori --</option>
                                 <?php foreach ($daftar_kategori as $kat): 
                                     $sel = (isset($_POST['kategori']) && $_POST['kategori'] == $kat) ? 'selected' : '';
@@ -837,8 +837,8 @@ if (isset($_POST['simpan'])) {
                     <!-- Deskripsi -->
                     <div class="mb-4">
                         <label class="form-label">Deskripsi Tema</label>
-                        <textarea name="deskripsi" id="deskripsi" class="form-control-custom" 
-          maxlength="255" placeholder="Deskripsikan konsep dan suasana tema ini (opsional)..."><?= htmlspecialchars($_POST['deskripsi'] ?? '') ?></textarea>
+                        <textarea name="deskripsi" id="deskripsi" class="form-control-custom"
+                              maxlength="255" placeholder="Deskripsikan konsep dan suasana tema ini (opsional)..."><?= htmlspecialchars($tema['Deskripsi'] ?? '') ?></textarea>
 <div class="field-error-msg" id="error-deskripsi"><i class="bi bi-exclamation-circle-fill"></i><span></span></div>
 <div class="input-hint">
     <i class="bi bi-info-circle"></i> Maksimal 255 karakter, akan ditampilkan ke pelanggan
@@ -966,6 +966,28 @@ if (isset($_POST['simpan'])) {
                 </div>
                 <div class="modal-body px-4 pb-4 pt-3">
                     <p class="text-muted small mb-4" style="line-height:1.6;">Perbarui informasi profil pribadi Anda di bawah ini secara akurat.</p>
+                    <?php if ($error != ""): ?>
+<div class="alert-custom">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    <span><?= htmlspecialchars($error) ?></span>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const pesanError = <?= json_encode($error) ?>;
+    if (pesanError.includes('Nama tema') || pesanError.includes('nama tema')) {
+        document.getElementById('nama_tema').focus();
+    } else if (pesanError.includes('Kategori') || pesanError.includes('kategori')) {
+        document.getElementById('kategori').focus();
+    } else if (pesanError.includes('Deskripsi') || pesanError.includes('deskripsi')) {
+        document.getElementById('deskripsi').focus();
+    } else if (pesanError.includes('ruangan')) {
+        document.getElementById('ruangan-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (pesanError.includes('gambar') || pesanError.includes('foto')) {
+        document.getElementById('dropzone').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+});
+</script>
+<?php endif; ?>
                     <form method="POST" enctype="multipart/form-data">
                         <div class="text-center mb-4">
                             <div class="d-inline-block position-relative">
@@ -1119,7 +1141,9 @@ if (isset($_POST['simpan'])) {
 
     // Init count saat halaman dimuat
     document.addEventListener('DOMContentLoaded', updateRuanganCount);
-    function setFieldError(fieldName, message) {
+    let firstErrorField = null; // simpan field pertama yang error
+
+function setFieldError(fieldName, message) {
     const field = document.getElementById(fieldName);
     const errorMsg = document.getElementById('error-' + fieldName);
     if (field) field.classList.add('is-error');
@@ -1133,6 +1157,11 @@ if (isset($_POST['simpan'])) {
     }
     if (fieldName === 'foto') {
         document.getElementById('dropzone').classList.add('is-error');
+    }
+
+    // Simpan hanya error yang PERTAMA kali terjadi
+    if (!firstErrorField) {
+        firstErrorField = field || document.getElementById('dropzone');
     }
 }
 
@@ -1170,6 +1199,7 @@ document.getElementById('formTema').addEventListener('submit', function(e) {
     document.getElementById('ruangan-section').classList.remove('is-error');
 
     let ada_error = false;
+    firstErrorField = null; // reset setiap kali submit dicoba
 
     if (!nama) {
         setFieldError('nama_tema', 'Nama tema foto wajib diisi!');
@@ -1191,12 +1221,19 @@ document.getElementById('formTema').addEventListener('submit', function(e) {
 
     if (ruanganChecked === 0) {
         document.getElementById('ruangan-section').classList.add('is-error');
-        updateRuanganCount(); // biar hint merah "Pilih minimal 1 ruangan!" muncul
+        updateRuanganCount();
         ada_error = true;
+        // Ruangan bukan input focusable, jadi scroll ke sana saja
+        if (!firstErrorField) {
+            document.getElementById('ruangan-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
     }
 
     if (ada_error) {
         e.preventDefault();
+        if (firstErrorField && typeof firstErrorField.focus === 'function') {
+            firstErrorField.focus();
+        }
         return false;
     }
     return true;

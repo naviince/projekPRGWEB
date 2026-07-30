@@ -215,7 +215,7 @@ if ($stok_filter === "menipis") {
     $conditions[] = "Stok_Barang <= Stok_Minimum AND Status = 1";
 }
 
-$order_clause = "Nama_Barang ASC";
+$order_clause = "ID_Barang DESC";
 if ($sort == "nama_desc") { $order_clause = "Nama_Barang DESC"; }
 elseif ($sort == "harga_asc") { $order_clause = "Harga_Barang ASC"; }
 elseif ($sort == "harga_desc") { $order_clause = "Harga_Barang DESC"; }

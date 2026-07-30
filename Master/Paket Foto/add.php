@@ -1334,7 +1334,19 @@ if (inputDeskripsi) inputDeskripsi.addEventListener('input', () => clearFieldErr
         updateLiveClock();
         setInterval(updateLiveClock, 1000);
     </script>
-
+    <script>
+    <?php if (isset($errors['nama_paket'])): ?>
+    document.querySelector('[name="nama_paket"]').focus();
+    <?php elseif (isset($errors['durasi_waktu'])): ?>
+    document.querySelector('[name="durasi_waktu"]').focus();
+    <?php elseif (isset($errors['harga_paket'])): ?>
+    document.querySelector('[name="harga_paket"]').focus();
+    <?php elseif (isset($errors['kapasitas_orang'])): ?>
+    document.querySelector('[name="kapasitas_orang"]').focus();
+    <?php elseif (isset($errors['deskripsi'])): ?>
+    document.getElementById('inputDeskripsi').focus();
+    <?php endif; ?>
+    </script>
     <?php if(isset($success_profile) && $success_profile === true): ?>
     <script>Swal.fire({icon:'success',title:'Profil Diperbarui!',text:'Informasi profil Anda berhasil disinkronkan.',confirmButtonColor:'#D53D66',confirmButtonText:'Selesai'});</script>
     <?php endif; ?>

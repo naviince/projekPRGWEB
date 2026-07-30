@@ -606,7 +606,30 @@ $status = isset($_POST['status']) ? (int)$_POST['status'] : 1;
                 </div>
             </div>
             <?php endif; ?>
-
+            <?php if (!empty($field_errors)): ?>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const fieldErrors = <?= json_encode($field_errors) ?>;
+    const fieldMap = {
+        'nama_barang': 'namaBarang',
+        'harga_barang': 'hargaBarang',
+        'stok_barang': 'stokBarang',
+        'stok_minimum': 'stokMinimum'
+    };
+    const urutan = ['nama_barang', 'harga_barang', 'stok_barang', 'stok_minimum'];
+    let sudahFokus = false;
+    for (const key of urutan) {
+        if (fieldErrors[key] && fieldMap[key]) {
+            const el = document.getElementById(fieldMap[key]);
+            if (el) { el.focus(); sudahFokus = true; break; }
+        }
+    }
+    if (!sudahFokus && fieldErrors['foto_barang']) {
+        document.getElementById('foto_barang').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+});
+</script>
+<?php endif; ?>
             <form method="POST" action="" enctype="multipart/form-data" id="formBarang">
                 <div class="row">
                     <!-- Nama Barang -->
@@ -839,6 +862,8 @@ function bukaModalBiodata() {
     });
 }
 
+flet firstErrorField = null; // simpan field pertama yang error
+
 function setFieldError(fieldId, message) {
     const field = document.getElementById(fieldId);
     const errorMsg = document.getElementById('error-' + fieldId);
@@ -847,6 +872,7 @@ function setFieldError(fieldId, message) {
         errorMsg.querySelector('span').textContent = message;
         errorMsg.classList.add('show');
     }
+    if (!firstErrorField && field) firstErrorField = field;
 }
 
 function clearFieldError(fieldId) {
@@ -856,7 +882,7 @@ function clearFieldError(fieldId) {
     if (errorMsg) errorMsg.classList.remove('show');
 }
 
-// Tambahkan event listener input agar error hilang saat mengetik
+// Hapus error saat user mulai mengetik
 ['namaBarang', 'hargaBarang', 'stokBarang', 'stokMinimum'].forEach(id => {
     document.getElementById(id).addEventListener('input', () => clearFieldError(id));
 });
@@ -867,68 +893,40 @@ document.getElementById('formBarang').addEventListener('submit', function(e) {
     const stok = document.getElementById('stokBarang').value;
     const stokMin = document.getElementById('stokMinimum').value;
 
+    ['namaBarang', 'hargaBarang', 'stokBarang', 'stokMinimum'].forEach(clearFieldError);
+    firstErrorField = null; // reset tiap kali submit dicoba
+
     let ada_error = false;
 
-    // Nama
-    if (!nama) { setFieldError('namaBarang', 'Nama wajib diisi!'); ada_error = true; }
-    // Harga
-    if (!harga || harga < 0) { setFieldError('hargaBarang', 'Harga tidak valid!'); ada_error = true; }
-    // Stok
-    if (!stok || stok < 0) { setFieldError('stokBarang', 'Stok wajib diisi!'); ada_error = true; }
-    // Stok Minimum vs Stok
-    if (parseInt(stokMin) > parseInt(stok)) {
+    if (!nama) {
+        setFieldError('namaBarang', 'Nama wajib diisi!');
+        ada_error = true;
+    }
+
+    if (!harga || harga < 0) {
+        setFieldError('hargaBarang', 'Harga tidak valid!');
+        ada_error = true;
+    }
+
+    if (!stok || stok < 0) {
+        setFieldError('stokBarang', 'Stok wajib diisi!');
+        ada_error = true;
+    }
+
+    if (stokMin === '' || parseInt(stokMin) < 0) {
+        setFieldError('stokMinimum', 'Stok minimum tidak boleh negatif!');
+        ada_error = true;
+    } else if (parseInt(stokMin) > parseInt(stok || 0)) {
         setFieldError('stokMinimum', 'Stok minimum tidak boleh > stok gudang!');
         ada_error = true;
     }
 
     if (ada_error) {
         e.preventDefault();
+        if (firstErrorField) firstErrorField.focus();
         return false;
     }
-});
-
-// Validasi semua field sekaligus sebelum submit
-document.getElementById('formBarang').addEventListener('submit', function(e) {
-    const idBarang = document.getElementById('idBarang').value;
-    const namaBarang = document.getElementById('namaBarang').value;
-    const hargaBarang = document.getElementById('hargaBarang').value;
-    const stokBarang = document.getElementById('stokBarang').value;
-    const stokMinimum = document.getElementById('stokMinimum').value;
-
-    ['idBarang', 'namaBarang', 'hargaBarang', 'stokBarang'].forEach(clearFieldError);
-
-    let ada_error = false;
-
-    if (!idBarang) {
-        setFieldError('idBarang', 'ID barang wajib diisi!');
-        ada_error = true;
-    }
-    if (!namaBarang) {
-        setFieldError('namaBarang', 'Nama barang wajib diisi!');
-        ada_error = true;
-    }
-    if (!hargaBarang) {
-        setFieldError('hargaBarang', 'Harga barang wajib diisi!');
-        ada_error = true;
-    }
-    if (!stokBarang) {
-        setFieldError('stokBarang', 'Stok barang wajib diisi!');
-        ada_error = true;
-    }
-
-    // --- LAYER 7: Validasi Stok Minimum <= Stok Saat Ini ---
-    if (!is_numeric(stokMinimum) || (int)$stokMinimum < 0) {
-        setFieldError('stokMinimum', 'Stok minimum tidak boleh negatif!');
-        ada_error = true;
-    } elseif ((int)$stokMinimum > (int)$stokBarang) {
-        setFieldError('stokMinimum', 'Stok minimum ('.$stokMinimum.') tidak boleh lebih besar dari stok saat ini ('.$stokBarang.')!');
-        ada_error = true;
-    }
-
-    if (ada_error) {
-        e.preventDefault();
-        return false;
-    }
+    return true;
 });
 </script>
 

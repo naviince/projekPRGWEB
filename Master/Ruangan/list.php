@@ -243,7 +243,7 @@ if (!empty($cari)) {
 
 $where_clause = !empty($conditions) ? "WHERE " . implode(" AND ", $conditions) : "";
 
-$order_clause = "r.Nama_Ruangan ASC";
+$order_clause = "r.ID_Ruangan DESC";
 if ($sort == "nama_desc") { $order_clause = "r.Nama_Ruangan DESC"; }
 elseif ($sort == "paket_asc") { $order_clause = "total_paket ASC"; }
 elseif ($sort == "paket_desc") { $order_clause = "total_paket DESC"; }

@@ -410,7 +410,7 @@ if (!empty($cari)) {
 }
 if ($status_filter !== "") { $conditions[] = "Status = ?"; $params[] = (int)$status_filter; }
 if (!empty($role_filter)) { $conditions[] = "Role_Karyawan = ?"; $params[] = $role_filter; }
-$order_clause = "Nama_Karyawan ASC";
+$order_clause = "ID_Karyawan DESC";
 if ($sort == "nama_desc") { $order_clause = "Nama_Karyawan DESC"; }
 elseif ($sort == "umur_muda") { $order_clause = "Tanggal_Lahir DESC"; }
 elseif ($sort == "umur_tua") { $order_clause = "Tanggal_Lahir ASC"; }

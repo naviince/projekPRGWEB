@@ -1482,8 +1482,19 @@ $ada_foto_existing = !empty($foto_existing_name) && $foto_existing_name !== 'def
     updateLiveClock();
     setInterval(updateLiveClock, 1000);
 </script>
-
-
+<script>
+<?php if (isset($errors['nama'])): ?>
+document.getElementById('inputNama').focus();
+<?php elseif (isset($errors['durasi'])): ?>
+document.querySelector('[name="durasi"]').focus();
+<?php elseif (isset($errors['harga'])): ?>
+document.querySelector('[name="harga"]').focus();
+<?php elseif (isset($errors['kapasitas'])): ?>
+document.querySelector('[name="kapasitas"]').focus();
+<?php elseif (isset($errors['deskripsi'])): ?>
+document.getElementById('inputDeskripsi').focus();
+<?php endif; ?>
+</script>
 <?php if(isset($success_profile) && $success_profile === true): ?>
 <script>Swal.fire({icon:'success',title:'Profil Diperbarui!',text:'Informasi profil Anda berhasil disinkronkan.',confirmButtonColor:'#D53D66',confirmButtonText:'Selesai'});</script>
 <?php endif; ?>

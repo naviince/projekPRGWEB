@@ -1000,6 +1000,19 @@ $foto_existing_src = file_exists($foto_existing) ? $foto_existing : $default_svg
         updatePaketCount();
         <?php if (!empty($error)): ?> Swal.fire({ icon: 'error', title: 'Gagal Menyimpan!', html: '<?= addslashes($error) ?>', confirmButtonColor: '#D53D66' }); <?php endif; ?>
 
+            <?php if (!empty($field_errors)): ?>
+<script>
+<?php if (isset($field_errors['nama_ruangan'])): ?>
+document.getElementById('nama_ruangan').focus();
+<?php elseif (isset($field_errors['deskripsi'])): ?>
+document.getElementById('deskripsi').focus();
+<?php elseif (isset($field_errors['foto'])): ?>
+document.getElementById('dropzone').scrollIntoView({ behavior: 'smooth', block: 'center' });
+<?php elseif (isset($field_errors['paket'])): ?>
+document.getElementById('paket-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+<?php endif; ?>
+</script>
+<?php endif; ?>
     </script>
 </body>
 </html>
