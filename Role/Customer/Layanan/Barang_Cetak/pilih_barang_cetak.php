@@ -1149,6 +1149,12 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                     
                     <div class="cetak-grid">
                         <?php 
+                        function tebakSatuan($nama) {
+                            $nama = strtolower($nama);
+                            if (str_contains($nama, 'cetak foto')) return 'lembar';
+                            if (str_contains($nama, 'photobook') || str_contains($nama, 'album')) return 'buku';
+                            return 'pcs';
+                        }
                         if (!empty($barang_list)):
                             foreach ($barang_list as $brg): 
                                 $id_brg = $brg['ID_Barang'];
@@ -1177,13 +1183,15 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
                                         </div>
                                         
                                         <!-- QTY Selector Interaktif -->
-                                        <div class="qty-container">
+                                       <div class="qty-container">
                                             <button type="button" class="btn-qty" onclick="adjustQty(<?= $id_brg ?>, -1, <?= $stok ?>)">-</button>
-                                            <input type="text" name="qty[<?= $id_brg ?>]" id="qty_<?= $id_brg ?>" class="input-qty" 
-                                                   value="<?= $qty_sebelumnya ?>" readonly 
+                                            <input type="text" inputmode="numeric" name="qty[<?= $id_brg ?>]" id="qty_<?= $id_brg ?>" class="input-qty" 
+                                                   value="<?= $qty_sebelumnya ?>"
+                                                   oninput="validateQtyManual(this, <?= $stok ?>)"
                                                    data-nama="<?= htmlspecialchars($brg['Nama_Barang']) ?>" 
                                                    data-harga="<?= $brg['Harga_Barang'] ?>">
                                             <button type="button" class="btn-qty" onclick="adjustQty(<?= $id_brg ?>, 1, <?= $stok ?>)">+</button>
+                                            <span class="satuan-label" style="font-size:0.68rem;color:#94a3b8;margin-left:4px;">pcs</span>
                                         </div>
                                     </div>
                                 </div>
@@ -1425,6 +1433,14 @@ $harga_paket_format = number_format($d_paket['Harga_Paket'], 0, ',', '.');
             if (newQty > maxStok) newQty = maxStok;
 
             input.value = newQty;
+            recalculateSummary();
+        }
+
+        function validateQtyManual(input, maxStok) {
+            let val = parseInt(input.value.replace(/[^0-9]/g, '')) || 0;
+            if (val < 0) val = 0;
+            if (val > maxStok) val = maxStok;
+            input.value = val;
             recalculateSummary();
         }
 
