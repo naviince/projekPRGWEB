@@ -581,6 +581,8 @@ if (!empty($tema_list)) {
         }
         .btn-action-edit { color: var(--p-pink); border-color: #FFE4E9; }
         .btn-action-edit:hover { background: var(--p-pink); color: #ffffff; transform: translateY(-2px); }
+        .btn-action-detail { color: #2563eb; border-color: #dbeafe; }
+.btn-action-detail:hover { background: #2563eb; color: #ffffff; transform: translateY(-2px); }
         .btn-action-delete { color: #dc2626; border-color: #fee2e2; }
         .btn-action-delete:hover { background: #dc2626; color: #ffffff; transform: translateY(-2px); }
 
@@ -975,10 +977,13 @@ if (!empty($tema_list)) {
                             </span>
                         </td>
                         <td class="text-center-custom">
-                            <div class="d-flex justify-content-center">
-                                <a href="edit.php?id=<?= $row['ID_Tema'] ?>" class="btn-action-circle btn-action-edit" title="Edit Tema Foto">
-                                    <i class="bi bi-pencil"></i>
-                                </a>
+    <div class="d-flex justify-content-center">
+        <a href="detail.php?id=<?= $row['ID_Tema'] ?>" class="btn-action-circle btn-action-detail" title="Lihat Detail">
+            <i class="bi bi-eye"></i>
+        </a>
+        <a href="edit.php?id=<?= $row['ID_Tema'] ?>" class="btn-action-circle btn-action-edit" title="Edit Tema Foto">
+            <i class="bi bi-pencil"></i>
+        </a>
                                 
                                 <!-- Tombol Toggle Status Warna Dinamis -->
                                 <button class="btn-action-circle <?= $toggle_class ?>" 

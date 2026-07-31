@@ -986,7 +986,7 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
                 <div class="row g-3 mb-4">
                     <div class="col-12 col-md-6">
                         <label class="form-label-custom">Username <span class="text-danger">*</span></label>
-                        <input type="text" name="username" class="form-input-custom <?= $error_username ? 'is-invalid' : '' ?>" 
+                        <input type="text" name="username" id="inputUsername" class="form-input-custom <?= $error_username ? 'is-invalid' : '' ?>"
                                placeholder="Masukkan username" 
                                value="<?= htmlspecialchars($data['Username_Pelanggan'] ?? '') ?>" required>
                         <?php if($error_username): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_username ?></div><?php endif; ?>
@@ -1017,7 +1017,7 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
                     </div>
                     <div class="col-12 col-md-6">
                         <label class="form-label-custom">Email Aktif <span class="text-danger">*</span></label>
-                        <input type="email" name="email" class="form-input-custom <?= $error_email ? 'is-invalid' : '' ?>" 
+                        <input type="email" name="email" id="inputEmail" class="form-input-custom <?= $error_email ? 'is-invalid' : '' ?>"
                                placeholder="contoh: pelanggan@email.com" 
                                value="<?= htmlspecialchars($data['Email_Pelanggan'] ?? '') ?>" required>
                         <?php if($error_email): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_email ?></div><?php endif; ?>
@@ -1069,7 +1069,7 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
                     </div>
                     <div class="col-12">
                         <label class="form-label-custom">Alamat Domisili <span class="text-danger">*</span></label>
-                        <textarea name="alamat" class="form-textarea-custom <?= $error_alamat ? 'is-invalid' : '' ?>" 
+                        <textarea name="alamat" id="inputAlamat" class="form-textarea-custom <?= $error_alamat ? 'is-invalid' : '' ?>"
                                   placeholder="Masukkan alamat lengkap domisili (minimal 10 karakter)" required><?= htmlspecialchars($data['Alamat'] ?? '') ?></textarea>
                         <?php if($error_alamat): ?><div class="error-text"><i class="bi bi-x-circle-fill"></i> <?= $error_alamat ?></div><?php endif; ?>
                     </div>
@@ -1305,6 +1305,29 @@ $foto_admin_src = ($foto_admin != 'default.jpg' && file_exists("../../assets/img
             window.location.href = 'list.php?status_sukses=edit';
         });
         <?php endif; ?>
+        <?php if (!$success && ($error_nama || $error_username || $error_email || $error_password || $error_hp || $error_jk || $error_dob || $error_alamat || $error_foto)): ?>
+<script>
+<?php if ($error_nama): ?>
+document.getElementById('inputNama').focus();
+<?php elseif ($error_username): ?>
+document.getElementById('inputUsername').focus();
+<?php elseif ($error_email): ?>
+document.getElementById('inputEmail').focus();
+<?php elseif ($error_hp): ?>
+document.getElementById('inputHP').focus();
+<?php elseif ($error_jk): ?>
+document.querySelector('.radio-group').scrollIntoView({ behavior: 'smooth', block: 'center' });
+<?php elseif ($error_dob): ?>
+document.getElementById('dateDisplay').focus();
+<?php elseif ($error_alamat): ?>
+document.getElementById('inputAlamat').focus();
+<?php elseif ($error_password): ?>
+document.getElementById('inputPassword').focus();
+<?php elseif ($error_foto): ?>
+document.querySelector('.foto-upload-wrapper').scrollIntoView({ behavior: 'smooth', block: 'center' });
+<?php endif; ?>
+</script>
+<?php endif; ?>
     </script>
 
 </body>

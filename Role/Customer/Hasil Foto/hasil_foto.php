@@ -596,32 +596,34 @@ function formatWaktu($time) {
 
         /* ===== POPUP MODAL LIGHTBOX SINKRON VARIABEL RIWAYAT.PHP ===== */
         .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(15, 23, 42, 0.95);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            z-index: 2000;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-            overflow-y: auto;
-        }
+    display: none;
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: transparent;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    overflow-y: auto;
+    pointer-events: none;
+}
         .modal-overlay.active { display: flex; }
         .modal-content-popup {
-            background: rgba(30, 41, 59, 0.7);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: var(--radius-xl);
-            padding: 0;
-            width: 100%;
-            max-width: 900px;
-            box-shadow: var(--shadow-hover);
-            animation: modalIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            position: relative;
-            overflow: hidden;
-        }
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    width: 100%;
+    max-width: 900px;
+    box-shadow: none;
+    animation: modalIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    position: relative;
+    overflow: visible;
+    pointer-events: auto;
+}
         @keyframes modalIn {
             from { opacity: 0; transform: translateY(-30px) scale(0.95); }
             to { opacity: 1; transform: translateY(0) scale(1); }
@@ -629,7 +631,7 @@ function formatWaktu($time) {
         .modal-header-popup {
             background: linear-gradient(135deg, var(--p-pink), var(--d-pink));
             color: #fff;
-            padding: 20px 32px;
+            padding: 12px 24px;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -656,9 +658,18 @@ function formatWaktu($time) {
             transition: all 0.3s;
             font-size: 1.2rem;
         }
+        .modal-close-floating {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: var(--p-pink);
+    color: #fff;
+    z-index: 10;
+    box-shadow: var(--shadow-card);
+}
+.modal-close-floating:hover { background: var(--d-pink); }
         .modal-close-btn:hover { background: rgba(255,255,255,0.4); transform: rotate(90deg); }
-        .modal-body-popup { padding: 32px; text-align: center; }
-
+        .modal-body-popup { padding: 16px 24px 20px; text-align: center; pointer-events: auto; }
         /* Detail Slider */
         .lightbox-wrapper {
             position: relative;
@@ -675,15 +686,15 @@ function formatWaktu($time) {
             width: 100%;
             gap: 20px;
             position: relative;
-            margin: 10px 0;
+            margin: 4px 0;
         }
         .lightbox-img-container {
             max-width: 100%;
-            max-height: 60vh;
+            max-height: 78vh;
             border-radius: var(--radius-md);
             overflow: hidden;
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            background: #000000;
+            border: 2px solid #f1f5f9;
+    background: #fafafa;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -691,27 +702,28 @@ function formatWaktu($time) {
         }
         .lightbox-img-container img {
             max-width: 100%;
-            max-height: 60vh;
+            max-height: 78vh;
             object-fit: contain;
             display: block;
             transition: var(--transition-smooth);
         }
         .lightbox-nav-btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            color: #ffffff;
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            font-size: 1.2rem;
-            transition: var(--transition-smooth);
-            z-index: 10;
-            flex-shrink: 0;
-        }
+    background: var(--s-pink);
+    border: 1px solid var(--light-pink);
+    color: var(--p-pink);
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: var(--transition-smooth);
+    z-index: 10;
+    flex-shrink: 0;
+    box-shadow: var(--shadow-card);
+}
         .lightbox-nav-btn:hover {
             background: var(--p-pink);
             border-color: var(--p-pink);
@@ -719,19 +731,26 @@ function formatWaktu($time) {
             color: #ffffff;
         }
         .lightbox-details {
-            text-align: center;
-            color: #ffffff;
-            margin-top: 15px;
-        }
+    text-align: center;
+    color: var(--text-dark);
+    margin-top: 8px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: var(--radius-md);
+    padding: 12px 20px;
+    display: inline-block;
+    box-shadow: var(--shadow-soft);
+}
         .lightbox-caption {
             font-size: 0.95rem;
             font-weight: 700;
-            color: #f1f5f9;
+            color: var(--text-dark);
             margin-bottom: 4px;
         }
         .lightbox-counter {
             font-size: 0.8rem;
-            color: #94a3b8;
+            color: var(--text-dark);
             font-weight: 600;
             margin-bottom: 12px;
         }
@@ -739,7 +758,7 @@ function formatWaktu($time) {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            color: #ffffff;
+            color: var(--p-pink);
             background: rgba(216, 63, 103, 0.2);
             border: 1px solid rgba(216, 63, 103, 0.4);
             padding: 8px 18px;
@@ -1297,10 +1316,7 @@ function formatWaktu($time) {
     <!-- ===== POPUP MODAL LIGHTBOX SINKRON DENGAN RIWAYAT.PHP ===== -->
     <div class="modal-overlay" id="lightboxModal">
         <div class="modal-content-popup">
-            <div class="modal-header-popup">
-                <h3><i class="bi bi-images"></i> Galeri Hasil Foto</h3>
-                <button class="modal-close-btn" onclick="closeLightbox()"><i class="bi bi-x-lg"></i></button>
-            </div>
+            <button class="modal-close-btn modal-close-floating" onclick="closeLightbox()"><i class="bi bi-x-lg"></i></button>
             <div class="modal-body-popup">
                 <div class="lightbox-wrapper">
                     <div class="lightbox-main">
@@ -1442,7 +1458,7 @@ function formatWaktu($time) {
                     Swal.fire({
                         title: 'Galeri Hasil Foto (' + activeGallery.length + ' file)',
                         html: `<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:12px; max-height:360px; overflow-y:auto; padding:5px 0;">${gridHtml}</div>
-                              <p style="font-size:0.75rem; color:#718096; margin-top:15px; margin-bottom:0;">Klik pada salah satu foto untuk melihat layar penuh, lalu geser kiri atau kanan.</p>`,
+      <p style="font-size:1rem; font-weight:700; color:#475569; margin-top:15px; margin-bottom:0;">Klik pada salah satu foto untuk melihat layar penuh, lalu geser kiri atau kanan.</p>`,
                         width: 'min(620px, 94vw)',
                         confirmButtonColor: '#d83f67',
                         confirmButtonText: 'Tutup Galeri'

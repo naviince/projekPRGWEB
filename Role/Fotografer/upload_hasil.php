@@ -16,7 +16,7 @@ $username_fotografer = $_SESSION['username'] ?? 'fotografer';
 // =====================================================
 $upload_dir = '../../uploads/hasil/';
 $max_total_size = 300 * 1024 * 1024; // 300 MB TOTAL per sesi (bukan per-file)
-$max_files_per_batch = 50; // maksimal jumlah file per sekali klik upload (cegah spam file kecil)
+$max_files_per_batch = 15; // maksimal jumlah file per sekali klik upload (cegah spam file kecil)
 $allowed_extensions_image = ['jpg', 'jpeg', 'png'];
 $allowed_extensions_archive = ['zip', 'rar'];
 $allowed_extensions = array_merge($allowed_extensions_image, $allowed_extensions_archive);
@@ -440,7 +440,27 @@ function formatUkuran($bytes) {
         .gallery-item-archive span { font-size: 0.6rem; font-weight: 700; text-align: center; padding: 0 4px; word-break: break-all; }
         .gallery-item-del { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 50%; background: rgba(220,38,38,0.9); color: #fff; border: none; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; opacity: 0; transition: opacity 0.2s; }
         .gallery-item:hover .gallery-item-del { opacity: 1; }
-
+        .gallery-item-date {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(0deg, rgba(0,0,0,0.65), transparent);
+    color: #fff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-align: center;
+    padding: 10px 4px 5px;
+    pointer-events: none;
+    letter-spacing: 0.2px;
+}
+.gallery-item-archive .gallery-item-date {
+    position: static;
+    background: none;
+    color: var(--text-muted);
+    font-weight: 600;
+    padding: 0;
+}
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fadeInUp 0.6s ease-out forwards; }
         @media (max-width: 992px) { .main-content { margin-left: 0; padding: 20px; } .sidebar { transform: translateX(-100%); } }
@@ -578,27 +598,30 @@ function formatUkuran($bytes) {
 
                     <!-- GALERI FILE YANG SUDAH DIUPLOAD -->
                     <?php if (!empty($daftar_file)): ?>
-                    <div class="gallery-grid" id="galleryGrid">
-                        <?php foreach ($daftar_file as $f): ?>
-                            <?php if ($f['Tipe_File'] === 'image'): ?>
-                            <div class="gallery-item" onclick="bukaPopupFoto('../../uploads/hasil/<?= rawurlencode($f['Nama_File']) ?>', '<?= htmlspecialchars(addslashes($f['Nama_File'])) ?>')">
-                                <img src="../../uploads/hasil/<?= rawurlencode($f['Nama_File']) ?>" alt="Hasil Foto" loading="lazy">
-                                <?php if ($boleh_upload): ?>
-                                <button type="button" class="gallery-item-del" onclick="event.stopPropagation(); hapusFile(<?= $f['ID_Hasil_Foto'] ?>, '<?= htmlspecialchars(addslashes($f['Nama_File'])) ?>')" title="Hapus"><i class="bi bi-x-lg"></i></button>
-                                <?php endif; ?>
-                            </div>
-                            <?php else: ?>
-                            <div class="gallery-item gallery-item-archive" onclick="window.open('../../uploads/hasil/<?= rawurlencode($f['Nama_File']) ?>', '_blank')">
-                                <i class="bi bi-file-earmark-zip-fill"></i>
-                                <span><?= htmlspecialchars($f['Nama_File']) ?></span>
-                                <?php if ($boleh_upload): ?>
-                                <button type="button" class="gallery-item-del" onclick="event.stopPropagation(); hapusFile(<?= $f['ID_Hasil_Foto'] ?>, '<?= htmlspecialchars(addslashes($f['Nama_File'])) ?>')" title="Hapus"><i class="bi bi-x-lg"></i></button>
-                                <?php endif; ?>
-                            </div>
-                            <?php endif; ?>
-                        <?php endforeach; ?>
-                    </div>
-                    <?php endif; ?>
+<div class="gallery-grid" id="galleryGrid">
+    <?php foreach ($daftar_file as $f): ?>
+        <?php $tgl_foto = formatTanggal($f['Created_Date']); ?>
+        <?php if ($f['Tipe_File'] === 'image'): ?>
+        <div class="gallery-item" onclick="bukaPopupFoto('../../uploads/hasil/<?= rawurlencode($f['Nama_File']) ?>', '<?= htmlspecialchars(addslashes($f['Nama_File'])) ?>')">
+            <img src="../../uploads/hasil/<?= rawurlencode($f['Nama_File']) ?>" alt="Hasil Foto" loading="lazy">
+            <span class="gallery-item-date"><?= $tgl_foto ?></span>
+            <?php if ($boleh_upload): ?>
+            <button type="button" class="gallery-item-del" onclick="event.stopPropagation(); hapusFile(<?= $f['ID_Hasil_Foto'] ?>, '<?= htmlspecialchars(addslashes($f['Nama_File'])) ?>')" title="Hapus"><i class="bi bi-x-lg"></i></button>
+            <?php endif; ?>
+        </div>
+        <?php else: ?>
+        <div class="gallery-item gallery-item-archive" onclick="window.open('../../uploads/hasil/<?= rawurlencode($f['Nama_File']) ?>', '_blank')">
+            <i class="bi bi-file-earmark-zip-fill"></i>
+            <span><?= htmlspecialchars($f['Nama_File']) ?></span>
+            <span class="gallery-item-date"><?= $tgl_foto ?></span>
+            <?php if ($boleh_upload): ?>
+            <button type="button" class="gallery-item-del" onclick="event.stopPropagation(); hapusFile(<?= $f['ID_Hasil_Foto'] ?>, '<?= htmlspecialchars(addslashes($f['Nama_File'])) ?>')" title="Hapus"><i class="bi bi-x-lg"></i></button>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
 
                     <?php if ($boleh_upload): ?>
                     <!-- FORM UPLOAD MULTI-FILE -->
@@ -810,96 +833,116 @@ function formatUkuran($bytes) {
         const progressText = document.getElementById('progressText');
         const btnUpload = document.getElementById('btnUpload');
 
-        function submitUpload() {
-            if (selectedFiles.length === 0) {
-                Swal.fire({ icon: 'warning', title: 'File Belum Dipilih', text: 'Silakan pilih minimal 1 file.', confirmButtonColor: '#D53D66' });
-                return;
-            }
+        // Harus SAMA atau LEBIH KECIL dari $max_files_per_batch di PHP.
+const CHUNK_SIZE = 15;
 
-            const totalBaru = selectedFiles.reduce((sum, f) => sum + f.size, 0);
-            const sisaKuota = MAX_TOTAL_SIZE - TOTAL_TERPAKAI;
-            if (totalBaru > sisaKuota) {
-                Swal.fire({ icon: 'error', title: 'Kuota Terlampaui', text: 'Total ukuran file yang dipilih melebihi sisa kuota ' + formatFileSize(Math.max(0, sisaKuota)) + '.', confirmButtonColor: '#D53D66' });
-                return;
-            }
+async function submitUpload() {
+    if (selectedFiles.length === 0) {
+        Swal.fire({ icon: 'warning', title: 'File Belum Dipilih', text: 'Silakan pilih minimal 1 file.', confirmButtonColor: '#D53D66' });
+        return;
+    }
 
-            const allowedExt = ['jpg', 'jpeg', 'png', 'zip', 'rar'];
-            for (const f of selectedFiles) {
-                const ext = f.name.split('.').pop().toLowerCase();
-                if (!allowedExt.includes(ext)) {
-                    Swal.fire({ icon: 'error', title: 'Format Tidak Didukung', text: "File '" + f.name + "' formatnya tidak didukung.", confirmButtonColor: '#D53D66' });
-                    return;
-                }
-            }
+    const totalBaru = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+    const sisaKuota = MAX_TOTAL_SIZE - TOTAL_TERPAKAI;
+    if (totalBaru > sisaKuota) {
+        Swal.fire({ icon: 'error', title: 'Kuota Terlampaui', text: 'Total ukuran file yang dipilih melebihi sisa kuota ' + formatFileSize(Math.max(0, sisaKuota)) + '.', confirmButtonColor: '#D53D66' });
+        return;
+    }
 
-            progressWrapper.classList.add('show');
-            btnUpload.disabled = true;
-            btnUpload.innerHTML = '<i class="bi bi-hourglass-split"></i> Mengupload...';
-
-            let progress = 0;
-            const progressInterval = setInterval(() => {
-                progress += Math.random() * 10;
-                if (progress >= 90) { progress = 90; clearInterval(progressInterval); }
-                progressBar.style.width = progress + '%';
-                progressText.textContent = Math.round(progress) + '%';
-            }, 200);
-
-            const formData = new FormData();
-            selectedFiles.forEach(f => formData.append('file_hasil[]', f));
-            formData.append('ajax_upload', '1');
-
-            fetch(window.location.href, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-                .then(response => response.json())
-                .then(data => {
-                    clearInterval(progressInterval);
-                    progressBar.style.width = '100%';
-                    progressText.textContent = '100%';
-
-                    if (data.success) {
-                        const previews = data.preview_files || [];
-                        let galleryHtml = '';
-                        if (previews.length > 0) {
-                            galleryHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;max-height:260px;overflow-y:auto;margin-top:12px;">' +
-                                previews.map(p => '<img src="' + p.url + '" alt="' + p.nama.replace(/"/g, '&quot;') + '" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid #f1f5f9;" onclick="bukaPopupFoto(\'' + p.url + '\', \'' + p.nama.replace(/'/g, "\\'") + '\')">').join('') +
-                                '</div>';
-                        }
-
-                        Swal.fire({
-                            icon: 'success',
-                            title: 'Upload Berhasil!',
-                            html: '<p>' + data.message + '</p>' + (previews.length > 0 ? '<p style="font-size:0.8rem;color:#64748b;">Klik salah satu foto untuk melihat ukuran penuh.</p>' + galleryHtml : ''),
-                            confirmButtonColor: '#D53D66',
-                            confirmButtonText: 'Selesai, Lihat Galeri',
-                            showDenyButton: true,
-                            denyButtonText: 'Ke Riwayat Upload',
-                            denyButtonColor: '#718096'
-                        }).then((result) => {
-                            if (result.isDenied) {
-                                window.location.href = data.redirect;
-                            } else {
-                                // Tetap di halaman ini, galeri di-refresh supaya foto baru langsung
-                                // kelihatan (bukan dipindah paksa ke halaman lain seperti sebelumnya).
-                                location.reload();
-                            }
-                        });
-                    } else {
-                        btnUpload.disabled = false;
-                        btnUpload.innerHTML = '<i class="bi bi-cloud-upload"></i> Upload File Terpilih';
-                        progressWrapper.classList.remove('show');
-                        progressBar.style.width = '0%'; progressText.textContent = '0%';
-                        Swal.fire({ icon: 'error', title: 'Upload Gagal!', text: data.message, confirmButtonColor: '#D53D66' });
-                    }
-                })
-                .catch(error => {
-                    clearInterval(progressInterval);
-                    btnUpload.disabled = false;
-                    btnUpload.innerHTML = '<i class="bi bi-cloud-upload"></i> Upload File Terpilih';
-                    progressWrapper.classList.remove('show');
-                    progressBar.style.width = '0%'; progressText.textContent = '0%';
-                    Swal.fire({ icon: 'error', title: 'Upload Gagal!', text: 'Terjadi kesalahan saat mengupload file.', confirmButtonColor: '#D53D66' });
-                    console.error('Upload error:', error);
-                });
+    const allowedExt = ['jpg', 'jpeg', 'png', 'zip', 'rar'];
+    for (const f of selectedFiles) {
+        const ext = f.name.split('.').pop().toLowerCase();
+        if (!allowedExt.includes(ext)) {
+            Swal.fire({ icon: 'error', title: 'Format Tidak Didukung', text: "File '" + f.name + "' formatnya tidak didukung.", confirmButtonColor: '#D53D66' });
+            return;
         }
+    }
+
+    // Pecah selectedFiles jadi beberapa batch kecil, supaya tidak kena
+    // limit "max_file_uploads" PHP walau fotografer pilih ratusan file sekaligus.
+    const batches = [];
+    for (let i = 0; i < selectedFiles.length; i += CHUNK_SIZE) {
+        batches.push(selectedFiles.slice(i, i + CHUNK_SIZE));
+    }
+
+    progressWrapper.classList.add('show');
+    btnUpload.disabled = true;
+    btnUpload.innerHTML = '<i class="bi bi-hourglass-split"></i> Mengupload...';
+
+    let totalBerhasil = 0;
+    let allPreviews = [];
+    let gagalPesan = [];
+    let lastRedirect = null;
+
+    for (let b = 0; b < batches.length; b++) {
+        const persenAwalBatch = Math.round((b / batches.length) * 100);
+        const persenAkhirBatch = Math.round(((b + 1) / batches.length) * 100);
+        progressBar.style.width = persenAwalBatch + '%';
+        progressText.textContent = 'Batch ' + (b + 1) + '/' + batches.length + ' (' + persenAwalBatch + '%)';
+
+        const formData = new FormData();
+        batches[b].forEach(f => formData.append('file_hasil[]', f));
+        formData.append('ajax_upload', '1');
+
+        try {
+            const res = await fetch(window.location.href, {
+                method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                totalBerhasil += (data.preview_files ? data.preview_files.length : 0);
+                if (data.preview_files) allPreviews = allPreviews.concat(data.preview_files);
+                if (data.redirect) lastRedirect = data.redirect;
+            } else {
+                gagalPesan.push('Batch ' + (b + 1) + ': ' + data.message);
+            }
+        } catch (err) {
+            gagalPesan.push('Batch ' + (b + 1) + ': Gagal terhubung ke server.');
+        }
+
+        progressBar.style.width = persenAkhirBatch + '%';
+        progressText.textContent = persenAkhirBatch + '%';
+    }
+
+    btnUpload.disabled = false;
+    btnUpload.innerHTML = '<i class="bi bi-cloud-upload"></i> Upload File Terpilih';
+    progressWrapper.classList.remove('show');
+    progressBar.style.width = '0%'; progressText.textContent = '0%';
+
+    if (gagalPesan.length === 0) {
+        let galleryHtml = '';
+        if (allPreviews.length > 0) {
+            galleryHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;max-height:260px;overflow-y:auto;margin-top:12px;">' +
+                allPreviews.map(p => '<img src="' + p.url + '" alt="' + p.nama.replace(/"/g, '&quot;') + '" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid #f1f5f9;" onclick="bukaPopupFoto(\'' + p.url + '\', \'' + p.nama.replace(/'/g, "\\'") + '\')">').join('') +
+                '</div>';
+        }
+        Swal.fire({
+            icon: 'success',
+            title: 'Upload Berhasil!',
+            html: '<p>' + selectedFiles.length + ' file berhasil diupload dalam ' + batches.length + ' batch.</p>' + (allPreviews.length > 0 ? '<p style="font-size:0.8rem;color:#64748b;">Klik salah satu foto untuk melihat ukuran penuh.</p>' + galleryHtml : ''),
+            confirmButtonColor: '#D53D66',
+            confirmButtonText: 'Selesai, Lihat Galeri',
+            showDenyButton: !!lastRedirect,
+            denyButtonText: 'Ke Riwayat Upload',
+            denyButtonColor: '#718096'
+        }).then((result) => {
+            if (result.isDenied && lastRedirect) window.location.href = lastRedirect;
+            else location.reload();
+        });
+    } else if (totalBerhasil > 0) {
+        // Sebagian berhasil, sebagian gagal (misal koneksi putus di tengah jalan)
+        Swal.fire({
+            icon: 'warning',
+            title: 'Upload Sebagian Berhasil',
+            html: '<p>' + totalBerhasil + ' file berhasil, tapi ada batch yang gagal:</p><ul style="text-align:left;font-size:0.8rem;">' +
+                gagalPesan.map(m => '<li>' + m + '</li>').join('') + '</ul><p style="font-size:0.8rem;">Silakan pilih ulang file yang belum masuk galeri lalu upload lagi.</p>',
+            confirmButtonColor: '#D53D66'
+        }).then(() => location.reload());
+    } else {
+        Swal.fire({ icon: 'error', title: 'Upload Gagal!', text: gagalPesan.join(' | '), confirmButtonColor: '#D53D66' });
+    }
+}
 
         // =====================================================
         // HAPUS 1 FILE

@@ -829,6 +829,19 @@ window.addEventListener('DOMContentLoaded', function() {
         }
     }
 });
+<?php if (!empty($errors)): ?>
+<script>
+<?php if (isset($errors['id_paket'])): ?>
+document.getElementById('idPaket').focus();
+<?php elseif (isset($errors['id_ruangan'])): ?>
+document.getElementById('idRuangan').focus();
+<?php elseif (isset($errors['tanggal_jadwal'])): ?>
+document.getElementById('tanggalJadwal').focus();
+<?php elseif (isset($errors['jam_mulai'])): ?>
+document.getElementById('jamMulai').focus();
+<?php endif; ?>
+</script>
+<?php endif; ?>
 </script>
 
 </body>

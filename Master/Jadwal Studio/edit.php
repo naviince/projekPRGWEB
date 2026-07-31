@@ -1340,6 +1340,19 @@ if (isset($data['Jam_Mulai'])) {
     window.addEventListener('DOMContentLoaded', function() {
         calculateEndTime();
     });
+    <?php if (!empty($errors)): ?>
+<script>
+<?php if (isset($errors['id_paket'])): ?>
+document.getElementById('idPaket').focus();
+<?php elseif (isset($errors['id_ruangan'])): ?>
+document.getElementById('idRuangan').focus();
+<?php elseif (isset($errors['tanggal_jadwal'])): ?>
+document.getElementById('tanggalJadwal').focus();
+<?php elseif (isset($errors['jam_mulai'])): ?>
+document.getElementById('jamMulai').focus();
+<?php endif; ?>
+</script>
+<?php endif; ?>
 </script>
 
 </body>

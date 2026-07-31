@@ -1220,6 +1220,32 @@ function hasError($field, $error_fields) { return isset($error_fields[$field]) &
     });
 </script>
 <?php endif; ?>
-
+<?php if (!empty($errors) && (count($errors) > 1 || !isset($errors['global']))): ?>
+<script>
+<?php if (isset($errors['nik'])): ?>
+document.getElementById('inputNIK').focus();
+<?php elseif (isset($errors['nama'])): ?>
+document.getElementById('inputNama').focus();
+<?php elseif (isset($errors['tanggal_lahir'])): ?>
+document.getElementById('inputDOB').focus();
+<?php elseif (isset($errors['jenis_kelamin'])): ?>
+document.getElementById('inputJK').focus();
+<?php elseif (isset($errors['alamat'])): ?>
+document.getElementById('inputAlamat').focus();
+<?php elseif (isset($errors['username'])): ?>
+document.getElementById('inputUsername').focus();
+<?php elseif (isset($errors['email'])): ?>
+document.getElementById('inputEmail').focus();
+<?php elseif (isset($errors['role_karyawan'])): ?>
+document.getElementById('inputRole').focus();
+<?php elseif (isset($errors['password'])): ?>
+document.getElementById('inputPassword').focus();
+<?php elseif (isset($errors['password_confirm'])): ?>
+document.getElementById('inputPasswordConfirm').focus();
+<?php elseif (isset($errors['no_hp'])): ?>
+document.getElementById('inputHP').focus();
+<?php endif; ?>
+</script>
+<?php endif; ?>
 </body>
 </html>

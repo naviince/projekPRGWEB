@@ -1451,16 +1451,46 @@ if ($current_foto != 'default.jpg' && file_exists("../../assets/img/karyawan/" .
     </script>
 
     <!-- SWEETALERT NOTIFIKASI ERROR CRUD GLOBAL -->
-    <?php if (isset($errors['global']) && $errors['global'] != ""): ?>
-    <script>
-        Swal.fire({ 
-            icon: 'error', 
-            title: 'Gagal Menyimpan! ❌', 
-            html: '<?= addslashes($errors['global']) ?>', 
-            confirmButtonColor: '#d83f67' 
-        });
-    </script>
-    <?php endif; ?>
+<?php if (isset($errors['global']) && $errors['global'] != ""): ?>
+<script>
+    Swal.fire({ 
+        icon: 'error', 
+        title: 'Gagal Menyimpan! ❌', 
+        html: '<?= addslashes($errors['global']) ?>', 
+        confirmButtonColor: '#d83f67' 
+    });
+</script>
+<?php endif; ?>
+
+<?php if (!empty($errors) && (count($errors) > 1 || !isset($errors['global']))): ?>
+<script>
+<?php if (isset($errors['nik'])): ?>
+document.getElementById('inputNIK').focus();
+<?php elseif (isset($errors['nama'])): ?>
+document.getElementById('inputNama').focus();
+<?php elseif (isset($errors['tanggal_lahir'])): ?>
+document.getElementById('inputDOB').focus();
+<?php elseif (isset($errors['jenis_kelamin'])): ?>
+document.getElementById('inputJK').focus();
+<?php elseif (isset($errors['alamat'])): ?>
+document.getElementById('inputAlamat').focus();
+<?php elseif (isset($errors['username'])): ?>
+document.getElementById('inputUsername').focus();
+<?php elseif (isset($errors['email'])): ?>
+document.getElementById('inputEmail').focus();
+<?php elseif (isset($errors['role_karyawan'])): ?>
+document.getElementById('inputRole').focus();
+<?php elseif (isset($errors['password'])): ?>
+document.getElementById('inputPassword').focus();
+<?php elseif (isset($errors['password_confirm'])): ?>
+document.getElementById('inputPasswordConfirm').focus();
+<?php elseif (isset($errors['no_hp'])): ?>
+document.getElementById('inputHP').focus();
+<?php elseif (isset($errors['status_karyawan'])): ?>
+document.getElementById('inputStatus').focus();
+<?php endif; ?>
+</script>
+<?php endif; ?>
 
 </body>
 </html>
