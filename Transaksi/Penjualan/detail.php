@@ -103,6 +103,12 @@ foreach ($detail_barang as $b) {
     $total_qty += $b['Jumlah'];
 }
 
+// Hitung diskon 5% barang cetak (rumus sama seperti saat checkout customer)
+$subtotal_barang   = (float)($penjualan['Total_Penjualan'] ?? 0);
+$diskon_persen     = 0.05;
+$diskon_nominal    = $subtotal_barang * $diskon_persen;
+$total_setelah_diskon = $subtotal_barang - $diskon_nominal;
+
 if (empty($detail_barang)) {
     header("Location: list.php?status_sukses=error&message=" . urlencode("Data penjualan ini tidak memiliki item barang dan tidak dapat ditampilkan."));
     exit();
@@ -546,7 +552,7 @@ if (empty($detail_barang)) {
                 <div class="card-base card-static" style="height: 100%;">
                     <h5 class="fw-bold mb-3" style="font-size: 1rem;"><i class="bi bi-box-seam-fill text-danger me-2"></i>Daftar Barang Cetak</h5>
                     <?php foreach ($detail_barang as $b): 
-                        $path_img = "../../assets/img/barang/" . ($b['Foto_Barang'] ?? '');
+                        $path_img = "../../uploads/barang/" . ($b['Foto_Barang'] ?? '');
                         $img_src = (!empty($b['Foto_Barang']) && file_exists($path_img)) ? $path_img : $default_svg_avatar;
                     ?>
                     <div class="barang-item">
@@ -561,15 +567,23 @@ if (empty($detail_barang)) {
                     </div>
                     <?php endforeach; ?>
 
-                    <!-- Total Section -->
+                   <!-- Total Section -->
                     <div class="total-section mt-3">
                         <div class="total-row">
                             <span class="total-label">Total Barang</span>
                             <span class="total-value"><?= $total_qty ?> item</span>
                         </div>
+                        <div class="total-row">
+                            <span class="total-label">Subtotal</span>
+                            <span class="total-value">Rp <?= number_format($subtotal_barang, 0, ',', '.') ?></span>
+                        </div>
+                        <div class="total-row">
+                            <span class="total-label">Diskon Produk Cetak (5%)</span>
+                            <span class="total-value" style="color:#059669;">- Rp <?= number_format($diskon_nominal, 0, ',', '.') ?></span>
+                        </div>
                         <div class="total-row grand">
-                            <span class="total-label" style="font-size: 1rem;">Total Penjualan</span>
-                            <span class="total-value-grand">Rp <?= number_format($penjualan['Total_Penjualan'] ?? 0, 0, ',', '.') ?></span>
+                            <span class="total-label" style="font-size: 1rem;">Total Setelah Diskon</span>
+                            <span class="total-value-grand">Rp <?= number_format($total_setelah_diskon, 0, ',', '.') ?></span>
                         </div>
                     </div>
                 </div>
